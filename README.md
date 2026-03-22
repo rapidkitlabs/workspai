@@ -87,9 +87,31 @@ npx rapidkit bootstrap [--profile <profile>] [--json]
 npx rapidkit setup <python|node|go> [--warm-deps]
 npx rapidkit workspace policy show
 npx rapidkit workspace policy set <key> <value>
+npx rapidkit doctor
 npx rapidkit doctor workspace [--fix]
 npx rapidkit workspace list # Display all workspaces created on this system
 ```
+
+### Command ownership
+
+RapidKit keeps the wrapper boundary explicit so users know which layer owns each action.
+
+| Command family | Owner | Notes |
+|---|---|---|
+| `create workspace`, `workspace`, `cache`, `mirror` | RapidKit wrapper | Platform-level orchestration |
+| `init` | Wrapper orchestrated | Chooses the right runtime flow for the current project |
+| `dev`, `test`, `build`, `start` | Runtime aware | Delegates to the active project/runtime when available |
+| `doctor` | Wrapper system check | Checks host prerequisites by default |
+| `doctor workspace` | Workspace health | Full workspace scan with project-level details and fixes |
+
+Use `npx rapidkit doctor` for a quick host pre-flight and `npx rapidkit doctor workspace` inside a workspace for the full health picture.
+
+### Doctor workspace fix behavior
+
+- `npx rapidkit doctor workspace` reuses cached project scans when valid and refreshes evidence under `.rapidkit/reports/doctor-last-run.json`.
+- `npx rapidkit doctor workspace --fix` only executes actionable fix commands.
+- URL-based fixes are recorded as manual guidance (for example, install pages) and are not executed as shell commands.
+- Go project fixes that require `go mod tidy` are skipped when the Go toolchain is not available, with a clear install-and-rerun hint.
 
 ### Project lifecycle
 

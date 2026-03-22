@@ -6,6 +6,13 @@ import path from 'path';
 
 // Mock modules
 vi.mock('execa');
+const promptMock = vi.hoisted(() => vi.fn());
+vi.mock('inquirer', () => ({
+  default: {
+    prompt: promptMock,
+  },
+}));
+const mockedExeca = vi.mocked(execa as any);
 
 describe('Doctor Command', () => {
   beforeEach(() => {
@@ -25,7 +32,7 @@ describe('Doctor Command', () => {
 
   it('should handle doctor command with mocked successful checks', async () => {
     // Mock successful command executions
-    vi.mocked(execa).mockImplementation(async (cmd: string, args?: any) => {
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'python3' || cmd === 'python') {
         if (args?.[0] === '--version') {
           return {
@@ -94,7 +101,7 @@ describe('Doctor Command', () => {
 
   it('should handle doctor command with some failed checks', async () => {
     // Mock some failed checks
-    vi.mocked(execa).mockImplementation(async (cmd: string, args?: any) => {
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'python3' || cmd === 'python') {
         if (args?.[0] === '--version') {
           return {
@@ -134,7 +141,7 @@ describe('Doctor Command', () => {
 
   it('should handle doctor command with all failed checks', async () => {
     // Mock all checks failing
-    vi.mocked(execa).mockImplementation(async () => {
+    mockedExeca.mockImplementation(async () => {
       throw new Error('Command not found');
     });
 
@@ -145,7 +152,7 @@ describe('Doctor Command', () => {
   });
 
   it('should handle doctor with verbose output', async () => {
-    vi.mocked(execa).mockImplementation(async (cmd: string) => {
+    mockedExeca.mockImplementation(async (cmd: string) => {
       if (cmd === 'python3' || cmd === 'python') {
         return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
       }
@@ -153,11 +160,11 @@ describe('Doctor Command', () => {
     });
 
     const { runDoctor } = await import('../doctor.js');
-    await expect(runDoctor({ json: false, verbose: true })).resolves.not.toThrow();
+    await expect(runDoctor({ json: false })).resolves.not.toThrow();
   });
 
   it('should handle doctor with fix option', async () => {
-    vi.mocked(execa).mockImplementation(async (cmd: string) => {
+    mockedExeca.mockImplementation(async (cmd: string) => {
       if (cmd === 'python3' || cmd === 'python') {
         return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
       }
@@ -169,7 +176,7 @@ describe('Doctor Command', () => {
   });
 
   it('should handle different python versions', async () => {
-    vi.mocked(execa).mockImplementation(async (cmd: string, args?: any) => {
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'python3' || cmd === 'python') {
         if (args?.[0] === '-c') {
           return { stdout: '3.9.0', stderr: '', exitCode: 0 } as any;
@@ -184,7 +191,7 @@ describe('Doctor Command', () => {
   });
 
   it('should handle old python version warnings', async () => {
-    vi.mocked(execa).mockImplementation(async (cmd: string, args?: any) => {
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'python3' || cmd === 'python') {
         if (args?.[0] === '-c') {
           return { stdout: '3.8.0', stderr: '', exitCode: 0 } as any;
@@ -199,7 +206,7 @@ describe('Doctor Command', () => {
   });
 
   it('should check pip installation', async () => {
-    vi.mocked(execa).mockImplementation(async (cmd: string, args?: any) => {
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'python3' || cmd === 'python') {
         return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
       }
@@ -216,7 +223,7 @@ describe('Doctor Command', () => {
   });
 
   it('should handle workspace checks', async () => {
-    vi.mocked(execa).mockImplementation(async (cmd: string) => {
+    mockedExeca.mockImplementation(async (cmd: string) => {
       if (cmd === 'python3' || cmd === 'python') {
         return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
       }
@@ -240,14 +247,14 @@ describe('Doctor Command', () => {
   });
 
   it('should handle error states gracefully', async () => {
-    vi.mocked(execa).mockRejectedValue(new Error('ENOENT: command not found') as never);
+    mockedExeca.mockRejectedValue(new Error('ENOENT: command not found') as never);
 
     const { runDoctor } = await import('../doctor.js');
     await expect(runDoctor({ json: true })).resolves.not.toThrow();
   });
 
   it('should detect rapidkit core via pipx', async () => {
-    vi.mocked(execa).mockImplementation(async (cmd: string, args?: any) => {
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'python3') {
         return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
       }
@@ -269,7 +276,7 @@ describe('Doctor Command', () => {
   });
 
   it('should handle normal output format', async () => {
-    vi.mocked(execa).mockImplementation(async (cmd: string) => {
+    mockedExeca.mockImplementation(async (cmd: string) => {
       if (cmd === 'python3') {
         return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
       }
@@ -323,7 +330,7 @@ describe('Doctor Command', () => {
     await fsExtra.ensureDir(path.join(apiPath, '.venv'));
     await fsExtra.ensureDir(path.join(adminPath, '.venv'));
 
-    vi.mocked(execa).mockImplementation(async (cmd: string, args?: any) => {
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'python3' || cmd === 'python') {
         if (args?.[0] === '--version') {
           return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
@@ -347,12 +354,13 @@ describe('Doctor Command', () => {
     });
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    promptMock.mockImplementation(async () => ({ confirm: true }));
     const originalCwd = process.cwd();
 
     try {
       process.chdir(workspacePath);
       const { runDoctor } = await import('../doctor.js');
-      await runDoctor({ workspace: true, json: true });
+      await runDoctor({ workspace: true, json: true, fix: true });
 
       const jsonLine = logSpy.mock.calls
         .map((call) => call[0])
@@ -367,6 +375,7 @@ describe('Doctor Command', () => {
       ]);
     } finally {
       process.chdir(originalCwd);
+      promptMock.mockReset();
       logSpy.mockRestore();
       await fsExtra.remove(tempRoot);
     }
@@ -405,7 +414,7 @@ describe('Doctor Command', () => {
       '[tool.poetry]\nname = "saas-api-dist"\n'
     );
 
-    vi.mocked(execa).mockImplementation(async (cmd: string, args?: any) => {
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'python3' || cmd === 'python') {
         if (args?.[0] === '--version') {
           return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
@@ -444,6 +453,161 @@ describe('Doctor Command', () => {
       const payload = JSON.parse(jsonLine as string);
       expect(payload.summary.totalProjects).toBe(1);
       expect(payload.projects.map((p: { name: string }) => p.name)).toEqual(['saas-api']);
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('should cache workspace project scans and write evidence on repeat runs', async () => {
+    const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rapidkit-doctor-cache-'));
+    const workspacePath = path.join(tempRoot, 'workspace');
+    const apiPath = path.join(workspacePath, 'saas-api');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit-workspace'), {
+      name: 'workspace',
+      version: '1.0',
+    });
+
+    await fsExtra.ensureDir(path.join(apiPath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(apiPath, '.rapidkit', 'project.json'), {
+      name: 'saas-api',
+      framework: 'fastapi',
+    });
+    await fsExtra.writeFile(
+      path.join(apiPath, 'pyproject.toml'),
+      '[tool.poetry]\nname = "saas-api"\n'
+    );
+    await fsExtra.ensureDir(path.join(apiPath, '.venv'));
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'python3' || cmd === 'python') {
+        if (args?.[0] === '--version') {
+          return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+        }
+        if (args?.[0] === '-c' && String(args?.[1] || '').includes('rapidkit_core')) {
+          return { stdout: '0.3.8', stderr: '', exitCode: 0 } as any;
+        }
+        if (args?.[0] === '-c' && String(args?.[1] || '').includes('fastapi')) {
+          return { stdout: '', stderr: '', exitCode: 0 } as any;
+        }
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx') {
+        if (args?.[0] === '--version') {
+          return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+        }
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.3.8', stderr: '', exitCode: 0 } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(workspacePath);
+      const { runDoctor } = await import('../doctor.js');
+
+      await runDoctor({ workspace: true, json: true });
+      logSpy.mockClear();
+
+      await runDoctor({ workspace: true, json: true });
+
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string | undefined;
+
+      expect(jsonLine).toBeDefined();
+      const payload = JSON.parse(jsonLine as string);
+      expect(payload.cache.projectScan).toBe(true);
+      expect(payload.cache.evidencePath).toContain('doctor-last-run.json');
+      expect(
+        await fsExtra.pathExists(
+          path.join(workspacePath, '.rapidkit', 'reports', 'doctor-workspace-cache.json')
+        )
+      ).toBe(true);
+      expect(
+        await fsExtra.pathExists(
+          path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json')
+        )
+      ).toBe(true);
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('should skip go mod tidy fix when go toolchain is missing', async () => {
+    const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rapidkit-doctor-go-skip-'));
+    const workspacePath = path.join(tempRoot, 'workspace');
+    const goApiPath = path.join(workspacePath, 'go-api');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit-workspace'), {
+      name: 'workspace',
+      version: '1.0',
+    });
+
+    await fsExtra.ensureDir(path.join(goApiPath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(goApiPath, '.rapidkit', 'project.json'), {
+      name: 'go-api',
+      runtime: 'go',
+      kit_name: 'gofiber.standard',
+    });
+    await fsExtra.writeFile(path.join(goApiPath, 'go.mod'), 'module example.com/go-api\n');
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'python3' || cmd === 'python') {
+        if (args?.[0] === '--version') {
+          return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+        }
+        if (args?.[0] === '-m' && args?.[1] === 'rapidkit') {
+          return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+        }
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx' && args?.[0] === '--version') {
+        return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        throw new Error('go not found');
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(workspacePath);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ workspace: true, fix: true });
+
+      expect(promptMock).not.toHaveBeenCalled();
+
+      const executedCommands = mockedExeca.mock.calls.map(([cmd, args]) => ({ cmd, args }));
+      expect(
+        executedCommands.some(
+          ({ cmd, args }) =>
+            cmd === 'go' && Array.isArray(args) && args[0] === 'mod' && args[1] === 'tidy'
+        )
+      ).toBe(false);
+      expect(
+        executedCommands.some(({ cmd }) => typeof cmd === 'string' && cmd.includes('go mod tidy'))
+      ).toBe(false);
     } finally {
       process.chdir(originalCwd);
       logSpy.mockRestore();

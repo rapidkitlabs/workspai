@@ -3831,7 +3831,9 @@ program
 // Doctor command - health check for RapidKit environment
 program
   .command('doctor [scope]')
-  .description('🩺 Check RapidKit environment health')
+  .description(
+    '🩺 Check RapidKit system health by default; use workspace for full workspace checks'
+  )
   .option('--workspace', 'Check entire workspace (including all projects)')
   .option('--json', 'Output results in JSON format (for CI/CD pipelines)')
   .option('--fix', 'Automatically fix common issues (with confirmation)')
@@ -3843,6 +3845,7 @@ program
       if (scope && scope !== 'workspace') {
         console.log(chalk.red(`Unknown doctor scope: ${scope}`));
         console.log(chalk.gray('Available: workspace'));
+        console.log(chalk.gray('Usage: npx rapidkit doctor or npx rapidkit doctor workspace'));
         process.exit(1);
       }
 

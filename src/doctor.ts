@@ -152,6 +152,16 @@ interface WorkspaceHealth {
   healthScore?: HealthScore;
   coreVersion?: string;
   npmVersion?: string;
+  projectScanCached?: boolean;
+  projectScanSignature?: string;
+  projectScanCachePath?: string;
+  evidencePath?: string;
+}
+
+interface DoctorWorkspaceCacheEntry {
+  signature: string;
+  generatedAt: string;
+  projects: ProjectHealth[];
 }
 
 function buildProjectFixCommand(projectPath: string, command: string): string {
@@ -166,6 +176,199 @@ function buildEnvCopyFixCommand(projectPath: string): string {
     return buildProjectFixCommand(projectPath, 'Copy-Item .env.example .env');
   }
   return buildProjectFixCommand(projectPath, 'cp .env.example .env');
+}
+
+async function statSignature(candidatePath: string): Promise<string> {
+  try {
+    const stat = await fsExtra.stat(candidatePath);
+    return `${path.basename(candidatePath)}:${stat.isDirectory() ? 'd' : 'f'}:${stat.size}:${stat.mtimeMs}`;
+  } catch {
+    return `${path.basename(candidatePath)}:missing`;
+  }
+}
+
+async function collectWorkspaceProjectPaths(workspacePath: string): Promise<string[]> {
+  try {
+    const ignoredDirs = new Set([
+      '.git',
+      '.venv',
+      'node_modules',
+      '.rapidkit',
+      'dist',
+      'build',
+      'coverage',
+      '__pycache__',
+    ]);
+    const projectPaths = new Set<string>();
+
+    if (await hasRapidkitProjectMarkers(workspacePath)) {
+      projectPaths.add(workspacePath);
+    }
+
+    const scanDirs = async (basePath: string, depth: number) => {
+      if (depth < 0) return;
+      const dirNames = await listDirectories(basePath);
+      for (const dirName of dirNames) {
+        if (shouldIgnoreWorkspaceDir(dirName, ignoredDirs)) continue;
+        const dirPath = path.join(basePath, dirName);
+        if (await hasRapidkitProjectMarkers(dirPath)) {
+          projectPaths.add(dirPath);
+          continue;
+        }
+
+        if (depth > 0) {
+          await scanDirs(dirPath, depth - 1);
+        }
+      }
+    };
+
+    await scanDirs(workspacePath, 1);
+
+    if (projectPaths.size === 0) {
+      const fallbackProjects = await findRapidkitProjectsDeep(workspacePath, 3, ignoredDirs);
+      fallbackProjects.forEach((projectPath) => projectPaths.add(projectPath));
+    }
+
+    return Array.from(projectPaths).sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
+async function buildWorkspaceProjectSignature(
+  workspacePath: string,
+  projectPaths: string[]
+): Promise<string> {
+  const workspacePaths = [
+    path.join(workspacePath, '.rapidkit-workspace'),
+    path.join(workspacePath, '.rapidkit', 'workspace.json'),
+    path.join(workspacePath, '.rapidkit', 'policies.yml'),
+    path.join(workspacePath, '.rapidkit', 'toolchain.lock'),
+    path.join(workspacePath, '.rapidkit', 'cache-config.yml'),
+  ];
+
+  const projectKeyPaths = [
+    '.rapidkit/project.json',
+    '.rapidkit/context.json',
+    '.rapidkit/file-hashes.json',
+    'package.json',
+    'pyproject.toml',
+    'go.mod',
+    'go.sum',
+    'requirements.txt',
+    'Dockerfile',
+    'Makefile',
+    '.env',
+    '.env.example',
+    'src',
+    'modules',
+    'tests',
+    'test',
+    '.venv',
+    'node_modules',
+  ];
+
+  const workspaceSignature = await Promise.all(workspacePaths.map(statSignature));
+  const projectSignatures = await Promise.all(
+    projectPaths.map(async (projectPath) => {
+      const details = await Promise.all(
+        projectKeyPaths.map((relativePath) => statSignature(path.join(projectPath, relativePath)))
+      );
+      return `${projectPath}::${details.join('|')}`;
+    })
+  );
+
+  return [...workspaceSignature, ...projectSignatures].join('||');
+}
+
+async function loadWorkspaceProjectCache(
+  cachePath: string,
+  signature: string
+): Promise<DoctorWorkspaceCacheEntry | null> {
+  try {
+    if (!(await fsExtra.pathExists(cachePath))) return null;
+    const cached = (await fsExtra.readJSON(cachePath)) as DoctorWorkspaceCacheEntry;
+    if (!cached || cached.signature !== signature || !Array.isArray(cached.projects)) {
+      return null;
+    }
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+async function saveWorkspaceProjectCache(
+  cachePath: string,
+  entry: DoctorWorkspaceCacheEntry
+): Promise<void> {
+  try {
+    await fsExtra.ensureDir(path.dirname(cachePath));
+    await fsExtra.writeJSON(cachePath, entry, { spaces: 2 });
+  } catch {
+    // Non-fatal cache write failure.
+  }
+}
+
+async function writeDoctorEvidence(
+  workspacePath: string,
+  health: WorkspaceHealth,
+  cachePath: string | null
+): Promise<string | undefined> {
+  const evidencePath = path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json');
+  try {
+    await fsExtra.ensureDir(path.dirname(evidencePath));
+    await fsExtra.writeJSON(
+      evidencePath,
+      {
+        generatedAt: new Date().toISOString(),
+        workspacePath,
+        workspaceName: health.workspaceName,
+        projectScanCached: health.projectScanCached ?? false,
+        projectScanSignature: health.projectScanSignature,
+        cachePath,
+        healthScore: health.healthScore,
+        system: {
+          python: health.python,
+          poetry: health.poetry,
+          pipx: health.pipx,
+          go: health.go,
+          rapidkitCore: health.rapidkitCore,
+          versions: {
+            core: health.coreVersion,
+            npm: health.npmVersion,
+          },
+        },
+        projects: health.projects,
+        summary: {
+          totalProjects: health.projects.length,
+          totalIssues: health.projects.reduce((sum, p) => sum + p.issues.length, 0),
+          hasSystemErrors: [health.python, health.rapidkitCore].some((c) => c.status === 'error'),
+        },
+      },
+      { spaces: 2 }
+    );
+    return evidencePath;
+  } catch {
+    return undefined;
+  }
+}
+
+async function collectSystemChecks(): Promise<{
+  python: HealthCheckResult;
+  poetry: HealthCheckResult;
+  pipx: HealthCheckResult;
+  go: HealthCheckResult;
+  rapidkitCore: HealthCheckResult;
+}> {
+  const [python, poetry, pipx, go, rapidkitCore] = await Promise.all([
+    checkPython(),
+    checkPoetry(),
+    checkPipx(),
+    checkGo(),
+    checkRapidKitCore(),
+  ]);
+
+  return { python, poetry, pipx, go, rapidkitCore };
 }
 
 async function checkPython(): Promise<HealthCheckResult> {
@@ -1074,7 +1277,10 @@ function calculateHealthScore(
   return { total, passed, warnings, errors };
 }
 
-async function getWorkspaceHealth(workspacePath: string): Promise<WorkspaceHealth> {
+async function getWorkspaceHealth(
+  workspacePath: string,
+  allowProjectCache: boolean = true
+): Promise<WorkspaceHealth> {
   let workspaceName = path.basename(workspacePath);
 
   // Try to read workspace name from marker file
@@ -1095,76 +1301,58 @@ async function getWorkspaceHealth(workspacePath: string): Promise<WorkspaceHealt
     }
   }
 
+  const [systemHealth, projectPaths] = await Promise.all([
+    collectSystemChecks(),
+    collectWorkspaceProjectPaths(workspacePath),
+  ]);
+
   const health: WorkspaceHealth = {
     workspacePath,
     workspaceName,
-    python: await checkPython(),
-    poetry: await checkPoetry(),
-    pipx: await checkPipx(),
-    go: await checkGo(),
-    rapidkitCore: await checkRapidKitCore(), // Will check workspace venv first via updated logic
+    python: systemHealth.python,
+    poetry: systemHealth.poetry,
+    pipx: systemHealth.pipx,
+    go: systemHealth.go,
+    rapidkitCore: systemHealth.rapidkitCore,
     projects: [],
   };
 
-  // Find all projects in workspace (shallow recursive scan)
-  try {
-    const ignoredDirs = new Set([
-      '.git',
-      '.venv',
-      'node_modules',
-      '.rapidkit',
-      'dist',
-      'build',
-      'coverage',
-      '__pycache__',
-    ]);
-    const projectPaths = new Set<string>();
+  logger.debug(`Workspace scan found ${projectPaths.length} project(s)`);
 
-    if (await hasRapidkitProjectMarkers(workspacePath)) {
-      projectPaths.add(workspacePath);
+  const projectSignature = await buildWorkspaceProjectSignature(workspacePath, projectPaths);
+  const cachePath = path.join(workspacePath, '.rapidkit', 'reports', 'doctor-workspace-cache.json');
+  const cached = allowProjectCache
+    ? await loadWorkspaceProjectCache(cachePath, projectSignature)
+    : null;
+
+  if (cached) {
+    health.projects = cached.projects;
+    health.projectScanCached = true;
+    logger.debug(`Workspace project health cache hit: ${cachePath}`);
+  } else {
+    try {
+      const projectHealthResults = await Promise.all(
+        projectPaths.map((projectPath) => checkProject(projectPath))
+      );
+      health.projects = projectHealthResults;
+      health.projectScanCached = false;
+      await saveWorkspaceProjectCache(cachePath, {
+        signature: projectSignature,
+        generatedAt: new Date().toISOString(),
+        projects: projectHealthResults,
+      });
+      logger.debug(`Workspace project health cache refreshed: ${cachePath}`);
+    } catch (err) {
+      logger.debug(`Failed to scan workspace projects: ${err}`);
     }
-
-    const scanDirs = async (basePath: string, depth: number) => {
-      if (depth < 0) return;
-      const dirNames = await listDirectories(basePath);
-      for (const dirName of dirNames) {
-        if (shouldIgnoreWorkspaceDir(dirName, ignoredDirs)) continue;
-        const dirPath = path.join(basePath, dirName);
-        if (await hasRapidkitProjectMarkers(dirPath)) {
-          projectPaths.add(dirPath);
-          continue;
-        }
-
-        if (depth > 0) {
-          await scanDirs(dirPath, depth - 1);
-        }
-      }
-    };
-
-    await scanDirs(workspacePath, 1);
-    logger.debug(`Workspace scan (shallow) found ${projectPaths.size} project(s)`);
-
-    if (projectPaths.size === 0) {
-      const fallbackProjects = await findRapidkitProjectsDeep(workspacePath, 3, ignoredDirs);
-      fallbackProjects.forEach((projectPath) => projectPaths.add(projectPath));
-      logger.debug(`Workspace scan (deep fallback) found ${fallbackProjects.length} project(s)`);
-    }
-
-    if (projectPaths.size > 0) {
-      logger.debug(`Workspace projects detected: ${Array.from(projectPaths).join(', ')}`);
-    }
-
-    for (const projectPath of projectPaths) {
-      const projectHealth = await checkProject(projectPath);
-      health.projects.push(projectHealth);
-    }
-  } catch (err) {
-    logger.debug(`Failed to scan workspace projects: ${err}`);
   }
 
+  health.projectScanSignature = projectSignature;
+  health.projectScanCachePath = cachePath;
+
   // Calculate health score
-  const systemChecks = [health.python, health.poetry, health.pipx, health.go, health.rapidkitCore];
-  health.healthScore = calculateHealthScore(systemChecks, health.projects);
+  const healthChecks = [health.python, health.poetry, health.pipx, health.go, health.rapidkitCore];
+  health.healthScore = calculateHealthScore(healthChecks, health.projects);
 
   // Extract version info
   if (health.rapidkitCore.status === 'ok') {
@@ -1173,6 +1361,8 @@ async function getWorkspaceHealth(workspacePath: string): Promise<WorkspaceHealt
       health.coreVersion = versionMatch[1];
     }
   }
+
+  health.evidencePath = await writeDoctorEvidence(workspacePath, health, cached ? cachePath : null);
 
   return health;
 }
@@ -1337,11 +1527,24 @@ function renderProjectHealth(project: ProjectHealth): void {
   }
 }
 
+async function canRunGoModTidy(): Promise<boolean> {
+  try {
+    const result = await execa('go', ['version'], {
+      timeout: 3000,
+      reject: false,
+    });
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
 async function executeFixCommands(
   projects: ProjectHealth[],
   autoFix: boolean = false
 ): Promise<void> {
   const fixableProjects = projects.filter((p) => p.fixCommands && p.fixCommands.length > 0);
+  let goToolchainAvailable: boolean | null = null;
 
   if (fixableProjects.length === 0) {
     console.log(chalk.green('\n✅ No fixes needed - all projects are healthy!'));
@@ -1358,9 +1561,52 @@ async function executeFixCommands(
     console.log();
   }
 
+  let executableFixCount = 0;
+  for (const project of fixableProjects) {
+    for (const cmd of project.fixCommands!) {
+      if (/^https?:\/\//i.test(cmd.trim())) {
+        continue;
+      }
+
+      if (
+        parseProjectCommandFix(cmd, 'cp\\s+\\.env\\.example\\s+\\.env') ||
+        parseProjectCommandFix(cmd, 'copy-item\\s+\\.env\\.example\\s+\\.env') ||
+        parseProjectCommandFix(cmd, 'rapidkit\\s+init')
+      ) {
+        executableFixCount += 1;
+        continue;
+      }
+
+      const goModTidyFix = parseProjectCommandFix(cmd, 'go\\s+mod\\s+tidy');
+      if (goModTidyFix) {
+        if (goToolchainAvailable === null) {
+          goToolchainAvailable = await canRunGoModTidy();
+        }
+        if (goToolchainAvailable) {
+          executableFixCount += 1;
+        }
+        continue;
+      }
+
+      executableFixCount += 1;
+    }
+  }
+
+  if (executableFixCount === 0) {
+    console.log(chalk.gray('💡 No automatic fixes can be applied right now.'));
+    if (goToolchainAvailable === false) {
+      console.log(
+        chalk.gray(
+          '   Install Go to enable go mod tidy fixes, then rerun `rapidkit doctor workspace --fix`.'
+        )
+      );
+    }
+    return;
+  }
+
   if (!autoFix) {
     console.log(
-      chalk.gray('💡 Run "rapidkit doctor workspace --fix" to apply fixes automatically')
+      chalk.gray('💡 Run "npx rapidkit doctor workspace --fix" to apply fixes automatically')
     );
     return;
   }
@@ -1384,14 +1630,14 @@ async function executeFixCommands(
 
   const isManualUrlFix = (cmd: string): boolean => /^https?:\/\//i.test(cmd.trim());
 
-  const parseProjectCommandFix = (
+  function parseProjectCommandFix(
     cmd: string,
-    expectedTail: string
-  ): { projectPath: string } | null => {
-    const escapedTail = expectedTail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    expectedTailPattern: string
+  ): { projectPath: string } | null {
     const patterns = [
-      new RegExp(`^cd\\s+"([^"]+)"\\s*(?:&&|;)\\s*${escapedTail}\\s*$`, 'i'),
-      new RegExp(`^cd\\s+(.+?)\\s*(?:&&|;)\\s*${escapedTail}\\s*$`, 'i'),
+      new RegExp(`^cd\\s+"([^"]+)"\\s*(?:&&|;)\\s*${expectedTailPattern}\\s*$`, 'i'),
+      new RegExp(`^cd\\s+'([^']+)'\\s*(?:&&|;)\\s*${expectedTailPattern}\\s*$`, 'i'),
+      new RegExp(`^cd\\s+(.+?)\\s*(?:&&|;)\\s*${expectedTailPattern}\\s*$`, 'i'),
     ];
 
     for (const pattern of patterns) {
@@ -1402,14 +1648,14 @@ async function executeFixCommands(
     }
 
     return null;
-  };
+  }
 
-  const parseEnvCopyFix = (cmd: string): { projectPath: string } | null => {
+  function parseEnvCopyFix(cmd: string): { projectPath: string } | null {
     return (
       parseProjectCommandFix(cmd, 'cp\\s+\\.env\\.example\\s+\\.env') ||
       parseProjectCommandFix(cmd, 'copy-item\\s+\\.env\\.example\\s+\\.env')
     );
-  };
+  }
 
   for (const project of fixableProjects) {
     console.log(chalk.bold(`Fixing ${chalk.cyan(project.name)}...`));
@@ -1456,6 +1702,20 @@ async function executeFixCommands(
 
         const goModTidyFix = parseProjectCommandFix(cmd, 'go\\s+mod\\s+tidy');
         if (goModTidyFix) {
+          if (goToolchainAvailable === null) {
+            goToolchainAvailable = await canRunGoModTidy();
+          }
+
+          if (!goToolchainAvailable) {
+            console.log(
+              chalk.yellow(
+                '  ⚠ Go toolchain is not installed — skipping go mod tidy; install Go to apply this fix.'
+              )
+            );
+            console.log(chalk.green('  ✅ Recorded as guidance\n'));
+            continue;
+          }
+
           await execa('go', ['mod', 'tidy'], {
             cwd: goModTidyFix.projectPath,
             shell: shouldUseShellExecution(),
@@ -1518,12 +1778,30 @@ export async function runDoctor(
 
     const health = await getWorkspaceHealth(workspacePath);
 
+    if (!options.json) {
+      if (health.projectScanCached) {
+        console.log(
+          chalk.gray(
+            `ℹ️  Reused cached project scan${health.projectScanCachePath ? ` (${path.basename(health.projectScanCachePath)})` : ''}`
+          )
+        );
+      }
+      if (health.evidencePath) {
+        console.log(chalk.gray(`ℹ️  Evidence saved: ${health.evidencePath}`));
+      }
+    }
+
     // JSON output mode
     if (options.json) {
       const output = {
         workspace: {
           name: path.basename(workspacePath),
           path: workspacePath,
+        },
+        cache: {
+          projectScan: health.projectScanCached ?? false,
+          projectScanPath: health.projectScanCachePath,
+          evidencePath: health.evidencePath,
         },
         healthScore: health.healthScore,
         system: {
@@ -1616,6 +1894,45 @@ export async function runDoctor(
       // Execute fixes if requested
       if (options.fix) {
         await executeFixCommands(health.projects, true);
+
+        if (!options.json) {
+          const refreshedHealth = await getWorkspaceHealth(workspacePath, false);
+          const refreshedTotalIssues = refreshedHealth.projects.reduce(
+            (sum, p) => sum + p.issues.length,
+            0
+          );
+          const refreshedHasSystemIssues = [
+            refreshedHealth.python,
+            refreshedHealth.rapidkitCore,
+          ].some((c) => c.status === 'error');
+
+          if (refreshedHasSystemIssues || refreshedTotalIssues > 0) {
+            console.log(
+              chalk.bold.yellow(
+                `\n⚠️  Post-fix verification found ${refreshedTotalIssues} remaining issue(s)`
+              )
+            );
+            if (refreshedHasSystemIssues) {
+              console.log(chalk.bold.red('❌ System requirements still not met'));
+            }
+          } else {
+            console.log(
+              chalk.bold.green('\n✅ Post-fix verification passed. Workspace is healthy.')
+            );
+          }
+
+          if (refreshedHealth.projectScanCached) {
+            console.log(
+              chalk.gray(
+                `ℹ️  Reused cached project scan${refreshedHealth.projectScanCachePath ? ` (${path.basename(refreshedHealth.projectScanCachePath)})` : ''}`
+              )
+            );
+          }
+
+          if (refreshedHealth.evidencePath) {
+            console.log(chalk.gray(`ℹ️  Evidence refreshed: ${refreshedHealth.evidencePath}`));
+          }
+        }
       } else if (totalIssues > 0) {
         await executeFixCommands(health.projects, false);
       }
@@ -1626,11 +1943,12 @@ export async function runDoctor(
     // System mode: check system tools only
     console.log(chalk.bold('System Tools:\n'));
 
-    const python = await checkPython();
-    const poetry = await checkPoetry();
-    const pipx = await checkPipx();
-    const go = await checkGo();
-    const core = await checkRapidKitCore();
+    const systemChecks = await collectSystemChecks();
+    const python = systemChecks.python;
+    const poetry = systemChecks.poetry;
+    const pipx = systemChecks.pipx;
+    const go = systemChecks.go;
+    const core = systemChecks.rapidkitCore;
 
     renderHealthCheck(python, 'Python');
     renderHealthCheck(poetry, 'Poetry');

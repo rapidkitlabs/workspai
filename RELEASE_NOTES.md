@@ -1,6 +1,40 @@
 # Release Notes
 
-## Latest Release: v0.25.2 (February 27, 2026)
+## Latest Release: v0.25.3 (March 22, 2026)
+
+### 🩺 v0.25.3 — Doctor Workspace Caching, Evidence, and Safer Auto-Fix (Patch)
+
+This patch upgrades `rapidkit doctor workspace` performance and reliability with project-scan caching, machine-readable evidence output, post-fix verification, and safer Go auto-fix behavior when the Go toolchain is missing.
+
+**What's New:**
+
+- ⚡ **Workspace doctor caching + faster repeat checks**
+  - Reuses cached workspace project scans when signatures are unchanged.
+  - Emits cache metadata in JSON output for traceability.
+
+- 🧾 **Evidence output for each doctor run**
+  - Writes and refreshes run evidence at `.rapidkit/reports/doctor-last-run.json`.
+  - Includes health summary, system checks, project findings, and cache context.
+
+- 🧠 **Safer and clearer `doctor workspace --fix` flow**
+  - URL-based fixes are recorded as manual guidance (not executed as shell commands).
+  - `go mod tidy` fixes are skipped when Go is unavailable, with explicit install-and-rerun hints.
+  - Post-fix verification runs automatically and refreshes evidence.
+
+- 📚 **Doctor UX and docs alignment**
+  - Clarified `doctor` (system check) vs `doctor workspace` (full workspace health) across CLI messaging and README.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.25.3
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.25.3.md)
+
+---
+
+## Previous Release: v0.25.2 (February 27, 2026)
 
 ### 🧠 v0.25.2 — Smart Init Orchestration, Clearer Go UX, and Delegation Boundary Hardening (Patch)
 
@@ -247,6 +281,7 @@ npm install -g rapidkit@0.24.0
 
 | Version                                      | Date         | Highlights                                                           |
 | -------------------------------------------- | ------------ | -------------------------------------------------------------------- |
+| [v0.25.3](releases/RELEASE_NOTES_v0.25.3.md) | Mar 22, 2026 | Doctor workspace caching/evidence, safer go fix gating, post-fix verification |
 | [v0.25.2](releases/RELEASE_NOTES_v0.25.2.md) | Feb 27, 2026 | Smart init orchestration, wrapper/core ownership matrix, Go UX + delegation hardening |
 | [v0.25.1](releases/RELEASE_NOTES_v0.25.1.md) | Feb 27, 2026 | Poetry fallback stabilization, cross-platform doctor hardening, Windows workspace launcher parity |
 | [v0.25.0](releases/RELEASE_NOTES_v0.25.0.md) | Feb 26, 2026 | Help surface unification, workspace policy/list contract completion, reliability hardening |

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.3] - 2026-03-22
+
+### Added
+- 🩺 Added workspace doctor project-scan cache with signature invalidation and reuse metadata (`.rapidkit/reports/doctor-workspace-cache.json`).
+- 🧾 Added doctor evidence export on each workspace run (`.rapidkit/reports/doctor-last-run.json`) with system/project summary and cache context.
+- ✅ Added regression coverage for workspace scan caching/evidence generation and Go toolchain-missing auto-fix gating.
+
+### Changed
+- ⚡ Parallelized system tool checks in workspace doctor path to reduce runtime for repeat diagnostics.
+- 🛠️ Updated `doctor workspace --fix` to run post-fix verification and refresh evidence automatically.
+- 📚 Clarified command ownership and doctor scope messaging (`doctor` vs `doctor workspace`) in CLI help and README.
+
+### Fixed
+- 🧠 Fixed fix-command parsing for project-scoped commands so `go mod tidy` detection is reliable in auto-fix flow.
+- 🐹 Fixed Go auto-fix behavior to skip `go mod tidy` when Go toolchain is unavailable, with explicit guidance instead of failed shell execution.
+
 ## [0.25.2] - 2026-02-27
 
 ### Added
