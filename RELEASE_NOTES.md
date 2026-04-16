@@ -1,6 +1,31 @@
 # Release Notes
 
-## Latest Release: v0.25.3 (March 22, 2026)
+## Latest Release: v0.25.4 (April 16, 2026)
+
+### ⚡ v0.25.4 — Update Check Caching (Patch)
+
+Eliminates the blocking `npm view rapidkit version` network call on every CLI invocation by caching the result to disk.
+
+**What's New:**
+
+- ⚡ **4-hour disk cache for update checks**
+  - Result is stored in `~/.rapidkit/cache/update-check.json`.
+  - Subsequent invocations within 4 hours skip the network call entirely.
+  - Cache is version-keyed: automatically invalidated when the installed CLI version changes.
+
+- 🔒 **Silent failure guarantee preserved**
+  - Cache write failures never block the CLI (same as before).
+  - Network errors still fail silently.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.25.4
+```
+
+---
+
+## v0.25.3 (March 22, 2026)
 
 ### 🩺 v0.25.3 — Doctor Workspace Caching, Evidence, and Safer Auto-Fix (Patch)
 

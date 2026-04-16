@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.4] - 2026-04-16
+
+### Added
+- ⚡ **Update check caching** — `checkForUpdates()` now caches the npm registry result to `~/.rapidkit/cache/update-check.json` with a 4-hour TTL. Subsequent CLI invocations within the TTL window skip the `npm view rapidkit version` network call entirely, eliminating up to 3 seconds of blocking startup time on slow or offline networks.
+- 🔒 Cache is automatically invalidated when the installed CLI version changes (version-keyed), so upgrade notifications are never missed.
+
 ## [0.25.3] - 2026-03-22
 
 ### Added

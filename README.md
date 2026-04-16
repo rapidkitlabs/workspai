@@ -6,11 +6,13 @@ FastAPI, NestJS, Go/Fiber, and Go/Gin scaffolding with production-ready defaults
 **27+ plug-and-play modules** are available for FastAPI & NestJS projects.  
 Clean architecture • Zero boilerplate • Instant deployment.
 
+> **💡 Recommended:** Install the [Workspai VS Code extension](https://github.com/getrapidkit/rapidkit-vscode) for AI-powered project creation, a visual workspace explorer, and context-aware coding assistance — all backed by this CLI.
+
 [![npm version](https://img.shields.io/npm/v/rapidkit.svg?style=flat-square)](https://www.npmjs.com/package/rapidkit)
 [![Downloads](https://img.shields.io/npm/dm/rapidkit.svg?style=flat-square)](https://www.npmjs.com/package/rapidkit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![GitHub Stars](https://img.shields.io/github/stars/getrapidkit/rapidkit-npm.svg?style=flat-square)](https://github.com/getrapidkit/rapidkit-npm/stargazers)
-[![Part of RapidKit Platform](https://img.shields.io/badge/Part%20of-RapidKit%20Workspace%20Platform-0f172a?logo=github)](https://github.com/getrapidkit/rapidkit)
+[![Built by RapidKit](https://img.shields.io/badge/Built%20by-RapidKit-0f172a?logo=github)](https://www.getrapidkit.com)
 
 Official CLI for creating and operating RapidKit workspaces and projects.
 
@@ -19,16 +21,18 @@ Official CLI for creating and operating RapidKit workspaces and projects.
 - Profile + policy enforcement (`warn` / `strict`)
 - Cache and mirror lifecycle commands for stable environments
 
-## Part of the RapidKit Ecosystem
+## RapidKit CLI in the Workspai Ecosystem
 
-RapidKit NPM CLI is the developer entrypoint layer of the platform.
+The `rapidkit` npm package remains the official RapidKit CLI.
 
-| Layer | Repository |
-|---|---|
-| Ecosystem Hub | [getrapidkit/rapidkit](https://github.com/getrapidkit/rapidkit) |
-| IDE | [getrapidkit/rapidkit-vscode](https://github.com/getrapidkit/rapidkit-vscode) |
-| Core Engine | [getrapidkit/rapidkit-core](https://github.com/getrapidkit/rapidkit-core) |
-| Examples | [getrapidkit/rapidkit-examples](https://github.com/getrapidkit/rapidkit-examples) |
+It works alongside Workspai, which is a product developed by RapidKit.
+
+| Component | Repository | Role |
+|---|---|---|
+| CLI | [getrapidkit/rapidkit-npm](https://github.com/getrapidkit/rapidkit-npm) | Official RapidKit npm CLI |
+| VS Code Extension | [getrapidkit/rapidkit-vscode](https://github.com/getrapidkit/rapidkit-vscode) | **Workspai** — visual explorer + AI features (recommended) |
+| Core Engine | [getrapidkit/rapidkit-core](https://github.com/getrapidkit/rapidkit-core) | Official RapidKit Core |
+| Examples | [getrapidkit/rapidkit-examples](https://github.com/getrapidkit/rapidkit-examples) | Example workspaces and starter references |
 
 ## Requirements
 
@@ -179,9 +183,33 @@ Supported keys:
 
 Warm-deps behavior is non-fatal by design and reports explicit outcome (`completed` / `failed` / `skipped`).
 
-## VS Code Extension
+## VS Code Extension (Recommended)
 
-Use the RapidKit VS Code extension for visual workflows and workspace operations.
+For the best RapidKit experience, use the **Workspai VS Code extension** — it wraps this CLI with a
+visual workspace explorer, AI-powered project creation, and context-aware coding assistance.
+
+### Why use the extension?
+
+| Feature | CLI | Extension |
+|---|---|---|
+| Create workspace / project | ✅ | ✅ Visual wizard |
+| AI Create — describe → scaffold | ❌ | ✅ |
+| Project Assistant (context-aware Q&A) | ❌ | ✅ |
+| Workspace tree explorer | ❌ | ✅ |
+| Module catalog browser | ❌ | ✅ |
+| One-click `rapidkit init / dev / test` | ❌ | ✅ |
+| Inline AI on every workspace item | ❌ | ✅ |
+
+### Install
+
+Search **Workspai** in the VS Code Extensions marketplace, or:
+
+```bash
+code --install-extension getrapidkit.workspai
+```
+
+> The extension calls this CLI under the hood — both tools work together seamlessly.
+> You do **not** need to install the CLI separately when using the extension.
 
 - Extension repository: https://github.com/getrapidkit/rapidkit-vscode
 

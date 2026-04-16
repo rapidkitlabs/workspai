@@ -8,7 +8,9 @@ vi.mock('execa');
 describe('Update Checker', () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Clear on-disk cache so each test starts from a clean state
+    await __testables.clearUpdateCache();
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 

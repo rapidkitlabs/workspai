@@ -1,6 +1,9 @@
 import { execa } from 'execa';
 import chalk from 'chalk';
 import { createRequire } from 'module';
+import { promises as fs } from 'fs';
+import path from 'path';
+import os from 'os';
 import { logger } from './logger.js';
 
 const PACKAGE_NAME = 'rapidkit';
@@ -69,15 +72,88 @@ function compareVersions(aRaw: string, bRaw: string): number {
 /**
  * Check if a newer version of rapidkit is available on npm
  */
+
+const UPDATE_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
+
+/** Returns the cache file path, isolated per vitest worker to avoid test contamination. */
+function getUpdateCacheFile(): string {
+  const base =
+    process.env.RAPIDKIT_CACHE_DIR?.trim() ||
+    (process.env.VITEST_WORKER_ID
+      ? path.join(os.homedir(), '.rapidkit', 'cache', `vitest-${process.env.VITEST_WORKER_ID}`)
+      : path.join(os.homedir(), '.rapidkit', 'cache'));
+  return path.join(base, 'update-check.json');
+}
+
+interface UpdateCache {
+  latestVersion: string;
+  checkedAt: number;
+  currentVersion: string;
+}
+
+async function readUpdateCache(): Promise<UpdateCache | null> {
+  try {
+    const content = await fs.readFile(getUpdateCacheFile(), 'utf-8');
+    const data = JSON.parse(content) as UpdateCache;
+    if (
+      typeof data.latestVersion === 'string' &&
+      typeof data.checkedAt === 'number' &&
+      data.currentVersion === CURRENT_VERSION &&
+      Date.now() - data.checkedAt < UPDATE_CACHE_TTL
+    ) {
+      return data;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeUpdateCache(latestVersion: string): Promise<void> {
+  try {
+    const cacheFile = getUpdateCacheFile();
+    await fs.mkdir(path.dirname(cacheFile), { recursive: true });
+    await fs.writeFile(
+      cacheFile,
+      JSON.stringify({ latestVersion, checkedAt: Date.now(), currentVersion: CURRENT_VERSION }),
+      'utf-8'
+    );
+  } catch {
+    // silent fail — cache write failure must never block the CLI
+  }
+}
+
+async function clearUpdateCache(): Promise<void> {
+  await fs.unlink(getUpdateCacheFile()).catch(() => {});
+}
+
 export async function checkForUpdates(): Promise<void> {
   try {
     logger.debug('Checking for updates...');
 
+    // Fast path: serve from disk cache (avoids network call entirely)
+    const cached = await readUpdateCache();
+    if (cached) {
+      const ageMin = Math.round((Date.now() - cached.checkedAt) / 60_000);
+      logger.debug(`Update check: cache hit (${ageMin}m old)`);
+      if (compareVersions(cached.latestVersion, CURRENT_VERSION) > 0) {
+        console.log(
+          chalk.yellow(`\n⚠️  Update available: ${CURRENT_VERSION} → ${cached.latestVersion}`)
+        );
+        console.log(chalk.cyan('Run: npm install -g rapidkit@latest\n'));
+      }
+      return;
+    }
+
+    // Cache miss — fetch from npm registry
     const { stdout } = await execa('npm', ['view', PACKAGE_NAME, 'version'], {
-      timeout: 3000, // 3 second timeout
+      timeout: 3000,
     });
 
     const latestVersion = stdout.trim();
+
+    // Persist result so the next 4 hours skip the network call
+    await writeUpdateCache(latestVersion);
 
     if (latestVersion && compareVersions(latestVersion, CURRENT_VERSION) > 0) {
       console.log(chalk.yellow(`\n⚠️  Update available: ${CURRENT_VERSION} → ${latestVersion}`));
@@ -101,4 +177,5 @@ export function getVersion(): string {
 export const __testables = {
   parseVersion,
   compareVersions,
+  clearUpdateCache,
 };
