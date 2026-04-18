@@ -1,6 +1,28 @@
 # Release Notes
 
-## Latest Release: v0.25.4 (April 16, 2026)
+## Latest Release: v0.25.5 (April 18, 2026)
+
+### 🪟 v0.25.5 — Windows Doctor Shadow Detection (Patch)
+
+Prevents a Windows-specific edge case where a workspace-local `rapidkit.cmd` launcher shadows the global CLI during `rapidkit doctor --workspace`, causing unexpected behaviour.
+
+**What's New:**
+
+- 🪟 **Windows doctor shadow detection**
+  When running `doctor --workspace` (or `doctor --scope workspace`) on Windows, the CLI now checks for a local `rapidkit.cmd` / `rapidkit.exe` in the workspace tree.
+  If found, it prints a clear yellow warning and routes the doctor workflow through the npm-wrapper path directly — bypassing the ambiguous binary resolution.
+
+- 🧪 **Extended test coverage** for the new detection logic in `phase3-commands.test.ts`
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.25.5
+```
+
+---
+
+## v0.25.4 (April 16, 2026)
 
 ### ⚡ v0.25.4 — Update Check Caching (Patch)
 

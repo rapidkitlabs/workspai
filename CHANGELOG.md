@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.5] - 2026-04-18
+
+### Added
+
+- `detectWindowsDoctorWorkspaceShadow()` — detects when a workspace-local `rapidkit.cmd` / `rapidkit.exe` launcher on Windows would shadow the global CLI during `doctor --workspace` runs; prints a yellow warning and falls back to the npm-wrapper doctor workflow to avoid ambiguous binary resolution.
+
+### Fixed
+
+- Formatter whitespace alignment in multi-line string concatenations and ternary expressions (`src/index.ts`)
+
 ## [0.25.4] - 2026-04-16
 
 ### Added

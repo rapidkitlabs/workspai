@@ -1054,6 +1054,45 @@ function findWorkspaceUp(start: string): string | null {
   return null;
 }
 
+export interface DoctorWorkspaceShadowDiagnostic {
+  detected: boolean;
+  candidatePath?: string;
+  reason?: string;
+}
+
+export async function detectWindowsDoctorWorkspaceShadow(
+  params: { scope?: string; workspaceFlag?: boolean },
+  cwd: string = process.cwd(),
+  platform: NodeJS.Platform = process.platform
+): Promise<DoctorWorkspaceShadowDiagnostic> {
+  if (!isWindowsPlatform(platform)) {
+    return { detected: false };
+  }
+
+  const workspaceMode = params.workspaceFlag || params.scope === 'workspace';
+  if (!workspaceMode) {
+    return { detected: false };
+  }
+
+  const localCandidates = getRapidkitLocalScriptCandidates(cwd, platform);
+  for (const candidate of localCandidates) {
+    if (!(await fsExtra.pathExists(candidate))) {
+      continue;
+    }
+
+    const lower = candidate.toLowerCase();
+    if (lower.endsWith('rapidkit.cmd') || lower.endsWith('rapidkit.exe')) {
+      return {
+        detected: true,
+        candidatePath: candidate,
+        reason: 'Found workspace-local rapidkit launcher on Windows.',
+      };
+    }
+  }
+
+  return { detected: false };
+}
+
 /**
  * Detect legacy workspace roots that predate `.rapidkit-workspace` marker files.
  *
@@ -3847,6 +3886,25 @@ program
         console.log(chalk.gray('Available: workspace'));
         console.log(chalk.gray('Usage: npx rapidkit doctor or npx rapidkit doctor workspace'));
         process.exit(1);
+      }
+
+      const shadowDiagnostic = await detectWindowsDoctorWorkspaceShadow({
+        scope,
+        workspaceFlag: options.workspace,
+      });
+
+      if (shadowDiagnostic.detected && !options.json) {
+        console.log(
+          chalk.yellow('⚠️  Windows launcher shadow detected for doctor workspace checks.')
+        );
+        if (shadowDiagnostic.candidatePath) {
+          console.log(chalk.gray(`   Candidate: ${shadowDiagnostic.candidatePath}`));
+        }
+        console.log(
+          chalk.gray(
+            '   Running npm-wrapper doctor workflow directly as safe fallback to avoid ambiguous rapidkit binary resolution.'
+          )
+        );
       }
 
       await runDoctor({

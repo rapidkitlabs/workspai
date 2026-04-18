@@ -1508,4 +1508,43 @@ describe('Phase 3 command contract handlers', () => {
       await expect(index.shouldForwardToCore(['docs'])).resolves.toBe(true);
     });
   });
+
+  describe('windows doctor workspace shadow hardening', () => {
+    it('detects local rapidkit.cmd launcher for workspace doctor mode on Windows', async () => {
+      const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-shadow-'));
+      try {
+        await writeFile(path.join(workspaceRoot, 'rapidkit.cmd'), '@echo off\n', 'utf-8');
+        const index = await import('../index.js');
+
+        const diagnostic = await index.detectWindowsDoctorWorkspaceShadow(
+          { scope: 'workspace', workspaceFlag: false },
+          workspaceRoot,
+          'win32'
+        );
+
+        expect(diagnostic.detected).toBe(true);
+        expect(diagnostic.candidatePath?.toLowerCase()).toContain('rapidkit.cmd');
+      } finally {
+        await cleanupWorkspaceDir(workspaceRoot);
+      }
+    });
+
+    it('does not detect shadow for non-workspace doctor mode', async () => {
+      const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-shadow-'));
+      try {
+        await writeFile(path.join(workspaceRoot, 'rapidkit.cmd'), '@echo off\n', 'utf-8');
+        const index = await import('../index.js');
+
+        const diagnostic = await index.detectWindowsDoctorWorkspaceShadow(
+          { scope: undefined, workspaceFlag: false },
+          workspaceRoot,
+          'win32'
+        );
+
+        expect(diagnostic.detected).toBe(false);
+      } finally {
+        await cleanupWorkspaceDir(workspaceRoot);
+      }
+    });
+  });
 });
