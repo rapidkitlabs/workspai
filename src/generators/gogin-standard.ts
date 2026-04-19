@@ -19,6 +19,14 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { execa } from 'execa';
 import { getVersion } from '../update-checker.js';
+import {
+  buildGoLauncherCmdTemplate,
+  buildGoLauncherShellTemplate,
+  buildGoMakefileTemplate,
+  DEFAULT_GO_VERSION,
+  toPascalCase,
+  writeGeneratorFile,
+} from './go-kit-common.js';
 
 export interface GoGinVariables {
   project_name: string;
@@ -29,20 +37,6 @@ export interface GoGinVariables {
   app_version?: string;
   port?: string;
   skipGit?: boolean;
-}
-
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
-function toPascalCase(s: string): string {
-  return s
-    .split(/[-_\s]+/)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join('');
-}
-
-async function writeFile(filePath: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, content, 'utf8');
 }
 
 // ─── file templates ───────────────────────────────────────────────────────────
@@ -127,48 +121,9 @@ go ${v.go_version}
 
 require (
 	github.com/gin-gonic/gin v1.10.0
+	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.3
-)
-
-require (
-	github.com/KyleBanks/depth v1.2.1 // indirect
-	github.com/bytedance/sonic v1.11.6 // indirect
-	github.com/bytedance/sonic/loader v0.1.1 // indirect
-	github.com/cloudwego/base64x v0.1.4 // indirect
-	github.com/cloudwego/iasm v0.2.0 // indirect
-	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
-	github.com/ghodss/yaml v1.0.0 // indirect
-	github.com/gin-contrib/sse v0.1.0 // indirect
-	github.com/go-openapi/jsonpointer v0.21.0 // indirect
-	github.com/go-openapi/jsonreference v0.21.0 // indirect
-	github.com/go-openapi/spec v0.21.0 // indirect
-	github.com/go-openapi/swag v0.23.0 // indirect
-	github.com/go-playground/locales v0.14.1 // indirect
-	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.20.0 // indirect
-	github.com/goccy/go-json v0.10.2 // indirect
-	github.com/josharian/intern v1.0.0 // indirect
-	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
-	github.com/leodido/go-urn v1.4.0 // indirect
-	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
-	github.com/swaggo/files v1.0.1 // indirect
-	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
-	github.com/ugorji/go/codec v1.2.12 // indirect
-	golang.org/x/arch v0.8.0 // indirect
-	golang.org/x/crypto v0.23.0 // indirect
-	golang.org/x/net v0.25.0 // indirect
-	golang.org/x/sys v0.20.0 // indirect
-	golang.org/x/text v0.15.0 // indirect
-	golang.org/x/tools v0.21.0 // indirect
-	google.golang.org/protobuf v1.34.1 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 `;
 }
@@ -440,61 +395,13 @@ services:
 }
 
 function makefile(v: Required<GoGinVariables>): string {
-  return `.PHONY: dev run build test cover lint fmt tidy docs docker-up docker-down
-
-# Build-time metadata
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
-DATE    ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS  = -ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
-# Go tool binaries are installed to GOPATH/bin; include it so \`air\` and \`swag\` are found.
-GOBIN   ?= $(shell go env GOPATH)/bin
-
-# Hot reload — installs air on first use
-dev:
-	@test -x "$(GOBIN)/air" || go install github.com/air-verse/air@latest
-	GIN_MODE=debug $(GOBIN)/air
-
-run:
-	GIN_MODE=debug go run $(LDFLAGS) ./cmd/server
-
-build:
-	go build $(LDFLAGS) -o bin/${v.project_name} ./cmd/server
-
-test:
-	GIN_MODE=test go test ./... -v -race
-
-cover:
-	GIN_MODE=test go test ./... -race -coverprofile=coverage.out
-	go tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report: coverage.html"
-
-# Generate Swagger docs — installs swag on first use
-docs:
-	@test -x "$(GOBIN)/swag" || go install github.com/swaggo/swag/cmd/swag@latest
-	$(GOBIN)/swag init -g main.go -d cmd/server,internal/handlers,internal/apierr -o docs --parseDependency
-
-lint:
-	@command -v golangci-lint >/dev/null 2>&1 || (echo "golangci-lint not found. Install: https://golangci-lint.run/usage/install/" && exit 1)
-	golangci-lint run ./...
-
-fmt:
-	gofmt -w .
-
-tidy:
-	go mod tidy
-
-docker-up:
-	go mod tidy
-	docker compose up --build \\
-		--build-arg VERSION=$(VERSION) \\
-		--build-arg COMMIT=$(COMMIT) \\
-		--build-arg DATE=$(DATE) \\
-		-d
-
-docker-down:
-	docker compose down
-`;
+  return buildGoMakefileTemplate({
+    projectName: v.project_name,
+    devCommand: 'GIN_MODE=debug $(GOBIN)/air',
+    runCommand: 'GIN_MODE=debug go run $(LDFLAGS) ./cmd/server',
+    testCommand: 'GIN_MODE=test go test ./... -v -race',
+    includeLintAndFmt: true,
+  });
 }
 
 function envExample(v: Required<GoGinVariables>): string {
@@ -1767,117 +1674,18 @@ function projectJson(v: Required<GoGinVariables>, rapidkitVersion: string): stri
 }
 
 function rapidkitScript(v: Required<GoGinVariables>): string {
-  return `#!/usr/bin/env sh
-# RapidKit Go/Gin project launcher — generated by RapidKit CLI
-# https://getrapidkit.com
-
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-CMD="\${1:-}"
-shift 2>/dev/null || true
-
-case "$CMD" in
-  init)
-    cd "$SCRIPT_DIR"
-    echo "🐹 Initializing Go/Gin project…"
-    GOBIN="$(go env GOPATH)/bin"
-    echo "  → installing air (hot reload)…"
-    go install github.com/air-verse/air@latest 2>/dev/null && echo "  ✓ air" || echo "  ⚠  air install failed (run: go install github.com/air-verse/air@latest)"
-    echo "  → installing swag (swagger)…"
-    go install github.com/swaggo/swag/cmd/swag@latest 2>/dev/null && echo "  ✓ swag" || echo "  ⚠  swag install failed (run: go install github.com/swaggo/swag/cmd/swag@latest)"
-    if [ ! -f ".env" ] && [ -f ".env.example" ]; then
-      cp .env.example .env && echo "  ✓ .env created from .env.example"
-    fi
-    go mod tidy && echo "  ✓ go mod tidy"
-    echo "  → generating swagger docs (first build)…"
-		"$(go env GOPATH)/bin/swag" init -g main.go -d cmd/server,internal/handlers,internal/apierr -o docs --parseDependency 2>/dev/null \
-      && echo "  ✓ swagger docs generated" \
-      || echo "  ⚠  swagger docs skipped (run: rapidkit docs)"
-    echo "✅ Ready — run: rapidkit dev"
-    ;;
-  dev)
-    cd "$SCRIPT_DIR"
-    echo "📖 Syncing swagger docs…"
-		"$(go env GOPATH)/bin/swag" init -g main.go -d cmd/server,internal/handlers,internal/apierr -o docs --parseDependency 2>/dev/null || true
-    if [ -f "$SCRIPT_DIR/Makefile" ]; then
-      exec make -C "$SCRIPT_DIR" dev "$@"
-    else
-      cd "$SCRIPT_DIR" && GIN_MODE=debug exec go run ./cmd/server "$@"
-    fi
-    ;;
-  start)
-    BIN="$SCRIPT_DIR/bin/${v.project_name}"
-    if [ ! -f "$BIN" ]; then
-      make -C "$SCRIPT_DIR" build
-    fi
-    exec "$BIN" "$@"
-    ;;
-  build)
-    exec make -C "$SCRIPT_DIR" build "$@"
-    ;;
-  test)
-    exec make -C "$SCRIPT_DIR" test "$@"
-    ;;
-  lint)
-    exec make -C "$SCRIPT_DIR" lint "$@"
-    ;;
-  format|fmt)
-    exec make -C "$SCRIPT_DIR" fmt "$@"
-    ;;
-  docs)
-    exec make -C "$SCRIPT_DIR" docs "$@"
-    ;;
-  help|--help|-h)
-    echo "RapidKit — Go/Gin project: ${v.project_name}"
-    echo ""
-    echo "Usage: rapidkit <command>"
-    echo ""
-    echo "  init     Install tools + create .env  (air, swag, go mod tidy)"
-    echo "  dev      Hot reload dev server        (make dev — requires air)"
-    echo "  start    Run compiled binary          (make build + bin)"
-    echo "  build    Build binary                 (make build)"
-    echo "  docs     Generate Swagger docs        (make docs — requires swag)"
-    echo "  test     Run tests                   (make test)"
-    echo "  lint     Run linter                  (make lint)"
-    echo "  format   Format code                 (make fmt)"
-    ;;
-  *)
-    if [ -n "$CMD" ]; then
-      echo "rapidkit: unknown command: $CMD" >&2
-    fi
-    echo "Available: init, dev, start, build, docs, test, lint, format" >&2
-    exit 1
-    ;;
-esac
-`;
+  return buildGoLauncherShellTemplate({
+    runtimeLabel: 'Go/Gin',
+    projectName: v.project_name,
+    fallbackDevCommand: 'cd "$SCRIPT_DIR" && GIN_MODE=debug exec go run ./cmd/server "$@"',
+  });
 }
 
 function rapidkitCmd(v: Required<GoGinVariables>): string {
-  return `@echo off
-rem RapidKit Go/Gin project launcher — Windows
-set CMD=%1
-if "%CMD%"=="" goto usage
-shift
-
-if "%CMD%"=="init" (
-  echo Initializing Go/Gin project...
-  go install github.com/air-verse/air@latest
-  go install github.com/swaggo/swag/cmd/swag@latest
-  if not exist .env if exist .env.example copy .env.example .env
-  go mod tidy
-  exit /b %ERRORLEVEL%
-)
-if "%CMD%"=="dev"  ( make dev %*   & exit /b %ERRORLEVEL% )
-if "%CMD%"=="build" ( make build %* & exit /b %ERRORLEVEL% )
-if "%CMD%"=="test"  ( make test %*  & exit /b %ERRORLEVEL% )
-if "%CMD%"=="lint"  ( make lint %*  & exit /b %ERRORLEVEL% )
-if "%CMD%"=="format" ( make fmt %*  & exit /b %ERRORLEVEL% )
-if "%CMD%"=="docs"  ( make docs %*  & exit /b %ERRORLEVEL% )
-if "%CMD%"=="start" ( bin\\${v.project_name}.exe %* & exit /b %ERRORLEVEL% )
-
-:usage
-echo Available: init, dev, start, build, docs, test, lint, format
-exit /b 1
-`;
+  return buildGoLauncherCmdTemplate({
+    runtimeLabel: 'Go/Gin',
+    projectName: v.project_name,
+  });
 }
 
 // ─── main generator ───────────────────────────────────────────────────────────
@@ -1891,7 +1699,7 @@ export async function generateGoGinKit(
     module_path: variables.module_path || variables.project_name,
     author: variables.author || 'RapidKit User',
     description: variables.description || `Go/Gin REST API — ${variables.project_name}`,
-    go_version: variables.go_version || '1.24',
+    go_version: variables.go_version || DEFAULT_GO_VERSION,
     app_version: variables.app_version || '0.1.0',
     port: variables.port || '8080',
     skipGit: variables.skipGit ?? false,
@@ -1914,7 +1722,8 @@ export async function generateGoGinKit(
   const spinner = ora(`Generating Go/Gin project: ${v.project_name}…`).start();
 
   try {
-    const w = (rel: string, content: string) => writeFile(path.join(projectPath, rel), content);
+    const w = (rel: string, content: string) =>
+      writeGeneratorFile(path.join(projectPath, rel), content);
 
     const rapidkitScriptPath = path.join(projectPath, 'rapidkit');
     const rapidkitCmdPath = path.join(projectPath, 'rapidkit.cmd');
