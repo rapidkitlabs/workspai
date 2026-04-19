@@ -1,6 +1,40 @@
 # Release Notes
 
-## Latest Release: v0.25.6 (April 19, 2026)
+## Latest Release: v0.25.7 (April 19, 2026)
+
+### 🐹 v0.25.7 — Go Generator Template Consolidation (Patch)
+
+This patch refactors the Go kit scaffolding internals to remove duplicated template blocks across `gofiber.standard` and `gogin.standard`, while keeping generated project behavior unchanged.
+
+**What's New:**
+
+- ♻️ **Shared Go generator template module**
+  - Added `src/generators/go-kit-common.ts` for common builder logic.
+  - Moved shared template construction for `Makefile`, `rapidkit` (shell launcher), and `rapidkit.cmd` (Windows launcher).
+
+- 🧱 **Cleaner Go kit generators**
+  - `src/generators/gofiber-standard.ts` and `src/generators/gogin-standard.ts` now focus on kit-specific variables and call shared builders.
+  - Reduced code duplication and lowered maintenance cost for future Go kit changes.
+
+- 🔒 **Pinned bootstrap tooling versions**
+  - Generated launchers and make targets now use pinned tool installs for reproducibility:
+    - `github.com/air-verse/air@v1.52.3`
+    - `github.com/swaggo/swag/cmd/swag@v1.16.3`
+
+- 🧹 **Simpler generated `go.mod` files**
+  - Removed oversized indirect dependency blocks from default templates and kept direct dependency declarations.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.25.7
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.25.7.md)
+
+---
+
+## v0.25.6 (April 19, 2026)
 
 ### 🔒⚡ v0.25.6 — Security Patch, Lazy Imports & Coverage (Patch)
 

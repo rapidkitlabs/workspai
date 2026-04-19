@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.7] - 2026-04-19
+
+### Changed
+
+- Extracted shared Go generator helpers into `src/generators/go-kit-common.ts` and rewired both `gofiber.standard` and `gogin.standard` generators to use common template builders for `Makefile`, `rapidkit`, and `rapidkit.cmd`.
+- Centralized shared defaults and utilities for Go kit generation (`DEFAULT_GO_VERSION`, `toPascalCase`, `writeGeneratorFile`) to reduce duplicated logic.
+
+### Fixed
+
+- Pinned generated Go tool installation targets for reproducible bootstrap flows:
+  - `github.com/air-verse/air@v1.52.3`
+  - `github.com/swaggo/swag/cmd/swag@v1.16.3`
+- Simplified generated `go.mod` templates for both Go kits by removing large indirect dependency blocks and retaining direct requirements.
+
 ## [0.25.6] - 2026-04-19
 
 ### Added

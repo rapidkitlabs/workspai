@@ -3914,6 +3914,11 @@ program
             '   Running npm-wrapper doctor workflow directly as safe fallback to avoid ambiguous rapidkit binary resolution.'
           )
         );
+        console.log(
+          chalk.gray(
+            '   If this happens in a shell call, run: npx --yes --package rapidkit rapidkit doctor workspace'
+          )
+        );
       }
 
       const { runDoctor } = await import('./doctor.js');
