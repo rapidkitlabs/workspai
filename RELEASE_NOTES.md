@@ -1,6 +1,34 @@
 # Release Notes
 
-## Latest Release: v0.25.5 (April 18, 2026)
+## Latest Release: v0.25.6 (April 19, 2026)
+
+### 🔒⚡ v0.25.6 — Security Patch, Lazy Imports & Coverage (Patch)
+
+Addresses a security advisory in devDependencies, reduces the cold-start bundle size by 51% through lazy imports, fixes an incorrect `fs-extra` import, and expands unit test coverage for error branches in the workspace creation pipeline.
+
+**What's New:**
+
+- 🔒 **0 vulnerabilities** (was 10: 1 critical, 7 high, 2 moderate)
+  Resolved via `npm audit fix` on transitive devDependencies (`basic-ftp`, `rollup`, `flatted`, `minimatch`, `picomatch`, `vite`, `serialize-javascript`, `yaml`, `brace-expansion`). No production API changes.
+
+- ⚡ **`dist/index.js` 258 KB → 126 KB (-51%)** via lazy imports
+  Five heavy modules (`create`, `demo-kit`, `gofiber-standard`, `gogin-standard`, `doctor`) are now loaded on first use. Lightweight commands like `--version` / `--help` no longer parse all creation/doctor code at startup.
+
+- 🚀 **Startup time 366 ms → 317 ms**
+
+- 🐛 **Fixed `import fsExtra from 'fs-extra'`** — corrected from `import * as fsExtra` to a proper default import, avoiding subtle method-resolution issues at runtime.
+
+- 🧪 **7 new unit tests** covering previously uncovered branches in `registerWorkspaceAtPath` and `createDemoWorkspace` (git init fail/success, poetry venv fallback, pipx install path, install throw, registry import silent fail, demo workspace git fail).
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.25.6
+```
+
+---
+
+## v0.25.5 (April 18, 2026)
 
 ### 🪟 v0.25.5 — Windows Doctor Shadow Detection (Patch)
 

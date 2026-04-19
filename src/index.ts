@@ -11,7 +11,7 @@ import { checkForUpdates, getVersion } from './update-checker.js';
 import { loadUserConfig, loadRapidKitConfig, mergeConfigs } from './config.js';
 import { validateProjectName } from './validation.js';
 import { RapidKitError } from './errors.js';
-import * as fsExtra from 'fs-extra';
+import fsExtra from 'fs-extra';
 import fs from 'fs';
 import { detectRapidkitProject } from './core-bridge/pythonRapidkit.js';
 import {
@@ -21,15 +21,6 @@ import {
   runCoreRapidkitStreamed,
 } from './core-bridge/pythonRapidkitExec.js';
 import { BOOTSTRAP_CORE_COMMANDS_SET } from './core-bridge/bootstrapCoreCommands.js';
-import {
-  createProject as createPythonEnvironment,
-  registerWorkspaceAtPath,
-  syncWorkspaceFoundationFiles,
-} from './create.js';
-import { generateDemoKit } from './demo-kit.js';
-import { generateGoFiberKit } from './generators/gofiber-standard.js';
-import { generateGoGinKit } from './generators/gogin-standard.js';
-import { runDoctor } from './doctor.js';
 import { registerConfigCommands } from './commands/config.js';
 import { registerAICommands } from './commands/ai.js';
 import { getRuntimeAdapter } from './runtime-adapters/index.js';
@@ -305,6 +296,7 @@ async function runGoFiberCreate(args: string[]): Promise<number> {
     }
     await fsExtra.ensureDir(projectPath);
 
+    const { generateGoFiberKit } = await import('./generators/gofiber-standard.js');
     await generateGoFiberKit(projectPath, {
       project_name: name,
       module_path: name,
@@ -347,6 +339,7 @@ async function runGoGinCreate(args: string[]): Promise<number> {
     }
     await fsExtra.ensureDir(projectPath);
 
+    const { generateGoGinKit } = await import('./generators/gogin-standard.js');
     await generateGoGinKit(projectPath, {
       project_name: name,
       module_path: name,
@@ -447,6 +440,7 @@ async function runCreateFallback(args: string[], reasonCode: BridgeFailureCode):
     }
 
     await fsExtra.ensureDir(projectPath);
+    const { generateDemoKit } = await import('./demo-kit.js');
     await generateDemoKit(projectPath, {
       project_name: name,
       template,
@@ -595,6 +589,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
         }
       }
 
+      const { createProject: createPythonEnvironment } = await import('./create.js');
       await createPythonEnvironment(workspaceName, {
         skipGit,
         yes: hasYes,
@@ -781,6 +776,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
       const hasWorkspace = !!findWorkspaceMarkerUp(process.cwd());
 
       if (!hasWorkspace) {
+        const { registerWorkspaceAtPath } = await import('./create.js');
         if (hasCreateWorkspace) {
           // Non-interactive: create workspace automatically
           await registerWorkspaceAtPath(process.cwd(), {
@@ -1065,10 +1061,6 @@ export async function detectWindowsDoctorWorkspaceShadow(
   cwd: string = process.cwd(),
   platform: NodeJS.Platform = process.platform
 ): Promise<DoctorWorkspaceShadowDiagnostic> {
-  if (!isWindowsPlatform(platform)) {
-    return { detected: false };
-  }
-
   const workspaceMode = params.workspaceFlag || params.scope === 'workspace';
   if (!workspaceMode) {
     return { detected: false };
@@ -1080,13 +1072,24 @@ export async function detectWindowsDoctorWorkspaceShadow(
       continue;
     }
 
-    const lower = candidate.toLowerCase();
-    if (lower.endsWith('rapidkit.cmd') || lower.endsWith('rapidkit.exe')) {
-      return {
-        detected: true,
-        candidatePath: candidate,
-        reason: 'Found workspace-local rapidkit launcher on Windows.',
-      };
+    if (isWindowsPlatform(platform)) {
+      const lower = candidate.toLowerCase();
+      if (lower.endsWith('rapidkit.cmd') || lower.endsWith('rapidkit.exe')) {
+        return {
+          detected: true,
+          candidatePath: candidate,
+          reason: 'Found workspace-local rapidkit launcher on Windows.',
+        };
+      }
+    } else {
+      // Linux / macOS: the launcher is a plain bash script named `rapidkit` (no extension).
+      if (path.basename(candidate) === 'rapidkit') {
+        return {
+          detected: true,
+          candidatePath: candidate,
+          reason: 'Found workspace-local rapidkit bash launcher on Linux/macOS.',
+        };
+      }
     }
   }
 
@@ -1751,6 +1754,7 @@ export async function handleBootstrapCommand(
           /* optional */
         }
 
+        const { syncWorkspaceFoundationFiles } = await import('./create.js');
         const syncedPaths = await syncWorkspaceFoundationFiles(workspacePath, {
           workspaceName: path.basename(workspacePath),
           installMethod: installMethodForSync,
@@ -2966,6 +2970,7 @@ export async function handleInitCommand(args: string[]): Promise<number> {
         const userConfig = await loadUserConfig();
         const { name } = resolveDefaultWorkspacePath(cwd);
 
+        const { createProject: createPythonEnvironment } = await import('./create.js');
         await createPythonEnvironment(name, {
           yes: true,
           userConfig,
@@ -3618,6 +3623,7 @@ program
         // Go/Fiber: handled entirely at npm level — bypass Python engine
         if (isGoFiberKit(kit)) {
           const projectPath = path.resolve(process.cwd(), name);
+          const { generateGoFiberKit } = await import('./generators/gofiber-standard.js');
           await generateGoFiberKit(projectPath, {
             project_name: name,
             module_path: name,
@@ -3629,6 +3635,7 @@ program
         // Go/Gin: handled entirely at npm level — bypass Python engine
         if (isGoGinKit(kit)) {
           const projectPath = path.resolve(process.cwd(), name);
+          const { generateGoGinKit } = await import('./generators/gogin-standard.js');
           await generateGoGinKit(projectPath, {
             project_name: name,
             module_path: name,
@@ -3644,6 +3651,7 @@ program
         //   --no-workspace      : do not create a workspace
         const hasWorkspace = !!findWorkspaceMarkerUp(process.cwd());
         if (!hasWorkspace) {
+          const { registerWorkspaceAtPath } = await import('./create.js');
           if (options.createWorkspace) {
             // Non-interactive: create workspace automatically
             await registerWorkspaceAtPath(process.cwd(), {
@@ -3762,6 +3770,7 @@ program
           }
         }
       } else {
+        const { createProject: createPythonEnvironment } = await import('./create.js');
         await createPythonEnvironment(name, {
           skipGit: options.skipGit,
           dryRun: options.dryRun,
@@ -3895,7 +3904,7 @@ program
 
       if (shadowDiagnostic.detected && !options.json) {
         console.log(
-          chalk.yellow('⚠️  Windows launcher shadow detected for doctor workspace checks.')
+          chalk.yellow('⚠️  Local launcher shadow detected for doctor workspace checks.')
         );
         if (shadowDiagnostic.candidatePath) {
           console.log(chalk.gray(`   Candidate: ${shadowDiagnostic.candidatePath}`));
@@ -3907,6 +3916,7 @@ program
         );
       }
 
+      const { runDoctor } = await import('./doctor.js');
       await runDoctor({
         ...options,
         workspace: options.workspace || scope === 'workspace',

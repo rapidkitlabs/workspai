@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
+import fsExtra from 'fs-extra';
 import { createHash, createSign, generateKeyPairSync } from 'crypto';
 import { createServer } from 'http';
 import type { AddressInfo } from 'net';
@@ -1509,7 +1510,7 @@ describe('Phase 3 command contract handlers', () => {
     });
   });
 
-  describe('windows doctor workspace shadow hardening', () => {
+  describe('cross-platform doctor workspace shadow hardening', () => {
     it('detects local rapidkit.cmd launcher for workspace doctor mode on Windows', async () => {
       const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-shadow-'));
       try {
@@ -1524,6 +1525,55 @@ describe('Phase 3 command contract handlers', () => {
 
         expect(diagnostic.detected).toBe(true);
         expect(diagnostic.candidatePath?.toLowerCase()).toContain('rapidkit.cmd');
+      } finally {
+        await cleanupWorkspaceDir(workspaceRoot);
+      }
+    });
+
+    it('detects local rapidkit bash launcher for workspace doctor mode on Linux', async () => {
+      const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-shadow-'));
+      try {
+        await writeFile(
+          path.join(workspaceRoot, 'rapidkit'),
+          '#!/usr/bin/env bash\nexec poetry run "$@"\n',
+          'utf-8'
+        );
+        const index = await import('../index.js');
+
+        const diagnostic = await index.detectWindowsDoctorWorkspaceShadow(
+          { scope: 'workspace', workspaceFlag: false },
+          workspaceRoot,
+          'linux'
+        );
+
+        expect(diagnostic.detected).toBe(true);
+        expect(diagnostic.candidatePath).toContain('rapidkit');
+        expect(diagnostic.reason).toContain('Linux/macOS');
+      } finally {
+        await cleanupWorkspaceDir(workspaceRoot);
+      }
+    });
+
+    it('detects .rapidkit/rapidkit bash launcher for workspace doctor mode on Linux', async () => {
+      const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-shadow-'));
+      try {
+        const rapidkitDir = path.join(workspaceRoot, '.rapidkit');
+        await fsExtra.ensureDir(rapidkitDir);
+        await writeFile(
+          path.join(rapidkitDir, 'rapidkit'),
+          '#!/usr/bin/env bash\nexec poetry run "$@"\n',
+          'utf-8'
+        );
+        const index = await import('../index.js');
+
+        const diagnostic = await index.detectWindowsDoctorWorkspaceShadow(
+          { scope: 'workspace', workspaceFlag: false },
+          workspaceRoot,
+          'linux'
+        );
+
+        expect(diagnostic.detected).toBe(true);
+        expect(diagnostic.candidatePath).toContain('.rapidkit');
       } finally {
         await cleanupWorkspaceDir(workspaceRoot);
       }

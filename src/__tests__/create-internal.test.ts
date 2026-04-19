@@ -1032,4 +1032,31 @@ describe('Create Module - Internal Functions', () => {
       expect(fsExtra.ensureDir).toHaveBeenCalled();
     });
   });
+
+  // ─── Demo mode: git fail → warn, not crash ───────────────────────────────
+  describe('Demo workspace (demoMode: true)', () => {
+    it('should warn (not throw) when git init fails inside createDemoWorkspace', async () => {
+      vi.mocked(execa).mockImplementation((cmd: any, _args?: any) => {
+        if (cmd === 'git') return Promise.reject(new Error('git not found')) as any;
+        return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 }) as any;
+      });
+
+      const { default: ora } = await import('ora');
+      const spinnerMock = {
+        start: vi.fn().mockReturnThis(),
+        succeed: vi.fn().mockReturnThis(),
+        fail: vi.fn().mockReturnThis(),
+        warn: vi.fn().mockReturnThis(),
+        text: '',
+      };
+      vi.mocked(ora).mockReturnValue(spinnerMock as any);
+
+      // demoMode: true + skipGit: false → git block runs → git fails → should warn, not throw
+      await expect(
+        createProject('demo-ws', { demoMode: true, skipGit: false })
+      ).resolves.toBeUndefined();
+
+      expect(spinnerMock.warn).toHaveBeenCalledWith('Could not initialize git repository');
+    });
+  });
 });

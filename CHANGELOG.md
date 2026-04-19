@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.25.5] - 2026-04-18
+## [0.25.6] - 2026-04-19
+
+### Added
+
+- 7 new unit tests in `src/__tests__/register-workspace.test.ts` and `src/__tests__/create-internal.test.ts` covering previously uncovered branches in `registerWorkspaceAtPath` and `createDemoWorkspace`: git init failure warn, git commit success path, poetry probe → venv fallback, pipx install path, install throw → `spinner.fail` + rethrow, registry import silent fail, demo workspace git fail warn.
+
+### Fixed
+
+- `import fsExtra from 'fs-extra'` — corrected from `import * as fsExtra` to a proper default import in `src/index.ts`.
+- Resolved 10 security vulnerabilities (1 critical `basic-ftp`, 7 high, 2 moderate) in devDependencies via `npm audit fix`.
+
+### Performance
+
+- `dist/index.js` reduced from 258 KB to 126 KB (-51%) by converting five static module imports (`create`, `demo-kit`, `gofiber-standard`, `gogin-standard`, `doctor`) to inline lazy `await import()` calls at their respective call sites.
+- Cold-start time reduced from 366 ms to 317 ms on reference hardware.
+
+
 
 ### Added
 
