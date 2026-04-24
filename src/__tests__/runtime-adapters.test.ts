@@ -563,10 +563,7 @@ describe('Runtime Adapters', () => {
 
       expect(result.exitCode).toBe(0);
       expect(run.mock.calls[0][0]).toBe('java');
-      expect(run.mock.calls[0][1]).toEqual([
-        '-jar',
-        normalizePath(run.mock.calls[0][1][1] as string),
-      ]);
+      expect(run.mock.calls[0][1][0]).toBe('-jar');
       expect(normalizePath(run.mock.calls[0][1][1] as string)).toBe(
         '/tmp/java-project/target/demo-0.1.0.jar'
       );
@@ -918,11 +915,15 @@ describe('Runtime Adapters', () => {
 
       await adapter.initProject('/tmp/java-project');
 
-      expect(run).toHaveBeenCalledWith(
-        'sh',
-        ['/tmp/java-project/mvnw', '-B', '-q', '-DskipTests', 'dependency:go-offline'],
-        '/tmp/java-project'
-      );
+      expect(run.mock.calls[0][0]).toBe('sh');
+      expect(normalizePath(run.mock.calls[0][1][0] as string)).toBe('/tmp/java-project/mvnw');
+      expect(run.mock.calls[0][1].slice(1)).toEqual([
+        '-B',
+        '-q',
+        '-DskipTests',
+        'dependency:go-offline',
+      ]);
+      expect(run.mock.calls[0][2]).toBe('/tmp/java-project');
     });
 
     it('falls back to system gradle command when no gradlew is present', async () => {
@@ -972,11 +973,9 @@ describe('Runtime Adapters', () => {
 
       await adapter.runDev('/tmp/gradle-project');
 
-      expect(run).toHaveBeenCalledWith(
-        '/tmp/gradle-project/gradlew',
-        expect.arrayContaining(['bootRun']),
-        '/tmp/gradle-project'
-      );
+      expect(normalizePath(run.mock.calls[0][0] as string)).toBe('/tmp/gradle-project/gradlew');
+      expect(run.mock.calls[0][1]).toEqual(expect.arrayContaining(['bootRun']));
+      expect(run.mock.calls[0][2]).toBe('/tmp/gradle-project');
     });
 
     it('skips inaccessible directories in discoverWorkspaceJavaProjects without crashing', async () => {
