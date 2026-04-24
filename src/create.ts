@@ -145,6 +145,11 @@ function buildToolchainLock(
         go: {
           version: goVersion || null,
         },
+        java: {
+          version: null,
+          build_tool: null,
+          build_tool_version: null,
+        },
       },
     },
     null,
@@ -809,6 +814,10 @@ export async function createProject(
             value: 'minimal',
           },
           {
+            name: 'java-only   — Java runtime (Spring Boot services)',
+            value: 'java-only',
+          },
+          {
             name: 'python-only — Python + Poetry (FastAPI, Django, ML pipelines)',
             value: 'python-only',
           },
@@ -821,7 +830,7 @@ export async function createProject(
             value: 'go-only',
           },
           {
-            name: 'polyglot    — Python + Node.js + Go multi-runtime workspace',
+            name: 'polyglot    — Python + Node.js + Go + Java multi-runtime workspace',
             value: 'polyglot',
           },
           {
@@ -925,11 +934,11 @@ export async function createProject(
   // Go kits are 100% npm-level. Node-only workspaces can scaffold Go projects or
   // await a lazy Python install on first `create project nestjs.standard`.
   // Minimal workspaces are bootstrapped on-demand as well.
-  // Only go-only is truly Python-free: Go kits (gofiber, gogin) run entirely
-  // through npm and never call the Python engine.  node-only / minimal use
+  // Go and Java kits are truly Python-free: they run entirely through npm.
+  // node-only / minimal use
   // nestjs.standard which depends on rapidkit-core (Python), so they follow
   // the full Python install path.
-  const PYTHON_FREE_PROFILES = new Set(['go-only', 'node-only', 'minimal']);
+  const PYTHON_FREE_PROFILES = new Set(['go-only', 'java-only', 'node-only', 'minimal']);
 
   if (PYTHON_FREE_PROFILES.has(resolvedProfile)) {
     const spinner2 = ora('Creating workspace').start();
@@ -952,6 +961,7 @@ export async function createProject(
       // Lean README for Python-free workspaces
       const profileLabel: Record<string, string> = {
         'go-only': 'Go-only',
+        'java-only': 'Java-only',
         'node-only': 'Node.js-only',
         minimal: 'Minimal',
       };
@@ -965,12 +975,17 @@ export async function createProject(
               `cd my-api\n` +
               `npx rapidkit init\n` +
               `npx rapidkit dev\n`
-            : resolvedProfile === 'node-only'
-              ? `npx rapidkit create project nestjs.standard my-app\n` +
-                `cd my-app\n` +
+            : resolvedProfile === 'java-only'
+              ? `npx rapidkit create project springboot.standard my-service\n` +
+                `cd my-service\n` +
                 `npx rapidkit init\n` +
                 `npx rapidkit dev\n`
-              : `npx rapidkit create project\ncd <project-name>\nnpx rapidkit init\nnpx rapidkit dev\n`) +
+              : resolvedProfile === 'node-only'
+                ? `npx rapidkit create project nestjs.standard my-app\n` +
+                  `cd my-app\n` +
+                  `npx rapidkit init\n` +
+                  `npx rapidkit dev\n`
+                : `npx rapidkit create project\ncd <project-name>\nnpx rapidkit init\nnpx rapidkit dev\n`) +
           `\`\`\`\n`,
         'utf-8'
       );
@@ -1026,6 +1041,16 @@ export async function createProject(
             chalk.yellow('\n⚠️  Go is not installed — install it from https://go.dev/dl/')
           );
         }
+      } else if (resolvedProfile === 'java-only') {
+        console.log(chalk.white('   npx rapidkit create project springboot.standard my-service'));
+        console.log(chalk.white('   cd my-service'));
+        console.log(chalk.white('   npx rapidkit init'));
+        console.log(chalk.white('   npx rapidkit dev\n'));
+        console.log(
+          chalk.gray(
+            '💡 No Python required — Spring Boot kit runs through the npm package with Java tooling.'
+          )
+        );
       } else if (resolvedProfile === 'node-only') {
         console.log(chalk.white('   npx rapidkit create project nestjs.standard my-app'));
         console.log(chalk.white('   cd my-app'));
@@ -1044,7 +1069,7 @@ export async function createProject(
         console.log(chalk.white('   npx rapidkit dev\n'));
         console.log(
           chalk.gray(
-            '💡 Bootstrap a specific runtime any time: rapidkit bootstrap --profile python-only|node-only|go-only'
+            '💡 Bootstrap a specific runtime any time: rapidkit bootstrap --profile java-only|python-only|node-only|go-only'
           )
         );
       }
@@ -1058,7 +1083,7 @@ export async function createProject(
   }
 
   // ── Python pre-check (only for python-required profiles) ───────────────────
-  // go-only / node-only / minimal users have already returned above without
+  // go-only / java-only / node-only / minimal users have already returned above without
   // needing Python at all. Only python-only / polyglot / enterprise reach here.
   {
     const pythonCmd = getPythonCommand();

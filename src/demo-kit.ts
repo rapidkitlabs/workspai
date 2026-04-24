@@ -46,6 +46,8 @@ export async function generateDemoKit(projectPath: string, variables: KitVariabl
   const template = variables.template || 'fastapi';
   const isFastAPI = template === 'fastapi';
   const templateName = isFastAPI ? 'FastAPI' : 'NestJS';
+  const kitName = variables.kit_name || (isFastAPI ? 'fastapi.standard' : 'nestjs.standard');
+  const kitProfile = kitName.replace('.', '/');
 
   const spinner = ora(`Generating ${templateName} project...`).start();
 
@@ -54,7 +56,6 @@ export async function generateDemoKit(projectPath: string, variables: KitVariabl
     const packageRoot = path.resolve(__dirname, '..');
 
     // Map kit_name to template directory
-    const kitName = variables.kit_name || `${template}.standard`;
     let templateDir: string;
 
     if (kitName === 'fastapi.ddd') {
@@ -217,6 +218,24 @@ export async function generateDemoKit(projectPath: string, variables: KitVariabl
         );
       }
     }
+
+    // Keep fallback output discoverable: ALWAYS ensure .rapidkit/project.json exists.
+    // This marker is required for workspace discovery and project identification,
+    // even if template-local .rapidkit files are not present in the npm package.
+    const rapidkitDir = path.join(projectPath, '.rapidkit');
+    await fs.mkdir(rapidkitDir, { recursive: true });
+    const projectJsonPath = path.join(rapidkitDir, 'project.json');
+
+    // Always write marker (overwrite if template rendered one, or create if missing).
+    // This ensures fallback projects are always discoverable by workspace sync.
+    const projectMarker = {
+      kit_name: kitName,
+      profile: kitProfile,
+      created_at: new Date().toISOString(),
+      created_by: 'rapidkit-npm-fallback',
+      runtime: isFastAPI ? 'python' : 'node',
+    };
+    await fs.writeFile(projectJsonPath, JSON.stringify(projectMarker, null, 2), 'utf-8');
 
     // Create .gitignore separately with proper content
     const gitignoreContent = isFastAPI

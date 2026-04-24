@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-04-24
+
+### Added
+
+- Added the new `springboot.standard` generator with Spring Boot project scaffolding, Docker/dev launcher assets, GitHub Actions CI, and generated operational defaults.
+- Added a Java runtime adapter for `init`, `dev`, `test`, `build`, `start`, prerequisite checks, and cache warmup flows.
+- Added full regression coverage for the Spring generator, Java runtime adapter, and platform capability helpers.
+
+### Changed
+
+- Raised bundle-analysis reliability for this Node CLI by replacing the browser-oriented `analyze` flow with a native `dist/` analyzer that reports raw and gzip sizes for generated bundles.
+- Increased project-wide automated coverage to 986 passing tests with stronger Java/Spring and cross-platform branch coverage.
+
+### Fixed
+
+- Hardened Java wrapper execution on Unix by repairing missing executable bits and falling back to `sh` when direct wrapper execution is not possible.
+- Enforced Java version preflight checks against `pom.xml` requirements, including nested Java projects discovered from workspace roots.
+- Hardened generated Spring CI so wrapper bootstrap is OS-aware and no longer depends on brittle ambient behavior on Windows.
+- Closed multiple Windows/pathing gaps through full coverage of `src/utils/platform-capabilities.ts`.
+
 ## [0.25.7] - 2026-04-19
 
 ### Changed

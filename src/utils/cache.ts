@@ -49,6 +49,11 @@ export class Cache {
     return path.join(getCacheDir(), `${this.getCacheKey(key)}.json`);
   }
 
+  private getTempCachePath(cachePath: string): string {
+    const suffix = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    return `${cachePath}.${suffix}.tmp`;
+  }
+
   async get<T>(key: string, version: string = '1.0'): Promise<T | null> {
     // Check memory cache first
     const memEntry = this.memoryCache.get(key);
@@ -95,7 +100,9 @@ export class Cache {
     try {
       await fs.mkdir(getCacheDir(), { recursive: true });
       const cachePath = this.getCachePath(key);
-      await fs.writeFile(cachePath, JSON.stringify(entry), 'utf-8');
+      const tempPath = this.getTempCachePath(cachePath);
+      await fs.writeFile(tempPath, JSON.stringify(entry), 'utf-8');
+      await fs.rename(tempPath, cachePath);
       logger.debug(`Cache set: ${key}`);
     } catch (_error) {
       logger.debug(`Cache write failed: ${key}`, _error);

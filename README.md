@@ -2,8 +2,8 @@
 
 > RapidKit is an open-source workspace platform that standardizes how teams build, scale, and deploy backend services.
 
-FastAPI, NestJS, Go/Fiber, and Go/Gin scaffolding with production-ready defaults.  
-**27+ plug-and-play modules** are available for FastAPI & NestJS projects.  
+FastAPI, NestJS, Spring Boot, Go/Fiber, and Go/Gin scaffolding with production-ready defaults.  
+**27+ plug-and-play modules** are available for FastAPI & NestJS projects. Spring Boot and Go kits run as npm-level generators.  
 Clean architecture • Zero boilerplate • Instant deployment.
 
 > **💡 Recommended:** Install the [Workspai VS Code extension](https://github.com/getrapidkit/rapidkit-vscode) for AI-powered project creation, a visual workspace explorer, and context-aware coding assistance — all backed by this CLI.
@@ -17,7 +17,7 @@ Clean architecture • Zero boilerplate • Instant deployment.
 Official CLI for creating and operating RapidKit workspaces and projects.
 
 - Workspace-first lifecycle (`create workspace` → `bootstrap` → `setup` → `create project`)
-- Multi-runtime support (Python, Node.js, Go)
+- Multi-runtime support (Python, Node.js, Java, Go)
 - Profile + policy enforcement (`warn` / `strict`)
 - Cache and mirror lifecycle commands for stable environments
 
@@ -38,6 +38,7 @@ It works alongside Workspai, which is a product developed by RapidKit.
 
 - Node.js `>= 20.19.6`
 - Python `>= 3.10` (for Python/Core workflows)
+- Java 21+ and Maven 3.9+ (optional, for Spring Boot projects)
 - Go (optional, for Go projects)
 
 ## Install
@@ -69,6 +70,7 @@ cd my-workspace
 npx rapidkit bootstrap --profile polyglot
 npx rapidkit setup python
 npx rapidkit setup node --warm-deps
+npx rapidkit setup java --warm-deps
 npx rapidkit setup go --warm-deps
 ```
 
@@ -76,7 +78,9 @@ npx rapidkit setup go --warm-deps
 
 ```bash
 npx rapidkit create project fastapi.standard my-api --yes --skip-install
+npx rapidkit create project fastapi.ddd my-api --yes --skip-install
 npx rapidkit create project nestjs.standard my-nest --yes --skip-install
+npx rapidkit create project springboot.standard my-spring --yes --skip-install
 npx rapidkit create project gofiber.standard my-fiber --yes --skip-install
 ```
 
@@ -88,7 +92,7 @@ npx rapidkit create project gofiber.standard my-fiber --yes --skip-install
 npx rapidkit create # Prompts: workspace | project
 npx rapidkit create workspace <name> [--profile <profile>] [--author <name>] [--yes]
 npx rapidkit bootstrap [--profile <profile>] [--json]
-npx rapidkit setup <python|node|go> [--warm-deps]
+npx rapidkit setup <python|node|go|java> [--warm-deps]
 npx rapidkit workspace policy show
 npx rapidkit workspace policy set <key> <value>
 npx rapidkit doctor
@@ -138,10 +142,11 @@ npx rapidkit mirror <status|sync|verify|rotate>
 ## Profiles
 
 - `minimal` — baseline workspace scaffolding
+- `java-only` — Java-focused workspace
 - `python-only` — Python-focused workspace
 - `node-only` — Node.js-focused workspace
 - `go-only` — Go-focused workspace
-- `polyglot` — Python + Node.js + Go
+- `polyglot` — Python + Node.js + Go + Java
 - `enterprise` — polyglot + governance-oriented checks
 
 ## Policy Modes

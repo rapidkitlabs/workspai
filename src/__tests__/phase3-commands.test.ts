@@ -266,6 +266,108 @@ describe('Phase 3 command contract handlers', () => {
       await cleanupWorkspaceDir(workspaceRoot);
     });
 
+    it('passes strict java-only bootstrap for Java projects', async () => {
+      const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-bootstrap-java-only-'));
+      const rapidkitDir = path.join(workspaceRoot, '.rapidkit');
+      const javaProjectDir = path.join(workspaceRoot, 'services', 'orders-api');
+
+      await mkdir(rapidkitDir, { recursive: true });
+      await mkdir(path.join(javaProjectDir, '.rapidkit'), { recursive: true });
+      await writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '{}', 'utf-8');
+      await writeFile(
+        path.join(rapidkitDir, 'workspace.json'),
+        JSON.stringify({ profile: 'java-only' }, null, 2),
+        'utf-8'
+      );
+      await writeFile(
+        path.join(rapidkitDir, 'policies.yml'),
+        [
+          'version: "1.0"',
+          'mode: strict',
+          'rules:',
+          '  enforce_workspace_marker: true',
+          '  enforce_toolchain_lock: false',
+          '  disallow_untrusted_tool_sources: false',
+          '',
+        ].join('\n'),
+        'utf-8'
+      );
+      await writeFile(
+        path.join(javaProjectDir, '.rapidkit', 'project.json'),
+        JSON.stringify({ runtime: 'java', kit_name: 'springboot.standard' }, null, 2),
+        'utf-8'
+      );
+      await writeFile(path.join(javaProjectDir, 'pom.xml'), '<project />', 'utf-8');
+
+      process.chdir(workspaceRoot);
+
+      const index = await import('../index.js');
+      const initRunner = vi.fn().mockResolvedValue(0);
+      const code = await index.handleBootstrapCommand(
+        ['bootstrap', '--profile=java-only'],
+        initRunner
+      );
+
+      expect(code).toBe(0);
+      expect(initRunner).toHaveBeenCalledWith(['init']);
+
+      await cleanupWorkspaceDir(workspaceRoot);
+    });
+
+    it('blocks strict java-only bootstrap when non-Java projects are discovered', async () => {
+      const workspaceRoot = await mkdtemp(
+        path.join(tmpdir(), 'rapidkit-bootstrap-java-only-fail-')
+      );
+      const rapidkitDir = path.join(workspaceRoot, '.rapidkit');
+      const nodeProjectDir = path.join(workspaceRoot, 'apps', 'node-api');
+
+      await mkdir(rapidkitDir, { recursive: true });
+      await mkdir(path.join(nodeProjectDir, '.rapidkit'), { recursive: true });
+      await writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '{}', 'utf-8');
+      await writeFile(
+        path.join(rapidkitDir, 'workspace.json'),
+        JSON.stringify({ profile: 'java-only' }, null, 2),
+        'utf-8'
+      );
+      await writeFile(
+        path.join(rapidkitDir, 'policies.yml'),
+        [
+          'version: "1.0"',
+          'mode: strict',
+          'rules:',
+          '  enforce_workspace_marker: true',
+          '  enforce_toolchain_lock: false',
+          '  disallow_untrusted_tool_sources: false',
+          '',
+        ].join('\n'),
+        'utf-8'
+      );
+      await writeFile(
+        path.join(nodeProjectDir, '.rapidkit', 'project.json'),
+        JSON.stringify({ runtime: 'node', kit_name: 'nestjs.standard' }, null, 2),
+        'utf-8'
+      );
+      await writeFile(
+        path.join(nodeProjectDir, 'package.json'),
+        JSON.stringify({ name: 'node-api' }),
+        'utf-8'
+      );
+
+      process.chdir(workspaceRoot);
+
+      const index = await import('../index.js');
+      const initRunner = vi.fn().mockResolvedValue(0);
+      const code = await index.handleBootstrapCommand(
+        ['bootstrap', '--profile=java-only'],
+        initRunner
+      );
+
+      expect(code).toBe(1);
+      expect(initRunner).not.toHaveBeenCalled();
+
+      await cleanupWorkspaceDir(workspaceRoot);
+    });
+
     it('blocks strict offline bootstrap when mirror requirements are missing', async () => {
       const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-bootstrap-offline-'));
       const rapidkitDir = path.join(workspaceRoot, '.rapidkit');
@@ -434,6 +536,18 @@ describe('Phase 3 command contract handlers', () => {
       expect(adapterCheckPrereqs).toHaveBeenCalledTimes(1);
       expect(adapterDoctorHints).toHaveBeenCalledWith(process.cwd());
       expect(code).toBe(2);
+    });
+
+    it('routes java setup to java runtime adapter', async () => {
+      const index = await import('../index.js');
+      areRuntimeAdaptersEnabledMock.mockReturnValue(true);
+      adapterCheckPrereqs.mockResolvedValue({ exitCode: 0 });
+      adapterDoctorHints.mockResolvedValue([]);
+
+      const code = await index.handleSetupCommand(['setup', 'java']);
+
+      expect(code).toBe(0);
+      expect(getRuntimeAdapterMock).toHaveBeenCalledWith('java', expect.any(Object));
     });
   });
 
@@ -1530,7 +1644,7 @@ describe('Phase 3 command contract handlers', () => {
       }
     });
 
-    it('detects local rapidkit bash launcher for workspace doctor mode on Linux', async () => {
+    it('does not flag local rapidkit bash launcher for workspace doctor mode on Linux', async () => {
       const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-shadow-'));
       try {
         await writeFile(
@@ -1546,15 +1660,13 @@ describe('Phase 3 command contract handlers', () => {
           'linux'
         );
 
-        expect(diagnostic.detected).toBe(true);
-        expect(diagnostic.candidatePath).toContain('rapidkit');
-        expect(diagnostic.reason).toContain('Linux/macOS');
+        expect(diagnostic.detected).toBe(false);
       } finally {
         await cleanupWorkspaceDir(workspaceRoot);
       }
     });
 
-    it('detects .rapidkit/rapidkit bash launcher for workspace doctor mode on Linux', async () => {
+    it('does not flag .rapidkit/rapidkit bash launcher for workspace doctor mode on Linux', async () => {
       const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-shadow-'));
       try {
         const rapidkitDir = path.join(workspaceRoot, '.rapidkit');
@@ -1572,8 +1684,7 @@ describe('Phase 3 command contract handlers', () => {
           'linux'
         );
 
-        expect(diagnostic.detected).toBe(true);
-        expect(diagnostic.candidatePath).toContain('.rapidkit');
+        expect(diagnostic.detected).toBe(false);
       } finally {
         await cleanupWorkspaceDir(workspaceRoot);
       }

@@ -118,7 +118,7 @@ interface ProjectHealth {
   hasEnvFile?: boolean;
   modulesHealthy?: boolean;
   missingModules?: string[];
-  framework?: 'FastAPI' | 'NestJS' | 'Go/Fiber' | 'Go/Gin' | 'Unknown';
+  framework?: 'FastAPI' | 'NestJS' | 'Go/Fiber' | 'Go/Gin' | 'Spring Boot' | 'Unknown';
   isGoProject?: boolean;
   kit?: string;
   stats?: {
@@ -674,7 +674,11 @@ async function performCommonChecks(projectPath: string, health: ProjectHealth): 
   // Tests check
   const testsPath = path.join(projectPath, 'tests');
   const testPath = path.join(projectPath, 'test');
-  const hasTestDir = (await fsExtra.pathExists(testsPath)) || (await fsExtra.pathExists(testPath));
+  const srcTestPath = path.join(projectPath, 'src', 'test');
+  const hasTestDir =
+    (await fsExtra.pathExists(testsPath)) ||
+    (await fsExtra.pathExists(testPath)) ||
+    (await fsExtra.pathExists(srcTestPath));
 
   // Go: tests are *_test.go files anywhere in the project tree
   let hasGoTests = false;
@@ -757,6 +761,20 @@ async function performCommonChecks(projectPath: string, health: ProjectHealth): 
           content.includes('[tool.ruff]') || (await fsExtra.pathExists(ruffPath));
       } catch {
         health.hasCodeQuality = await fsExtra.pathExists(ruffPath);
+      }
+    }
+  } else if (health.framework === 'Spring Boot') {
+    const pomXmlPath = path.join(projectPath, 'pom.xml');
+    if (await fsExtra.pathExists(pomXmlPath)) {
+      try {
+        const content = await fsExtra.readFile(pomXmlPath, 'utf8');
+        health.hasCodeQuality =
+          content.includes('spotless') ||
+          content.includes('checkstyle') ||
+          content.includes('pmd') ||
+          content.includes('maven-enforcer-plugin');
+      } catch {
+        health.hasCodeQuality = false;
       }
     }
   }
@@ -883,10 +901,11 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
     // Ignore if can't determine last modified
   }
 
-  // Detect project type (Go/Fiber, Python FastAPI, or Node.js NestJS)
+  // Detect project type (Go, Spring Boot, Python FastAPI, or Node.js NestJS)
   const packageJsonPath = path.join(projectPath, 'package.json');
   const pyprojectTomlPath = path.join(projectPath, 'pyproject.toml');
   const goModPath = path.join(projectPath, 'go.mod');
+  const pomXmlPath = path.join(projectPath, 'pom.xml');
 
   const isGoProject =
     (await fsExtra.pathExists(goModPath)) ||
@@ -923,6 +942,114 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
 
     // .env check — Go reads env vars from OS directly; .env is optional (no dotenv loaded by default)
     // Leave hasEnvFile undefined so the Environment row is hidden in the output.
+
+    await performCommonChecks(projectPath, health);
+    return health;
+  }
+
+  const isJavaProject =
+    (await fsExtra.pathExists(pomXmlPath)) ||
+    projectJsonData?.runtime === 'java' ||
+    (typeof projectJsonData?.kit_name === 'string' &&
+      (projectJsonData.kit_name as string).startsWith('springboot'));
+
+  if (isJavaProject) {
+    health.framework = 'Spring Boot';
+    health.venvActive = true;
+    health.coreInstalled = false;
+
+    const hasPomXml = await fsExtra.pathExists(pomXmlPath);
+    const hasGradleBuild =
+      (await fsExtra.pathExists(path.join(projectPath, 'build.gradle'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'build.gradle.kts')));
+    const hasMavenWrapper =
+      (await fsExtra.pathExists(path.join(projectPath, 'mvnw'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'mvnw.cmd')));
+    const hasGradleWrapper =
+      (await fsExtra.pathExists(path.join(projectPath, 'gradlew'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'gradlew.bat')));
+
+    try {
+      await execa('java', ['-version'], { timeout: 3000, reject: false });
+    } catch {
+      health.issues.push('Java runtime not found — install JDK 21+ and ensure java is on PATH');
+      health.fixCommands?.push('https://adoptium.net/');
+    }
+
+    if (hasPomXml) {
+      if (!hasMavenWrapper) {
+        try {
+          await execa('mvn', ['-version'], { timeout: 3000, reject: false });
+        } catch {
+          health.issues.push('Maven not found — install Maven 3.9+ or add Maven Wrapper');
+          health.fixCommands?.push('https://maven.apache.org/install.html');
+        }
+      }
+    } else if (hasGradleBuild) {
+      if (!hasGradleWrapper) {
+        try {
+          await execa('gradle', ['--version'], { timeout: 3000, reject: false });
+        } catch {
+          health.issues.push('Gradle not found — install Gradle 8+ or add Gradle Wrapper');
+          health.fixCommands?.push('https://gradle.org/install/');
+        }
+      }
+    }
+
+    const targetPath = path.join(projectPath, 'target');
+    const gradleLibsPath = path.join(projectPath, 'build', 'libs');
+    const localMavenCachePath = path.join(projectPath, '.rapidkit', 'cache', 'java', 'm2');
+    const localGradleCachePath = path.join(projectPath, '.rapidkit', 'cache', 'java', 'gradle');
+    health.depsInstalled =
+      (await fsExtra.pathExists(targetPath)) ||
+      (await fsExtra.pathExists(gradleLibsPath)) ||
+      (await fsExtra.pathExists(localMavenCachePath)) ||
+      (await fsExtra.pathExists(localGradleCachePath));
+
+    if (!health.depsInstalled) {
+      health.issues.push('Java dependencies are not warmed or built yet');
+      health.fixCommands?.push(buildProjectFixCommand(projectPath, 'rapidkit init'));
+    }
+
+    const envPath = path.join(projectPath, '.env');
+    health.hasEnvFile = await fsExtra.pathExists(envPath);
+    if (!health.hasEnvFile) {
+      const envExamplePath = path.join(projectPath, '.env.example');
+      if (await fsExtra.pathExists(envExamplePath)) {
+        health.issues.push('Environment file missing (found .env.example)');
+        health.fixCommands?.push(buildEnvCopyFixCommand(projectPath));
+      }
+    }
+
+    const applicationYamlPath = path.join(
+      projectPath,
+      'src',
+      'main',
+      'resources',
+      'application.yml'
+    );
+    if (await fsExtra.pathExists(applicationYamlPath)) {
+      try {
+        const applicationYamlRaw = await fsExtra.readFile(applicationYamlPath, 'utf-8');
+        const hasHealthExposure =
+          /include:\s*[^\n]*health/i.test(applicationYamlRaw) ||
+          /management:\s*[\s\S]*endpoint:\s*[\s\S]*health:/i.test(applicationYamlRaw);
+
+        if (!hasHealthExposure) {
+          health.issues.push(
+            'Actuator health endpoint exposure is not clearly configured in application.yml'
+          );
+          health.fixCommands?.push(
+            buildProjectFixCommand(
+              projectPath,
+              'Ensure management.endpoints.web.exposure.include contains health in src/main/resources/application.yml'
+            )
+          );
+        }
+      } catch {
+        health.issues.push('Unable to read application.yml for Spring Actuator health checks');
+      }
+    }
 
     await performCommonChecks(projectPath, health);
     return health;
@@ -1401,11 +1528,13 @@ function renderProjectHealth(project: ProjectHealth): void {
         ? '🐍'
         : project.framework === 'NestJS'
           ? '🦅'
-          : project.framework === 'Go/Fiber'
-            ? '🐹'
-            : project.framework === 'Go/Gin'
+          : project.framework === 'Spring Boot'
+            ? '☕'
+            : project.framework === 'Go/Fiber'
               ? '🐹'
-              : '📦';
+              : project.framework === 'Go/Gin'
+                ? '🐹'
+                : '📦';
     console.log(
       `   ${frameworkIcon} Framework: ${chalk.cyan(project.framework)}${project.kit ? chalk.gray(` (${project.kit})`) : ''}`
     );
@@ -1414,9 +1543,10 @@ function renderProjectHealth(project: ProjectHealth): void {
   console.log(`   ${chalk.gray(`Path: ${project.path}`)}`);
 
   // Detect project type based on what was checked
-  const isGoProject = project.isGoProject === true;
-  const isNodeProject = !isGoProject && project.venvActive && !project.coreInstalled;
-  const isPythonProject = !isGoProject && !isNodeProject;
+  const isGoProject = project.framework === 'Go/Fiber' || project.framework === 'Go/Gin';
+  const isJavaProject = project.framework === 'Spring Boot';
+  const isNodeProject = project.framework === 'NestJS';
+  const isPythonProject = !isGoProject && !isNodeProject && !isJavaProject;
 
   if (isPythonProject) {
     // Python project display
@@ -1492,9 +1622,11 @@ function renderProjectHealth(project: ProjectHealth): void {
     const qualityTool =
       project.framework === 'NestJS'
         ? 'ESLint'
-        : project.framework === 'Go/Fiber' || project.framework === 'Go/Gin'
-          ? 'golangci-lint'
-          : 'Ruff';
+        : project.framework === 'Spring Boot'
+          ? 'Static analysis'
+          : project.framework === 'Go/Fiber' || project.framework === 'Go/Gin'
+            ? 'golangci-lint'
+            : 'Ruff';
     additionalChecks.push(
       project.hasCodeQuality ? `✅ ${qualityTool}` : chalk.dim(`⊘ No ${qualityTool}`)
     );
@@ -1554,8 +1686,9 @@ async function executeFixCommands(
   console.log(chalk.bold.cyan('\n🔧 Available Fixes:\n'));
 
   for (const project of fixableProjects) {
+    const fixCommands = project.fixCommands ?? [];
     console.log(chalk.bold(`Project: ${chalk.yellow(project.name)}`));
-    project.fixCommands!.forEach((cmd, idx) => {
+    fixCommands.forEach((cmd, idx) => {
       console.log(`  ${idx + 1}. ${chalk.cyan(cmd)}`);
     });
     console.log();
@@ -1563,7 +1696,8 @@ async function executeFixCommands(
 
   let executableFixCount = 0;
   for (const project of fixableProjects) {
-    for (const cmd of project.fixCommands!) {
+    const fixCommands = project.fixCommands ?? [];
+    for (const cmd of fixCommands) {
       if (/^https?:\/\//i.test(cmd.trim())) {
         continue;
       }
@@ -1616,7 +1750,7 @@ async function executeFixCommands(
     {
       type: 'confirm',
       name: 'confirm',
-      message: `Apply ${fixableProjects.reduce((sum, p) => sum + p.fixCommands!.length, 0)} fix(es)?`,
+      message: `Apply ${fixableProjects.reduce((sum, p) => sum + (p.fixCommands?.length ?? 0), 0)} fix(es)?`,
       default: false,
     },
   ]);
@@ -1658,9 +1792,10 @@ async function executeFixCommands(
   }
 
   for (const project of fixableProjects) {
+    const fixCommands = project.fixCommands ?? [];
     console.log(chalk.bold(`Fixing ${chalk.cyan(project.name)}...`));
 
-    for (const cmd of project.fixCommands!) {
+    for (const cmd of fixCommands) {
       try {
         console.log(chalk.gray(`  $ ${cmd}`));
 

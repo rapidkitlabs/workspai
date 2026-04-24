@@ -218,7 +218,7 @@ describe('Demo Kit Generator', () => {
       }
     });
 
-    it.skip('should generate valid project.json content', async () => {
+    it('should generate valid project.json content', async () => {
       const projectPath = path.join(testDir, 'json-content-test');
       const variables = {
         project_name: 'json_content_test',
@@ -338,7 +338,7 @@ describe('Demo Kit Generator', () => {
       expect(appModuleExists).toBe(true);
     });
 
-    it.skip('should generate NestJS .rapidkit folder', async () => {
+    it('should generate NestJS .rapidkit folder', async () => {
       const projectPath = path.join(testDir, 'nestjs-rapidkit-folder');
       const variables = {
         project_name: 'nestjs_rapidkit_folder',

@@ -1,5 +1,6 @@
 import type { RuntimeAdapter, RuntimeName } from './types.js';
 import { GoRuntimeAdapter } from './go.js';
+import { JavaRuntimeAdapter } from './java.js';
 import { NodeRuntimeAdapter } from './node.js';
 import { PythonRuntimeAdapter } from './python.js';
 import path from 'path';
@@ -50,6 +51,10 @@ export function getRuntimeAdapter(runtime: RuntimeName, deps: AdapterDeps): Runt
 
   if (runtime === 'node') {
     return new NodeRuntimeAdapter((command, args, cwd) => deps.runCommandInCwd(command, args, cwd));
+  }
+
+  if (runtime === 'java') {
+    return new JavaRuntimeAdapter((command, args, cwd) => deps.runCommandInCwd(command, args, cwd));
   }
 
   return new PythonRuntimeAdapter((args, cwd) =>

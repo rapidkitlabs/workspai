@@ -50,6 +50,23 @@ export function isNodeProject(projectJson: RapidkitProjectJson, projectPath: str
   );
 }
 
+export function isJavaProject(projectJson: RapidkitProjectJson, projectPath: string): boolean {
+  const runtime = (projectJson?.runtime as string | undefined)?.toLowerCase();
+  const kitName = (projectJson?.kit_name as string | undefined)?.toLowerCase();
+  const hasPomXml = fs.existsSync(path.join(projectPath, 'pom.xml'));
+  const hasGradle =
+    fs.existsSync(path.join(projectPath, 'build.gradle')) ||
+    fs.existsSync(path.join(projectPath, 'build.gradle.kts'));
+
+  return (
+    runtime === 'java' ||
+    runtime === 'spring' ||
+    (kitName?.startsWith('springboot') ?? false) ||
+    hasPomXml ||
+    hasGradle
+  );
+}
+
 export function isPythonProject(projectJson: RapidkitProjectJson, projectPath: string): boolean {
   const runtime = (projectJson?.runtime as string | undefined)?.toLowerCase();
   const kitName = (projectJson?.kit_name as string | undefined)?.toLowerCase();

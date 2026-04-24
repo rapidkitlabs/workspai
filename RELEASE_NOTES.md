@@ -1,6 +1,45 @@
 # Release Notes
 
-## Latest Release: v0.25.7 (April 19, 2026)
+## Latest Release: v0.26.0 (April 24, 2026)
+
+### ☕ v0.26.0 — Spring Boot Generator, Java Runtime Adapter, and Release Hardening (Minor)
+
+This release adds first-class Java/Spring support to RapidKit, including a new Spring Boot generator, a dedicated Java runtime adapter, stronger Windows/workspace preflight behavior, and broader automated coverage across the CLI.
+
+**What's New:**
+
+- ☕ **New `springboot.standard` generator**
+  - Generates Spring Boot projects with launcher scripts, Docker assets, CI workflow scaffolding, and production-oriented defaults.
+  - Adds generated health/management configuration and Spring-oriented bootstrap assets.
+
+- 🧰 **New Java runtime adapter**
+  - Supports `init`, `dev`, `test`, `build`, `start`, prereq checks, and cache preparation.
+  - Detects Maven vs Gradle projects and prefers checked-in wrappers when available.
+
+- 🛡️ **Java/Spring hardening**
+  - Validates installed Java against project `pom.xml` requirements, including nested Java projects inside workspace roots.
+  - Repairs missing wrapper execute bits on Unix and falls back to `sh` when needed.
+  - Hardens generated Spring CI so Windows wrapper bootstrap no longer relies on fragile ambient behavior.
+
+- 🧪 **Coverage and validation expansion**
+  - Full suite: `986 passed | 11 skipped`.
+  - `src/runtime-adapters/java.ts` raised to `85.66%` statements / `86.73%` lines.
+  - `src/utils/platform-capabilities.ts` is now fully covered at `100%` across all metrics.
+
+- 📦 **Reliable bundle analysis for this CLI**
+  - Replaced the browser-oriented `npm run analyze` flow with a native `dist/` analyzer for Node CLI artifacts.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.26.0
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.26.0.md)
+
+---
+
+## v0.25.7 (April 19, 2026)
 
 ### 🐹 v0.25.7 — Go Generator Template Consolidation (Patch)
 

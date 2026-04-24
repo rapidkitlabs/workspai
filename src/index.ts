@@ -13,6 +13,7 @@ import { validateProjectName } from './validation.js';
 import { RapidKitError } from './errors.js';
 import fsExtra from 'fs-extra';
 import fs from 'fs';
+import { tmpdir } from 'os';
 import { detectRapidkitProject } from './core-bridge/pythonRapidkit.js';
 import {
   getCachedCoreTopLevelCommands,
@@ -28,6 +29,7 @@ import type { CommandResult } from './runtime-adapters/types.js';
 import { Cache } from './utils/cache.js';
 import {
   isGoProject,
+  isJavaProject,
   isNodeProject,
   isPythonProject,
   readRapidkitProjectJson,
@@ -43,12 +45,22 @@ import {
   shouldUseShellExecution,
 } from './utils/platform-capabilities.js';
 
-type BridgeFailureCode = 'PYTHON_NOT_FOUND' | 'BRIDGE_VENV_BOOTSTRAP_FAILED';
+type BridgeFailureCode =
+  | 'PYTHON_NOT_FOUND'
+  | 'BRIDGE_VENV_BOOTSTRAP_FAILED'
+  | 'BRIDGE_VENV_CREATE_FAILED'
+  | 'BRIDGE_PIP_BOOTSTRAP_FAILED';
 
 function bridgeFailureCode(err: unknown): BridgeFailureCode | null {
   if (!err || typeof err !== 'object') return null;
   const code = (err as { code?: unknown }).code;
-  if (code === 'PYTHON_NOT_FOUND' || code === 'BRIDGE_VENV_BOOTSTRAP_FAILED') return code;
+  if (
+    code === 'PYTHON_NOT_FOUND' ||
+    code === 'BRIDGE_VENV_BOOTSTRAP_FAILED' ||
+    code === 'BRIDGE_VENV_CREATE_FAILED' ||
+    code === 'BRIDGE_PIP_BOOTSTRAP_FAILED'
+  )
+    return code;
   return null;
 }
 
@@ -70,6 +82,12 @@ function isGoFiberKit(kit: string): boolean {
 function isGoGinKit(kit: string): boolean {
   const k = kit.trim().toLowerCase();
   return k.startsWith('gogin') || k === 'gin';
+}
+
+/** Returns true when the kit slug targets the Spring Boot generator (no Python needed). */
+function isSpringBootKit(kit: string): boolean {
+  const k = kit.trim().toLowerCase();
+  return k.startsWith('springboot') || k === 'spring' || k === 'springboot' || k === 'java';
 }
 
 function readFlagValue(argv: string[], flag: string): string | undefined {
@@ -121,11 +139,22 @@ async function commandAvailable(command: string, cwd: string): Promise<boolean> 
   return code === 0;
 }
 
-type InferredRuntime = 'python' | 'node' | 'go' | null;
+type InferredRuntime = 'python' | 'node' | 'go' | 'java' | null;
 
 async function inferRuntimeByFiles(targetPath: string): Promise<InferredRuntime> {
   const goMod = path.join(targetPath, 'go.mod');
   if (await fsExtra.pathExists(goMod)) return 'go';
+
+  const pomXml = path.join(targetPath, 'pom.xml');
+  const buildGradle = path.join(targetPath, 'build.gradle');
+  const buildGradleKts = path.join(targetPath, 'build.gradle.kts');
+  if (
+    (await fsExtra.pathExists(pomXml)) ||
+    (await fsExtra.pathExists(buildGradle)) ||
+    (await fsExtra.pathExists(buildGradleKts))
+  ) {
+    return 'java';
+  }
 
   const packageJson = path.join(targetPath, 'package.json');
   if (await fsExtra.pathExists(packageJson)) return 'node';
@@ -283,6 +312,14 @@ async function runGoFiberCreate(args: string[]): Promise<number> {
     return 1;
   }
 
+  try {
+    validateProjectName(name);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`${message}\n`);
+    return 1;
+  }
+
   const outputDir = readFlagValue(args, '--output') || process.cwd();
   const projectPath = path.resolve(outputDir, name);
   const skipGit = args.includes('--skip-git') || args.includes('--no-git');
@@ -326,6 +363,14 @@ async function runGoGinCreate(args: string[]): Promise<number> {
     return 1;
   }
 
+  try {
+    validateProjectName(name);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`${message}\n`);
+    return 1;
+  }
+
   const outputDir = readFlagValue(args, '--output') || process.cwd();
   const projectPath = path.resolve(outputDir, name);
   const skipGit = args.includes('--skip-git') || args.includes('--no-git');
@@ -355,6 +400,108 @@ async function runGoGinCreate(args: string[]): Promise<number> {
     return 0;
   } catch (e) {
     process.stderr.write(`RapidKit Go/Gin generator failed: ${(e as Error)?.message ?? e}\n`);
+    return 1;
+  }
+}
+
+async function runSpringBootCreate(args: string[]): Promise<number> {
+  if (args[0] !== 'create' || args[1] !== 'project') return 1;
+
+  const kit = args[2];
+  const name = args[3];
+  if (!kit || !name) {
+    process.stderr.write(
+      'Usage: rapidkit create project springboot.standard <name> [--output <dir>] [--java-version <major>] [--spring-boot-version <semver>] [--springdoc-version <semver>] [--group-id <com.example>] [--package-name <com.example.app>] [--port <number>]\n'
+    );
+    return 1;
+  }
+
+  try {
+    validateProjectName(name);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`${message}\n`);
+    return 1;
+  }
+
+  const outputDir = readFlagValue(args, '--output') || process.cwd();
+  const projectPath = path.resolve(outputDir, name);
+  const skipGit = args.includes('--skip-git') || args.includes('--no-git');
+  const javaVersion = readFlagValue(args, '--java-version');
+  const springBootVersion = readFlagValue(args, '--spring-boot-version');
+  const springdocVersion = readFlagValue(args, '--springdoc-version');
+  const groupId = readFlagValue(args, '--group-id');
+  const packageName = readFlagValue(args, '--package-name');
+  const description = readFlagValue(args, '--description');
+  const port = readFlagValue(args, '--port');
+
+  const isSemverLike = (value: string): boolean =>
+    /^\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?$/.test(value);
+
+  if (javaVersion && !/^\d+$/.test(javaVersion.trim())) {
+    process.stderr.write('Invalid --java-version. Expected major version number, e.g. 21\n');
+    return 1;
+  }
+
+  if (springBootVersion && !isSemverLike(springBootVersion.trim())) {
+    process.stderr.write('Invalid --spring-boot-version. Expected semantic version, e.g. 3.5.0\n');
+    return 1;
+  }
+
+  if (springdocVersion && !isSemverLike(springdocVersion.trim())) {
+    process.stderr.write('Invalid --springdoc-version. Expected semantic version, e.g. 2.8.9\n');
+    return 1;
+  }
+
+  if (groupId && !/^[A-Za-z0-9_.-]+$/.test(groupId.trim())) {
+    process.stderr.write('Invalid --group-id. Use dot-separated Java package identifiers only.\n');
+    return 1;
+  }
+
+  if (packageName && !/^[A-Za-z0-9_.-]+$/.test(packageName.trim())) {
+    process.stderr.write(
+      'Invalid --package-name. Use dot-separated Java package identifiers only.\n'
+    );
+    return 1;
+  }
+
+  if (port && !/^\d+$/.test(port.trim())) {
+    process.stderr.write('Invalid --port. Expected numeric TCP port, e.g. 8080\n');
+    return 1;
+  }
+
+  try {
+    const { default: fsExtra } = await import('fs-extra');
+    await fsExtra.ensureDir(path.dirname(projectPath));
+    if (await fsExtra.pathExists(projectPath)) {
+      process.stderr.write(`❌ Directory "${projectPath}" already exists\n`);
+      return 1;
+    }
+    await fsExtra.ensureDir(projectPath);
+
+    const { generateSpringBootKit } = await import('./generators/springboot-standard.js');
+    await generateSpringBootKit(projectPath, {
+      project_name: name,
+      artifact_id: name,
+      java_version: javaVersion?.trim(),
+      spring_boot_version: springBootVersion?.trim(),
+      springdoc_version: springdocVersion?.trim(),
+      group_id: groupId?.trim(),
+      package_name: packageName?.trim(),
+      description: description?.trim(),
+      port: port?.trim(),
+      skipGit,
+    });
+
+    const workspacePath = findWorkspaceUp(process.cwd());
+    if (workspacePath) {
+      const { syncWorkspaceProjects } = await import('./workspace.js');
+      await syncWorkspaceProjects(workspacePath, true);
+    }
+
+    return 0;
+  } catch (e) {
+    process.stderr.write(`RapidKit Spring Boot generator failed: ${(e as Error)?.message ?? e}\n`);
     return 1;
   }
 }
@@ -527,6 +674,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
       const profileRaw = readFlagValue(args, '--profile');
       const workspaceProfile =
         profileRaw === 'minimal' ||
+        profileRaw === 'java-only' ||
         profileRaw === 'go-only' ||
         profileRaw === 'python-only' ||
         profileRaw === 'node-only' ||
@@ -625,7 +773,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
         }
       }
 
-      // No kit specified — show npm-level interactive selector that includes Go/Fiber
+      // No kit specified — show npm-level interactive selector for npm-backed kits
       if (!args[2] || args[2].startsWith('-')) {
         console.log(chalk.bold('\n🚀 RapidKit\n'));
         const { kitChoice } = (await inquirer.prompt([
@@ -637,13 +785,14 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
               { name: 'fastapi  — FastAPI Standard Kit', value: 'fastapi.standard' },
               { name: 'fastapi  — FastAPI DDD Kit', value: 'fastapi.ddd' },
               { name: 'nestjs   — NestJS Standard Kit', value: 'nestjs.standard' },
+              { name: 'spring   — Spring Boot Standard Kit', value: 'springboot.standard' },
               { name: 'go/fiber — Go Fiber Standard Kit', value: 'gofiber.standard' },
               { name: 'go/gin   — Go Gin Standard Kit', value: 'gogin.standard' },
             ],
           } as Question<{ kitChoice: string }>,
         ])) as { kitChoice: string };
 
-        if (isGoFiberKit(kitChoice) || isGoGinKit(kitChoice)) {
+        if (isGoFiberKit(kitChoice) || isGoGinKit(kitChoice) || isSpringBootKit(kitChoice)) {
           const { projectName } = (await inquirer.prompt([
             {
               type: 'input',
@@ -655,6 +804,15 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
           const flags = args.slice(2).filter((a) => a.startsWith('-'));
           if (isGoGinKit(kitChoice)) {
             return await runGoGinCreate([
+              'create',
+              'project',
+              kitChoice,
+              projectName.trim(),
+              ...flags,
+            ]);
+          }
+          if (isSpringBootKit(kitChoice)) {
+            return await runSpringBootCreate([
               'create',
               'project',
               kitChoice,
@@ -710,6 +868,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
             // Classify kit by type
             const isGoKit =
               isGoFiberKit(kitName) || isGoGinKit(kitName) || kitName.startsWith('go');
+            const isJavaKit = isSpringBootKit(kitName) || kitName.includes('spring');
             const isNodeKit = [
               'nestjs',
               'react',
@@ -723,7 +882,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
               'koa',
               'fastify',
             ].some((n) => kitName.includes(n));
-            const isPyKit = !isGoKit && !isNodeKit;
+            const isPyKit = !isGoKit && !isNodeKit && !isJavaKit;
 
             let mismatch: string | null = null;
             if (wsProfile === 'python-only' && !isPyKit) {
@@ -732,6 +891,8 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
               mismatch = `Kit "${kitName}" is not a Node kit, but workspace profile is "node-only".`;
             } else if (wsProfile === 'go-only' && !isGoKit) {
               mismatch = `Kit "${kitName}" is not a Go kit, but workspace profile is "go-only".`;
+            } else if (wsProfile === 'java-only' && !isJavaKit) {
+              mismatch = `Kit "${kitName}" is not a Java kit, but workspace profile is "java-only".`;
             }
 
             if (mismatch) {
@@ -766,6 +927,11 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
       // Go/Gin: handle entirely at npm level, bypass Python engine
       if (isGoGinKit(args[2] || '')) {
         return await runGoGinCreate(args);
+      }
+
+      // Spring Boot: handle entirely at npm level, bypass Python engine
+      if (isSpringBootKit(args[2] || '')) {
+        return await runSpringBootCreate(args);
       }
 
       const hasCreateWorkspace = args.includes('--create-workspace');
@@ -1022,10 +1188,11 @@ function findContextFileUp(start: string): string | null {
 
 function findWorkspaceMarkerUp(start: string): string | null {
   let p = start;
+  const tempRoot = path.resolve(tmpdir());
 
   while (true) {
     const candidate = path.join(p, '.rapidkit-workspace');
-    if (fs.existsSync(candidate)) return candidate;
+    if (fs.existsSync(candidate) && path.resolve(p) !== tempRoot) return candidate;
     const parent = path.dirname(p);
     if (parent === p) break;
     p = parent;
@@ -1039,10 +1206,11 @@ function findWorkspaceMarkerUp(start: string): string | null {
  */
 function findWorkspaceUp(start: string): string | null {
   let p = start;
+  const tempRoot = path.resolve(tmpdir());
 
   while (true) {
     const candidate = path.join(p, '.rapidkit-workspace');
-    if (fs.existsSync(candidate)) return p; // Return directory, not file
+    if (fs.existsSync(candidate) && path.resolve(p) !== tempRoot) return p; // Return directory, not file
     const parent = path.dirname(p);
     if (parent === p) break;
     p = parent;
@@ -1062,7 +1230,7 @@ export async function detectWindowsDoctorWorkspaceShadow(
   platform: NodeJS.Platform = process.platform
 ): Promise<DoctorWorkspaceShadowDiagnostic> {
   const workspaceMode = params.workspaceFlag || params.scope === 'workspace';
-  if (!workspaceMode) {
+  if (!workspaceMode || !isWindowsPlatform(platform)) {
     return { detected: false };
   }
 
@@ -1071,25 +1239,13 @@ export async function detectWindowsDoctorWorkspaceShadow(
     if (!(await fsExtra.pathExists(candidate))) {
       continue;
     }
-
-    if (isWindowsPlatform(platform)) {
-      const lower = candidate.toLowerCase();
-      if (lower.endsWith('rapidkit.cmd') || lower.endsWith('rapidkit.exe')) {
-        return {
-          detected: true,
-          candidatePath: candidate,
-          reason: 'Found workspace-local rapidkit launcher on Windows.',
-        };
-      }
-    } else {
-      // Linux / macOS: the launcher is a plain bash script named `rapidkit` (no extension).
-      if (path.basename(candidate) === 'rapidkit') {
-        return {
-          detected: true,
-          candidatePath: candidate,
-          reason: 'Found workspace-local rapidkit bash launcher on Linux/macOS.',
-        };
-      }
+    const lower = candidate.toLowerCase();
+    if (lower.endsWith('rapidkit.cmd') || lower.endsWith('rapidkit.exe')) {
+      return {
+        detected: true,
+        candidatePath: candidate,
+        reason: 'Found workspace-local rapidkit launcher on Windows.',
+      };
     }
   }
 
@@ -1367,23 +1523,54 @@ async function writeJsonFile(filePath: string, payload: unknown): Promise<void> 
 }
 
 async function installWorkspaceDependencies(workspacePath: string): Promise<number> {
-  // ── Profile gate ─────────────────────────────────────────────────────────
-  // Only go-only is truly Python-free: Go kits (gofiber/gogin) run entirely
-  // through npm without ever calling the Python engine.
-  // node-only uses nestjs.standard which depends on rapidkit-core (Python).
-  // minimal may be used with any kit including Python-backed ones.
-  // Therefore only go-only skips Python dep installation at init time.
-  const PYTHON_FREE_PROFILES = new Set(['go-only']);
+  const PYTHON_REQUIRED_PROFILES = new Set(['python-only', 'polyglot', 'enterprise']);
+
+  let workspaceProfile = 'minimal';
   try {
     const manifestPath = path.join(workspacePath, '.rapidkit', 'workspace.json');
     const manifest = JSON.parse(await fs.promises.readFile(manifestPath, 'utf-8')) as {
       profile?: string;
     };
-    if (PYTHON_FREE_PROFILES.has(manifest.profile ?? '')) {
-      return 0; // no Python deps for lite profiles
-    }
+    workspaceProfile = manifest.profile ?? 'minimal';
   } catch {
-    // workspace.json unreadable — fall through to install
+    workspaceProfile = 'minimal';
+  }
+
+  const workspaceRequiresPython = async (): Promise<boolean> => {
+    if (PYTHON_REQUIRED_PROFILES.has(workspaceProfile)) {
+      return true;
+    }
+
+    const projectPaths = await collectWorkspaceProjects(workspacePath);
+    if (projectPaths.length === 0) {
+      return false;
+    }
+
+    for (const projectPath of projectPaths) {
+      const projectJson = readRapidkitProjectJson(projectPath);
+      const moduleSupport = projectJson?.module_support;
+
+      if (isGoProject(projectJson, projectPath) || isJavaProject(projectJson, projectPath)) {
+        continue;
+      }
+
+      if (moduleSupport === false) {
+        continue;
+      }
+
+      if (isPythonProject(projectJson, projectPath) || isNodeProject(projectJson, projectPath)) {
+        return true;
+      }
+
+      // Unknown project type: keep strict fallback to preserve compatibility.
+      return true;
+    }
+
+    return false;
+  };
+
+  if (!(await workspaceRequiresPython())) {
+    return 0;
   }
 
   let installMethod: 'poetry' | 'venv' | 'pipx' | 'pip' = 'poetry';
@@ -1444,7 +1631,7 @@ async function installWorkspaceDependencies(workspacePath: string): Promise<numb
     // are installed so we write them here to keep every profile consistent.
     try {
       const { writeWorkspaceLauncher } = await import('./create.js');
-      await writeWorkspaceLauncher(workspacePath, 'poetry');
+      await writeWorkspaceLauncher(workspacePath, installMethod === 'venv' ? 'venv' : 'poetry');
     } catch {
       // Non-fatal — users can still call the CLI via `npx rapidkit`
     }
@@ -1456,16 +1643,39 @@ async function installWorkspaceDependencies(workspacePath: string): Promise<numb
 }
 
 async function collectWorkspaceProjects(workspacePath: string): Promise<string[]> {
-  const entries = await fs.promises.readdir(workspacePath, { withFileTypes: true });
   const projects: string[] = [];
+  const visited = new Set<string>();
+  const stack = [workspacePath];
 
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-    const candidate = path.join(workspacePath, entry.name);
-    const contextFile = path.join(candidate, '.rapidkit', 'context.json');
-    const projectFile = path.join(candidate, '.rapidkit', 'project.json');
-    if ((await fsExtra.pathExists(contextFile)) || (await fsExtra.pathExists(projectFile))) {
-      projects.push(candidate);
+  while (stack.length > 0) {
+    const currentPath = stack.pop();
+    if (!currentPath) continue;
+    if (visited.has(currentPath)) continue;
+    visited.add(currentPath);
+
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+    } catch {
+      // Skip unreadable directories (permission denied, transient mounts, etc.).
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      if (['node_modules', 'dist', 'build', 'target', 'coverage', 'htmlcov'].includes(entry.name)) {
+        continue;
+      }
+
+      const candidate = path.join(currentPath, entry.name);
+      const contextFile = path.join(candidate, '.rapidkit', 'context.json');
+      const projectFile = path.join(candidate, '.rapidkit', 'project.json');
+      if ((await fsExtra.pathExists(contextFile)) || (await fsExtra.pathExists(projectFile))) {
+        projects.push(candidate);
+        continue;
+      }
+
+      stack.push(candidate);
     }
   }
 
@@ -1533,6 +1743,33 @@ async function handleNodeCommand(
   return result.exitCode;
 }
 
+async function handleJavaCommand(
+  action: 'init' | 'dev' | 'test' | 'build' | 'start',
+  projectPath: string
+): Promise<number> {
+  const adapter = getRuntimeAdapter('java', { runCommandInCwd, runCoreRapidkit });
+
+  if (action === 'init') {
+    const result = await adapter.initProject(projectPath);
+    return result.exitCode;
+  }
+  if (action === 'dev') {
+    const result = await adapter.runDev(projectPath);
+    return result.exitCode;
+  }
+  if (action === 'test') {
+    const result = await adapter.runTest(projectPath);
+    return result.exitCode;
+  }
+  if (action === 'build') {
+    const result = await adapter.runBuild(projectPath);
+    return result.exitCode;
+  }
+
+  const result = await adapter.runStart(projectPath);
+  return result.exitCode;
+}
+
 export async function handleBootstrapCommand(
   args: string[],
   initRunner: (nextArgs: string[]) => Promise<number> = handleInitCommand
@@ -1545,6 +1782,7 @@ export async function handleBootstrapCommand(
   try {
     type BootstrapProfile =
       | 'minimal'
+      | 'java-only'
       | 'go-only'
       | 'python-only'
       | 'node-only'
@@ -1579,6 +1817,7 @@ export async function handleBootstrapCommand(
       const normalized = value.trim().toLowerCase();
       if (
         normalized === 'minimal' ||
+        normalized === 'java-only' ||
         normalized === 'go-only' ||
         normalized === 'python-only' ||
         normalized === 'node-only' ||
@@ -1639,7 +1878,7 @@ export async function handleBootstrapCommand(
         if (!next || next.startsWith('-')) {
           console.log(
             chalk.yellow(
-              'Usage: rapidkit bootstrap [path] [--profile <minimal|go-only|python-only|node-only|polyglot|enterprise>] [--ci] [--offline] [--json]'
+              'Usage: rapidkit bootstrap [path] [--profile <minimal|java-only|go-only|python-only|node-only|polyglot|enterprise>] [--ci] [--offline] [--json]'
             )
           );
           return 1;
@@ -1659,16 +1898,24 @@ export async function handleBootstrapCommand(
     if (profileArg && !explicitProfile) {
       console.log(
         chalk.red(
-          `Invalid profile: ${profileArg}. Use one of: minimal, go-only, python-only, node-only, polyglot, enterprise.`
+          `Invalid profile: ${profileArg}. Use one of: minimal, java-only, go-only, python-only, node-only, polyglot, enterprise.`
         )
       );
       return 1;
     }
 
     const cwd = process.cwd();
-    let workspacePath = findWorkspaceUp(cwd);
-    if (!workspacePath) {
-      workspacePath = findLegacyWorkspaceUp(cwd);
+    const cwdMarker = path.join(cwd, '.rapidkit-workspace');
+    const cwdLegacyManifest = path.join(cwd, '.rapidkit', 'workspace.json');
+    let workspacePath: string | null;
+
+    if (!fs.existsSync(cwdMarker) && fs.existsSync(cwdLegacyManifest)) {
+      workspacePath = cwd;
+    } else {
+      workspacePath = findWorkspaceUp(cwd);
+      if (!workspacePath) {
+        workspacePath = findLegacyWorkspaceUp(cwd);
+      }
     }
     const checks: ComplianceCheck[] = [];
     let mirrorLifecycleDetails: {
@@ -1692,6 +1939,7 @@ export async function handleBootstrapCommand(
 
     const profileOptions: ReadonlyArray<BootstrapProfile> = [
       'minimal',
+      'java-only',
       'python-only',
       'node-only',
       'go-only',
@@ -1701,10 +1949,11 @@ export async function handleBootstrapCommand(
 
     const profileLabel: Record<BootstrapProfile, string> = {
       minimal: 'minimal     — Foundation files only (fastest bootstrap, mixed projects)',
+      'java-only': 'java-only   — Java runtime (Spring Boot services)',
       'python-only': 'python-only — Python + Poetry (FastAPI, Django, ML pipelines)',
       'node-only': 'node-only   — Node.js runtime (NestJS, Express, Next.js)',
       'go-only': 'go-only     — Go runtime (Fiber, Gin, gRPC, microservices)',
-      polyglot: 'polyglot    — Python + Node.js + Go multi-runtime workspace',
+      polyglot: 'polyglot    — Python + Node.js + Go + Java multi-runtime workspace',
       enterprise: 'enterprise  — Polyglot + governance + Sigstore verification',
     };
 
@@ -2007,12 +2256,16 @@ export async function handleBootstrapCommand(
       }
 
       const projectPaths = await collectWorkspaceProjects(workspacePath);
-      const runtimes = new Set<'python' | 'node' | 'go' | 'unknown'>();
+      const runtimes = new Set<'python' | 'node' | 'go' | 'java' | 'unknown'>();
 
       for (const projectPath of projectPaths) {
         const projectJson = readRapidkitProjectJson(projectPath);
         if (isGoProject(projectJson, projectPath)) {
           runtimes.add('go');
+          continue;
+        }
+        if (isJavaProject(projectJson, projectPath)) {
+          runtimes.add('java');
           continue;
         }
         if (isNodeProject(projectJson, projectPath)) {
@@ -2034,6 +2287,16 @@ export async function handleBootstrapCommand(
           message: onlyGo
             ? 'go-only profile validated for discovered projects.'
             : `go-only profile mismatch: detected runtimes [${[...runtimes].join(', ')}].`,
+        });
+      } else if (profile === 'java-only') {
+        const onlyJava =
+          runtimes.size === 0 || [...runtimes].every((runtime) => runtime === 'java');
+        checks.push({
+          id: 'profile.java-only',
+          status: onlyJava ? 'passed' : 'failed',
+          message: onlyJava
+            ? 'java-only profile validated for discovered projects.'
+            : `java-only profile mismatch: detected runtimes [${[...runtimes].join(', ')}].`,
         });
       } else if (profile === 'python-only') {
         const onlyPython =
@@ -2189,13 +2452,13 @@ export async function handleBootstrapCommand(
 export async function handleSetupCommand(args: string[]): Promise<number> {
   const runtime = (args[1] || '').toLowerCase();
   const warmDeps = args.includes('--warm-deps') || args.includes('--warm-dependencies');
-  if (!runtime || !['python', 'node', 'go'].includes(runtime)) {
-    console.log(chalk.yellow('Usage: rapidkit setup <python|node|go> [--warm-deps]'));
+  if (!runtime || !['python', 'node', 'go', 'java'].includes(runtime)) {
+    console.log(chalk.yellow('Usage: rapidkit setup <python|node|go|java> [--warm-deps]'));
     return 1;
   }
 
   const warmRuntimeDependencies = async (
-    targetRuntime: 'python' | 'node' | 'go',
+    targetRuntime: 'python' | 'node' | 'go' | 'java',
     targetPath: string
   ): Promise<CommandResult> => {
     if (targetRuntime === 'node') {
@@ -2248,16 +2511,49 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
       };
     }
 
+    if (targetRuntime === 'java') {
+      const hasPomXml = fs.existsSync(path.join(targetPath, 'pom.xml'));
+      const hasGradle =
+        fs.existsSync(path.join(targetPath, 'build.gradle')) ||
+        fs.existsSync(path.join(targetPath, 'build.gradle.kts'));
+      const gradlew = path.join(
+        targetPath,
+        process.platform === 'win32' ? 'gradlew.bat' : 'gradlew'
+      );
+      const hasGradleWrapper = fs.existsSync(gradlew);
+      if (!hasPomXml && !hasGradle) {
+        return {
+          exitCode: 0,
+          message: 'Java warm-up skipped: pom.xml or build.gradle not found in current directory.',
+        };
+      }
+
+      if (hasPomXml) {
+        return {
+          exitCode: await runCommandInCwd(
+            'mvn',
+            ['-B', '-q', '-DskipTests', 'dependency:go-offline'],
+            targetPath
+          ),
+        };
+      }
+
+      const gradleCommand = hasGradleWrapper ? gradlew : 'gradle';
+      return {
+        exitCode: await runCommandInCwd(gradleCommand, ['--no-daemon', 'dependencies'], targetPath),
+      };
+    }
+
     return {
       exitCode: 0,
-      message: 'Dependency warm-up currently applies to node/go runtimes.',
+      message: 'Dependency warm-up currently applies to node/go/java runtimes.',
     };
   };
 
   // Use system Python (no cwd) to bypass workspace-venv runner discovery.
   // Workspace-local venv rapidkit versions may have a double-print bug in doctor check;
   // system-level rapidkit is always preferred for host environment diagnostics.
-  const adapter = getRuntimeAdapter(runtime as 'python' | 'node' | 'go', {
+  const adapter = getRuntimeAdapter(runtime as 'python' | 'node' | 'go' | 'java', {
     runCommandInCwd,
     runCoreRapidkit: (adapterArgs, opts) =>
       runCoreRapidkit(adapterArgs, { ...opts, cwd: undefined }),
@@ -2266,10 +2562,27 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
   const hints = await adapter.doctorHints(process.cwd());
   const workspacePath = findWorkspaceUp(process.cwd());
   const runtimePath = workspacePath || process.cwd();
+  let workspaceJavaProjectsCache: string[] | null = null;
+
+  const getWorkspaceJavaProjects = async (): Promise<string[]> => {
+    if (runtime !== 'java' || !workspacePath) {
+      return [];
+    }
+    if (workspaceJavaProjectsCache) {
+      return workspaceJavaProjectsCache;
+    }
+
+    const projectPaths = await collectWorkspaceProjects(workspacePath);
+    workspaceJavaProjectsCache = projectPaths.filter((projectPath) => {
+      const projectJson = readRapidkitProjectJson(projectPath);
+      return isJavaProject(projectJson, projectPath);
+    });
+    return workspaceJavaProjectsCache;
+  };
 
   if (prereq.exitCode === 0) {
     console.log(chalk.green(`\u2705 ${runtime} prerequisites look good.`));
-    const otherRuntimes = ['python', 'node', 'go'].filter((r) => r !== runtime).join('/');
+    const otherRuntimes = ['python', 'node', 'go', 'java'].filter((r) => r !== runtime).join('/');
     console.log(
       chalk.gray(
         `  Scope: validated ${runtime} runtime only. ${otherRuntimes} checks are optional unless your workspace profile uses them.`
@@ -2293,18 +2606,77 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
     }
 
     if (warmDeps) {
-      const depsWarmResult = await warmRuntimeDependencies(
-        runtime as 'python' | 'node' | 'go',
-        runtimePath
-      );
-      const skipped = /skipped/i.test(depsWarmResult.message || '');
-      if (depsWarmResult.message) {
-        console.log(chalk.gray(`  ${depsWarmResult.message}`));
-      }
-      if (depsWarmResult.exitCode === 0 && !skipped) {
-        console.log(chalk.gray(`  ${runtime} dependency warm-up completed (--warm-deps).`));
-      } else if (depsWarmResult.exitCode !== 0) {
-        console.log(chalk.yellow(`  ${runtime} dependency warm-up failed (non-fatal).`));
+      if (runtime === 'java' && workspacePath) {
+        const javaProjects = await getWorkspaceJavaProjects();
+        if (javaProjects.length > 0) {
+          let warmedCount = 0;
+          let failedCount = 0;
+          let skippedCount = 0;
+
+          for (const projectPath of javaProjects) {
+            const depsWarmResult = await warmRuntimeDependencies('java', projectPath);
+            const skipped = /skipped/i.test(depsWarmResult.message || '');
+            const projectLabel =
+              path.relative(workspacePath, projectPath) || path.basename(projectPath);
+
+            if (depsWarmResult.message) {
+              console.log(chalk.gray(`  [${projectLabel}] ${depsWarmResult.message}`));
+            }
+
+            if (depsWarmResult.exitCode === 0 && !skipped) {
+              warmedCount += 1;
+            } else if (depsWarmResult.exitCode === 0 && skipped) {
+              skippedCount += 1;
+            } else {
+              failedCount += 1;
+            }
+          }
+
+          if (warmedCount > 0) {
+            console.log(
+              chalk.gray(
+                `  java dependency warm-up completed for ${warmedCount} project(s) (--warm-deps).`
+              )
+            );
+          }
+          if (failedCount > 0) {
+            console.log(
+              chalk.yellow(
+                `  java dependency warm-up failed for ${failedCount} project(s) (non-fatal).`
+              )
+            );
+          }
+          if (warmedCount === 0 && failedCount === 0 && skippedCount > 0) {
+            console.log(
+              chalk.gray('  java dependency warm-up skipped for discovered workspace projects.')
+            );
+          }
+        } else {
+          const depsWarmResult = await warmRuntimeDependencies('java', runtimePath);
+          const skipped = /skipped/i.test(depsWarmResult.message || '');
+          if (depsWarmResult.message) {
+            console.log(chalk.gray(`  ${depsWarmResult.message}`));
+          }
+          if (depsWarmResult.exitCode === 0 && !skipped) {
+            console.log(chalk.gray(`  ${runtime} dependency warm-up completed (--warm-deps).`));
+          } else if (depsWarmResult.exitCode !== 0) {
+            console.log(chalk.yellow(`  ${runtime} dependency warm-up failed (non-fatal).`));
+          }
+        }
+      } else {
+        const depsWarmResult = await warmRuntimeDependencies(
+          runtime as 'python' | 'node' | 'go' | 'java',
+          runtimePath
+        );
+        const skipped = /skipped/i.test(depsWarmResult.message || '');
+        if (depsWarmResult.message) {
+          console.log(chalk.gray(`  ${depsWarmResult.message}`));
+        }
+        if (depsWarmResult.exitCode === 0 && !skipped) {
+          console.log(chalk.gray(`  ${runtime} dependency warm-up completed (--warm-deps).`));
+        } else if (depsWarmResult.exitCode !== 0) {
+          console.log(chalk.yellow(`  ${runtime} dependency warm-up failed (non-fatal).`));
+        }
       }
     }
 
@@ -2369,6 +2741,88 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
           rt.go = {
             ...((rt.go as object) || {}),
             version: goVersion,
+            last_setup: new Date().toISOString(),
+          };
+        } else if (runtime === 'java') {
+          let javaVersion: string | null = null;
+          let buildTool: 'maven' | 'gradle' | null = null;
+          let buildToolVersion: string | null = null;
+
+          const javaProjects = await getWorkspaceJavaProjects();
+          const runtimeHasJavaBuildFiles =
+            fs.existsSync(path.join(runtimePath, 'pom.xml')) ||
+            fs.existsSync(path.join(runtimePath, 'build.gradle')) ||
+            fs.existsSync(path.join(runtimePath, 'build.gradle.kts'));
+          const javaInspectionPath = runtimeHasJavaBuildFiles
+            ? runtimePath
+            : javaProjects[0] || runtimePath;
+
+          try {
+            const { execa } = await import('execa');
+
+            const javaResult = await execa('java', ['-version'], {
+              cwd: workspacePath,
+              stdio: 'pipe',
+              reject: false,
+              timeout: 3000,
+            });
+            const javaRaw = `${javaResult.stdout || ''}\n${javaResult.stderr || ''}`;
+            const javaMatch = javaRaw.match(/version\s+"([^"]+)"/i);
+            javaVersion = javaMatch ? javaMatch[1] : null;
+
+            const hasPomXml = fs.existsSync(path.join(javaInspectionPath, 'pom.xml'));
+            const hasGradleBuild =
+              fs.existsSync(path.join(javaInspectionPath, 'build.gradle')) ||
+              fs.existsSync(path.join(javaInspectionPath, 'build.gradle.kts'));
+
+            if (hasPomXml) {
+              buildTool = 'maven';
+              const mavenCommand = (() => {
+                const mvnwCmd = path.join(javaInspectionPath, 'mvnw.cmd');
+                if (process.platform === 'win32' && fs.existsSync(mvnwCmd)) return mvnwCmd;
+                const mvnw = path.join(javaInspectionPath, 'mvnw');
+                if (fs.existsSync(mvnw)) return mvnw;
+                return 'mvn';
+              })();
+
+              const mavenResult = await execa(mavenCommand, ['-version'], {
+                cwd: javaInspectionPath,
+                stdio: 'pipe',
+                reject: false,
+                timeout: 3000,
+              });
+              const mavenRaw = `${mavenResult.stdout || ''}\n${mavenResult.stderr || ''}`;
+              const mavenMatch = mavenRaw.match(/Apache Maven\s+(\S+)/i);
+              buildToolVersion = mavenMatch ? mavenMatch[1] : null;
+            } else if (hasGradleBuild) {
+              buildTool = 'gradle';
+              const gradleCommand = (() => {
+                const gradlewCmd = path.join(javaInspectionPath, 'gradlew.bat');
+                if (process.platform === 'win32' && fs.existsSync(gradlewCmd)) return gradlewCmd;
+                const gradlew = path.join(javaInspectionPath, 'gradlew');
+                if (fs.existsSync(gradlew)) return gradlew;
+                return 'gradle';
+              })();
+
+              const gradleResult = await execa(gradleCommand, ['--version'], {
+                cwd: javaInspectionPath,
+                stdio: 'pipe',
+                reject: false,
+                timeout: 3000,
+              });
+              const gradleRaw = `${gradleResult.stdout || ''}\n${gradleResult.stderr || ''}`;
+              const gradleMatch = gradleRaw.match(/Gradle\s+(\S+)/i);
+              buildToolVersion = gradleMatch ? gradleMatch[1] : null;
+            }
+          } catch {
+            /* non-fatal */
+          }
+
+          rt.java = {
+            ...((rt.java as object) || {}),
+            version: javaVersion,
+            build_tool: buildTool,
+            build_tool_version: buildToolVersion,
             last_setup: new Date().toISOString(),
           };
         }
@@ -2853,6 +3307,9 @@ export async function handleInitCommand(args: string[]): Promise<number> {
         if (isGoProject(targetJson, targetPath) || inferredRuntime === 'go') {
           return await handleGoInit(targetPath);
         }
+        if (isJavaProject(targetJson, targetPath) || inferredRuntime === 'java') {
+          return await handleJavaCommand('init', targetPath);
+        }
         if (isNodeProject(targetJson, targetPath) || inferredRuntime === 'node') {
           return await handleNodeInitSmart(targetPath);
         }
@@ -2870,6 +3327,13 @@ export async function handleInitCommand(args: string[]): Promise<number> {
         return await handleGoInit(cwd);
       }
       const inferredRuntimeNow = await inferRuntimeByFiles(cwd);
+
+      if (
+        !cwdIsWorkspaceRoot &&
+        (isJavaProject(projectJsonNow, cwd) || inferredRuntimeNow === 'java')
+      ) {
+        return await handleJavaCommand('init', cwd);
+      }
 
       if (
         !cwdIsWorkspaceRoot &&
@@ -2894,6 +3358,9 @@ export async function handleInitCommand(args: string[]): Promise<number> {
 
         if (isGoProject(projectRootJson, projectRoot) || inferredRootRuntime === 'go') {
           return await handleGoInit(projectRoot);
+        }
+        if (isJavaProject(projectRootJson, projectRoot) || inferredRootRuntime === 'java') {
+          return await handleJavaCommand('init', projectRoot);
         }
         if (isNodeProject(projectRootJson, projectRoot) || inferredRootRuntime === 'node') {
           return await handleNodeInitSmart(projectRoot);
@@ -2934,6 +3401,16 @@ export async function handleInitCommand(args: string[]): Promise<number> {
             console.log(
               chalk.gray('\n💡 Go dependencies are managed per-project (go.mod / go mod tidy).')
             );
+          } else if (wsProfile === 'java-only') {
+            console.log(chalk.green('✔ Java workspace ready'));
+            console.log(chalk.gray('\nNo projects yet — create one and then run init inside it:'));
+            console.log(
+              chalk.white('  npx rapidkit create project springboot.standard my-service')
+            );
+            console.log(chalk.white('  cd my-service && npx rapidkit init'));
+            console.log(
+              chalk.gray('\n💡 Java dependencies are managed per-project (Maven/Gradle).')
+            );
           } else {
             console.log(chalk.green('✔ Workspace ready'));
             console.log(chalk.gray('\nNo projects yet — create one to get started:'));
@@ -2947,6 +3424,9 @@ export async function handleInitCommand(args: string[]): Promise<number> {
           if (isGoProject(projJson, projectPath)) {
             const code = await handleGoInit(projectPath);
             if (code !== 0) return code;
+          } else if (isJavaProject(projJson, projectPath)) {
+            const javaCode = await handleJavaCommand('init', projectPath);
+            if (javaCode !== 0) return javaCode;
           } else {
             if (isNodeProject(projJson, projectPath)) {
               const nodeCode = await handleNodeInitSmart(projectPath);
@@ -3007,7 +3487,9 @@ async function checkStrictPolicyPreflightForDelegation(cwd: string): Promise<str
       path.join(workspacePath, '.rapidkit', 'policies.yml'),
       'utf-8'
     );
-    const m = policyRaw.match(/^\s*mode:\s*(warn|strict)\s*(?:#.*)?$/m);
+    const m =
+      policyRaw.match(/^\s*enforcement_mode:\s*(warn|strict)\s*(?:#.*)?$/m) ??
+      policyRaw.match(/^\s*mode:\s*(warn|strict)\s*(?:#.*)?$/m);
     if (m?.[1] === 'strict') mode = 'strict';
   } catch {
     return [];
@@ -3030,7 +3512,10 @@ async function checkStrictPolicyPreflightForDelegation(cwd: string): Promise<str
   try {
     lock = JSON.parse(await fs.promises.readFile(lockPath, 'utf-8'));
   } catch {
-    return [];
+    violations.push(
+      'toolchain.lock is invalid JSON — regenerate it with `rapidkit bootstrap` before running commands in strict mode.'
+    );
+    return violations;
   }
   const rt = (lock.runtime ?? {}) as Record<string, { version?: string | null }>;
 
@@ -3040,6 +3525,10 @@ async function checkStrictPolicyPreflightForDelegation(cwd: string): Promise<str
   } else if (isNodeProject(projectJson, cwd) && !rt.node?.version) {
     violations.push(
       'node.version is not pinned in toolchain.lock — run `rapidkit setup node` first.'
+    );
+  } else if (isJavaProject(projectJson, cwd) && !rt.java?.version) {
+    violations.push(
+      'java.version is not pinned in toolchain.lock — run `rapidkit setup java` first.'
     );
   } else if (isPythonProject(projectJson, cwd) && !rt.python?.version) {
     violations.push(
@@ -3055,19 +3544,32 @@ async function checkStrictPolicyPreflightForDelegation(cwd: string): Promise<str
     const wsProfile = wsJson.profile ?? '';
     if (
       wsProfile === 'python-only' &&
-      (isGoProject(projectJson, cwd) || isNodeProject(projectJson, cwd))
+      (isGoProject(projectJson, cwd) ||
+        isNodeProject(projectJson, cwd) ||
+        isJavaProject(projectJson, cwd))
     ) {
       violations.push('Workspace profile is "python-only" but this project is not Python.');
     } else if (
       wsProfile === 'node-only' &&
-      (isGoProject(projectJson, cwd) || isPythonProject(projectJson, cwd))
+      (isGoProject(projectJson, cwd) ||
+        isPythonProject(projectJson, cwd) ||
+        isJavaProject(projectJson, cwd))
     ) {
       violations.push('Workspace profile is "node-only" but this project is not Node.');
     } else if (
       wsProfile === 'go-only' &&
-      (isNodeProject(projectJson, cwd) || isPythonProject(projectJson, cwd))
+      (isNodeProject(projectJson, cwd) ||
+        isPythonProject(projectJson, cwd) ||
+        isJavaProject(projectJson, cwd))
     ) {
       violations.push('Workspace profile is "go-only" but this project is not Go.');
+    } else if (
+      wsProfile === 'java-only' &&
+      (isPythonProject(projectJson, cwd) ||
+        isNodeProject(projectJson, cwd) ||
+        isGoProject(projectJson, cwd))
+    ) {
+      violations.push('Workspace profile is "java-only" but this project is not Java.');
     }
   } catch {
     /* non-fatal */
@@ -3441,8 +3943,8 @@ program.addHelpText(
   'afterAll',
   `
 Workspace Setup Commands
-  rapidkit bootstrap         Bootstrap projects in workspace (--profile python-only|node-only|go-only|polyglot|enterprise)
-  rapidkit setup <runtime>   Set up runtime toolchain  (runtime: python | node | go)
+  rapidkit bootstrap         Bootstrap projects in workspace (--profile java-only|python-only|node-only|go-only|polyglot|enterprise)
+  rapidkit setup <runtime>   Set up runtime toolchain  (runtime: python | node | go | java)
   rapidkit workspace list    List registered workspaces on this system
   rapidkit mirror            Manage registry mirrors   (mirror status --json | sync | verify | rotate)
   rapidkit cache             Manage package cache      (cache status | clear | prune | repair)
@@ -3474,7 +3976,7 @@ program
   .addOption(
     new Option(
       '-t, --template <template>',
-      'Legacy: create a project with template (fastapi, nestjs) instead of a workspace'
+      'Legacy: create a project with template (fastapi, nestjs, springboot, gofiber, gogin) instead of a workspace'
     ).hideHelp()
   )
   .option('-y, --yes', 'Skip prompts and use defaults')
@@ -3493,9 +3995,17 @@ program
   .addOption(
     new Option(
       '--profile <profile>',
-      'Workspace bootstrap profile: minimal, python-only, node-only, go-only, polyglot, enterprise'
+      'Workspace bootstrap profile: minimal, java-only, python-only, node-only, go-only, polyglot, enterprise'
     )
-      .choices(['minimal', 'python-only', 'node-only', 'go-only', 'polyglot', 'enterprise'])
+      .choices([
+        'minimal',
+        'java-only',
+        'python-only',
+        'node-only',
+        'go-only',
+        'polyglot',
+        'enterprise',
+      ])
       .hideHelp()
   )
   .addOption(
@@ -3614,11 +4124,13 @@ program
             ? 'fastapi.standard'
             : lowered === 'nestjs'
               ? 'nestjs.standard'
-              : lowered === 'go' || lowered === 'fiber'
-                ? 'gofiber.standard'
-                : lowered === 'gin'
-                  ? 'gogin.standard'
-                  : raw;
+              : lowered === 'spring' || lowered === 'springboot' || lowered === 'java'
+                ? 'springboot.standard'
+                : lowered === 'go' || lowered === 'fiber'
+                  ? 'gofiber.standard'
+                  : lowered === 'gin'
+                    ? 'gogin.standard'
+                    : raw;
 
         // Go/Fiber: handled entirely at npm level — bypass Python engine
         if (isGoFiberKit(kit)) {
@@ -3639,6 +4151,18 @@ program
           await generateGoGinKit(projectPath, {
             project_name: name,
             module_path: name,
+            skipGit: options.skipGit,
+          });
+          return;
+        }
+
+        // Spring Boot: handled entirely at npm level — bypass Python engine
+        if (isSpringBootKit(kit)) {
+          const projectPath = path.resolve(process.cwd(), name);
+          const { generateSpringBootKit } = await import('./generators/springboot-standard.js');
+          await generateSpringBootKit(projectPath, {
+            project_name: name,
+            artifact_id: name,
             skipGit: options.skipGit,
           });
           return;
@@ -3990,10 +4514,11 @@ function printHelp() {
 
   console.log(chalk.bold('Workspace profiles (asked during creation):'));
   console.log(chalk.gray('  minimal       Foundation files only — fastest bootstrap (default)'));
+  console.log(chalk.gray('  java-only     Java runtime      (Spring Boot services)'));
   console.log(chalk.gray('  python-only   Python + Poetry  (FastAPI, Django, ML)'));
   console.log(chalk.gray('  node-only     Node.js runtime   (NestJS, Express, Next.js)'));
   console.log(chalk.gray('  go-only       Go runtime        (Fiber, Gin, gRPC)'));
-  console.log(chalk.gray('  polyglot      Python + Node.js + Go multi-runtime'));
+  console.log(chalk.gray('  polyglot      Python + Node.js + Go + Java multi-runtime'));
   console.log(chalk.gray('  enterprise    Polyglot + governance + Sigstore\n'));
 
   console.log(chalk.bold('Workspace commands (inside a workspace):'));
@@ -4007,7 +4532,7 @@ function printHelp() {
   );
   console.log(
     chalk.gray(
-      '  npx rapidkit setup python|node|go [--warm-deps]  Set up runtime (+ optional deps warm-up)'
+      '  npx rapidkit setup python|node|go|java [--warm-deps]  Set up runtime (+ optional deps warm-up)'
     )
   );
   console.log(
@@ -4055,6 +4580,9 @@ function printHelp() {
     console.log(chalk.bold('Legacy (shown because RAPIDKIT_SHOW_LEGACY=1):'));
     console.log(chalk.gray('  npx rapidkit my-project --template fastapi'));
     console.log(chalk.gray('  npx rapidkit my-project --template nestjs'));
+    console.log(chalk.gray('  npx rapidkit my-project --template springboot'));
+    console.log(chalk.gray('  npx rapidkit my-project --template gofiber'));
+    console.log(chalk.gray('  npx rapidkit my-project --template gogin'));
     console.log(
       chalk.gray(
         '  --skip-install             Fast-path lock/deps (legacy template mode) — not same as --skip-essentials\n'
@@ -4258,13 +4786,20 @@ if (shouldBootstrapCli) {
                           'Node runtime version is not pinned in toolchain.lock — run `rapidkit setup node` first.'
                         );
                       }
+                      if (isJavaProject(projectJson, process.cwd()) && !rt.java?.version) {
+                        violations.push(
+                          'Java runtime version is not pinned in toolchain.lock — run `rapidkit setup java` first.'
+                        );
+                      }
                       if (isPythonProject(projectJson, process.cwd()) && !rt.python?.version) {
                         violations.push(
                           'Python runtime version is not pinned in toolchain.lock — run `rapidkit setup python` first.'
                         );
                       }
                     } catch {
-                      /* non-fatal parse error — warn only */
+                      violations.push(
+                        'toolchain.lock is invalid JSON — regenerate it with `rapidkit bootstrap` before running commands in strict mode.'
+                      );
                     }
                   }
 
@@ -4279,7 +4814,8 @@ if (shouldBootstrapCli) {
                       if (
                         wsProfile === 'python-only' &&
                         (isGoProject(projectJson, process.cwd()) ||
-                          isNodeProject(projectJson, process.cwd()))
+                          isNodeProject(projectJson, process.cwd()) ||
+                          isJavaProject(projectJson, process.cwd()))
                       ) {
                         violations.push(
                           `Workspace profile is "python-only" but this project is not Python. Update the workspace profile or use a polyglot workspace.`
@@ -4288,7 +4824,8 @@ if (shouldBootstrapCli) {
                       if (
                         wsProfile === 'node-only' &&
                         (isGoProject(projectJson, process.cwd()) ||
-                          isPythonProject(projectJson, process.cwd()))
+                          isPythonProject(projectJson, process.cwd()) ||
+                          isJavaProject(projectJson, process.cwd()))
                       ) {
                         violations.push(
                           `Workspace profile is "node-only" but this project is not Node. Update the workspace profile or use a polyglot workspace.`
@@ -4297,10 +4834,21 @@ if (shouldBootstrapCli) {
                       if (
                         wsProfile === 'go-only' &&
                         (isPythonProject(projectJson, process.cwd()) ||
-                          isNodeProject(projectJson, process.cwd()))
+                          isNodeProject(projectJson, process.cwd()) ||
+                          isJavaProject(projectJson, process.cwd()))
                       ) {
                         violations.push(
                           `Workspace profile is "go-only" but this project is not Go. Update the workspace profile or use a polyglot workspace.`
+                        );
+                      }
+                      if (
+                        wsProfile === 'java-only' &&
+                        (isPythonProject(projectJson, process.cwd()) ||
+                          isNodeProject(projectJson, process.cwd()) ||
+                          isGoProject(projectJson, process.cwd()))
+                      ) {
+                        violations.push(
+                          `Workspace profile is "java-only" but this project is not Java. Update the workspace profile or use a polyglot workspace.`
                         );
                       }
                     } catch {
@@ -4344,6 +4892,13 @@ if (shouldBootstrapCli) {
               return result.exitCode;
             }
 
+            if (isJavaProject(projectJson, process.cwd())) {
+              if (action === 'dev') return await handleJavaCommand('dev', process.cwd());
+              if (action === 'test') return await handleJavaCommand('test', process.cwd());
+              if (action === 'build') return await handleJavaCommand('build', process.cwd());
+              return await handleJavaCommand('start', process.cwd());
+            }
+
             if (isNodeProject(projectJson, process.cwd())) {
               if (action === 'dev') return await handleNodeCommand('dev', process.cwd());
               if (action === 'test') return await handleNodeCommand('test', process.cwd());
@@ -4371,14 +4926,17 @@ if (shouldBootstrapCli) {
           }
         }
 
-        // Block module commands for Go projects (module system is Python-only)
+        // Block module commands for npm-level kits without core-backed module support
         if (args[0] === 'add' || (args[0] === 'module' && args[1] === 'add')) {
           const projectJson = readRapidkitProjectJson(process.cwd());
-          if (projectJson?.runtime === 'go' || projectJson?.module_support === false) {
-            console.error(chalk.red('❌ RapidKit modules are not available for Go projects.'));
+          if (projectJson?.module_support === false) {
+            const runtimeLabel = projectJson?.runtime === 'java' ? 'Spring Boot' : 'Go';
+            console.error(
+              chalk.red(`❌ RapidKit modules are not available for ${runtimeLabel} npm-level kits.`)
+            );
             console.error(
               chalk.gray(
-                '   The module system requires Python and is only supported for FastAPI and NestJS projects.'
+                '   The module system requires Python and is currently only supported for FastAPI and NestJS projects.'
               )
             );
             process.exit(1);

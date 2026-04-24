@@ -1,6 +1,6 @@
 {
   "name": "rapidkit",
-  "version": "0.25.7",
+  "version": "0.26.0",
   "type": "module",
   "description": "Official CLI for RapidKit, an open-source workspace platform that standardizes how teams build, scale, and deploy backend services.",
   "keywords": [
@@ -11,6 +11,8 @@
     "create",
     "fastapi",
     "nestjs",
+    "springboot",
+    "spring",
     "gofiber",
     "gogin",
     "backend",
@@ -69,7 +71,7 @@
     "sync:contracts": "node scripts/sync-contracts.mjs",
     "check:contracts": "node scripts/sync-contracts.mjs --check",
     "bundle-size": "npm run build && du -sh dist/ && ls -lh dist/",
-    "analyze": "npm run build && npx vite-bundle-visualizer dist/index.js --open",
+    "analyze": "npm run build && node scripts/analyze-dist.mjs",
     "size-check": "npm run build && size-limit",
     "bench": "npx tsx scripts/benchmarks.ts",
     "quality": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run size-check",

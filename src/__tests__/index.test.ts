@@ -142,7 +142,7 @@ describe('CLI Entry Point', () => {
           npx rapidkit workspace list               List registered workspaces
           npx rapidkit workspace policy show        Show effective workspace policies
           npx rapidkit workspace policy set <k> <v> Update workspace policy values
-          npx rapidkit setup python|node|go [--warm-deps]  Set up runtime (+ optional deps warm-up)
+          npx rapidkit setup python|node|go|java [--warm-deps]  Set up runtime (+ optional deps warm-up)
           npx rapidkit mirror [status|sync|verify|rotate] Registry mirror management
           npx rapidkit cache [status|clear|prune|repair]  Package cache management
 

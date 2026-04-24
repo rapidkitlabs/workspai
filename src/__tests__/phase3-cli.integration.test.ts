@@ -176,6 +176,63 @@ describe('Phase 3 commands - CLI process integration', () => {
     }
   });
 
+  it('syncs nested projects inside a workspace registry entry', () => {
+    const dist = ensureDistBuilt();
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-ws-sync-nested-'));
+    const isolatedHome = path.join(tempDir, 'home');
+    const workspaceName = 'ws-sync-nested';
+    const workspaceDir = path.join(tempDir, workspaceName);
+    const nestedProjectDir = path.join(workspaceDir, 'apps', 'orders-api');
+
+    try {
+      fs.mkdirSync(isolatedHome, { recursive: true });
+
+      const env = {
+        ...process.env,
+        HOME: isolatedHome,
+        USERPROFILE: isolatedHome,
+      };
+
+      const createWorkspace = spawnSync(
+        process.execPath,
+        [dist, 'create', 'workspace', workspaceName, '--yes', '--profile', 'minimal'],
+        {
+          cwd: tempDir,
+          encoding: 'utf8',
+          env,
+        }
+      );
+      expect(createWorkspace.status).toBe(0);
+
+      fs.mkdirSync(path.join(nestedProjectDir, '.rapidkit'), { recursive: true });
+      fs.writeFileSync(
+        path.join(nestedProjectDir, '.rapidkit', 'project.json'),
+        JSON.stringify({ runtime: 'java', kit_name: 'springboot.standard' }, null, 2)
+      );
+      fs.writeFileSync(path.join(nestedProjectDir, 'pom.xml'), '<project />');
+
+      const sync = spawnSync(process.execPath, [dist, 'workspace', 'sync'], {
+        cwd: workspaceDir,
+        encoding: 'utf8',
+        env,
+      });
+      expect(sync.status).toBe(0);
+
+      const list = spawnSync(process.execPath, [dist, 'workspace', 'list'], {
+        cwd: tempDir,
+        encoding: 'utf8',
+        env,
+      });
+
+      expect(list.status).toBe(0);
+      const output = `${list.stdout || ''}\n${list.stderr || ''}`;
+      expect(output).toContain(workspaceName);
+      expect(output).toContain('Projects: 1');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
+  }, 20000);
+
   it('rejects unknown policy rules and invalid boolean values', () => {
     const dist = ensureDistBuilt();
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-ws-policy-invalid-'));
@@ -591,6 +648,157 @@ describe('Phase 3 commands - CLI process integration', () => {
         expect(output).toContain('Strict policy violations prevent running this command');
         expect(output).toContain('toolchain.lock is missing');
       }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
+  }, 20000);
+
+  it('blocks Java lifecycle commands in strict mode when workspace profile is incompatible', () => {
+    const dist = ensureDistBuilt();
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-java-strict-profile-'));
+    const workspaceDir = path.join(tempDir, 'workspace');
+    const projectDir = path.join(workspaceDir, 'java-app');
+
+    try {
+      fs.mkdirSync(path.join(projectDir, '.rapidkit'), { recursive: true });
+      fs.mkdirSync(path.join(workspaceDir, '.rapidkit'), { recursive: true });
+      fs.writeFileSync(path.join(workspaceDir, '.rapidkit-workspace'), '{}');
+      fs.writeFileSync(
+        path.join(workspaceDir, '.rapidkit', 'policies.yml'),
+        [
+          'version: "1.0"',
+          'mode: strict',
+          'dependency_sharing_mode: shared-runtime-caches',
+          'rules:',
+          '  enforce_workspace_marker: true',
+          '  enforce_toolchain_lock: true',
+          '',
+        ].join('\n')
+      );
+      fs.writeFileSync(
+        path.join(workspaceDir, '.rapidkit', 'workspace.json'),
+        JSON.stringify({ profile: 'python-only' }, null, 2)
+      );
+      fs.writeFileSync(
+        path.join(workspaceDir, '.rapidkit', 'toolchain.lock'),
+        JSON.stringify({ runtime: { java: { version: '21.0.7' } } }, null, 2)
+      );
+      fs.writeFileSync(
+        path.join(projectDir, '.rapidkit', 'project.json'),
+        JSON.stringify({ runtime: 'java', kit_name: 'springboot.standard' }, null, 2)
+      );
+      fs.writeFileSync(path.join(projectDir, 'pom.xml'), '<project />');
+
+      const run = spawnSync(process.execPath, [dist, 'dev'], {
+        cwd: projectDir,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
+        },
+      });
+
+      expect(run.status).toBe(1);
+      const output = `${run.stdout || ''}\n${run.stderr || ''}`;
+      expect(output).toContain('Strict policy violations prevent running this command');
+      expect(output).toContain('Workspace profile is "python-only" but this project is not Python');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
+  }, 20000);
+
+  it('blocks lifecycle commands in strict mode when toolchain.lock is malformed', () => {
+    const dist = ensureDistBuilt();
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-lifecycle-invalid-lock-'));
+    const workspaceDir = path.join(tempDir, 'workspace');
+    const projectDir = path.join(workspaceDir, 'java-app');
+
+    try {
+      fs.mkdirSync(path.join(projectDir, '.rapidkit'), { recursive: true });
+      fs.mkdirSync(path.join(workspaceDir, '.rapidkit'), { recursive: true });
+      fs.writeFileSync(path.join(workspaceDir, '.rapidkit-workspace'), '{}');
+      fs.writeFileSync(
+        path.join(workspaceDir, '.rapidkit', 'policies.yml'),
+        [
+          'version: "1.0"',
+          'mode: strict',
+          'dependency_sharing_mode: shared-runtime-caches',
+          'rules:',
+          '  enforce_workspace_marker: true',
+          '  enforce_toolchain_lock: true',
+          '',
+        ].join('\n')
+      );
+      fs.writeFileSync(
+        path.join(workspaceDir, '.rapidkit', 'workspace.json'),
+        JSON.stringify({ profile: 'polyglot' }, null, 2)
+      );
+      fs.writeFileSync(path.join(workspaceDir, '.rapidkit', 'toolchain.lock'), '{ invalid json');
+      fs.writeFileSync(
+        path.join(projectDir, '.rapidkit', 'project.json'),
+        JSON.stringify({ runtime: 'java', kit_name: 'springboot.standard' }, null, 2)
+      );
+
+      const run = spawnSync(process.execPath, [dist, 'dev'], {
+        cwd: projectDir,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
+        },
+      });
+
+      expect(run.status).toBe(1);
+      const output = `${run.stdout || ''}\n${run.stderr || ''}`;
+      expect(output).toContain('Strict policy violations prevent running this command');
+      expect(output).toContain('toolchain.lock is invalid JSON');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
+  }, 20000);
+
+  it('blocks delegated project commands in strict mode when toolchain.lock is malformed', () => {
+    const dist = ensureDistBuilt();
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-delegation-invalid-lock-'));
+    const workspaceDir = path.join(tempDir, 'workspace');
+    const projectDir = path.join(workspaceDir, 'node-app');
+
+    try {
+      fs.mkdirSync(path.join(projectDir, '.rapidkit'), { recursive: true });
+      fs.mkdirSync(path.join(workspaceDir, '.rapidkit'), { recursive: true });
+      fs.writeFileSync(path.join(workspaceDir, '.rapidkit-workspace'), '{}');
+      fs.writeFileSync(
+        path.join(workspaceDir, '.rapidkit', 'policies.yml'),
+        [
+          'version: "1.0"',
+          'mode: strict',
+          'dependency_sharing_mode: shared-runtime-caches',
+          'rules:',
+          '  enforce_workspace_marker: true',
+          '  enforce_toolchain_lock: true',
+          '',
+        ].join('\n')
+      );
+      fs.writeFileSync(
+        path.join(projectDir, '.rapidkit', 'project.json'),
+        JSON.stringify({ runtime: 'node', kit_name: 'nestjs.standard' }, null, 2)
+      );
+      fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'node-app' }));
+      fs.writeFileSync(path.join(workspaceDir, '.rapidkit', 'toolchain.lock'), '{ invalid json');
+
+      const run = spawnSync(process.execPath, [dist, 'lint'], {
+        cwd: projectDir,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
+        },
+      });
+
+      expect(run.status).toBe(1);
+      const output = `${run.stdout || ''}\n${run.stderr || ''}`;
+      expect(output).toContain('Strict policy violations prevent running this command');
+      expect(output).toContain('toolchain.lock is invalid JSON');
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }

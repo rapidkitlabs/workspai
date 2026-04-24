@@ -1,5 +1,6 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { isMockMode } from './openai-client.js';
 
 const execAsync = promisify(exec);
 
@@ -20,6 +21,35 @@ export interface ModuleMetadata {
   framework: 'fastapi' | 'nestjs' | 'both';
   dependencies: string[];
   useCases: string[];
+}
+
+interface PythonModuleShape {
+  id?: string;
+  module_id?: string;
+  name?: string;
+  display_name?: string;
+  category?: string;
+  description?: string;
+  summary?: string;
+  long_description?: string;
+  keywords?: string[];
+  tags?: string[];
+  framework?: unknown;
+  dependencies?: string[];
+  use_cases?: string[];
+  useCases?: string[];
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
+function toPythonModuleShape(value: unknown): PythonModuleShape {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+  return value as PythonModuleShape;
 }
 
 // Fallback hardcoded catalog (used if Python Core not available)
@@ -286,21 +316,23 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 /**
  * Convert Python CLI output to ModuleMetadata
  */
-function parsePythonModule(pyModule: any): ModuleMetadata {
+function parsePythonModule(pyModule: unknown): ModuleMetadata {
+  const moduleShape = toPythonModuleShape(pyModule);
+
   // Use 'name' field directly (with underscores, not dashes)
   // Python Core returns: ai_assistant, api_keys, auth_core, etc.
-  const id = pyModule.name || pyModule.id || pyModule.module_id || '';
+  const id = moduleShape.name || moduleShape.id || moduleShape.module_id || '';
 
   return {
     id,
-    name: pyModule.display_name || pyModule.name || '',
-    category: mapPythonCategory(pyModule.category || 'infrastructure'),
-    description: pyModule.description || pyModule.summary || '',
-    longDescription: pyModule.long_description || pyModule.description || '',
-    keywords: pyModule.keywords || pyModule.tags || [],
-    framework: mapPythonFramework(pyModule.framework),
-    dependencies: pyModule.dependencies || [],
-    useCases: pyModule.use_cases || pyModule.useCases || [],
+    name: moduleShape.display_name || moduleShape.name || '',
+    category: mapPythonCategory(moduleShape.category || 'infrastructure'),
+    description: moduleShape.description || moduleShape.summary || '',
+    longDescription: moduleShape.long_description || moduleShape.description || '',
+    keywords: asStringArray(moduleShape.keywords ?? moduleShape.tags),
+    framework: mapPythonFramework(moduleShape.framework),
+    dependencies: asStringArray(moduleShape.dependencies),
+    useCases: asStringArray(moduleShape.use_cases ?? moduleShape.useCases),
   };
 }
 
@@ -326,7 +358,7 @@ function mapPythonCategory(category: string): ModuleMetadata['category'] {
 /**
  * Map Python framework to TypeScript type
  */
-function mapPythonFramework(framework: any): 'fastapi' | 'nestjs' | 'both' {
+function mapPythonFramework(framework: unknown): 'fastapi' | 'nestjs' | 'both' {
   if (!framework) return 'both';
   if (typeof framework === 'string') {
     if (framework.toLowerCase().includes('fastapi')) return 'fastapi';
@@ -353,7 +385,7 @@ async function fetchModulesFromPythonCore(): Promise<ModuleMetadata[]> {
     const result = JSON.parse(jsonStr);
 
     // Handle different response formats
-    let modules: any[] = [];
+    let modules: unknown[] = [];
     if (Array.isArray(result)) {
       modules = result;
     } else if (result.modules && Array.isArray(result.modules)) {
@@ -363,14 +395,15 @@ async function fetchModulesFromPythonCore(): Promise<ModuleMetadata[]> {
     }
 
     return modules.map(parsePythonModule).filter((m) => m.id && m.name);
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Python Core not available or command failed
-    if (error.code === 'ENOENT') {
+    const execError = error as { code?: string; killed?: boolean; message?: string };
+    if (execError.code === 'ENOENT') {
       console.warn('⚠️  RapidKit Python Core not found in PATH');
-    } else if (error.killed) {
+    } else if (execError.killed) {
       console.warn('⚠️  Python Core command timed out');
     } else {
-      console.warn('⚠️  Failed to fetch modules from Python Core:', error.message);
+      console.warn('⚠️  Failed to fetch modules from Python Core:', execError.message);
     }
     console.warn('   Using fallback module catalog (11 modules)');
     return FALLBACK_MODULE_CATALOG;
@@ -382,6 +415,12 @@ async function fetchModulesFromPythonCore(): Promise<ModuleMetadata[]> {
  */
 export async function getModuleCatalog(): Promise<ModuleMetadata[]> {
   const now = Date.now();
+
+  if (isMockMode()) {
+    cachedModules = FALLBACK_MODULE_CATALOG;
+    lastFetchTime = now;
+    return cachedModules;
+  }
 
   // Return cached if still valid
   if (cachedModules && now - lastFetchTime < CACHE_TTL) {

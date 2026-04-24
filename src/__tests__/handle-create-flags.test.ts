@@ -119,4 +119,27 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
       }
     }
   });
+
+  it('rejects invalid project names for npm-level generators before filesystem writes', async () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
+
+    const springCode = await index.handleCreateOrFallback([
+      'create',
+      'project',
+      'springboot.standard',
+      'bad/name',
+    ]);
+    const goCode = await index.handleCreateOrFallback([
+      'create',
+      'project',
+      'gofiber.standard',
+      'bad/name',
+    ]);
+
+    expect(springCode).toBe(1);
+    expect(goCode).toBe(1);
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(stderrSpy).toHaveBeenCalled();
+  });
 });

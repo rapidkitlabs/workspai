@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import fs from 'fs';
 import { GoRuntimeAdapter } from '../runtime-adapters/go.js';
+import { JavaRuntimeAdapter } from '../runtime-adapters/java.js';
 import { NodeRuntimeAdapter } from '../runtime-adapters/node.js';
 import { PythonRuntimeAdapter } from '../runtime-adapters/python.js';
 import { areRuntimeAdaptersEnabled, getRuntimeAdapter } from '../runtime-adapters/index.js';
 
 const normalizePath = (value: string | undefined): string => (value || '').replace(/\\/g, '/');
+const ORIGINAL_JAVA_HOME = process.env.JAVA_HOME;
 
 describe('Runtime Adapters', () => {
   afterEach(() => {
@@ -19,6 +21,14 @@ describe('Runtime Adapters', () => {
     delete process.env.POETRY_CACHE_DIR;
     delete process.env.GOMODCACHE;
     delete process.env.GOCACHE;
+    delete process.env.MAVEN_OPTS;
+    delete process.env.GRADLE_USER_HOME;
+    delete process.env.RAPIDKIT_GRADLE_NO_DAEMON;
+    if (typeof ORIGINAL_JAVA_HOME === 'undefined') {
+      delete process.env.JAVA_HOME;
+    } else {
+      process.env.JAVA_HOME = ORIGINAL_JAVA_HOME;
+    }
   });
 
   describe('GoRuntimeAdapter', () => {
@@ -221,6 +231,989 @@ describe('Runtime Adapters', () => {
     });
   });
 
+  describe('JavaRuntimeAdapter', () => {
+    it('passes prereq checks in workspace root when Java projects have wrappers', async () => {
+      const run = vi.fn().mockImplementation(async (command: string) => {
+        if (command === 'java') return 0;
+        return 1;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/workspace');
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return (
+          normalized === '/tmp/workspace/.rapidkit-workspace' ||
+          normalized === '/tmp/workspace/services/orders-api/pom.xml' ||
+          normalized === '/tmp/workspace/services/orders-api/mvnw'
+        );
+      });
+      vi.spyOn(fs, 'readdirSync').mockImplementation(((targetPath: fs.PathLike) => {
+        const normalized = normalizePath(String(targetPath));
+        if (normalized === '/tmp/workspace') {
+          return [
+            {
+              name: 'services',
+              isDirectory: () => true,
+            },
+          ] as unknown as fs.Dirent[];
+        }
+        if (normalized === '/tmp/workspace/services') {
+          return [
+            {
+              name: 'orders-api',
+              isDirectory: () => true,
+            },
+          ] as unknown as fs.Dirent[];
+        }
+        if (normalized === '/tmp/workspace/services/orders-api') {
+          return [] as unknown as fs.Dirent[];
+        }
+        return [] as unknown as fs.Dirent[];
+      }) as unknown as typeof fs.readdirSync);
+
+      const result = await adapter.checkPrereqs();
+
+      expect(result.exitCode).toBe(0);
+      expect(run).toHaveBeenCalledWith('java', ['-version'], '/tmp/workspace');
+      expect(run).not.toHaveBeenCalledWith('mvn', ['-version'], '/tmp/workspace');
+      expect(run).not.toHaveBeenCalledWith('gradle', ['--version'], '/tmp/workspace');
+    });
+
+    it('fails prereq checks in workspace root when Maven wrapper is missing and Maven is unavailable', async () => {
+      const run = vi.fn().mockImplementation(async (command: string) => {
+        if (command === 'java') return 0;
+        if (command === 'mvn') return 1;
+        return 0;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/workspace');
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return (
+          normalized === '/tmp/workspace/.rapidkit-workspace' ||
+          normalized === '/tmp/workspace/services/orders-api/pom.xml'
+        );
+      });
+      vi.spyOn(fs, 'readdirSync').mockImplementation(((targetPath: fs.PathLike) => {
+        const normalized = normalizePath(String(targetPath));
+        if (normalized === '/tmp/workspace') {
+          return [
+            {
+              name: 'services',
+              isDirectory: () => true,
+            },
+          ] as unknown as fs.Dirent[];
+        }
+        if (normalized === '/tmp/workspace/services') {
+          return [
+            {
+              name: 'orders-api',
+              isDirectory: () => true,
+            },
+          ] as unknown as fs.Dirent[];
+        }
+        if (normalized === '/tmp/workspace/services/orders-api') {
+          return [] as unknown as fs.Dirent[];
+        }
+        return [] as unknown as fs.Dirent[];
+      }) as unknown as typeof fs.readdirSync);
+
+      const result = await adapter.checkPrereqs();
+
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('Maven is required');
+      expect(run).toHaveBeenCalledWith('mvn', ['-version'], '/tmp/workspace');
+    });
+
+    it('fails prereq checks in workspace root when nested Maven project requires higher Java than installed', async () => {
+      const run = vi.fn().mockImplementation(async (command: string) => {
+        if (command === 'java') return 0;
+        return 1;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(
+        adapter as unknown as {
+          detectInstalledJavaMajor: (command: string, cwd: string) => Promise<number | null>;
+        },
+        'detectInstalledJavaMajor'
+      ).mockResolvedValue(17);
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/workspace');
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return (
+          normalized === '/tmp/workspace/.rapidkit-workspace' ||
+          normalized === '/tmp/workspace/services/orders-api/pom.xml' ||
+          normalized === '/tmp/workspace/services/orders-api/mvnw' ||
+          normalized === '/tmp/workspace/services/payments-api/pom.xml' ||
+          normalized === '/tmp/workspace/services/payments-api/mvnw'
+        );
+      });
+      vi.spyOn(fs, 'readdirSync').mockImplementation(((targetPath: fs.PathLike) => {
+        const normalized = normalizePath(String(targetPath));
+        if (normalized === '/tmp/workspace') {
+          return [{ name: 'services', isDirectory: () => true }] as unknown as fs.Dirent[];
+        }
+        if (normalized === '/tmp/workspace/services') {
+          return [
+            { name: 'orders-api', isDirectory: () => true },
+            { name: 'payments-api', isDirectory: () => true },
+          ] as unknown as fs.Dirent[];
+        }
+        return [] as unknown as fs.Dirent[];
+      }) as unknown as typeof fs.readdirSync);
+      vi.spyOn(fs, 'readFileSync').mockImplementation((p: fs.PathOrFileDescriptor) => {
+        const normalized = normalizePath(String(p));
+        if (normalized === '/tmp/workspace/services/orders-api/pom.xml') {
+          return '<java.version>21</java.version>';
+        }
+        if (normalized === '/tmp/workspace/services/payments-api/pom.xml') {
+          return '<java.version>17</java.version>';
+        }
+        return '';
+      });
+
+      const result = await adapter.checkPrereqs();
+
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('Detected Java 17');
+      expect(result.message).toContain('require Java 21+');
+      expect(result.message).toContain('services/orders-api');
+    });
+
+    it('passes prereq checks in workspace root when all nested Maven projects satisfy installed Java version', async () => {
+      const run = vi.fn().mockImplementation(async (command: string) => {
+        if (command === 'java') return 0;
+        return 1;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(
+        adapter as unknown as {
+          detectInstalledJavaMajor: (command: string, cwd: string) => Promise<number | null>;
+        },
+        'detectInstalledJavaMajor'
+      ).mockResolvedValue(21);
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/workspace');
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return (
+          normalized === '/tmp/workspace/.rapidkit-workspace' ||
+          normalized === '/tmp/workspace/services/orders-api/pom.xml' ||
+          normalized === '/tmp/workspace/services/orders-api/mvnw'
+        );
+      });
+      vi.spyOn(fs, 'readdirSync').mockImplementation(((targetPath: fs.PathLike) => {
+        const normalized = normalizePath(String(targetPath));
+        if (normalized === '/tmp/workspace') {
+          return [{ name: 'services', isDirectory: () => true }] as unknown as fs.Dirent[];
+        }
+        if (normalized === '/tmp/workspace/services') {
+          return [{ name: 'orders-api', isDirectory: () => true }] as unknown as fs.Dirent[];
+        }
+        return [] as unknown as fs.Dirent[];
+      }) as unknown as typeof fs.readdirSync);
+      vi.spyOn(fs, 'readFileSync').mockImplementation((p: fs.PathOrFileDescriptor) => {
+        const normalized = normalizePath(String(p));
+        if (normalized === '/tmp/workspace/services/orders-api/pom.xml') {
+          return '<java.version>21</java.version>';
+        }
+        return '';
+      });
+
+      const result = await adapter.checkPrereqs();
+
+      expect(result.exitCode).toBe(0);
+    });
+
+    it('fails prereq checks when Maven without wrapper does not meet the minimum supported version', async () => {
+      const run = vi.fn().mockImplementation(async (command: string) => {
+        if (command === 'java' || command === 'mvn') return 0;
+        return 1;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+      const checkSystemMavenVersion = vi
+        .spyOn(
+          adapter as unknown as {
+            checkSystemMavenVersion: (
+              cwd: string
+            ) => Promise<{ exitCode: number; message?: string }>;
+          },
+          'checkSystemMavenVersion'
+        )
+        .mockResolvedValue({
+          exitCode: 1,
+          message: 'Maven 3.8.8 detected; Maven 3.9+ is required.',
+        });
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/java-project');
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
+        normalizePath(String(p)).endsWith('/tmp/java-project/pom.xml')
+      );
+      vi.spyOn(fs, 'readFileSync').mockReturnValue('<java.version>21</java.version>');
+
+      const result = await adapter.checkPrereqs();
+
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('Maven 3.8.8 detected');
+      expect(checkSystemMavenVersion).toHaveBeenCalledWith('/tmp/java-project');
+    });
+
+    it('fails prereq checks when detected Java major is below pom.xml requirement', async () => {
+      const run = vi.fn().mockImplementation(async (command: string) => {
+        if (command === 'java' || command === 'mvn') return 0;
+        return 1;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+      vi.spyOn(
+        adapter as unknown as {
+          detectInstalledJavaMajor: (command: string, cwd: string) => Promise<number | null>;
+        },
+        'detectInstalledJavaMajor'
+      ).mockResolvedValue(17);
+      vi.spyOn(
+        adapter as unknown as {
+          checkSystemMavenVersion: (cwd: string) => Promise<{ exitCode: number; message?: string }>;
+        },
+        'checkSystemMavenVersion'
+      ).mockResolvedValue({ exitCode: 0 });
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/java-project');
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
+        normalizePath(String(p)).endsWith('/tmp/java-project/pom.xml')
+      );
+      vi.spyOn(fs, 'readFileSync').mockReturnValue('<java.version>21</java.version>');
+
+      const result = await adapter.checkPrereqs();
+
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('Detected Java 17, but project requires Java 21+');
+    });
+
+    it('runs dependency go-offline for initProject', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      const result = await adapter.initProject('/tmp/java-project');
+
+      expect(result.exitCode).toBe(0);
+      expect(run).toHaveBeenCalledWith(
+        'mvn',
+        ['-B', '-q', '-DskipTests', 'dependency:go-offline'],
+        '/tmp/java-project'
+      );
+    });
+
+    it('uses workspace-shared Maven cache in shared-runtime-caches mode', async () => {
+      process.env.RAPIDKIT_DEP_SHARING_MODE = 'shared-runtime-caches';
+      process.env.RAPIDKIT_WORKSPACE_PATH = '/tmp/workspace';
+
+      const run = vi.fn().mockImplementation(async () => {
+        expect(normalizePath(process.env.MAVEN_OPTS)).toContain(
+          '/tmp/workspace/.rapidkit/cache/java/m2'
+        );
+        return 0;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+
+      const result = await adapter.initProject('/tmp/java-project');
+
+      expect(result.exitCode).toBe(0);
+    });
+
+    it('uses mvnw.cmd on Windows when wrapper is present', async () => {
+      const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/java-project/pom.xml') ||
+          normalized.endsWith('/tmp/java-project/mvnw.cmd')
+          ? true
+          : false;
+      });
+
+      const result = await adapter.initProject('/tmp/java-project');
+
+      expect(result.exitCode).toBe(0);
+      expect(run).toHaveBeenCalledWith(
+        '/tmp/java-project/mvnw.cmd',
+        ['-B', '-q', '-DskipTests', 'dependency:go-offline'],
+        '/tmp/java-project'
+      );
+      platformSpy.mockRestore();
+    });
+
+    it('runs an existing jar directly for start', async () => {
+      delete process.env.JAVA_HOME;
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
+        normalizePath(String(p)).includes('/tmp/java-project/target')
+      );
+      vi.spyOn(fs, 'readdirSync').mockReturnValue(['demo-0.1.0.jar'] as unknown as ReturnType<
+        typeof fs.readdirSync
+      >);
+
+      const result = await adapter.runStart('/tmp/java-project');
+
+      expect(result.exitCode).toBe(0);
+      expect(run).toHaveBeenCalledWith(
+        'java',
+        ['-jar', '/tmp/java-project/target/demo-0.1.0.jar'],
+        '/tmp/java-project'
+      );
+    });
+
+    it('uses JAVA_HOME java binary when PATH java is unavailable', async () => {
+      process.env.JAVA_HOME = '/opt/jdk-21';
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return (
+          normalized.includes('/opt/jdk-21/bin/java') ||
+          normalized.includes('/tmp/java-project/target')
+        );
+      });
+      vi.spyOn(fs, 'readdirSync').mockReturnValue(['demo-0.1.0.jar'] as unknown as ReturnType<
+        typeof fs.readdirSync
+      >);
+
+      const result = await adapter.runStart('/tmp/java-project');
+
+      expect(result.exitCode).toBe(0);
+      expect(normalizePath(run.mock.calls[0][0])).toContain('/opt/jdk-21/bin/java');
+    });
+
+    it('uses gradle wrapper for init/test/build when gradle project is detected', async () => {
+      process.env.RAPIDKIT_GRADLE_NO_DAEMON = '1';
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/gradle-project/build.gradle') ||
+          normalized.endsWith('/tmp/gradle-project/gradlew')
+          ? true
+          : false;
+      });
+      vi.spyOn(fs, 'statSync').mockReturnValue({ mode: 0o755 } as fs.Stats);
+
+      await adapter.initProject('/tmp/gradle-project');
+      await adapter.runTest('/tmp/gradle-project');
+      await adapter.runBuild('/tmp/gradle-project');
+
+      expect(run).toHaveBeenCalledWith(
+        '/tmp/gradle-project/gradlew',
+        ['--no-daemon', 'dependencies'],
+        '/tmp/gradle-project'
+      );
+      expect(run).toHaveBeenCalledWith(
+        '/tmp/gradle-project/gradlew',
+        ['--no-daemon', 'test'],
+        '/tmp/gradle-project'
+      );
+      expect(run).toHaveBeenCalledWith(
+        '/tmp/gradle-project/gradlew',
+        ['--no-daemon', 'bootJar'],
+        '/tmp/gradle-project'
+      );
+    });
+
+    it('uses gradle wrapper without --no-daemon by default in local mode', async () => {
+      delete process.env.CI;
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/gradle-project/build.gradle') ||
+          normalized.endsWith('/tmp/gradle-project/gradlew')
+          ? true
+          : false;
+      });
+      vi.spyOn(fs, 'statSync').mockReturnValue({ mode: 0o755 } as fs.Stats);
+
+      await adapter.initProject('/tmp/gradle-project');
+
+      expect(run).toHaveBeenCalledWith(
+        '/tmp/gradle-project/gradlew',
+        ['dependencies'],
+        '/tmp/gradle-project'
+      );
+    });
+
+    it('repairs non-executable gradlew before running on Unix', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+      const chmodSync = vi.spyOn(fs, 'chmodSync').mockImplementation(() => undefined);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/gradle-project/build.gradle') ||
+          normalized.endsWith('/tmp/gradle-project/gradlew')
+          ? true
+          : false;
+      });
+      let wrapperStats = 0;
+      vi.spyOn(fs, 'statSync').mockImplementation(((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        if (normalized.endsWith('/tmp/gradle-project/gradlew')) {
+          wrapperStats += 1;
+          return { mode: wrapperStats > 1 ? 0o755 : 0o644 } as fs.Stats;
+        }
+        return { mode: 0o755 } as fs.Stats;
+      }) as typeof fs.statSync);
+
+      await adapter.initProject('/tmp/gradle-project');
+
+      expect(chmodSync).toHaveBeenCalledWith('/tmp/gradle-project/gradlew', 0o755);
+      expect(run).toHaveBeenCalledWith(
+        '/tmp/gradle-project/gradlew',
+        ['dependencies'],
+        '/tmp/gradle-project'
+      );
+    });
+
+    it('falls back to sh wrapper invocation when wrapper permission repair fails', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+      vi.spyOn(fs, 'chmodSync').mockImplementation(() => {
+        throw new Error('chmod denied');
+      });
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/gradle-project/build.gradle') ||
+          normalized.endsWith('/tmp/gradle-project/gradlew')
+          ? true
+          : false;
+      });
+      vi.spyOn(fs, 'statSync').mockImplementation(((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        if (normalized.endsWith('/tmp/gradle-project/gradlew')) {
+          return { mode: 0o644 } as fs.Stats;
+        }
+        return { mode: 0o755 } as fs.Stats;
+      }) as typeof fs.statSync);
+
+      await adapter.initProject('/tmp/gradle-project');
+
+      expect(run).toHaveBeenCalledWith(
+        'sh',
+        ['/tmp/gradle-project/gradlew', 'dependencies'],
+        '/tmp/gradle-project'
+      );
+    });
+
+    it('uses shared Gradle cache in shared-runtime-caches mode', async () => {
+      process.env.RAPIDKIT_DEP_SHARING_MODE = 'shared-runtime-caches';
+      process.env.RAPIDKIT_WORKSPACE_PATH = '/tmp/workspace';
+
+      const run = vi.fn().mockImplementation(async () => {
+        expect(normalizePath(process.env.GRADLE_USER_HOME)).toContain(
+          '/tmp/workspace/.rapidkit/cache/java/gradle'
+        );
+        return 0;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/gradle-project/build.gradle') ||
+          normalized.endsWith('/tmp/gradle-project/gradlew')
+          ? true
+          : false;
+      });
+
+      const result = await adapter.initProject('/tmp/gradle-project');
+
+      expect(result.exitCode).toBe(0);
+      expect(process.env.GRADLE_USER_HOME).toBeUndefined();
+    });
+
+    it('uses gradlew.bat on Windows when wrapper is present', async () => {
+      const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+      const expectedArgs = process.env.CI === 'true' ? ['--no-daemon', 'bootJar'] : ['bootJar'];
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/gradle-project/build.gradle') ||
+          normalized.endsWith('/tmp/gradle-project/gradlew.bat')
+          ? true
+          : false;
+      });
+
+      const result = await adapter.runBuild('/tmp/gradle-project');
+
+      expect(result.exitCode).toBe(0);
+      expect(run).toHaveBeenCalledWith(
+        '/tmp/gradle-project/gradlew.bat',
+        expectedArgs,
+        '/tmp/gradle-project'
+      );
+      platformSpy.mockRestore();
+    });
+
+    it('starts from build/libs when only gradle jar exists', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.includes('/tmp/gradle-project/build/libs');
+      });
+      vi.spyOn(fs, 'readdirSync').mockReturnValue(['demo-0.1.0.jar'] as unknown as ReturnType<
+        typeof fs.readdirSync
+      >);
+
+      const result = await adapter.runStart('/tmp/gradle-project');
+
+      expect(result.exitCode).toBe(0);
+      expect(run).toHaveBeenCalledWith(
+        'java',
+        ['-jar', '/tmp/gradle-project/build/libs/demo-0.1.0.jar'],
+        '/tmp/gradle-project'
+      );
+    });
+
+    it('accepts uppercase JAR extension when resolving build output', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.includes('/tmp/java-project/target');
+      });
+      vi.spyOn(fs, 'readdirSync').mockReturnValue(['demo-0.1.0.JAR'] as unknown as ReturnType<
+        typeof fs.readdirSync
+      >);
+
+      const result = await adapter.runStart('/tmp/java-project');
+
+      expect(result.exitCode).toBe(0);
+      expect(run).toHaveBeenCalledWith(
+        'java',
+        ['-jar', '/tmp/java-project/target/demo-0.1.0.JAR'],
+        '/tmp/java-project'
+      );
+    });
+
+    it('returns a clear message when Java build fails because pom.xml or build.gradle is invalid', async () => {
+      const run = vi.fn().mockResolvedValue(2);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/java-project/pom.xml');
+      });
+
+      const result = await adapter.runBuild('/tmp/java-project');
+
+      expect(result.exitCode).toBe(2);
+      expect(result.message).toContain(
+        'Java build failed. Verify pom.xml/build.gradle syntax and dependencies'
+      );
+    });
+
+    it('returns a clear message when no runnable jar is produced after a successful build', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/java-project/pom.xml');
+      });
+
+      const result = await adapter.runStart('/tmp/java-project');
+
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('no runnable JAR was found');
+      expect(run).toHaveBeenCalledWith('mvn', ['-DskipTests', 'package'], '/tmp/java-project');
+    });
+
+    it('falls back to "java" when JAVA_HOME is set but candidate binary is missing', async () => {
+      process.env.JAVA_HOME = '/opt/missing-jdk';
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/java-project');
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/java-project/pom.xml');
+        // /opt/missing-jdk/bin/java → false
+      });
+      vi.spyOn(fs, 'readFileSync').mockReturnValue('<java.version>21</java.version>');
+      vi.spyOn(
+        adapter as unknown as {
+          detectInstalledJavaMajor: (cmd: string, cwd: string) => Promise<number | null>;
+        },
+        'detectInstalledJavaMajor'
+      ).mockResolvedValue(21);
+      vi.spyOn(
+        adapter as unknown as {
+          checkSystemMavenVersion: (cwd: string) => Promise<{ exitCode: number }>;
+        },
+        'checkSystemMavenVersion'
+      ).mockResolvedValue({ exitCode: 0 });
+
+      const result = await adapter.checkPrereqs();
+
+      expect(result.exitCode).toBe(0);
+      expect(run).toHaveBeenCalledWith('java', ['-version'], '/tmp/java-project');
+    });
+
+    it('returns parseMavenVersion null for null/undefined/garbage input', () => {
+      const adapter = new JavaRuntimeAdapter(vi.fn());
+      const parseMavenVersion = (
+        adapter as unknown as {
+          parseMavenVersion: (raw: string | null | undefined) => [number, number, number] | null;
+        }
+      ).parseMavenVersion.bind(adapter);
+
+      expect(parseMavenVersion(null)).toBeNull();
+      expect(parseMavenVersion(undefined)).toBeNull();
+      expect(parseMavenVersion('not a maven version')).toBeNull();
+    });
+
+    it('parses valid Apache Maven version string', () => {
+      const adapter = new JavaRuntimeAdapter(vi.fn());
+      const parseMavenVersion = (
+        adapter as unknown as {
+          parseMavenVersion: (raw: string | null | undefined) => [number, number, number] | null;
+        }
+      ).parseMavenVersion.bind(adapter);
+
+      expect(parseMavenVersion('Apache Maven 3.9.9 (abc123)')).toEqual([3, 9, 9]);
+      expect(parseMavenVersion('\nApache Maven 4.0.0\n')).toEqual([4, 0, 0]);
+    });
+
+    it('compares Maven versions with isMavenVersionAtLeast correctly', () => {
+      const adapter = new JavaRuntimeAdapter(vi.fn());
+      const check = (
+        adapter as unknown as {
+          isMavenVersionAtLeast: (
+            v: [number, number, number],
+            min: [number, number, number]
+          ) => boolean;
+        }
+      ).isMavenVersionAtLeast.bind(adapter);
+
+      expect(check([3, 9, 9], [3, 9, 0])).toBe(true);
+      expect(check([3, 8, 9], [3, 9, 0])).toBe(false);
+      expect(check([4, 0, 0], [3, 9, 0])).toBe(true);
+      expect(check([3, 9, 0], [3, 9, 0])).toBe(true);
+    });
+
+    it('falls back to sh for mvnw when chmod fails', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+      vi.spyOn(fs, 'chmodSync').mockImplementation(() => {
+        throw new Error('chmod denied');
+      });
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return (
+          normalized.endsWith('/tmp/java-project/pom.xml') ||
+          normalized.endsWith('/tmp/java-project/mvnw')
+        );
+      });
+      vi.spyOn(fs, 'statSync').mockReturnValue({ mode: 0o644 } as fs.Stats);
+
+      await adapter.initProject('/tmp/java-project');
+
+      expect(run).toHaveBeenCalledWith(
+        'sh',
+        ['/tmp/java-project/mvnw', '-B', '-q', '-DskipTests', 'dependency:go-offline'],
+        '/tmp/java-project'
+      );
+    });
+
+    it('falls back to system gradle command when no gradlew is present', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/gradle-project/build.gradle');
+      });
+
+      await adapter.initProject('/tmp/gradle-project');
+
+      expect(run).toHaveBeenCalledWith(
+        'gradle',
+        expect.arrayContaining(['dependencies']),
+        '/tmp/gradle-project'
+      );
+    });
+
+    it('uses Maven spring-boot:run for runDev on Maven project', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/java-project/pom.xml');
+      });
+
+      await adapter.runDev('/tmp/java-project');
+
+      expect(run).toHaveBeenCalledWith('mvn', ['spring-boot:run'], '/tmp/java-project');
+    });
+
+    it('uses Gradle bootRun for runDev on Gradle project', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return (
+          normalized.endsWith('/tmp/gradle-project/build.gradle') ||
+          normalized.endsWith('/tmp/gradle-project/gradlew')
+        );
+      });
+      vi.spyOn(fs, 'statSync').mockReturnValue({ mode: 0o755 } as fs.Stats);
+
+      await adapter.runDev('/tmp/gradle-project');
+
+      expect(run).toHaveBeenCalledWith(
+        '/tmp/gradle-project/gradlew',
+        expect.arrayContaining(['bootRun']),
+        '/tmp/gradle-project'
+      );
+    });
+
+    it('skips inaccessible directories in discoverWorkspaceJavaProjects without crashing', async () => {
+      const run = vi.fn().mockImplementation(async (command: string) => {
+        if (command === 'java' || command === 'mvn') return 0;
+        return 1;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+      vi.spyOn(
+        adapter as unknown as {
+          checkSystemMavenVersion: (cwd: string) => Promise<{ exitCode: number }>;
+        },
+        'checkSystemMavenVersion'
+      ).mockResolvedValue({ exitCode: 0 });
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/workspace');
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        return normalizePath(String(p)) === '/tmp/workspace/.rapidkit-workspace';
+      });
+      vi.spyOn(fs, 'readdirSync').mockImplementation(((targetPath: fs.PathLike) => {
+        const normalized = normalizePath(String(targetPath));
+        if (normalized === '/tmp/workspace') {
+          return [{ name: 'protected', isDirectory: () => true }] as unknown as fs.Dirent[];
+        }
+        throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+      }) as unknown as typeof fs.readdirSync);
+
+      const result = await adapter.checkPrereqs();
+
+      // Should not throw; inaccessible dir is silently skipped
+      expect(result).toHaveProperty('exitCode');
+    });
+
+    it('discoverWorkspaceJavaProjects skips non-directory and excluded-name entries', async () => {
+      const run = vi.fn().mockImplementation(async (command: string) => {
+        if (command === 'java' || command === 'mvn') return 0;
+        return 1;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+      vi.spyOn(
+        adapter as unknown as {
+          checkSystemMavenVersion: (cwd: string) => Promise<{ exitCode: number }>;
+        },
+        'checkSystemMavenVersion'
+      ).mockResolvedValue({ exitCode: 0 });
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/workspace');
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        return normalizePath(String(p)) === '/tmp/workspace/.rapidkit-workspace';
+      });
+      vi.spyOn(fs, 'readdirSync').mockImplementation(((targetPath: fs.PathLike) => {
+        const normalized = normalizePath(String(targetPath));
+        if (normalized === '/tmp/workspace') {
+          return [
+            { name: 'README.md', isDirectory: () => false },
+            { name: 'node_modules', isDirectory: () => true },
+            { name: '.git', isDirectory: () => true },
+            { name: 'target', isDirectory: () => true },
+          ] as unknown as fs.Dirent[];
+        }
+        return [] as unknown as fs.Dirent[];
+      }) as unknown as typeof fs.readdirSync);
+
+      const result = await adapter.checkPrereqs();
+
+      // None of the excluded entries should produce a Java project discovery
+      expect(run).not.toHaveBeenCalledWith('gradle', expect.anything(), expect.anything());
+      expect(result).toHaveProperty('exitCode');
+    });
+
+    it('reports JAVA_HOME version mismatch via release file when live java is newer', async () => {
+      process.env.JAVA_HOME = '/opt/jdk-17';
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/java-project');
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return (
+          normalized.endsWith('/tmp/java-project/pom.xml') ||
+          normalized.endsWith('/opt/jdk-17/release')
+        );
+      });
+      vi.spyOn(fs, 'readFileSync').mockImplementation(((p: fs.PathOrFileDescriptor) => {
+        const normalized = normalizePath(String(p));
+        if (normalized.endsWith('/tmp/java-project/pom.xml'))
+          return '<java.version>21</java.version>';
+        if (normalized.endsWith('/opt/jdk-17/release'))
+          return 'JAVA_VERSION="17.0.9"\nOS_ARCH="amd64"';
+        return '';
+      }) as typeof fs.readFileSync);
+      vi.spyOn(
+        adapter as unknown as {
+          detectInstalledJavaMajor: (cmd: string, cwd: string) => Promise<number | null>;
+        },
+        'detectInstalledJavaMajor'
+      ).mockResolvedValue(21);
+
+      const result = await adapter.checkPrereqs();
+
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('Detected JAVA_HOME version 17');
+      expect(result.message).toContain('requires Java 21+');
+    });
+
+    it('passes checkPrereqs via maven system probe when no project file detected', async () => {
+      const run = vi.fn().mockImplementation(async (command: string) => {
+        if (command === 'java' || command === 'mvn') return 0;
+        return 1;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+      vi.spyOn(
+        adapter as unknown as {
+          checkSystemMavenVersion: (cwd: string) => Promise<{ exitCode: number }>;
+        },
+        'checkSystemMavenVersion'
+      ).mockResolvedValue({ exitCode: 0 });
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/generic-project');
+      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+      const result = await adapter.checkPrereqs();
+
+      expect(result.exitCode).toBe(0);
+      expect(run).toHaveBeenCalledWith('mvn', ['-version'], '/tmp/generic-project');
+    });
+
+    it('passes checkPrereqs via gradle system probe when maven is unavailable', async () => {
+      const run = vi.fn().mockImplementation(async (command: string) => {
+        if (command === 'java' || command === 'gradle') return 0;
+        return 1;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/generic-project');
+      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+      const result = await adapter.checkPrereqs();
+
+      expect(result.exitCode).toBe(0);
+      expect(run).toHaveBeenCalledWith('gradle', ['--version'], '/tmp/generic-project');
+    });
+
+    it('fails checkPrereqs with helpful message when neither maven nor gradle is available', async () => {
+      const run = vi.fn().mockImplementation(async (command: string) => {
+        if (command === 'java') return 0;
+        return 1;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(process, 'cwd').mockReturnValue('/tmp/generic-project');
+      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+
+      const result = await adapter.checkPrereqs();
+
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('Neither Maven nor Gradle');
+    });
+
+    it('runBuildTool propagates thrown exception as structured error message', async () => {
+      const run = vi.fn().mockRejectedValue(new Error('spawn ENOENT: mvn not found'));
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
+        normalizePath(String(p)).endsWith('/tmp/java-project/pom.xml')
+      );
+
+      const result = await adapter.runBuild('/tmp/java-project');
+
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('Java command execution failed');
+      expect(result.message).toContain('spawn ENOENT');
+    });
+
+    it('runStart returns build failure immediately when runBuild returns non-zero', async () => {
+      const run = vi.fn().mockImplementation(async (command: string) => {
+        if (command === 'java') return 0;
+        return 2;
+      });
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return normalized.endsWith('/tmp/java-project/pom.xml');
+      });
+      vi.spyOn(fs, 'readdirSync').mockReturnValue(
+        [] as unknown as ReturnType<typeof fs.readdirSync>
+      );
+
+      const result = await adapter.runStart('/tmp/java-project');
+
+      expect(result.exitCode).toBe(2);
+    });
+
+    it('warmSetupCache returns error message when mkdirSync throws', async () => {
+      const adapter = new JavaRuntimeAdapter(vi.fn());
+      vi.spyOn(fs, 'mkdirSync').mockImplementation(() => {
+        throw new Error('ENOENT: no such file');
+      });
+
+      const result = await adapter.warmSetupCache('/tmp/java-project');
+
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('Failed to prepare Java cache directories');
+    });
+
+    it('restores pre-existing MAVEN_OPTS and GRADLE_USER_HOME after cache env wrapper', async () => {
+      process.env.MAVEN_OPTS = '-Xmx512m';
+      process.env.GRADLE_USER_HOME = '/original/gradle';
+
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
+        normalizePath(String(p)).endsWith('/tmp/java-project/pom.xml')
+      );
+
+      await adapter.initProject('/tmp/java-project');
+
+      expect(process.env.MAVEN_OPTS).toBe('-Xmx512m');
+      expect(process.env.GRADLE_USER_HOME).toBe('/original/gradle');
+    });
+  });
+
   describe('NodeRuntimeAdapter', () => {
     it('uses npm install by default for initProject', async () => {
       const run = vi.fn().mockResolvedValue(0);
@@ -392,7 +1385,28 @@ describe('Runtime Adapters', () => {
       expect(adapter.runtime).toBe('node');
       const result = await adapter.initProject('/tmp/project');
       expect(result.exitCode).toBe(0);
-      expect(runCommandInCwd).toHaveBeenCalledWith('npm', ['install'], '/tmp/project');
+      expect(runCommandInCwd).toHaveBeenCalledWith(
+        'npm',
+        ['install', '--prefer-offline'],
+        '/tmp/project'
+      );
+    });
+
+    it('returns java adapter from factory', async () => {
+      const runCommandInCwd = vi.fn().mockResolvedValue(0);
+      const adapter = getRuntimeAdapter('java', {
+        runCommandInCwd,
+        runCoreRapidkit: vi.fn().mockResolvedValue(0),
+      });
+
+      expect(adapter.runtime).toBe('java');
+      const result = await adapter.initProject('/tmp/project');
+      expect(result.exitCode).toBe(0);
+      expect(runCommandInCwd).toHaveBeenCalledWith(
+        'mvn',
+        ['-B', '-q', '-DskipTests', 'dependency:go-offline'],
+        '/tmp/project'
+      );
     });
   });
 });

@@ -165,51 +165,68 @@ export async function syncWorkspaceProjects(workspacePath: string, silent = fals
       workspace.projects = [];
     }
 
-    // Scan workspace directory for projects
-    const entries = await fs.readdir(workspacePath, { withFileTypes: true });
+    // Scan workspace directory recursively for projects
     let addedCount = 0;
     let skippedCount = 0;
 
-    for (const entry of entries) {
-      if (entry.isDirectory() && !entry.name.startsWith('.')) {
-        const projectPath = normalizeRegistryPath(path.join(workspacePath, entry.name));
+    const queue = [workspacePath];
+    const visited = new Set<string>();
+    while (queue.length > 0) {
+      const currentPath = queue.shift();
+      if (!currentPath) continue;
+      if (visited.has(currentPath)) continue;
+      visited.add(currentPath);
 
-        // Check for either context.json or project.json (different rapidkit versions)
+      const entries = await fs.readdir(currentPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name.startsWith('.')) {
+          continue;
+        }
+        if (
+          ['node_modules', 'dist', 'build', 'target', 'coverage', 'htmlcov'].includes(entry.name)
+        ) {
+          continue;
+        }
+
+        const rawProjectPath = path.join(currentPath, entry.name);
+        const projectPath = normalizeRegistryPath(rawProjectPath);
+
         const contextFile = path.join(projectPath, '.rapidkit', 'context.json');
         const projectFile = path.join(projectPath, '.rapidkit', 'project.json');
 
-        // Check if this is a RapidKit project
         try {
           let isRapidkitProject = false;
           try {
             await fs.access(contextFile);
             isRapidkitProject = true;
           } catch {
-            // Try project.json instead
             await fs.access(projectFile);
             isRapidkitProject = true;
           }
 
           if (isRapidkitProject) {
-            // Check if already registered
+            const projectName = path.basename(projectPath);
             const exists = workspace.projects.some(
-              (p) => p.path === projectPath || p.name === entry.name
+              (p) => p.path === projectPath || p.name === projectName
             );
 
             if (!exists) {
               workspace.projects.push({
-                name: entry.name,
+                name: projectName,
                 path: projectPath,
               });
               addedCount++;
-              if (!silent) console.log(`✔ Added: ${entry.name}`);
+              if (!silent) console.log(`✔ Added: ${path.relative(workspacePath, projectPath)}`);
             } else {
               skippedCount++;
             }
+            continue;
           }
         } catch {
-          // Not a RapidKit project, skip
+          // Not a RapidKit project, continue recursion.
         }
+
+        queue.push(rawProjectPath);
       }
     }
 
@@ -306,6 +323,15 @@ export async function createWorkspace(
       JSON.stringify(config, null, 2)
     );
 
+    const { syncWorkspaceFoundationFiles } = await import('./create.js');
+    await syncWorkspaceFoundationFiles(workspacePath, {
+      workspaceName: options.name,
+      installMethod: 'venv',
+      writeMarker: true,
+      writeGitignore: false,
+      onlyIfMissing: true,
+    });
+
     // Create the main rapidkit CLI script
     const cliScript = generateCLIScript();
     await fs.writeFile(path.join(workspacePath, 'rapidkit'), cliScript);
@@ -386,8 +412,11 @@ ${workspacePath}/
   ├── rapidkit            # Local CLI wrapper
   ├── rapidkit.cmd        # Windows local CLI wrapper
   ├── .rapidkit/          # Workspace configuration
-  │   ├── config.json     # Workspace settings
-  │   └── templates/      # Project templates
+  │   ├── workspace.json  # Workspace manifest
+  │   ├── toolchain.lock  # Runtime pinning
+  │   ├── policies.yml    # Enforcement policy
+  │   ├── cache-config.yml# Cache policy
+  │   └── config.json     # Legacy compatibility metadata
   └── README.md
 
 ${chalk.bold('🚀 Get started:')}
@@ -398,8 +427,11 @@ ${chalk.bold('🚀 Get started:')}
   ${chalk.cyan('npx rapidkit dev')}
 
 ${chalk.bold('📦 Available templates:')}
-  fastapi   - FastAPI + Python (default)
-  nestjs    - NestJS + TypeScript
+  fastapi      - FastAPI + Python
+  nestjs       - NestJS + TypeScript
+  springboot   - Spring Boot + Java
+  gofiber      - Go Fiber
+  gogin        - Go Gin
 
 ${chalk.bold('📚 Commands:')}
   npx rapidkit <name> --template <type>   Create a new project
@@ -440,10 +472,14 @@ find_project_root() {
     return 1
 }
 
-# Check if we're in a workspace (has .rapidkit/config.json with type=workspace)
+# Check if we're in a workspace (modern marker first, legacy config fallback)
 find_workspace_root() {
     local dir="$PWD"
     while [[ "$dir" != "/" ]]; do
+    if [[ -f "$dir/.rapidkit-workspace" ]]; then
+      echo "$dir"
+      return 0
+    fi
         if [[ -f "$dir/.rapidkit/config.json" ]]; then
             if grep -q '"type": "workspace"' "$dir/.rapidkit/config.json" 2>/dev/null; then
                 echo "$dir"
@@ -502,14 +538,17 @@ print_create_help() {
     echo -e "\${BOLD}Usage:\${NC} rapidkit create <project-name> [options]"
     echo ""
     echo -e "\${BOLD}Options:\${NC}"
-    echo "  -t, --template <name>   Template to use (fastapi, nestjs)"
+    echo "  -t, --template <name>   Template to use (fastapi, nestjs, springboot, gofiber, gogin)"
     echo "  -y, --yes               Skip prompts, use defaults"
     echo "  --skip-git              Skip git initialization"
     echo "  --skip-install          Skip dependency installation"
     echo ""
     echo -e "\${BOLD}Templates:\${NC}"
-    echo "  fastapi    FastAPI + Python (default)"
-    echo "  nestjs     NestJS + TypeScript"
+    echo "  fastapi      FastAPI + Python (default)"
+    echo "  nestjs       NestJS + TypeScript"
+    echo "  springboot   Spring Boot + Java"
+    echo "  gofiber      Go Fiber"
+    echo "  gogin        Go Gin"
     echo ""
     echo -e "\${BOLD}Examples:\${NC}"
     echo -e "  \${CYAN}rapidkit create my-api\${NC}"
@@ -564,9 +603,9 @@ cmd_create() {
     done
 
     # Validate template
-    if [[ "$template" != "fastapi" && "$template" != "nestjs" ]]; then
+    if [[ "$template" != "fastapi" && "$template" != "nestjs" && "$template" != "springboot" && "$template" != "spring" && "$template" != "gofiber" && "$template" != "gogin" && "$template" != "go" && "$template" != "fiber" && "$template" != "gin" && "$template" != "java" ]]; then
         echo -e "\${RED}❌ Invalid template: $template\${NC}"
-        echo -e "Available templates: fastapi, nestjs"
+      echo -e "Available templates: fastapi, nestjs, springboot, gofiber, gogin"
         exit 1
     fi
 
@@ -601,14 +640,19 @@ cmd_create() {
     echo -e "\${BLUE}\${BOLD}🚀 Creating $template project: $project_name\${NC}"
     echo ""
 
-    # Use Node.js generator script
-    local generator_script="$workspace_root/.rapidkit/generator.js"
-    
-    if [[ -f "$generator_script" ]]; then
-        node "$generator_script" "$project_path" "$template" "$yes_flag" "$skip_git" "$skip_install"
+    local normalized_template="$template"
+    case "$template" in
+      fastapi) normalized_template="fastapi.standard" ;;
+      nestjs) normalized_template="nestjs.standard" ;;
+      spring|springboot|java) normalized_template="springboot.standard" ;;
+      go|fiber|gofiber) normalized_template="gofiber.standard" ;;
+      gin|gogin) normalized_template="gogin.standard" ;;
+    esac
+
+    if command -v rapidkit >/dev/null 2>&1; then
+      rapidkit create project "$normalized_template" "$project_name" $yes_flag $skip_git $skip_install
     else
-        echo -e "\${RED}❌ Generator script not found\${NC}"
-        exit 1
+      npx rapidkit create project "$normalized_template" "$project_name" $yes_flag $skip_git $skip_install
     fi
 }
 

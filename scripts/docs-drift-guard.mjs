@@ -7,7 +7,7 @@ const readme = fs.readFileSync(readmePath, 'utf8');
 
 const requiredSnippets = [
   'rapidkit doctor workspace',
-  'rapidkit setup <python|node|go> [--warm-deps]',
+  'rapidkit setup <python|node|go|java> [--warm-deps]',
   'rapidkit workspace list',
   'rapidkit cache <status|clear|prune|repair>',
   'rapidkit mirror <status|sync|verify|rotate>',

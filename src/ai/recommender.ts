@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getModuleCatalog, type ModuleMetadata } from './module-catalog.js';
-import { generateEmbedding } from './openai-client.js';
+import { generateEmbedding, isMockMode } from './openai-client.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +25,30 @@ export interface RecommendationResult {
 }
 
 let embeddingsData: ModuleEmbeddingData | null = null;
+const mockModuleEmbeddings = new Map<string, number[]>();
+
+function moduleEmbeddingText(module: ModuleMetadata): string {
+  return [
+    module.name,
+    module.description,
+    module.longDescription,
+    ...module.keywords,
+    ...module.useCases,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+async function getMockModuleEmbedding(module: ModuleMetadata): Promise<number[]> {
+  const cached = mockModuleEmbeddings.get(module.id);
+  if (cached) {
+    return cached;
+  }
+
+  const embedding = await generateEmbedding(moduleEmbeddingText(module));
+  mockModuleEmbeddings.set(module.id, embedding);
+  return embedding;
+}
 
 /**
  * Load pre-generated module embeddings from data file
@@ -68,7 +92,11 @@ export function loadEmbeddings(): ModuleEmbeddingData {
     embeddingsData = parsed;
   }
 
-  return embeddingsData!;
+  if (!embeddingsData) {
+    throw new Error('failed to load embeddings data');
+  }
+
+  return embeddingsData;
 }
 
 /**
@@ -119,14 +147,30 @@ export async function recommendModules(
   query: string,
   topK: number = 5
 ): Promise<RecommendationResult[]> {
-  // Load pre-generated embeddings
-  const embeddings = loadEmbeddings();
-
   // Get dynamic module catalog
   const catalog = await getModuleCatalog();
 
   // Generate embedding for user query
   const queryEmbedding = await generateEmbedding(query);
+
+  if (isMockMode()) {
+    const scores = await Promise.all(
+      catalog.map(async (module) => {
+        const moduleEmbedding = await getMockModuleEmbedding(module);
+        return {
+          module,
+          score: cosineSimilarity(queryEmbedding, moduleEmbedding),
+          reason: generateReason(module, query),
+        };
+      })
+    );
+
+    scores.sort((a, b) => b.score - a.score);
+    return scores.slice(0, topK);
+  }
+
+  // Load pre-generated embeddings
+  const embeddings = loadEmbeddings();
 
   // Calculate similarity scores for all modules
   const scores: RecommendationResult[] = embeddings.modules

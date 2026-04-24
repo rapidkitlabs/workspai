@@ -20,6 +20,17 @@ import {
 } from '../ai/embeddings-manager.js';
 import { logger } from '../logger.js';
 
+function normalizeError(error: unknown): { message: string; code?: string } {
+  if (error && typeof error === 'object') {
+    const maybeError = error as { message?: unknown; code?: unknown };
+    return {
+      message: typeof maybeError.message === 'string' ? maybeError.message : String(error),
+      code: typeof maybeError.code === 'string' ? maybeError.code : undefined,
+    };
+  }
+  return { message: String(error) };
+}
+
 export function registerAICommands(program: Command): void {
   const ai = program.command('ai').description('AI-powered features');
 
@@ -186,13 +197,14 @@ export function registerAICommands(program: Command): void {
             console.log(chalk.gray('\nNo modules selected\n'));
           }
         }
-      } catch (error: any) {
-        logger.error('\n❌ Error:', error.message);
+      } catch (error: unknown) {
+        const normalized = normalizeError(error);
+        logger.error('\n❌ Error:', normalized.message);
 
-        if (error.code === 'invalid_api_key') {
+        if (normalized.code === 'invalid_api_key') {
           console.log(chalk.yellow('\n💡 Your API key may be invalid or expired'));
           console.log(chalk.cyan('   Update it: rapidkit config set-api-key\n'));
-        } else if (error.message.includes('embeddings file not found')) {
+        } else if (normalized.message.includes('embeddings file not found')) {
           console.log(chalk.yellow('\n💡 Module embeddings not generated yet'));
           console.log(chalk.cyan('   Generate them (one-time):'));
           console.log(chalk.white('   cd rapidkit-npm'));
@@ -273,8 +285,9 @@ export function registerAICommands(program: Command): void {
         }
 
         process.exit(success ? 0 : 1);
-      } catch (error: any) {
-        logger.error('Failed to generate embeddings:', error.message);
+      } catch (error: unknown) {
+        const normalized = normalizeError(error);
+        logger.error('Failed to generate embeddings:', normalized.message);
         process.exit(1);
       }
     });
@@ -298,8 +311,9 @@ export function registerAICommands(program: Command): void {
         // Update embeddings
         const success = await updateEmbeddings();
         process.exit(success ? 0 : 1);
-      } catch (error: any) {
-        logger.error('Failed to update embeddings:', error.message);
+      } catch (error: unknown) {
+        const normalized = normalizeError(error);
+        logger.error('Failed to update embeddings:', normalized.message);
         process.exit(1);
       }
     });

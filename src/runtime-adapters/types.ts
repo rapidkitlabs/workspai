@@ -1,4 +1,4 @@
-export type RuntimeName = 'python' | 'node' | 'go';
+export type RuntimeName = 'python' | 'node' | 'go' | 'java';
 
 export type CommandResult = {
   exitCode: number;

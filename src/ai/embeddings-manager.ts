@@ -31,6 +31,11 @@ export interface EmbeddingsInfo {
   generatedAt: string | null;
 }
 
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 /**
  * Get possible paths for embeddings file
  */
@@ -164,26 +169,28 @@ export async function generateModuleEmbeddings(
       );
 
       return true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       spinner.fail('Failed to generate embeddings');
 
-      if (error.message?.includes('429')) {
+      const message = errorMessage(error);
+
+      if (message.includes('429')) {
         console.log(chalk.red('\n❌ OpenAI API quota exceeded'));
         console.log(
           chalk.yellow('Please check your billing: https://platform.openai.com/account/billing\n')
         );
-      } else if (error.message?.includes('401')) {
+      } else if (message.includes('401')) {
         console.log(chalk.red('\n❌ Invalid API key'));
         console.log(chalk.yellow('Please set a valid API key:'));
         console.log(chalk.white('  rapidkit config set-api-key\n'));
       } else {
-        console.log(chalk.red(`\n❌ Error: ${error.message}\n`));
+        console.log(chalk.red(`\n❌ Error: ${message}\n`));
       }
 
       return false;
     }
-  } catch (error: any) {
-    console.log(chalk.red(`\n❌ Failed to generate embeddings: ${error.message}\n`));
+  } catch (error: unknown) {
+    console.log(chalk.red(`\n❌ Failed to generate embeddings: ${errorMessage(error)}\n`));
     return false;
   }
 }
@@ -255,5 +262,9 @@ export async function updateEmbeddings(): Promise<boolean> {
   console.log(chalk.gray(`Current: ${info.moduleCount} modules`));
   console.log(chalk.gray(`Generated: ${info.generatedAt || 'unknown'}\n`));
 
-  return await generateModuleEmbeddings(true, info.path!);
+  if (!info.path) {
+    return false;
+  }
+
+  return await generateModuleEmbeddings(true, info.path);
 }
