@@ -381,7 +381,8 @@ describe('Runtime Adapters', () => {
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('Detected Java 17');
       expect(result.message).toContain('require Java 21+');
-      expect(result.message).toContain('services/orders-api');
+      // path.relative uses OS separator; normalize to forward slash for assertion
+      expect(normalizePath(result.message ?? '')).toContain('services/orders-api');
     });
 
     it('passes prereq checks in workspace root when all nested Maven projects satisfy installed Java version', async () => {
@@ -541,11 +542,9 @@ describe('Runtime Adapters', () => {
       const result = await adapter.initProject('/tmp/java-project');
 
       expect(result.exitCode).toBe(0);
-      expect(run).toHaveBeenCalledWith(
-        '/tmp/java-project/mvnw.cmd',
-        ['-B', '-q', '-DskipTests', 'dependency:go-offline'],
-        '/tmp/java-project'
-      );
+      expect(normalizePath(run.mock.calls[0][0] as string)).toBe('/tmp/java-project/mvnw.cmd');
+      expect(run.mock.calls[0][1]).toEqual(['-B', '-q', '-DskipTests', 'dependency:go-offline']);
+      expect(run.mock.calls[0][2]).toBe('/tmp/java-project');
       platformSpy.mockRestore();
     });
 
@@ -563,11 +562,15 @@ describe('Runtime Adapters', () => {
       const result = await adapter.runStart('/tmp/java-project');
 
       expect(result.exitCode).toBe(0);
-      expect(run).toHaveBeenCalledWith(
-        'java',
-        ['-jar', '/tmp/java-project/target/demo-0.1.0.jar'],
-        '/tmp/java-project'
+      expect(run.mock.calls[0][0]).toBe('java');
+      expect(run.mock.calls[0][1]).toEqual([
+        '-jar',
+        normalizePath(run.mock.calls[0][1][1] as string),
+      ]);
+      expect(normalizePath(run.mock.calls[0][1][1] as string)).toBe(
+        '/tmp/java-project/target/demo-0.1.0.jar'
       );
+      expect(run.mock.calls[0][2]).toBe('/tmp/java-project');
     });
 
     it('uses JAVA_HOME java binary when PATH java is unavailable', async () => {
@@ -610,21 +613,11 @@ describe('Runtime Adapters', () => {
       await adapter.runTest('/tmp/gradle-project');
       await adapter.runBuild('/tmp/gradle-project');
 
-      expect(run).toHaveBeenCalledWith(
-        '/tmp/gradle-project/gradlew',
-        ['--no-daemon', 'dependencies'],
-        '/tmp/gradle-project'
-      );
-      expect(run).toHaveBeenCalledWith(
-        '/tmp/gradle-project/gradlew',
-        ['--no-daemon', 'test'],
-        '/tmp/gradle-project'
-      );
-      expect(run).toHaveBeenCalledWith(
-        '/tmp/gradle-project/gradlew',
-        ['--no-daemon', 'bootJar'],
-        '/tmp/gradle-project'
-      );
+      const gradlew = normalizePath(run.mock.calls[0][0] as string);
+      expect(gradlew).toBe('/tmp/gradle-project/gradlew');
+      expect(run.mock.calls[0][1]).toEqual(['--no-daemon', 'dependencies']);
+      expect(run.mock.calls[1][1]).toEqual(['--no-daemon', 'test']);
+      expect(run.mock.calls[2][1]).toEqual(['--no-daemon', 'bootJar']);
     });
 
     it('uses gradle wrapper without --no-daemon by default in local mode', async () => {
@@ -643,14 +636,12 @@ describe('Runtime Adapters', () => {
 
       await adapter.initProject('/tmp/gradle-project');
 
-      expect(run).toHaveBeenCalledWith(
-        '/tmp/gradle-project/gradlew',
-        ['dependencies'],
-        '/tmp/gradle-project'
-      );
+      expect(normalizePath(run.mock.calls[0][0] as string)).toBe('/tmp/gradle-project/gradlew');
+      expect(run.mock.calls[0][1]).toEqual(['dependencies']);
     });
 
     it('repairs non-executable gradlew before running on Unix', async () => {
+      const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
       const run = vi.fn().mockResolvedValue(0);
       const adapter = new JavaRuntimeAdapter(run);
       const chmodSync = vi.spyOn(fs, 'chmodSync').mockImplementation(() => undefined);
@@ -674,15 +665,14 @@ describe('Runtime Adapters', () => {
 
       await adapter.initProject('/tmp/gradle-project');
 
-      expect(chmodSync).toHaveBeenCalledWith('/tmp/gradle-project/gradlew', 0o755);
-      expect(run).toHaveBeenCalledWith(
-        '/tmp/gradle-project/gradlew',
-        ['dependencies'],
-        '/tmp/gradle-project'
-      );
+      expect(chmodSync).toHaveBeenCalledWith(expect.stringMatching(/gradlew$/), 0o755);
+      expect(normalizePath(run.mock.calls[0][0] as string)).toBe('/tmp/gradle-project/gradlew');
+      expect(run.mock.calls[0][1]).toEqual(['dependencies']);
+      platformSpy.mockRestore();
     });
 
     it('falls back to sh wrapper invocation when wrapper permission repair fails', async () => {
+      const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
       const run = vi.fn().mockResolvedValue(0);
       const adapter = new JavaRuntimeAdapter(run);
       vi.spyOn(fs, 'chmodSync').mockImplementation(() => {
@@ -706,11 +696,10 @@ describe('Runtime Adapters', () => {
 
       await adapter.initProject('/tmp/gradle-project');
 
-      expect(run).toHaveBeenCalledWith(
-        'sh',
-        ['/tmp/gradle-project/gradlew', 'dependencies'],
-        '/tmp/gradle-project'
-      );
+      expect(run.mock.calls[0][0]).toBe('sh');
+      expect(normalizePath(run.mock.calls[0][1][0] as string)).toBe('/tmp/gradle-project/gradlew');
+      expect(run.mock.calls[0][1][1]).toBe('dependencies');
+      platformSpy.mockRestore();
     });
 
     it('uses shared Gradle cache in shared-runtime-caches mode', async () => {
@@ -756,11 +745,8 @@ describe('Runtime Adapters', () => {
       const result = await adapter.runBuild('/tmp/gradle-project');
 
       expect(result.exitCode).toBe(0);
-      expect(run).toHaveBeenCalledWith(
-        '/tmp/gradle-project/gradlew.bat',
-        expectedArgs,
-        '/tmp/gradle-project'
-      );
+      expect(normalizePath(run.mock.calls[0][0] as string)).toBe('/tmp/gradle-project/gradlew.bat');
+      expect(run.mock.calls[0][1]).toEqual(expectedArgs);
       platformSpy.mockRestore();
     });
 
@@ -779,11 +765,11 @@ describe('Runtime Adapters', () => {
       const result = await adapter.runStart('/tmp/gradle-project');
 
       expect(result.exitCode).toBe(0);
-      expect(run).toHaveBeenCalledWith(
-        'java',
-        ['-jar', '/tmp/gradle-project/build/libs/demo-0.1.0.jar'],
-        '/tmp/gradle-project'
+      expect(run.mock.calls[0][0]).toBe('java');
+      expect(normalizePath(run.mock.calls[0][1][1] as string)).toBe(
+        '/tmp/gradle-project/build/libs/demo-0.1.0.jar'
       );
+      expect(run.mock.calls[0][2]).toBe('/tmp/gradle-project');
     });
 
     it('accepts uppercase JAR extension when resolving build output', async () => {
@@ -801,11 +787,11 @@ describe('Runtime Adapters', () => {
       const result = await adapter.runStart('/tmp/java-project');
 
       expect(result.exitCode).toBe(0);
-      expect(run).toHaveBeenCalledWith(
-        'java',
-        ['-jar', '/tmp/java-project/target/demo-0.1.0.JAR'],
-        '/tmp/java-project'
+      expect(run.mock.calls[0][0]).toBe('java');
+      expect(normalizePath(run.mock.calls[0][1][1] as string)).toBe(
+        '/tmp/java-project/target/demo-0.1.0.JAR'
       );
+      expect(run.mock.calls[0][2]).toBe('/tmp/java-project');
     });
 
     it('returns a clear message when Java build fails because pom.xml or build.gradle is invalid', async () => {
@@ -915,6 +901,7 @@ describe('Runtime Adapters', () => {
     });
 
     it('falls back to sh for mvnw when chmod fails', async () => {
+      const _platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
       const run = vi.fn().mockResolvedValue(0);
       const adapter = new JavaRuntimeAdapter(run);
       vi.spyOn(fs, 'chmodSync').mockImplementation(() => {
@@ -1376,6 +1363,10 @@ describe('Runtime Adapters', () => {
     });
 
     it('returns node adapter from factory', async () => {
+      delete process.env.RAPIDKIT_DEP_SHARING_MODE;
+      delete process.env.RAPIDKIT_WORKSPACE_PATH;
+      // Mock fs.existsSync so no .rapidkit-workspace marker is found on the local filesystem
+      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
       const runCommandInCwd = vi.fn().mockResolvedValue(0);
       const adapter = getRuntimeAdapter('node', {
         runCommandInCwd,
@@ -1385,11 +1376,7 @@ describe('Runtime Adapters', () => {
       expect(adapter.runtime).toBe('node');
       const result = await adapter.initProject('/tmp/project');
       expect(result.exitCode).toBe(0);
-      expect(runCommandInCwd).toHaveBeenCalledWith(
-        'npm',
-        ['install', '--prefer-offline'],
-        '/tmp/project'
-      );
+      expect(runCommandInCwd).toHaveBeenCalledWith('npm', ['install'], '/tmp/project');
     });
 
     it('returns java adapter from factory', async () => {

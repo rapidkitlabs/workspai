@@ -219,6 +219,9 @@ describe('generateSpringBootKit', () => {
     await generateSpringBootKit(projectPath, { project_name: 'inventory-service', skipGit: true });
 
     const stat = await fs.stat(path.join(projectPath, 'rapidkit'));
-    expect(stat.mode & 0o111).not.toBe(0);
+    // On Windows, execute bits are not supported; skip the check
+    if (process.platform !== 'win32') {
+      expect(stat.mode & 0o111).not.toBe(0);
+    }
   });
 });
