@@ -98,7 +98,31 @@ npx rapidkit workspace policy set <key> <value>
 npx rapidkit doctor
 npx rapidkit doctor workspace [--fix]
 npx rapidkit workspace list # Display all workspaces created on this system
+npx rapidkit workspace share [--output <file>] [--include-paths] [--no-doctor]
 ```
+
+### Workspace collaboration bundle
+
+Use `workspace share` to export a portable JSON snapshot for team handoff,
+debugging, and cross-machine diagnostics.
+
+```bash
+npx rapidkit workspace share
+# default output: .rapidkit/reports/share-bundle.json
+
+npx rapidkit workspace share --output ./team-share.json
+npx rapidkit workspace share --include-paths
+npx rapidkit workspace share --no-doctor
+```
+
+Bundle content includes:
+
+- Workspace metadata (`name`, `profile`, RapidKit version)
+- Discovered RapidKit projects (`relative_path`, runtime, kit)
+- Workspace and project report file index
+- Latest doctor evidence per project (unless `--no-doctor` is used)
+
+`--include-paths` is intended for internal teams only because it includes absolute filesystem paths.
 
 ### Command ownership
 

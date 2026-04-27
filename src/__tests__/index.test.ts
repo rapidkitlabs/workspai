@@ -140,6 +140,7 @@ describe('CLI Entry Point', () => {
         "Workspace commands (inside a workspace):
           npx rapidkit bootstrap [--profile <p>]   Re-bootstrap toolchains
           npx rapidkit workspace list               List registered workspaces
+          npx rapidkit workspace share [--output <file>] Export collaboration bundle
           npx rapidkit workspace policy show        Show effective workspace policies
           npx rapidkit workspace policy set <k> <v> Update workspace policy values
           npx rapidkit setup python|node|go|java [--warm-deps]  Set up runtime (+ optional deps warm-up)

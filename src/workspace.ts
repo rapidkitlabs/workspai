@@ -1301,3 +1301,210 @@ export async function listWorkspaces(): Promise<void> {
     console.error(chalk.gray(String(error)));
   }
 }
+
+type WorkspaceShareProject = {
+  name: string;
+  relative_path: string;
+  runtime?: string;
+  kit_name?: string;
+  doctor_report?: unknown;
+  reports?: string[];
+  absolute_path?: string;
+};
+
+type WorkspaceShareBundle = {
+  schema_version: '1.0';
+  generated_at: string;
+  generated_by: 'rapidkit-npm';
+  workspace: {
+    name: string;
+    relative_root: string;
+    profile?: string;
+    rapidkit_version?: string;
+    absolute_root?: string;
+  };
+  summary: {
+    project_count: number;
+    doctor_evidence_included: boolean;
+  };
+  reports: {
+    workspace: string[];
+  };
+  projects: WorkspaceShareProject[];
+};
+
+export interface WorkspaceShareOptions {
+  outputPath?: string;
+  includePaths?: boolean;
+  includeDoctorEvidence?: boolean;
+}
+
+async function readJsonIfExists(filePath: string): Promise<unknown | null> {
+  try {
+    const raw = await fs.readFile(filePath, 'utf8');
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function discoverWorkspaceProjects(workspacePath: string): Promise<string[]> {
+  const discovered: string[] = [];
+  const queue = [workspacePath];
+  const visited = new Set<string>();
+
+  while (queue.length > 0) {
+    const currentPath = queue.shift();
+    if (!currentPath || visited.has(currentPath)) {
+      continue;
+    }
+    visited.add(currentPath);
+
+    let entries: Array<{ isDirectory: () => boolean; name: string }> = [];
+    try {
+      entries = await fs.readdir(currentPath, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) {
+        continue;
+      }
+      if (['node_modules', 'dist', 'build', 'target', 'coverage', 'htmlcov'].includes(entry.name)) {
+        continue;
+      }
+
+      const candidate = path.join(currentPath, entry.name);
+      const hasContext = await pathExists(path.join(candidate, '.rapidkit', 'context.json'));
+      const hasProject = await pathExists(path.join(candidate, '.rapidkit', 'project.json'));
+
+      if (hasContext || hasProject) {
+        discovered.push(candidate);
+      }
+
+      queue.push(candidate);
+    }
+  }
+
+  return discovered.sort((a, b) => a.localeCompare(b));
+}
+
+async function listReportJsonFiles(reportsDir: string): Promise<string[]> {
+  try {
+    const entries = await fs.readdir(reportsDir, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Build a portable workspace share bundle for collaboration/debug handoffs.
+ * The bundle is JSON by default and excludes absolute paths unless requested.
+ */
+export async function createWorkspaceShareBundle(
+  workspacePath: string,
+  options?: WorkspaceShareOptions
+): Promise<string> {
+  const includePaths = options?.includePaths === true;
+  const includeDoctorEvidence = options?.includeDoctorEvidence !== false;
+  const normalizedWorkspacePath = path.resolve(workspacePath);
+
+  const workspaceMeta = (await readJsonIfExists(
+    path.join(normalizedWorkspacePath, '.rapidkit', 'workspace.json')
+  )) as Record<string, unknown> | null;
+
+  const workspaceName =
+    (typeof workspaceMeta?.workspace_name === 'string' && workspaceMeta.workspace_name.trim()) ||
+    path.basename(normalizedWorkspacePath);
+  const workspaceProfile =
+    typeof workspaceMeta?.profile === 'string' ? workspaceMeta.profile : undefined;
+  const rapidkitVersion =
+    typeof workspaceMeta?.rapidkit_version === 'string'
+      ? workspaceMeta.rapidkit_version
+      : undefined;
+
+  const projectPaths = await discoverWorkspaceProjects(normalizedWorkspacePath);
+  const projects: WorkspaceShareProject[] = [];
+
+  for (const projectPath of projectPaths) {
+    const projectMeta = (await readJsonIfExists(
+      path.join(projectPath, '.rapidkit', 'project.json')
+    )) as Record<string, unknown> | null;
+    const projectRelativePath = path.relative(normalizedWorkspacePath, projectPath) || '.';
+    const projectReportsDir = path.join(projectPath, '.rapidkit', 'reports');
+
+    const projectEntry: WorkspaceShareProject = {
+      name: path.basename(projectPath),
+      relative_path: projectRelativePath,
+      runtime: typeof projectMeta?.runtime === 'string' ? projectMeta.runtime : undefined,
+      kit_name: typeof projectMeta?.kit_name === 'string' ? projectMeta.kit_name : undefined,
+    };
+
+    if (includePaths) {
+      projectEntry.absolute_path = projectPath;
+    }
+
+    if (includeDoctorEvidence) {
+      const doctorReport = await readJsonIfExists(
+        path.join(projectReportsDir, 'doctor-last-run.json')
+      );
+      if (doctorReport) {
+        projectEntry.doctor_report = doctorReport;
+      }
+    }
+
+    const reportFiles = await listReportJsonFiles(projectReportsDir);
+    if (reportFiles.length > 0) {
+      projectEntry.reports = reportFiles;
+    }
+
+    projects.push(projectEntry);
+  }
+
+  const workspaceReportsDir = path.join(normalizedWorkspacePath, '.rapidkit', 'reports');
+  const workspaceReports = await listReportJsonFiles(workspaceReportsDir);
+
+  const bundle: WorkspaceShareBundle = {
+    schema_version: '1.0',
+    generated_at: new Date().toISOString(),
+    generated_by: 'rapidkit-npm',
+    workspace: {
+      name: workspaceName,
+      relative_root: '.',
+      profile: workspaceProfile,
+      rapidkit_version: rapidkitVersion,
+      ...(includePaths ? { absolute_root: normalizedWorkspacePath } : {}),
+    },
+    summary: {
+      project_count: projects.length,
+      doctor_evidence_included: includeDoctorEvidence,
+    },
+    reports: {
+      workspace: workspaceReports,
+    },
+    projects,
+  };
+
+  const outputPath = options?.outputPath
+    ? path.resolve(options.outputPath)
+    : path.join(workspaceReportsDir, 'share-bundle.json');
+
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
+  await fs.writeFile(outputPath, JSON.stringify(bundle, null, 2), 'utf8');
+
+  return outputPath;
+}

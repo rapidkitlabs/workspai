@@ -4456,8 +4456,22 @@ program
 // Workspace management command
 program
   .command('workspace <action> [subaction] [key] [value]')
-  .description('Manage RapidKit workspaces (list, sync, policy)')
-  .action(async (action: string, subaction?: string, key?: string, value?: string) => {
+  .description('Manage RapidKit workspaces (list, sync, policy, share)')
+  .option('--output <file>', 'Output file path for workspace share bundle')
+  .option('--include-paths', 'Include absolute paths in workspace share bundle')
+  .option('--no-doctor', 'Exclude doctor evidence in workspace share bundle')
+  .action(async function (
+    this: Command,
+    action: string,
+    subaction?: string,
+    key?: string,
+    value?: string
+  ) {
+    const actionOptions = this.opts() as {
+      output?: string;
+      includePaths?: boolean;
+      doctor?: boolean;
+    };
     if (action === 'list') {
       const { listWorkspaces } = await import('./workspace.js');
       await listWorkspaces();
@@ -4480,9 +4494,29 @@ program
       }
       const code = await handleWorkspacePolicyCommand(workspacePath, subaction, key, value);
       if (code !== 0) process.exit(code);
+    } else if (action === 'share') {
+      const workspacePath = findWorkspaceUp(process.cwd());
+      if (!workspacePath) {
+        console.log(chalk.red('❌ Not inside a RapidKit workspace'));
+        console.log(chalk.gray('💡 Run this command from within a workspace directory'));
+        process.exit(1);
+      }
+
+      const outputPath = actionOptions.output || subaction;
+      const { createWorkspaceShareBundle } = await import('./workspace.js');
+      const bundlePath = await createWorkspaceShareBundle(workspacePath, {
+        outputPath,
+        includePaths: actionOptions.includePaths === true,
+        includeDoctorEvidence: actionOptions.doctor !== false,
+      });
+
+      console.log(chalk.green(`✔ Workspace share bundle exported: ${bundlePath}`));
+      console.log(
+        chalk.gray('Share this JSON with your team for reproducible workspace/project diagnostics.')
+      );
     } else {
       console.log(chalk.red(`Unknown workspace action: ${action}`));
-      console.log(chalk.gray('Available: list, sync, policy'));
+      console.log(chalk.gray('Available: list, sync, policy, share'));
       process.exit(1);
     }
   });
@@ -4524,6 +4558,9 @@ function printHelp() {
   console.log(chalk.bold('Workspace commands (inside a workspace):'));
   console.log(chalk.gray('  npx rapidkit bootstrap [--profile <p>]   Re-bootstrap toolchains'));
   console.log(chalk.gray('  npx rapidkit workspace list               List registered workspaces'));
+  console.log(
+    chalk.gray('  npx rapidkit workspace share [--output <file>] Export collaboration bundle')
+  );
   console.log(
     chalk.gray('  npx rapidkit workspace policy show        Show effective workspace policies')
   );
