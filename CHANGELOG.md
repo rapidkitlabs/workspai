@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-04-27
+
+### Fixed
+
+- Fixed Commander action handler binding for `rapidkit workspace share` so options are resolved from command context and no longer misparsed in `npx` flows.
+- Restored reliable support for `workspace share` flags:
+  - `--output <file>`
+  - `--include-paths`
+  - `--no-doctor`
+
 ## [0.26.0] - 2026-04-24
 
 ### Added

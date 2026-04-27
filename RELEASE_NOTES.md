@@ -1,6 +1,36 @@
 # Release Notes
 
-## Latest Release: v0.26.0 (April 24, 2026)
+## Latest Release: v0.27.0 (April 27, 2026)
+
+### 🧩 v0.27.0 — Workspace Share CLI Option Parsing Fix (Patch)
+
+This patch fixes `workspace share` option parsing so exported bundles can reliably use explicit output and evidence flags.
+
+**What's New:**
+
+- ✅ **`workspace share --output` now parses correctly**
+  - Fixed Commander action-handler binding to ensure command options are read from the proper command context.
+  - Prevents `unknown option '--output'` style failures in real-world `npx` usage.
+
+- 🧰 **Workspace share flags are now consistently honored**
+  - `--output <file>` writes bundle to the requested path.
+  - `--include-paths` includes absolute workspace/project paths when explicitly requested.
+  - `--no-doctor` reliably excludes doctor evidence from the exported bundle.
+
+- 🧪 **CLI help/contract alignment maintained**
+  - Updated command/help coverage so the workspace share surface stays stable across wrapper entry paths.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.27.0
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.27.0.md)
+
+---
+
+## Previous Release: v0.26.0 (April 24, 2026)
 
 ### ☕ v0.26.0 — Spring Boot Generator, Java Runtime Adapter, and Release Hardening (Minor)
 
