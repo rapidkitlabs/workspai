@@ -10,6 +10,10 @@ import {
 } from '../../ai/recommender.js';
 import { enableMockMode } from '../../ai/openai-client.js';
 
+function normalizeFsPath(value: unknown): string {
+  return path.resolve(String(value)).replace(/^\/private(?=\/var\/)/, '');
+}
+
 describe('AI Recommender', () => {
   beforeEach(() => {
     // Enable mock mode to avoid OpenAI API calls
@@ -234,11 +238,12 @@ describe('AI Recommender', () => {
       const targetPath = path.join(root, 'data', 'modules-embeddings.json');
       const realExists = fs.existsSync.bind(fs);
       const realRead = fs.readFileSync.bind(fs);
+      const normalizedTargetPath = normalizeFsPath(targetPath);
       const existsSpy = vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
-        return String(p) === targetPath;
+        return normalizeFsPath(p) === normalizedTargetPath;
       });
       const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation((p, options?: any) => {
-        if (String(p) === targetPath) {
+        if (normalizeFsPath(p) === normalizedTargetPath) {
           return JSON.stringify([
             {
               id: 'auth_core',
@@ -272,11 +277,12 @@ describe('AI Recommender', () => {
       const prev = process.cwd();
       const targetPath = path.join(root, 'data', 'modules-embeddings.json');
       const realRead = fs.readFileSync.bind(fs);
+      const normalizedTargetPath = normalizeFsPath(targetPath);
       const existsSpy = vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
-        return String(p) === targetPath;
+        return normalizeFsPath(p) === normalizedTargetPath;
       });
       const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation((p, options?: any) => {
-        if (String(p) === targetPath) {
+        if (normalizeFsPath(p) === normalizedTargetPath) {
           return JSON.stringify({
             model: 'text-embedding-3-small',
             dimension: 3,

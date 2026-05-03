@@ -39,6 +39,10 @@ vi.mock('../../ai/openai-client.js', () => ({
 let originalCwd: string;
 let tempDir: string;
 
+function normalizeFsPath(value: unknown): string {
+  return path.resolve(String(value)).replace(/^\/private(?=\/var\/)/, '');
+}
+
 describe('embeddings manager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -117,9 +121,10 @@ describe('embeddings manager', () => {
 
   it('ensureEmbeddings supports manual guidance and generate actions', async () => {
     const realExists = fs.existsSync.bind(fs);
+    const expectedPath = normalizeFsPath(path.join(tempDir, 'data', 'modules-embeddings.json'));
     const existsSpy = vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
-      const pStr = String(p);
-      if (pStr.includes(path.join(tempDir, 'data', 'modules-embeddings.json'))) {
+      const normalized = normalizeFsPath(p);
+      if (normalized === expectedPath) {
         return realExists(p);
       }
       return false;
@@ -157,8 +162,9 @@ describe('embeddings manager', () => {
       'utf-8'
     );
 
+    const expectedPath = normalizeFsPath(outputPath);
     const existsSpy = vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
-      return String(p) === outputPath;
+      return normalizeFsPath(p) === expectedPath;
     });
 
     const { checkEmbeddings } = await import('../../ai/embeddings-manager.js');
