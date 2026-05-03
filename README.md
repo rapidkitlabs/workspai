@@ -6,7 +6,7 @@ FastAPI, NestJS, Spring Boot, Go/Fiber, and Go/Gin scaffolding with production-r
 **27+ plug-and-play modules** are available for FastAPI & NestJS projects. Spring Boot and Go kits run as npm-level generators.  
 Clean architecture • Zero boilerplate • Instant deployment.
 
-> **💡 Recommended:** Install the [Workspai VS Code extension](https://github.com/getrapidkit/rapidkit-vscode) for AI-powered project creation, a visual workspace explorer, and context-aware coding assistance — all backed by this CLI.
+> **💡 Recommended:** Install the [Workspai VS Code extension](https://marketplace.visualstudio.com/items?itemName=rapidkit.rapidkit-vscode) for AI-powered project creation, a visual workspace explorer, and context-aware coding assistance — all backed by this CLI.
 
 [![npm version](https://img.shields.io/npm/v/rapidkit.svg?style=flat-square)](https://www.npmjs.com/package/rapidkit)
 [![Downloads](https://img.shields.io/npm/dm/rapidkit.svg?style=flat-square)](https://www.npmjs.com/package/rapidkit)
@@ -234,7 +234,7 @@ visual workspace explorer, AI-powered project creation, and context-aware coding
 Search **Workspai** in the VS Code Extensions marketplace, or:
 
 ```bash
-code --install-extension getrapidkit.workspai
+ext install rapidkit.rapidkit-vscode
 ```
 
 > The extension calls this CLI under the hood — both tools work together seamlessly.

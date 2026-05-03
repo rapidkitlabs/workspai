@@ -7,6 +7,15 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
+      include: [
+        'src/ai/**/*.ts',
+        'src/commands/**/*.ts',
+        'src/config/**/*.ts',
+        'src/core-bridge/**/*.ts',
+        'src/generators/**/*.ts',
+        'src/runtime-adapters/**/*.ts',
+        'src/utils/**/*.ts',
+      ],
       exclude: [
         'node_modules/',
         'dist/',
@@ -14,11 +23,8 @@ export default defineConfig({
         '**/*.config.*',
         '**/mockData',
         'src/__tests__/**',
-        'src/index.ts',
         'src/workspace.ts',
         'src/doctor.ts', // New feature, tests in progress
-        'src/commands/**', // CLI command handlers (interactive, hard to unit test)
-        'src/ai/embeddings-manager.ts', // Interactive embeddings generation (file I/O and prompts)
       ],
     },
   },

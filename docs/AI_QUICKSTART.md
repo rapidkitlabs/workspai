@@ -87,6 +87,9 @@ Output:
 
 💡 Quick install (top 3):
    rapidkit add module authentication-core users-core
+
+? Would you like to install these modules now? Yes
+✅ Selected modules installed successfully
 ```
 
 ## Option 3: Test Without API Key (Mock Mode)

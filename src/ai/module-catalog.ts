@@ -24,6 +24,7 @@ export interface ModuleMetadata {
 }
 
 interface PythonModuleShape {
+  slug?: string;
   id?: string;
   module_id?: string;
   name?: string;
@@ -319,9 +320,11 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 function parsePythonModule(pyModule: unknown): ModuleMetadata {
   const moduleShape = toPythonModuleShape(pyModule);
 
-  // Use 'name' field directly (with underscores, not dashes)
-  // Python Core returns: ai_assistant, api_keys, auth_core, etc.
-  const id = moduleShape.name || moduleShape.id || moduleShape.module_id || '';
+  // Contract-first identity order for ModulesListResponseV1:
+  // slug is required by schema and should be canonical for install/recommend flows.
+  const id = moduleShape.slug || moduleShape.name || moduleShape.id || moduleShape.module_id || '';
+
+  const rawKeywords = asStringArray(moduleShape.keywords ?? moduleShape.tags);
 
   return {
     id,
@@ -329,7 +332,7 @@ function parsePythonModule(pyModule: unknown): ModuleMetadata {
     category: mapPythonCategory(moduleShape.category || 'infrastructure'),
     description: moduleShape.description || moduleShape.summary || '',
     longDescription: moduleShape.long_description || moduleShape.description || '',
-    keywords: asStringArray(moduleShape.keywords ?? moduleShape.tags),
+    keywords: rawKeywords.map((keyword) => keyword.toLowerCase()),
     framework: mapPythonFramework(moduleShape.framework),
     dependencies: asStringArray(moduleShape.dependencies),
     useCases: asStringArray(moduleShape.use_cases ?? moduleShape.useCases),
@@ -478,7 +481,7 @@ export async function searchModules(query: string): Promise<ModuleMetadata[]> {
     (m) =>
       m.name.toLowerCase().includes(lowerQuery) ||
       m.description.toLowerCase().includes(lowerQuery) ||
-      m.keywords.some((k) => k.includes(lowerQuery))
+      m.keywords.some((k) => k.toLowerCase().includes(lowerQuery))
   );
 }
 

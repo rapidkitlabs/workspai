@@ -18,6 +18,8 @@ import {
   generateModuleEmbeddings,
   updateEmbeddings,
 } from '../ai/embeddings-manager.js';
+import { runCoreRapidkitStreamed } from '../core-bridge/pythonRapidkitExec.js';
+import { readRapidkitProjectJson } from '../utils/runtime-detection.js';
 import { logger } from '../logger.js';
 
 function normalizeError(error: unknown): { message: string; code?: string } {
@@ -191,8 +193,37 @@ export function registerAICommands(program: Command): void {
           if (selectedModules.length > 0) {
             console.log(chalk.blue(`\n📦 Installing ${selectedModules.length} modules...\n`));
             console.log(chalk.gray(`Command: rapidkit add module ${selectedModules.join(' ')}`));
-            console.log(chalk.yellow('\n⚠️  Note: Module installation not yet implemented'));
-            console.log(chalk.gray('Coming soon in next version!\n'));
+
+            const projectJson = readRapidkitProjectJson(process.cwd());
+            if (projectJson?.module_support === false) {
+              const runtimeLabel = projectJson?.runtime === 'java' ? 'Spring Boot' : 'Go';
+              console.log(
+                chalk.red(
+                  `\n❌ RapidKit modules are not available for ${runtimeLabel} npm-level kits.`
+                )
+              );
+              console.log(
+                chalk.gray(
+                  '   The module system requires Python and is currently only supported for FastAPI and NestJS projects.\n'
+                )
+              );
+              return;
+            }
+
+            const installExitCode = await runCoreRapidkitStreamed(
+              ['add', 'module', ...selectedModules],
+              {
+                cwd: process.cwd(),
+              }
+            );
+
+            if (installExitCode === 0) {
+              console.log(chalk.green('\n✅ Selected modules installed successfully\n'));
+            } else {
+              console.log(
+                chalk.red(`\n❌ Module installation failed (exit code: ${installExitCode})\n`)
+              );
+            }
           } else {
             console.log(chalk.gray('\nNo modules selected\n'));
           }

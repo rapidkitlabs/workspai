@@ -254,4 +254,63 @@ describe('AI Module Catalog', () => {
       });
     });
   });
+
+  describe('Python contract parsing', () => {
+    it('uses slug as canonical module id when provided', async () => {
+      vi.resetModules();
+      const childProcess = await import('child_process');
+      const execMock = vi.mocked(childProcess.exec as any);
+
+      execMock.mockResolvedValue({
+        stdout: JSON.stringify({
+          schema_version: 1,
+          modules: [
+            {
+              slug: 'paid/auth/advanced_mfa',
+              name: 'advanced_mfa',
+              display_name: 'Advanced MFA',
+              category: 'auth',
+              description: 'Advanced authentication',
+              tags: ['Security', 'AUTH'],
+              status: 'active',
+              version: '1.0.0',
+            },
+          ],
+        }),
+      });
+
+      const catalogModule = await import('../../ai/module-catalog.js');
+      const catalog = await catalogModule.getModuleCatalog();
+      expect(catalog[0].id).toBe('paid/auth/advanced_mfa');
+    });
+
+    it('searches keywords case-insensitively for mixed-case tags', async () => {
+      vi.resetModules();
+      const childProcess = await import('child_process');
+      const execMock = vi.mocked(childProcess.exec as any);
+
+      execMock.mockResolvedValue({
+        stdout: JSON.stringify({
+          schema_version: 1,
+          modules: [
+            {
+              slug: 'security/risk_guard',
+              name: 'risk_guard',
+              display_name: 'Risk Guard',
+              category: 'security',
+              description: 'Risk controls',
+              tags: ['RiSk', 'Guard'],
+              status: 'active',
+              version: '1.0.0',
+            },
+          ],
+        }),
+      });
+
+      const catalogModule = await import('../../ai/module-catalog.js');
+      const results = await catalogModule.searchModules('risk');
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].id).toBe('security/risk_guard');
+    });
+  });
 });

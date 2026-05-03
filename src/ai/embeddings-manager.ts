@@ -222,7 +222,10 @@ export async function ensureEmbeddings(interactive: boolean = true): Promise<boo
       name: 'action',
       message: 'What would you like to do?',
       choices: [
-        { name: '🚀 Generate embeddings now (requires OpenAI API key)', value: 'generate' },
+        {
+          name: '🚀 Generate embeddings now (OpenAI key for production, or mock mode for testing)',
+          value: 'generate',
+        },
         { name: '📝 Show me how to generate them manually', value: 'manual' },
         { name: '❌ Cancel', value: 'cancel' },
       ],

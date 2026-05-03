@@ -34,6 +34,7 @@ import {
   isPythonProject,
   readRapidkitProjectJson,
 } from './utils/runtime-detection.js';
+import { evaluateReleaseReadiness, runReleaseReadinessCommand } from './readiness.js';
 import { runMirrorLifecycle } from './utils/mirror.js';
 import {
   getDefaultPythonCommand,
@@ -1117,6 +1118,7 @@ const LOCAL_COMMANDS = [
 // Single source of truth for commands owned by the npm wrapper.
 // Any new workspace-level command must be added here to prevent accidental core forwarding.
 export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
+  'readiness',
   'doctor',
   'workspace',
   'bootstrap',
@@ -1128,7 +1130,14 @@ export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
   'shell',
 ] as const;
 
-const NPM_ONLY_PARSE_DIRECT_COMMANDS = ['doctor', 'workspace', 'ai', 'config', 'shell'] as const;
+const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
+  'readiness',
+  'doctor',
+  'workspace',
+  'ai',
+  'config',
+  'shell',
+] as const;
 
 const NPM_ONLY_MANUAL_HANDLER_COMMANDS = ['bootstrap', 'setup', 'cache', 'mirror'] as const;
 
@@ -3945,6 +3954,7 @@ program.addHelpText(
 Workspace Setup Commands
   rapidkit bootstrap         Bootstrap projects in workspace (--profile java-only|python-only|node-only|go-only|polyglot|enterprise)
   rapidkit setup <runtime>   Set up runtime toolchain  (runtime: python | node | go | java)
+  rapidkit readiness         Build release-readiness evidence (use --json for CI)
   rapidkit workspace list    List registered workspaces on this system
   rapidkit mirror            Manage registry mirrors   (mirror status --json | sync | verify | rotate)
   rapidkit cache             Manage package cache      (cache status | clear | prune | repair)
@@ -4400,6 +4410,17 @@ program
     }
   });
 
+program
+  .command('readiness')
+  .description(
+    '🚦 Generate machine-readable release readiness summary (env + doctor + verify + dependency)'
+  )
+  .option('--json', 'Output readiness result in JSON format')
+  .option('--strict', 'Exit with code 1 unless overall readiness is pass')
+  .action(async (options: { json?: boolean; strict?: boolean }) => {
+    await runReleaseReadinessCommand(options);
+  });
+
 // Doctor command - health check for RapidKit environment
 program
   .command('doctor [scope]')
@@ -4783,6 +4804,7 @@ if (shouldBootstrapCli) {
           const action = args[0] as 'dev' | 'test' | 'build' | 'start';
           const projectJson = readRapidkitProjectJson(process.cwd());
           const wsPath = findWorkspaceUp(process.cwd());
+          let strictPolicyMode = false;
 
           // Strict policy pre-flight: before any lifecycle command, check mandatory
           // workspace invariants when enforcement_mode is strict.
@@ -4795,8 +4817,9 @@ if (shouldBootstrapCli) {
                   policyContent.match(/^\s*enforcement_mode:\s*(warn|strict)\s*(?:#.*)?$/m) ??
                   policyContent.match(/^\s*mode:\s*(warn|strict)\s*(?:#.*)?$/m);
                 const policyEnforcementMode = modeMatch?.[1] ?? 'warn';
+                strictPolicyMode = policyEnforcementMode === 'strict';
 
-                if (policyEnforcementMode === 'strict') {
+                if (strictPolicyMode) {
                   const lockPath = path.join(wsPath, '.rapidkit', 'toolchain.lock');
                   const violations: string[] = [];
 
@@ -4907,6 +4930,42 @@ if (shouldBootstrapCli) {
               } catch {
                 /* non-fatal — policies.yml unreadable, skip pre-flight */
               }
+            }
+          }
+
+          const readiness = await evaluateReleaseReadiness({
+            startPath: process.cwd(),
+            action,
+            writeReport: true,
+          });
+          const enforceReadiness =
+            strictPolicyMode ||
+            process.env.RAPIDKIT_LIFECYCLE_ENFORCE_READINESS === '1' ||
+            process.env.RAPIDKIT_ENFORCE_READINESS === '1';
+
+          if (readiness.blocking && enforceReadiness) {
+            console.log(chalk.red(`❌ Release readiness blocks \`${action}\`:`));
+            for (const reason of readiness.blockingReasons) {
+              console.log(chalk.red(`  • ${reason}`));
+            }
+            if (readiness.evidencePath) {
+              console.log(chalk.gray(`ℹ️  Readiness evidence: ${readiness.evidencePath}`));
+            }
+            process.exit(1);
+          }
+
+          if (readiness.overallStatus !== 'pass' && !enforceReadiness) {
+            console.log(
+              chalk.yellow(
+                `⚠️  Release readiness is ${readiness.overallStatus}. Command continues in warn mode.`
+              )
+            );
+            if (readiness.evidencePath) {
+              console.log(
+                chalk.gray(
+                  `   Evidence: ${readiness.evidencePath} (set RAPIDKIT_LIFECYCLE_ENFORCE_READINESS=1 to block)`
+                )
+              );
             }
           }
 

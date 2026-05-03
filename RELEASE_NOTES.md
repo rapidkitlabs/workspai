@@ -1,6 +1,51 @@
 # Release Notes
 
-## Latest Release: v0.27.0 (April 27, 2026)
+## Latest Release: v0.27.1 (May 3, 2026)
+
+### 🤖 v0.27.1 — AI Install Flow, Contract Sync, and Coverage Policy Hardening (Patch)
+
+This patch closes end-to-end gaps in AI recommendation UX, aligns module parsing with the formal contracts, and broadens coverage accounting to include critical CLI entry paths.
+
+**What's New:**
+
+- ✅ **AI recommend install now executes for real**
+  - `rapidkit ai recommend` no longer ends with a placeholder after install confirmation.
+  - Selected modules are now installed via core bridge execution of `rapidkit add module ...`.
+
+- 🔒 **Contract-safe module identity parsing**
+  - Module catalog parsing now uses `slug` as canonical ID (schema-first for `ModulesListResponseV1`), with fallback to legacy identifiers.
+  - Prevents invalid quick-install command generation when payloads rely on `slug`.
+
+- 🎯 **True case-insensitive keyword search**
+  - Keyword matching now normalizes mixed-case module tags/keywords for stable recommendation quality.
+
+- 🧪 **Coverage policy expanded for critical CLI surfaces**
+  - Removed broad excludes on `src/index.ts`, `src/commands/**`, and `src/ai/embeddings-manager.ts`.
+  - Added smoke/drift tests for AI command install flow, embeddings manager, and ownership matrix parity.
+
+- 🔁 **Extension ↔ npm ownership drift reduced**
+  - Extension AI command-scope guidance now explicitly includes `npx rapidkit readiness`.
+
+**Coverage Delta (before → after policy update):**
+
+- Statements: `82.06% → 60.34%` (delta: `-21.72%`)
+- Branches: `72.36% → 51.85%` (delta: `-20.51%`)
+- Functions: `92.61% → 81.06%` (delta: `-11.55%`)
+- Lines: `82.77% → 60.78%` (delta: `-21.99%`)
+
+This drop is expected because previously excluded files are now counted, yielding a more realistic baseline for follow-up coverage work.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.27.1
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.27.1.md)
+
+---
+
+## Previous Release: v0.27.0 (April 27, 2026)
 
 ### 🧩 v0.27.0 — Workspace Share CLI Option Parsing Fix (Patch)
 

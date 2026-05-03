@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-05-03
+
+### Added
+
+- Added executable install flow in `rapidkit ai recommend`: when users confirm selected modules, the CLI now runs `rapidkit add module ...` through the core bridge instead of stopping at a placeholder message.
+- Added command-scope drift guard coverage between npm ownership contract and implementation:
+  - `src/__tests__/contracts/ownership-matrix.test.ts` ensures wrapper-owned command list stays in sync with `docs/contracts/COMMAND_OWNERSHIP_MATRIX.md`.
+- Added AI smoke tests for user-facing reliability:
+  - `src/__tests__/commands/ai.command.test.ts`
+  - `src/__tests__/ai/embeddings-manager.test.ts`
+
+### Changed
+
+- Updated module catalog parsing to contract-first identity resolution for `ModulesListResponseV1`:
+  - Canonical module ID now prefers `slug` before fallback fields (`name`, `id`, `module_id`).
+- Improved module search quality by making keyword matching truly case-insensitive.
+- Updated coverage policy to include previously excluded high-impact CLI paths (`src/index.ts`, `src/commands/**`, `src/ai/embeddings-manager.ts`) in aggregate coverage accounting.
+- Synchronized extension command-scope guidance with npm ownership updates by adding `npx rapidkit readiness` to AI context hints.
+
+### Fixed
+
+- Removed AI recommend UX dead-end where users were prompted to install modules but received a “not implemented” message.
+- Resolved contract drift risk where missing `slug` support could generate invalid quick-install targets in mixed registry payloads.
+- Aligned embeddings prompt messaging with mock-mode behavior so key/no-key guidance is consistent with runtime behavior.
+
 ## [0.27.0] - 2026-04-27
 
 ### Fixed

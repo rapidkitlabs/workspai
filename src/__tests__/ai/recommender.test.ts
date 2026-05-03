@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import {
   cosineSimilarity,
   recommendModules,
@@ -221,6 +224,122 @@ describe('AI Recommender', () => {
       const recommendations = await recommendModules('auth\n\t\r\n  database', 3);
 
       expect(Array.isArray(recommendations)).toBe(true);
+    });
+  });
+
+  describe('loadEmbeddings and non-mock branch coverage', () => {
+    it('loads embeddings from array format', async () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rk-reco-arr-'));
+      const prev = process.cwd();
+      const targetPath = path.join(root, 'data', 'modules-embeddings.json');
+      const realExists = fs.existsSync.bind(fs);
+      const realRead = fs.readFileSync.bind(fs);
+      const existsSpy = vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
+        return String(p) === targetPath;
+      });
+      const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation((p, options?: any) => {
+        if (String(p) === targetPath) {
+          return JSON.stringify([
+            {
+              id: 'auth_core',
+              name: 'Auth Core',
+              embedding: [0.2, 0.1, 0.7],
+            },
+          ]);
+        }
+        return realRead(p, options);
+      });
+
+      try {
+        process.chdir(root);
+        expect(realExists(targetPath)).toBe(false);
+
+        vi.resetModules();
+        const mod = await import('../../ai/recommender.js');
+        const data = mod.loadEmbeddings();
+        expect(data.modules.length).toBe(1);
+        expect(data.dimension).toBe(3);
+      } finally {
+        existsSpy.mockRestore();
+        readSpy.mockRestore();
+        process.chdir(prev);
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it('recommends from pre-generated embeddings in non-mock mode', async () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rk-reco-obj-'));
+      const prev = process.cwd();
+      const targetPath = path.join(root, 'data', 'modules-embeddings.json');
+      const realRead = fs.readFileSync.bind(fs);
+      const existsSpy = vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
+        return String(p) === targetPath;
+      });
+      const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation((p, options?: any) => {
+        if (String(p) === targetPath) {
+          return JSON.stringify({
+            model: 'text-embedding-3-small',
+            dimension: 3,
+            generated_at: new Date().toISOString(),
+            modules: [
+              {
+                id: 'authentication-core',
+                name: 'Authentication Core',
+                embedding: [0.9, 0.1, 0.1],
+              },
+              { id: 'redis-cache', name: 'Redis Cache', embedding: [0.1, 0.9, 0.1] },
+            ],
+          });
+        }
+        return realRead(p, options);
+      });
+
+      try {
+        process.chdir(root);
+        vi.resetModules();
+        vi.doMock('../../ai/openai-client.js', () => ({
+          generateEmbedding: vi.fn(async () => [0.8, 0.1, 0.1]),
+          isMockMode: vi.fn(() => false),
+        }));
+        vi.doMock('../../ai/module-catalog.js', () => ({
+          getModuleCatalog: vi.fn(async () => [
+            {
+              id: 'authentication-core',
+              name: 'Authentication Core',
+              category: 'auth',
+              description: 'Auth',
+              longDescription: 'Authentication module',
+              keywords: ['authentication', 'auth'],
+              framework: 'both',
+              dependencies: [],
+              useCases: ['login'],
+            },
+            {
+              id: 'redis-cache',
+              name: 'Redis Cache',
+              category: 'db',
+              description: 'Cache',
+              longDescription: 'Caching module',
+              keywords: ['cache'],
+              framework: 'both',
+              dependencies: [],
+              useCases: ['performance'],
+            },
+          ]),
+        }));
+
+        const mod = await import('../../ai/recommender.js');
+        const recs = await mod.recommendModules('authentication', 1);
+        expect(recs.length).toBe(1);
+        expect(recs[0].module.id).toBe('authentication-core');
+      } finally {
+        vi.doUnmock('../../ai/openai-client.js');
+        vi.doUnmock('../../ai/module-catalog.js');
+        existsSpy.mockRestore();
+        readSpy.mockRestore();
+        process.chdir(prev);
+        fs.rmSync(root, { recursive: true, force: true });
+      }
     });
   });
 
