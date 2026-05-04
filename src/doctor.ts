@@ -106,6 +106,45 @@ interface HealthCheckResult {
   paths?: { location: string; path: string; version?: string }[]; // Multiple installation paths
 }
 
+type DetectedFramework =
+  | 'FastAPI'
+  | 'Django'
+  | 'Flask'
+  | 'Python'
+  | 'NestJS'
+  | 'Next.js'
+  | 'Nuxt'
+  | 'React'
+  | 'Vue'
+  | 'Angular'
+  | 'SvelteKit'
+  | 'Express'
+  | 'Fastify'
+  | 'Koa'
+  | 'Node.js'
+  | 'Go/Fiber'
+  | 'Go/Gin'
+  | 'Spring Boot'
+  | 'PHP'
+  | 'Laravel'
+  | 'Ruby'
+  | 'Ruby on Rails'
+  | 'ASP.NET'
+  | 'Unknown';
+
+type FrameworkSupportTier = 'first-class' | 'extended' | 'observed';
+type ProjectRuntimeFamily =
+  | 'python'
+  | 'node'
+  | 'go'
+  | 'java'
+  | 'php'
+  | 'ruby'
+  | 'dotnet'
+  | 'unknown';
+type ProjectKind = 'backend' | 'frontend' | 'fullstack' | 'generic';
+type FrameworkConfidence = 'high' | 'medium' | 'low';
+
 interface ProjectHealth {
   name: string;
   path: string;
@@ -118,7 +157,11 @@ interface ProjectHealth {
   hasEnvFile?: boolean;
   modulesHealthy?: boolean;
   missingModules?: string[];
-  framework?: 'FastAPI' | 'NestJS' | 'Go/Fiber' | 'Go/Gin' | 'Spring Boot' | 'Unknown';
+  framework?: DetectedFramework;
+  supportTier?: FrameworkSupportTier;
+  runtimeFamily?: ProjectRuntimeFamily;
+  projectKind?: ProjectKind;
+  frameworkConfidence?: FrameworkConfidence;
   isGoProject?: boolean;
   kit?: string;
   stats?: {
@@ -158,11 +201,40 @@ interface WorkspaceHealth {
   evidencePath?: string;
 }
 
+function getProjectAdvisoryWarningCount(project: ProjectHealth): number {
+  let advisoryWarnings = 0;
+
+  const hasEnvIssue = project.issues.some((issue) =>
+    issue.toLowerCase().includes('environment file missing')
+  );
+
+  // `.env` absence is shown as a warning row in output; count it even when no fixable issue exists.
+  if (project.hasEnvFile === false && !hasEnvIssue) {
+    advisoryWarnings += 1;
+  }
+
+  if (typeof project.vulnerabilities === 'number' && project.vulnerabilities > 0) {
+    advisoryWarnings += 1;
+  }
+
+  return advisoryWarnings;
+}
+
+function countProjectAdvisoryWarningProjects(projects: ProjectHealth[]): number {
+  return projects.filter((project) => getProjectAdvisoryWarningCount(project) > 0).length;
+}
+
+function countProjectAdvisoryWarnings(projects: ProjectHealth[]): number {
+  return projects.reduce((sum, project) => sum + getProjectAdvisoryWarningCount(project), 0);
+}
+
 interface DoctorWorkspaceCacheEntry {
   signature: string;
   generatedAt: string;
   projects: ProjectHealth[];
 }
+
+const DOCTOR_PROJECT_SCAN_SCHEMA = 'doctor-project-scan-v2';
 
 function buildProjectFixCommand(projectPath: string, command: string): string {
   if (isWindowsPlatform()) {
@@ -176,6 +248,199 @@ function buildEnvCopyFixCommand(projectPath: string): string {
     return buildProjectFixCommand(projectPath, 'Copy-Item .env.example .env');
   }
   return buildProjectFixCommand(projectPath, 'cp .env.example .env');
+}
+
+function supportTierForFramework(framework: DetectedFramework): FrameworkSupportTier {
+  if (
+    framework === 'FastAPI' ||
+    framework === 'NestJS' ||
+    framework === 'Go/Fiber' ||
+    framework === 'Go/Gin' ||
+    framework === 'Spring Boot'
+  ) {
+    return 'first-class';
+  }
+
+  if (
+    framework === 'Django' ||
+    framework === 'Flask' ||
+    framework === 'Express' ||
+    framework === 'Fastify' ||
+    framework === 'Koa' ||
+    framework === 'PHP' ||
+    framework === 'Laravel' ||
+    framework === 'Ruby' ||
+    framework === 'Ruby on Rails' ||
+    framework === 'ASP.NET'
+  ) {
+    return 'extended';
+  }
+
+  return 'observed';
+}
+
+function kindForFramework(framework: DetectedFramework): ProjectKind {
+  if (
+    framework === 'Next.js' ||
+    framework === 'Nuxt' ||
+    framework === 'React' ||
+    framework === 'Vue' ||
+    framework === 'Angular' ||
+    framework === 'SvelteKit'
+  ) {
+    return 'frontend';
+  }
+
+  if (framework === 'Unknown' || framework === 'Node.js' || framework === 'Python') {
+    return 'generic';
+  }
+
+  return 'backend';
+}
+
+function runtimeForFramework(framework: DetectedFramework): ProjectRuntimeFamily {
+  if (
+    framework === 'NestJS' ||
+    framework === 'Next.js' ||
+    framework === 'Nuxt' ||
+    framework === 'React' ||
+    framework === 'Vue' ||
+    framework === 'Angular' ||
+    framework === 'SvelteKit' ||
+    framework === 'Express' ||
+    framework === 'Fastify' ||
+    framework === 'Koa' ||
+    framework === 'Node.js'
+  ) {
+    return 'node';
+  }
+
+  if (
+    framework === 'FastAPI' ||
+    framework === 'Django' ||
+    framework === 'Flask' ||
+    framework === 'Python'
+  ) {
+    return 'python';
+  }
+
+  if (framework === 'Go/Fiber' || framework === 'Go/Gin') {
+    return 'go';
+  }
+
+  if (framework === 'Spring Boot') {
+    return 'java';
+  }
+
+  if (framework === 'Laravel' || framework === 'PHP') {
+    return 'php';
+  }
+
+  if (framework === 'Ruby on Rails' || framework === 'Ruby') {
+    return 'ruby';
+  }
+
+  if (framework === 'ASP.NET') {
+    return 'dotnet';
+  }
+
+  return 'unknown';
+}
+
+function applyFrameworkMetadata(
+  health: ProjectHealth,
+  framework: DetectedFramework,
+  confidence: FrameworkConfidence
+): void {
+  health.framework = framework;
+  health.frameworkConfidence = confidence;
+  health.supportTier = supportTierForFramework(framework);
+  health.projectKind = kindForFramework(framework);
+  health.runtimeFamily = runtimeForFramework(framework);
+}
+
+function detectNodeFrameworkFromManifest(input: {
+  dependencies: Record<string, unknown>;
+  scripts?: Record<string, unknown>;
+  kitName?: string;
+}): { framework: DetectedFramework; confidence: FrameworkConfidence } {
+  const deps = input.dependencies;
+  const scripts = input.scripts ?? {};
+  const kitName = (input.kitName ?? '').toLowerCase();
+
+  const hasDep = (name: string) => Boolean(deps[name]);
+  const scriptText = Object.values(scripts)
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .toLowerCase();
+
+  if (hasDep('next') || scriptText.includes('next ')) {
+    return { framework: 'Next.js', confidence: 'high' };
+  }
+  if (hasDep('nuxt') || scriptText.includes('nuxt ')) {
+    return { framework: 'Nuxt', confidence: 'high' };
+  }
+  if (hasDep('@nestjs/core') || kitName.startsWith('nestjs.')) {
+    return { framework: 'NestJS', confidence: 'high' };
+  }
+  if (hasDep('express')) {
+    return { framework: 'Express', confidence: 'high' };
+  }
+  if (hasDep('fastify')) {
+    return { framework: 'Fastify', confidence: 'high' };
+  }
+  if (hasDep('koa')) {
+    return { framework: 'Koa', confidence: 'high' };
+  }
+  if (hasDep('@angular/core')) {
+    return { framework: 'Angular', confidence: 'high' };
+  }
+  if (hasDep('@sveltejs/kit') || scriptText.includes('svelte-kit')) {
+    return { framework: 'SvelteKit', confidence: 'high' };
+  }
+  if (hasDep('vue')) {
+    return { framework: 'Vue', confidence: 'medium' };
+  }
+  if (hasDep('react') && hasDep('react-dom')) {
+    return { framework: 'React', confidence: 'medium' };
+  }
+
+  return { framework: 'Node.js', confidence: 'low' };
+}
+
+async function detectPythonFramework(projectPath: string): Promise<{
+  framework: DetectedFramework;
+  confidence: FrameworkConfidence;
+}> {
+  const candidates = [
+    path.join(projectPath, 'pyproject.toml'),
+    path.join(projectPath, 'requirements.txt'),
+  ];
+  const contents: string[] = [];
+
+  for (const candidatePath of candidates) {
+    if (!(await fsExtra.pathExists(candidatePath))) {
+      continue;
+    }
+    try {
+      contents.push((await fsExtra.readFile(candidatePath, 'utf8')).toLowerCase());
+    } catch {
+      continue;
+    }
+  }
+
+  const merged = contents.join('\n');
+  if (merged.includes('fastapi')) {
+    return { framework: 'FastAPI', confidence: 'high' };
+  }
+  if (merged.includes('django')) {
+    return { framework: 'Django', confidence: 'high' };
+  }
+  if (merged.includes('flask')) {
+    return { framework: 'Flask', confidence: 'high' };
+  }
+
+  return { framework: 'Python', confidence: contents.length > 0 ? 'medium' : 'low' };
 }
 
 async function statSignature(candidatePath: string): Promise<string> {
@@ -253,8 +518,12 @@ async function buildWorkspaceProjectSignature(
     '.rapidkit/file-hashes.json',
     'package.json',
     'pyproject.toml',
+    'composer.json',
+    'Gemfile',
+    'Gemfile.lock',
     'go.mod',
     'go.sum',
+    'pom.xml',
     'requirements.txt',
     'Dockerfile',
     'Makefile',
@@ -278,7 +547,7 @@ async function buildWorkspaceProjectSignature(
     })
   );
 
-  return [...workspaceSignature, ...projectSignatures].join('||');
+  return [DOCTOR_PROJECT_SCAN_SCHEMA, ...workspaceSignature, ...projectSignatures].join('||');
 }
 
 async function loadWorkspaceProjectCache(
@@ -342,6 +611,8 @@ async function writeDoctorEvidence(
         summary: {
           totalProjects: health.projects.length,
           totalIssues: health.projects.reduce((sum, p) => sum + p.issues.length, 0),
+          projectAdvisoryWarningProjects: countProjectAdvisoryWarningProjects(health.projects),
+          projectAdvisoryWarnings: countProjectAdvisoryWarnings(health.projects),
           hasSystemErrors: [health.python, health.rapidkitCore].some((c) => c.status === 'error'),
         },
       },
@@ -731,8 +1002,8 @@ async function performCommonChecks(projectPath: string, health: ProjectHealth): 
   health.hasTests = hasTestDir || hasGoTests;
 
   // Code Quality checks
-  if (health.framework === 'NestJS') {
-    // ESLint for NestJS
+  if (health.runtimeFamily === 'node') {
+    // ESLint for Node frameworks
     const eslintPath = path.join(projectPath, '.eslintrc.js');
     const eslintJsonPath = path.join(projectPath, '.eslintrc.json');
     health.hasCodeQuality =
@@ -749,8 +1020,8 @@ async function performCommonChecks(projectPath: string, health: ProjectHealth): 
       (await fsExtra.pathExists(golangciPath)) ||
       (await fsExtra.pathExists(golangciYaml)) ||
       hasMakefileLint;
-  } else if (health.framework === 'FastAPI') {
-    // Ruff for FastAPI
+  } else if (health.runtimeFamily === 'python') {
+    // Ruff for Python runtimes
     const ruffPath = path.join(projectPath, 'ruff.toml');
     const pyprojectPath = path.join(projectPath, 'pyproject.toml');
 
@@ -781,7 +1052,7 @@ async function performCommonChecks(projectPath: string, health: ProjectHealth): 
 
   // Security check - try to detect vulnerabilities
   try {
-    if (health.framework === 'NestJS') {
+    if (health.runtimeFamily === 'node') {
       const { stdout } = await execa('npm', ['audit', '--json'], {
         cwd: projectPath,
         reject: false,
@@ -799,7 +1070,7 @@ async function performCommonChecks(projectPath: string, health: ProjectHealth): 
           // Ignore JSON parse errors
         }
       }
-    } else if (health.framework === 'FastAPI') {
+    } else if (health.runtimeFamily === 'python') {
       // Check for safety or pip-audit
       const venvPath = path.join(projectPath, '.venv');
       const pythonPath = getVenvPythonPath(venvPath);
@@ -901,11 +1172,30 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
     // Ignore if can't determine last modified
   }
 
-  // Detect project type (Go, Spring Boot, Python FastAPI, or Node.js NestJS)
+  // Detect project type using runtime/framework signals
   const packageJsonPath = path.join(projectPath, 'package.json');
   const pyprojectTomlPath = path.join(projectPath, 'pyproject.toml');
+  const requirementsTxtPath = path.join(projectPath, 'requirements.txt');
   const goModPath = path.join(projectPath, 'go.mod');
   const pomXmlPath = path.join(projectPath, 'pom.xml');
+  const composerJsonPath = path.join(projectPath, 'composer.json');
+  const gemfilePath = path.join(projectPath, 'Gemfile');
+
+  const isNodeProject = await fsExtra.pathExists(packageJsonPath);
+  const isPythonProject =
+    (await fsExtra.pathExists(pyprojectTomlPath)) ||
+    (await fsExtra.pathExists(requirementsTxtPath));
+  const isPhpProject = await fsExtra.pathExists(composerJsonPath);
+  const isRubyProject = await fsExtra.pathExists(gemfilePath);
+  let isDotnetProject = false;
+  try {
+    const projectEntries = await fsExtra.readdir(projectPath);
+    isDotnetProject = projectEntries.some(
+      (entry) => entry.endsWith('.csproj') || entry.endsWith('.sln')
+    );
+  } catch {
+    isDotnetProject = false;
+  }
 
   const isGoProject =
     (await fsExtra.pathExists(goModPath)) ||
@@ -917,7 +1207,7 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
   // Go project checks (Fiber or Gin)
   if (isGoProject) {
     const kitName = (projectJsonData?.kit_name as string | undefined) ?? '';
-    health.framework = kitName.startsWith('gogin') ? 'Go/Gin' : 'Go/Fiber';
+    applyFrameworkMetadata(health, kitName.startsWith('gogin') ? 'Go/Gin' : 'Go/Fiber', 'high');
     health.isGoProject = true;
     health.venvActive = true; // N/A for Go
     health.coreInstalled = false; // N/A for Go
@@ -954,7 +1244,7 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
       (projectJsonData.kit_name as string).startsWith('springboot'));
 
   if (isJavaProject) {
-    health.framework = 'Spring Boot';
+    applyFrameworkMetadata(health, 'Spring Boot', 'high');
     health.venvActive = true;
     health.coreInstalled = false;
 
@@ -1055,12 +1345,37 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
     return health;
   }
 
-  const isNodeProject = await fsExtra.pathExists(packageJsonPath);
-  const isPythonProject = await fsExtra.pathExists(pyprojectTomlPath);
-
-  // Node.js/NestJS project checks
+  // Node.js project checks
   if (isNodeProject) {
-    health.framework = 'NestJS';
+    let packageJsonData: Record<string, unknown> | null = null;
+    try {
+      packageJsonData = await fsExtra.readJson(packageJsonPath);
+    } catch {
+      packageJsonData = null;
+    }
+
+    const dependencies = {
+      ...((packageJsonData?.dependencies as Record<string, unknown> | undefined) ?? {}),
+      ...((packageJsonData?.devDependencies as Record<string, unknown> | undefined) ?? {}),
+    };
+
+    const scripts =
+      (packageJsonData?.scripts as Record<string, unknown> | undefined) ??
+      ({} as Record<string, unknown>);
+
+    const kitName =
+      typeof projectJsonData?.kit_name === 'string'
+        ? (projectJsonData.kit_name as string).toLowerCase()
+        : typeof projectJsonData?.kit === 'string'
+          ? (projectJsonData.kit as string).toLowerCase()
+          : '';
+
+    const nodeDetection = detectNodeFrameworkFromManifest({
+      dependencies,
+      scripts,
+      kitName,
+    });
+    applyFrameworkMetadata(health, nodeDetection.framework, nodeDetection.confidence);
     health.venvActive = true; // N/A for Node.js projects
 
     // Check for node_modules
@@ -1084,14 +1399,42 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
     // Node.js projects don't need Python venv
     health.coreInstalled = false; // N/A for Node.js
 
-    // Check for .env file
-    const envPath = path.join(projectPath, '.env');
-    health.hasEnvFile = await fsExtra.pathExists(envPath);
-    if (!health.hasEnvFile) {
-      const envExamplePath = path.join(projectPath, '.env.example');
-      if (await fsExtra.pathExists(envExamplePath)) {
-        health.issues.push('Environment file missing (found .env.example)');
-        health.fixCommands?.push(buildEnvCopyFixCommand(projectPath));
+    // Check environment files.
+    // For frontend frameworks, .env.* files are optional; show warning only when .env.example exists.
+    if (health.projectKind === 'frontend') {
+      const envCandidates = [
+        '.env',
+        '.env.local',
+        '.env.development',
+        '.env.development.local',
+        '.env.production',
+        '.env.production.local',
+      ];
+      const hasAnyEnvFile = (
+        await Promise.all(
+          envCandidates.map((name) => fsExtra.pathExists(path.join(projectPath, name)))
+        )
+      ).some(Boolean);
+
+      if (hasAnyEnvFile) {
+        health.hasEnvFile = true;
+      } else {
+        const envExamplePath = path.join(projectPath, '.env.example');
+        if (await fsExtra.pathExists(envExamplePath)) {
+          health.hasEnvFile = false;
+          health.issues.push('Environment file missing (found .env.example)');
+          health.fixCommands?.push(buildEnvCopyFixCommand(projectPath));
+        }
+      }
+    } else {
+      const envPath = path.join(projectPath, '.env');
+      health.hasEnvFile = await fsExtra.pathExists(envPath);
+      if (!health.hasEnvFile) {
+        const envExamplePath = path.join(projectPath, '.env.example');
+        if (await fsExtra.pathExists(envExamplePath)) {
+          health.issues.push('Environment file missing (found .env.example)');
+          health.fixCommands?.push(buildEnvCopyFixCommand(projectPath));
+        }
       }
     }
 
@@ -1118,7 +1461,8 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
 
   // Python/FastAPI project checks
   if (isPythonProject) {
-    health.framework = 'FastAPI';
+    const pythonDetection = await detectPythonFramework(projectPath);
+    applyFrameworkMetadata(health, pythonDetection.framework, pythonDetection.confidence);
 
     // Check for virtual environment
     const venvPath = path.join(projectPath, '.venv');
@@ -1143,13 +1487,28 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
           health.coreInstalled = false;
         }
 
-        // Check if dependencies are installed
-        // Try to import a common package to verify installation
-        try {
-          await execa(pythonPath, ['-c', 'import fastapi'], { timeout: 2000 });
-          health.depsInstalled = true;
-        } catch {
-          // Fallback: check if site-packages has content
+        // Check if dependencies are installed using framework signal first.
+        let frameworkImport = 'fastapi';
+        if (health.framework === 'Django') {
+          frameworkImport = 'django';
+        } else if (health.framework === 'Flask') {
+          frameworkImport = 'flask';
+        } else if (health.framework === 'Python') {
+          frameworkImport = '';
+        }
+
+        let shouldRunFallback = true;
+        if (frameworkImport) {
+          try {
+            await execa(pythonPath, ['-c', `import ${frameworkImport}`], { timeout: 2000 });
+            health.depsInstalled = true;
+            shouldRunFallback = false;
+          } catch {
+            shouldRunFallback = true;
+          }
+        }
+
+        if (shouldRunFallback) {
           try {
             const libPath = path.join(venvPath, 'lib');
             if (await fsExtra.pathExists(libPath)) {
@@ -1239,8 +1598,111 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
     return health;
   }
 
-  // If neither package.json nor pyproject.toml, return basic health
-  health.issues.push('Unknown project type (no package.json or pyproject.toml)');
+  if (isPhpProject) {
+    let framework: DetectedFramework = 'PHP';
+    let confidence: FrameworkConfidence = 'medium';
+    try {
+      const composerJson = await fsExtra.readJson(composerJsonPath);
+      const dependencies = {
+        ...((composerJson?.require as Record<string, unknown> | undefined) ?? {}),
+        ...((composerJson?.['require-dev'] as Record<string, unknown> | undefined) ?? {}),
+      };
+      if (dependencies['laravel/framework']) {
+        framework = 'Laravel';
+        confidence = 'high';
+      } else {
+        framework = 'PHP';
+        confidence = 'medium';
+      }
+    } catch {
+      framework = 'PHP';
+      confidence = 'low';
+    }
+
+    applyFrameworkMetadata(health, framework, confidence);
+    health.venvActive = true;
+    health.coreInstalled = false;
+
+    const vendorPath = path.join(projectPath, 'vendor');
+    health.depsInstalled = await fsExtra.pathExists(vendorPath);
+    if (!health.depsInstalled) {
+      health.issues.push('PHP dependencies not installed (vendor missing)');
+      health.fixCommands?.push(buildProjectFixCommand(projectPath, 'composer install'));
+    }
+
+    const envPath = path.join(projectPath, '.env');
+    health.hasEnvFile = await fsExtra.pathExists(envPath);
+    if (!health.hasEnvFile) {
+      const envExamplePath = path.join(projectPath, '.env.example');
+      if (await fsExtra.pathExists(envExamplePath)) {
+        health.issues.push('Environment file missing (found .env.example)');
+        health.fixCommands?.push(buildEnvCopyFixCommand(projectPath));
+      }
+    }
+
+    await performCommonChecks(projectPath, health);
+    return health;
+  }
+
+  if (isRubyProject) {
+    let framework: DetectedFramework = 'Ruby';
+    let confidence: FrameworkConfidence = 'low';
+    try {
+      const gemfileRaw = (await fsExtra.readFile(gemfilePath, 'utf8')).toLowerCase();
+      if (gemfileRaw.includes("gem 'rails'") || gemfileRaw.includes('gem "rails"')) {
+        framework = 'Ruby on Rails';
+        confidence = 'high';
+      } else {
+        framework = 'Ruby';
+        confidence = 'medium';
+      }
+    } catch {
+      confidence = 'low';
+    }
+
+    applyFrameworkMetadata(health, framework, confidence);
+    health.venvActive = true;
+    health.coreInstalled = false;
+
+    const hasLockFile = await fsExtra.pathExists(path.join(projectPath, 'Gemfile.lock'));
+    const hasVendorBundle = await fsExtra.pathExists(path.join(projectPath, 'vendor', 'bundle'));
+    health.depsInstalled = hasLockFile || hasVendorBundle;
+    if (!health.depsInstalled) {
+      health.issues.push('Ruby dependencies not installed (Gemfile.lock/vendor missing)');
+      health.fixCommands?.push(buildProjectFixCommand(projectPath, 'bundle install'));
+    }
+
+    const envPath = path.join(projectPath, '.env');
+    health.hasEnvFile = await fsExtra.pathExists(envPath);
+
+    await performCommonChecks(projectPath, health);
+    return health;
+  }
+
+  if (isDotnetProject) {
+    applyFrameworkMetadata(health, 'ASP.NET', 'medium');
+    health.venvActive = true;
+    health.coreInstalled = false;
+
+    const objPath = path.join(projectPath, 'obj');
+    const packagesLockPath = path.join(projectPath, 'packages.lock.json');
+    health.depsInstalled =
+      (await fsExtra.pathExists(objPath)) || (await fsExtra.pathExists(packagesLockPath));
+    if (!health.depsInstalled) {
+      health.issues.push('.NET restore/build artifacts not found');
+      health.fixCommands?.push(buildProjectFixCommand(projectPath, 'dotnet restore'));
+    }
+
+    const envPath = path.join(projectPath, '.env');
+    health.hasEnvFile = await fsExtra.pathExists(envPath);
+
+    await performCommonChecks(projectPath, health);
+    return health;
+  }
+
+  // If runtime markers are absent, return basic health
+  applyFrameworkMetadata(health, 'Unknown', 'low');
+  health.issues.push('Unknown project type (no recognized runtime marker files)');
 
   await performCommonChecks(projectPath, health);
   return health;
@@ -1389,15 +1851,18 @@ function calculateHealthScore(
 
   // Count project issues
   projects.forEach((project) => {
+    const advisoryWarnings = getProjectAdvisoryWarningCount(project);
     // Go projects: venvActive is set true (N/A) — use depsInstalled + no issues
     const isHealthy = project.isGoProject
       ? project.issues.length === 0 && project.depsInstalled
       : project.issues.length === 0 && project.venvActive && project.depsInstalled;
-    if (isHealthy) {
-      passed++;
-    } else if (project.issues.length > 0) {
+
+    if (project.issues.length > 0 || advisoryWarnings > 0 || !isHealthy) {
       warnings++;
+      return;
     }
+
+    passed++;
   });
 
   const total = passed + warnings + errors;
@@ -1524,29 +1989,60 @@ function renderProjectHealth(project: ProjectHealth): void {
   // Show framework
   if (project.framework) {
     const frameworkIcon =
-      project.framework === 'FastAPI'
+      project.framework === 'FastAPI' ||
+      project.framework === 'Django' ||
+      project.framework === 'Flask'
         ? '🐍'
         : project.framework === 'NestJS'
           ? '🦅'
-          : project.framework === 'Spring Boot'
-            ? '☕'
-            : project.framework === 'Go/Fiber'
-              ? '🐹'
-              : project.framework === 'Go/Gin'
-                ? '🐹'
-                : '📦';
+          : project.framework === 'Next.js' || project.framework === 'Nuxt'
+            ? '▲'
+            : project.framework === 'React'
+              ? '⚛️'
+              : project.framework === 'Vue'
+                ? '🟢'
+                : project.framework === 'Angular'
+                  ? '🅰️'
+                  : project.framework === 'SvelteKit'
+                    ? '🧡'
+                    : project.framework === 'Spring Boot'
+                      ? '☕'
+                      : project.framework === 'Go/Fiber'
+                        ? '🐹'
+                        : project.framework === 'Go/Gin'
+                          ? '🐹'
+                          : project.framework === 'Laravel' || project.framework === 'PHP'
+                            ? '🐘'
+                            : project.framework === 'Ruby on Rails' || project.framework === 'Ruby'
+                              ? '💎'
+                              : project.framework === 'ASP.NET'
+                                ? '🔷'
+                                : '📦';
     console.log(
       `   ${frameworkIcon} Framework: ${chalk.cyan(project.framework)}${project.kit ? chalk.gray(` (${project.kit})`) : ''}`
     );
+
+    const profileParts: string[] = [];
+    if (project.runtimeFamily) {
+      profileParts.push(`runtime: ${project.runtimeFamily}`);
+    }
+    if (project.projectKind) {
+      profileParts.push(`kind: ${project.projectKind}`);
+    }
+    if (project.supportTier) {
+      profileParts.push(`support: ${project.supportTier}`);
+    }
+    if (project.frameworkConfidence) {
+      profileParts.push(`confidence: ${project.frameworkConfidence}`);
+    }
+    if (profileParts.length > 0) {
+      console.log(`   ${chalk.dim('↳')} ${chalk.gray(profileParts.join(' • '))}`);
+    }
   }
 
   console.log(`   ${chalk.gray(`Path: ${project.path}`)}`);
 
-  // Detect project type based on what was checked
-  const isGoProject = project.framework === 'Go/Fiber' || project.framework === 'Go/Gin';
-  const isJavaProject = project.framework === 'Spring Boot';
-  const isNodeProject = project.framework === 'NestJS';
-  const isPythonProject = !isGoProject && !isNodeProject && !isJavaProject;
+  const isPythonProject = project.runtimeFamily === 'python';
 
   if (isPythonProject) {
     // Python project display
@@ -1620,13 +2116,15 @@ function renderProjectHealth(project: ProjectHealth): void {
   }
   if (project.hasCodeQuality !== undefined) {
     const qualityTool =
-      project.framework === 'NestJS'
+      project.runtimeFamily === 'node'
         ? 'ESLint'
         : project.framework === 'Spring Boot'
           ? 'Static analysis'
           : project.framework === 'Go/Fiber' || project.framework === 'Go/Gin'
             ? 'golangci-lint'
-            : 'Ruff';
+            : project.runtimeFamily === 'python'
+              ? 'Ruff'
+              : 'Lint';
     additionalChecks.push(
       project.hasCodeQuality ? `✅ ${qualityTool}` : chalk.dim(`⊘ No ${qualityTool}`)
     );
@@ -1952,8 +2450,15 @@ export async function runDoctor(
         projects: health.projects.map((p) => ({
           name: p.name,
           path: p.path,
+          framework: p.framework,
+          runtimeFamily: p.runtimeFamily,
+          projectKind: p.projectKind,
+          supportTier: p.supportTier,
+          frameworkConfidence: p.frameworkConfidence,
           venvActive: p.venvActive,
           depsInstalled: p.depsInstalled,
+          hasEnvFile: p.hasEnvFile,
+          vulnerabilities: p.vulnerabilities,
           coreInstalled: p.coreInstalled,
           coreVersion: p.coreVersion,
           issues: p.issues,
@@ -1962,6 +2467,8 @@ export async function runDoctor(
         summary: {
           totalProjects: health.projects.length,
           totalIssues: health.projects.reduce((sum, p) => sum + p.issues.length, 0),
+          projectAdvisoryWarningProjects: countProjectAdvisoryWarningProjects(health.projects),
+          projectAdvisoryWarnings: countProjectAdvisoryWarnings(health.projects),
           hasSystemErrors: [health.python, health.rapidkitCore].some((c) => c.status === 'error'),
         },
       };
@@ -2018,10 +2525,17 @@ export async function runDoctor(
 
     // Summary
     const totalIssues = health.projects.reduce((sum, p) => sum + p.issues.length, 0);
+    const advisoryWarningProjects = countProjectAdvisoryWarningProjects(health.projects);
     const hasSystemIssues = [health.python, health.rapidkitCore].some((c) => c.status === 'error');
 
-    if (hasSystemIssues || totalIssues > 0) {
-      console.log(chalk.bold.yellow(`\n⚠️  Found ${totalIssues} project issue(s)`));
+    if (hasSystemIssues || totalIssues > 0 || advisoryWarningProjects > 0) {
+      const advisorySummary =
+        advisoryWarningProjects > 0
+          ? ` and ${advisoryWarningProjects} advisory warning project(s)`
+          : '';
+      console.log(
+        chalk.bold.yellow(`\n⚠️  Found ${totalIssues} project issue(s)${advisorySummary}`)
+      );
       if (hasSystemIssues) {
         console.log(chalk.bold.red('❌ System requirements not met'));
       }

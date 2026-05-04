@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.2] - 2026-05-04
+
+### Added
+
+- Enriched `doctor workspace` JSON output with AI/automation profile fields:
+  - `runtimeFamily`
+  - `projectKind`
+  - `supportTier`
+  - `frameworkConfidence`
+- Expanded framework/runtime detection coverage in `doctor workspace` across Node, Python, Go, Java, PHP, Ruby, and .NET marker sets.
+
+### Changed
+
+- Upgraded Node framework classification from static assumptions to signal-based detection (for example, `Next.js`, `Nuxt`, `NestJS`, `Express`, `Fastify`, `Koa`, `React`, `Vue`, `Angular`, `SvelteKit`).
+- Added framework profile rendering in human-readable doctor output (`runtime`, `kind`, `support`, `confidence`).
+- Updated doctor workspace project-scan cache signature with schema versioning and broader manifest markers to prevent stale framework classification reuse.
+- Updated README command docs to explicitly include `rapidkit readiness` at CLI level and clarify `doctor workspace --fix` advisory behavior.
+
+### Fixed
+
+- Fixed frontend misclassification in `doctor workspace` where Next.js projects could be reported as NestJS.
+- Fixed advisory warning visibility alignment so environment/security advisory context is represented consistently in doctor summary outputs.
+- Removed unrelated extension guidance drift line from `releases/RELEASE_NOTES_v0.27.1.md`.
+
 ## [0.27.1] - 2026-05-03
 
 ### Added

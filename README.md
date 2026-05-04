@@ -93,6 +93,7 @@ npx rapidkit create # Prompts: workspace | project
 npx rapidkit create workspace <name> [--profile <profile>] [--author <name>] [--yes]
 npx rapidkit bootstrap [--profile <profile>] [--json]
 npx rapidkit setup <python|node|go|java> [--warm-deps]
+npx rapidkit readiness [--json] [--strict]
 npx rapidkit workspace policy show
 npx rapidkit workspace policy set <key> <value>
 npx rapidkit doctor
@@ -133,17 +134,31 @@ RapidKit keeps the wrapper boundary explicit so users know which layer owns each
 | `create workspace`, `workspace`, `cache`, `mirror` | RapidKit wrapper | Platform-level orchestration |
 | `init` | Wrapper orchestrated | Chooses the right runtime flow for the current project |
 | `dev`, `test`, `build`, `start` | Runtime aware | Delegates to the active project/runtime when available |
+| `readiness` | Wrapper release gate | Generates release-readiness evidence (`--json` for CI, `--strict` for fail-fast) |
 | `doctor` | Wrapper system check | Checks host prerequisites by default |
 | `doctor workspace` | Workspace health | Full workspace scan with project-level details and fixes |
 
 Use `npx rapidkit doctor` for a quick host pre-flight and `npx rapidkit doctor workspace` inside a workspace for the full health picture.
+Use `npx rapidkit readiness` when you need machine-readable release evidence or strict CI gating.
 
 ### Doctor workspace fix behavior
 
 - `npx rapidkit doctor workspace` reuses cached project scans when valid and refreshes evidence under `.rapidkit/reports/doctor-last-run.json`.
 - `npx rapidkit doctor workspace --fix` only executes actionable fix commands.
+- Advisory warnings (for example, detected vulnerabilities or optional env metadata gaps) are reported in workspace health, but they do not automatically become shell fix commands.
+- It is valid to see `No fixes needed` after `--fix` when only advisory warnings are present.
 - URL-based fixes are recorded as manual guidance (for example, install pages) and are not executed as shell commands.
 - Go project fixes that require `go mod tidy` are skipped when the Go toolchain is not available, with a clear install-and-rerun hint.
+
+### Doctor workspace JSON fields (AI/automation)
+
+`npx rapidkit doctor workspace --json` includes project-level runtime/profile metadata used by extension and AI tooling:
+
+- `framework`
+- `runtimeFamily`
+- `projectKind`
+- `supportTier`
+- `frameworkConfidence`
 
 ### Project lifecycle
 

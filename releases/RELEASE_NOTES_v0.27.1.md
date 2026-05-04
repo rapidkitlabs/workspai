@@ -21,7 +21,6 @@ This patch resolves critical AI recommendation UX gaps, aligns module identity p
   - Embeddings manager smoke behavior
   - Ownership matrix drift guard
   - Contract parsing behavior (slug-first + keyword normalization)
-- Updated extension AI command scope guidance to include `npx rapidkit readiness`.
 
 ## User Impact
 
