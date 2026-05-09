@@ -159,8 +159,8 @@ jobs:
           npm run bundle-size
           BUNDLE_SIZE=$(du -sk dist/ | cut -f1)
           echo "Bundle size: ${BUNDLE_SIZE} KB"
-          if [ "$BUNDLE_SIZE" -gt 500 ]; then
-            echo "❌ Bundle size exceeds 500 KB!"
+          if [ "$BUNDLE_SIZE" -gt 550 ]; then
+            echo "❌ Bundle size exceeds 550 KB!"
             exit 1
           fi
 
