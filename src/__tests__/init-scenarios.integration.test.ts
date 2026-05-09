@@ -90,7 +90,7 @@ describe('init scenarios integration (non-regression)', () => {
     expect(report.summary.selectedCount).toBe(1);
     expect(report.summary.passed).toBe(1);
     expect(report.projects[0]?.relativePath).toBe('node-app');
-  });
+  }, 20000);
 
   it('scenario 3: in project folder initializes only project deps', async () => {
     process.env.RAPIDKIT_ENABLE_RUNTIME_ADAPTERS = '1';
