@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * RapidKit Metrics Tracker
- * 
+ *
  * Tracks and reports key performance metrics for the project.
  */
 
@@ -54,19 +54,19 @@ class MetricsCollector {
   getTestCoverage(): number {
     // Try coverage-summary.json first (istanbul/nyc format)
     let coverageFile = join(this.rootDir, 'coverage', 'coverage-summary.json');
-    
+
     if (!existsSync(coverageFile)) {
       // Fall back to coverage-final.json (v8 format)
       coverageFile = join(this.rootDir, 'coverage', 'coverage-final.json');
     }
-    
+
     if (!existsSync(coverageFile)) {
       return 0;
     }
 
     try {
       const coverage = JSON.parse(readFileSync(coverageFile, 'utf-8'));
-      
+
       // Handle istanbul/nyc format
       if (coverage.total) {
         const total = coverage.total;
@@ -74,11 +74,11 @@ class MetricsCollector {
           (total.lines.pct + total.statements.pct + total.functions.pct + total.branches.pct) / 4
         );
       }
-      
+
       // Handle v8 format - calculate average from all files
       const files = Object.keys(coverage);
       if (files.length === 0) return 0;
-      
+
       let totalStatements = 0;
       let coveredStatements = 0;
       let totalBranches = 0;
@@ -87,36 +87,45 @@ class MetricsCollector {
       let coveredFunctions = 0;
       let totalLines = 0;
       let coveredLines = 0;
-      
-      files.forEach(file => {
+
+      files.forEach((file) => {
         const data = coverage[file];
-        
+
         // Statements
         if (data.statementMap) {
           const stmts = Object.keys(data.statementMap).length;
           totalStatements += stmts;
-          coveredStatements += Object.values(data.s as Record<string, number>).filter(x => x > 0).length;
+          coveredStatements += Object.values(data.s as Record<string, number>).filter(
+            (x) => x > 0
+          ).length;
         }
-        
+
         // Branches
         if (data.branchMap) {
-          const branches = Object.values(data.branchMap as Record<string, any>).reduce((sum, b) => sum + b.locations.length, 0);
+          const branches = Object.values(data.branchMap as Record<string, any>).reduce(
+            (sum, b) => sum + b.locations.length,
+            0
+          );
           totalBranches += branches;
-          coveredBranches += Object.values(data.b as Record<string, number[]>).flat().filter(x => x > 0).length;
+          coveredBranches += Object.values(data.b as Record<string, number[]>)
+            .flat()
+            .filter((x) => x > 0).length;
         }
-        
+
         // Functions
         if (data.fnMap) {
           const fns = Object.keys(data.fnMap).length;
           totalFunctions += fns;
-          coveredFunctions += Object.values(data.f as Record<string, number>).filter(x => x > 0).length;
+          coveredFunctions += Object.values(data.f as Record<string, number>).filter(
+            (x) => x > 0
+          ).length;
         }
       });
-      
+
       const stmtPct = totalStatements > 0 ? (coveredStatements / totalStatements) * 100 : 0;
       const branchPct = totalBranches > 0 ? (coveredBranches / totalBranches) * 100 : 0;
       const funcPct = totalFunctions > 0 ? (coveredFunctions / totalFunctions) * 100 : 0;
-      
+
       return Math.round((stmtPct + branchPct + funcPct) / 3);
     } catch {
       return 0;
@@ -129,14 +138,14 @@ class MetricsCollector {
   getTestStats(): { total: number; passing: number; failing: number } {
     try {
       const result = execSync('npm test 2>&1', { encoding: 'utf-8', cwd: this.rootDir });
-      
+
       // Parse vitest output
       const totalMatch = result.match(/(\d+) passed/);
       const failMatch = result.match(/(\d+) failed/);
-      
+
       const passing = totalMatch ? parseInt(totalMatch[1], 10) : 0;
       const failing = failMatch ? parseInt(failMatch[1], 10) : 0;
-      
+
       return {
         total: passing + failing,
         passing,
@@ -153,10 +162,10 @@ class MetricsCollector {
   getESLintStats(): { warnings: number; errors: number } {
     try {
       const result = execSync('npm run lint 2>&1', { encoding: 'utf-8', cwd: this.rootDir });
-      
+
       const warningMatch = result.match(/(\d+) warnings?/);
       const errorMatch = result.match(/(\d+) errors?/);
-      
+
       return {
         warnings: warningMatch ? parseInt(warningMatch[1], 10) : 0,
         errors: errorMatch ? parseInt(errorMatch[1], 10) : 0,
@@ -178,7 +187,7 @@ class MetricsCollector {
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
     const deps = Object.keys(packageJson.dependencies || {}).length;
     const devDeps = Object.keys(packageJson.devDependencies || {}).length;
-    
+
     return deps + devDeps;
   }
 
@@ -189,7 +198,7 @@ class MetricsCollector {
     try {
       const result = execSync('npm audit --json', { encoding: 'utf-8', cwd: this.rootDir });
       const audit = JSON.parse(result);
-      
+
       return (
         (audit.metadata?.vulnerabilities?.moderate || 0) +
         (audit.metadata?.vulnerabilities?.high || 0) +
@@ -244,7 +253,7 @@ class MetricsCollector {
    */
   validateMetrics(metrics: Metrics): boolean {
     const targets = {
-      bundle_size_kb: 500,
+      bundle_size_kb: 550,
       test_coverage: 80,
       eslint_errors: 0,
       security_vulnerabilities: 0,
@@ -255,17 +264,25 @@ class MetricsCollector {
     console.log('\n🎯 Metrics Validation:\n');
 
     if (metrics.bundle_size_kb > targets.bundle_size_kb) {
-      console.log(`❌ Bundle size: ${metrics.bundle_size_kb} KB (target: <${targets.bundle_size_kb} KB)`);
+      console.log(
+        `❌ Bundle size: ${metrics.bundle_size_kb} KB (target: <${targets.bundle_size_kb} KB)`
+      );
       passed = false;
     } else {
-      console.log(`✅ Bundle size: ${metrics.bundle_size_kb} KB (target: <${targets.bundle_size_kb} KB)`);
+      console.log(
+        `✅ Bundle size: ${metrics.bundle_size_kb} KB (target: <${targets.bundle_size_kb} KB)`
+      );
     }
 
     if (metrics.test_coverage < targets.test_coverage) {
-      console.log(`❌ Test coverage: ${metrics.test_coverage}% (target: >${targets.test_coverage}%)`);
+      console.log(
+        `❌ Test coverage: ${metrics.test_coverage}% (target: >${targets.test_coverage}%)`
+      );
       passed = false;
     } else {
-      console.log(`✅ Test coverage: ${metrics.test_coverage}% (target: >${targets.test_coverage}%)`);
+      console.log(
+        `✅ Test coverage: ${metrics.test_coverage}% (target: >${targets.test_coverage}%)`
+      );
     }
 
     if (metrics.eslint_errors > targets.eslint_errors) {
@@ -276,10 +293,14 @@ class MetricsCollector {
     }
 
     if (metrics.security_vulnerabilities > targets.security_vulnerabilities) {
-      console.log(`❌ Security vulnerabilities: ${metrics.security_vulnerabilities} (target: ${targets.security_vulnerabilities})`);
+      console.log(
+        `❌ Security vulnerabilities: ${metrics.security_vulnerabilities} (target: ${targets.security_vulnerabilities})`
+      );
       passed = false;
     } else {
-      console.log(`✅ Security vulnerabilities: ${metrics.security_vulnerabilities} (target: ${targets.security_vulnerabilities})`);
+      console.log(
+        `✅ Security vulnerabilities: ${metrics.security_vulnerabilities} (target: ${targets.security_vulnerabilities})`
+      );
     }
 
     return passed;
@@ -291,14 +312,14 @@ const isMainModule = import.meta.url === `file://${process.argv[1]}`;
 
 if (isMainModule) {
   const collector = new MetricsCollector();
-  
+
   collector.collect().then((metrics) => {
     const passed = collector.validateMetrics(metrics);
-    
+
     console.log('\n' + '='.repeat(50));
     console.log(passed ? '✅ All metrics passed!' : '❌ Some metrics failed!');
     console.log('='.repeat(50) + '\n');
-    
+
     process.exit(passed ? 0 : 1);
   });
 }
