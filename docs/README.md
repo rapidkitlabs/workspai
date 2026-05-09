@@ -23,7 +23,6 @@ Public documentation is split into two tracks:
 ### Operations & Security
 
 - **[SECURITY.md](./SECURITY.md)** - Security policy and vulnerability reporting
-- **[ENTERPRISE_GOVERNANCE_RUNBOOK.md](./ENTERPRISE_GOVERNANCE_RUNBOOK.md)** - Multi-environment governance runbook
 - **[mirror-config.enterprise.example.json](./mirror-config.enterprise.example.json)** - Enterprise mirror + evidence export template
 - **[governance-policy.enterprise.example.json](./governance-policy.enterprise.example.json)** - Governance allowlist policy template
 - **[policies.workspace.example.yml](./policies.workspace.example.yml)** - Workspace policy template
@@ -74,7 +73,6 @@ rapidkit-npm/
     ├── AI_DYNAMIC_INTEGRATION.md       # Advanced AI integration
     ├── DEVELOPMENT.md                  # Development guide
     ├── SETUP.md                        # Setup and commands
-    ├── ENTERPRISE_GOVERNANCE_RUNBOOK.md# Enterprise governance ops runbook
     ├── OPEN_SOURCE_USER_SCENARIOS.md   # Publish-ready user scenarios by role
     ├── OPTIMIZATION_GUIDE.md           # Optimization suggestions
     ├── UTILITIES.md                    # Cache and performance utilities
@@ -87,6 +85,8 @@ rapidkit-npm/
     ├── WORKSPACE_MARKER_SPEC.md        # Workspace marker spec
     └── contracts/                      # Technical specifications
 ```
+
+Enterprise governance runbook is intentionally excluded from the OSS docs index.
 
 ## 🚀 Quick Start
 

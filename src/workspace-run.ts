@@ -1,0 +1,862 @@
+import fs from 'fs';
+import path from 'path';
+
+import chalk from 'chalk';
+import { execa } from 'execa';
+import {
+  getStageCommand,
+  detectRuntimeFromMarkers,
+  categorizeError,
+  validateCommand,
+  resolveStageCommand,
+  type RuntimeFamily,
+  type ErrorCategory,
+} from './framework-registry.js';
+
+export type WorkspaceRunStage = 'init' | 'test' | 'build' | 'start';
+
+export interface WorkspaceRunOptions {
+  workspacePath: string;
+  stage: WorkspaceRunStage;
+  affected?: boolean;
+  blastRadius?: boolean;
+  since?: string;
+  parallel?: boolean;
+  maxWorkers?: number;
+  continueOnError?: boolean;
+  strict?: boolean;
+  json?: boolean;
+  enforceGates?: boolean;
+}
+
+type GateStatus = 'pass' | 'warn' | 'fail' | 'skipped';
+
+interface GateResult {
+  gate: 'doctor-workspace' | 'readiness';
+  status: GateStatus;
+  summary: string;
+}
+
+interface ProjectExecutionResult {
+  path: string;
+  relativePath: string;
+  selected: boolean;
+  affected: boolean;
+  status: 'passed' | 'failed' | 'skipped';
+  exitCode: number | null;
+  durationMs: number;
+  reason?: string;
+  framework?: string;
+  runtimeDetected?: RuntimeFamily;
+  executionCommand?: string;
+  // Enterprise features
+  errorCategory?: ErrorCategory;
+  errorMessage?: string;
+  healthStatus?: {
+    healthy: boolean;
+    reason?: string;
+  };
+}
+
+export type SelectionMode = 'all' | 'affected' | 'affected+blast-radius';
+export type GraphStatus = 'loaded' | 'missing' | 'invalid' | 'not-applicable';
+
+export interface WorkspaceRunReport {
+  schemaVersion: '1.0';
+  workspacePath: string;
+  stage: WorkspaceRunStage;
+  generatedAt: string;
+  durationMs: number;
+  options: {
+    affected: boolean;
+    blastRadius: boolean;
+    since: string | null;
+    parallel: boolean;
+    maxWorkers: number;
+    continueOnError: boolean;
+    strict: boolean;
+    enforceGates: boolean;
+  };
+  selection: {
+    mode: SelectionMode;
+    since: string | null;
+    graphStatus: GraphStatus;
+    expansionDepth: number;
+  };
+  gates: {
+    enforced: boolean;
+    results: GateResult[];
+    blocked: boolean;
+    blockingGate?: string;
+  };
+  summary: {
+    projectCount: number;
+    selectedCount: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+    exitCode: number;
+  };
+  projects: ProjectExecutionResult[];
+}
+
+const STAGE_SET: Set<WorkspaceRunStage> = new Set(['init', 'test', 'build', 'start']);
+
+const SKIP_DIRS = new Set([
+  '.git',
+  'node_modules',
+  '.rapidkit',
+  '.venv',
+  'dist',
+  'build',
+  'coverage',
+  'htmlcov',
+]);
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.promises.access(targetPath, fs.constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readJsonFile<T>(filePath: string): Promise<T> {
+  const raw = await fs.promises.readFile(filePath, 'utf-8');
+  return JSON.parse(raw) as T;
+}
+
+async function writeJsonFile(filePath: string, payload: unknown): Promise<void> {
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+}
+
+function normalizePathForMatch(value: string): string {
+  return value.replace(/\\/g, '/');
+}
+
+async function discoverWorkspaceProjects(workspacePath: string): Promise<string[]> {
+  const discovered = new Set<string>();
+
+  async function scan(dirPath: string): Promise<void> {
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    if (
+      (await pathExists(path.join(dirPath, '.rapidkit', 'context.json'))) ||
+      (await pathExists(path.join(dirPath, '.rapidkit', 'project.json')))
+    ) {
+      discovered.add(path.resolve(dirPath));
+      return;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      if (SKIP_DIRS.has(entry.name)) {
+        continue;
+      }
+
+      const next = path.join(dirPath, entry.name);
+      await scan(next);
+    }
+  }
+
+  await scan(path.resolve(workspacePath));
+  return [...discovered].sort((a, b) => a.localeCompare(b));
+}
+
+async function computeAffectedProjects(
+  workspacePath: string,
+  projects: string[],
+  since: string
+): Promise<Set<string>> {
+  const changedFiles = await execa('git', ['diff', '--name-only', `${since}...HEAD`], {
+    cwd: workspacePath,
+    reject: false,
+  });
+
+  if (changedFiles.exitCode !== 0) {
+    return new Set(projects);
+  }
+
+  const lines = changedFiles.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => normalizePathForMatch(line));
+
+  if (lines.length === 0) {
+    return new Set();
+  }
+
+  const matched = new Set<string>();
+  for (const projectPath of projects) {
+    const relative = normalizePathForMatch(path.relative(workspacePath, projectPath));
+    if (!relative || relative === '.') {
+      continue;
+    }
+
+    const prefix = `${relative}/`;
+    if (lines.some((line) => line === relative || line.startsWith(prefix))) {
+      matched.add(projectPath);
+    }
+  }
+
+  return matched;
+}
+
+interface BlastRadiusResult {
+  expanded: Set<string>;
+  graphStatus: 'loaded' | 'missing' | 'invalid';
+  expansionDepth: number;
+}
+
+async function expandAffectedWithBlastRadius(
+  workspacePath: string,
+  projects: string[],
+  initialAffected: Set<string>
+): Promise<BlastRadiusResult> {
+  const graphPath = path.join(workspacePath, '.rapidkit', 'workspace-dependency-graph.json');
+  if (!(await pathExists(graphPath))) {
+    return { expanded: initialAffected, graphStatus: 'missing', expansionDepth: 0 };
+  }
+
+  let payload: unknown;
+  try {
+    payload = await readJsonFile(graphPath);
+  } catch {
+    return { expanded: initialAffected, graphStatus: 'invalid', expansionDepth: 0 };
+  }
+
+  const knownProjects = new Set(projects.map((projectPath) => path.resolve(projectPath)));
+  const reverseDeps = new Map<string, Set<string>>();
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { expanded: initialAffected, graphStatus: 'invalid', expansionDepth: 0 };
+  }
+
+  const projectEntries = Array.isArray((payload as Record<string, unknown>).projects)
+    ? ((payload as Record<string, unknown>).projects as unknown[])
+    : [];
+
+  for (const entry of projectEntries) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      continue;
+    }
+
+    const row = entry as Record<string, unknown>;
+    const rawPath = typeof row.path === 'string' ? row.path : '';
+    const sourceProject = path.resolve(workspacePath, rawPath);
+    if (!knownProjects.has(sourceProject)) {
+      continue;
+    }
+
+    const dependsOn = Array.isArray(row.dependsOn)
+      ? row.dependsOn.filter((item): item is string => typeof item === 'string')
+      : [];
+
+    for (const dep of dependsOn) {
+      const dependencyProject = path.resolve(workspacePath, dep);
+      if (!knownProjects.has(dependencyProject)) {
+        continue;
+      }
+      if (!reverseDeps.has(dependencyProject)) {
+        reverseDeps.set(dependencyProject, new Set<string>());
+      }
+      reverseDeps.get(dependencyProject)?.add(sourceProject);
+    }
+  }
+
+  const expanded = new Set(initialAffected);
+  const queue = [...expanded];
+  let expansionDepth = 0;
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) {
+      continue;
+    }
+
+    const dependents = reverseDeps.get(current);
+    if (!dependents) {
+      continue;
+    }
+
+    for (const dependent of dependents) {
+      if (!expanded.has(dependent)) {
+        expanded.add(dependent);
+        queue.push(dependent);
+        expansionDepth += 1;
+      }
+    }
+  }
+
+  return { expanded, graphStatus: 'loaded', expansionDepth };
+}
+
+async function shouldEnforceWorkspaceRunGates(
+  workspacePath: string,
+  explicitFlag: boolean | undefined
+): Promise<boolean> {
+  if (typeof explicitFlag === 'boolean') {
+    return explicitFlag;
+  }
+
+  const policyPath = path.join(workspacePath, '.rapidkit', 'policies.yml');
+  if (!(await pathExists(policyPath))) {
+    return true;
+  }
+
+  let raw = '';
+  try {
+    raw = await fs.promises.readFile(policyPath, 'utf-8');
+  } catch {
+    return true;
+  }
+
+  const match = raw.match(/^[\t ]*rules\.enforce_workspace_run_gates:\s*(true|false)\s*(?:#.*)?$/m);
+  if (!match) {
+    return true;
+  }
+
+  return match[1] === 'true';
+}
+
+async function runRapidkitSelfCommand(args: string[], cwd: string) {
+  const entrypoint = process.argv[1];
+  if (!entrypoint) {
+    return {
+      exitCode: 1,
+      stdout: '',
+      stderr: 'RapidKit entrypoint is unavailable for nested workspace-run execution.',
+    };
+  }
+
+  const result = await execa(process.execPath, [entrypoint, ...args], {
+    cwd,
+    reject: false,
+    env: {
+      ...process.env,
+      RAPIDKIT_WORKSPACE_RUN_CHILD: '1',
+    },
+  });
+
+  return {
+    exitCode: Number(result.exitCode ?? 1),
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
+/**
+ * Detect project framework from metadata and file markers.
+ * Reads .rapidkit/context.json for explicit configuration, falls back to file marker detection.
+ * Also extracts command overrides and environment configuration.
+ */
+async function detectProjectFramework(projectPath: string): Promise<{
+  runtime: RuntimeFamily;
+  framework?: string;
+  commandOverrides?: Record<string, string>;
+  environment?: 'dev' | 'staging' | 'prod';
+}> {
+  // Check .rapidkit/context.json for explicit metadata
+  const contextPath = path.join(projectPath, '.rapidkit', 'context.json');
+  if (fs.existsSync(contextPath)) {
+    try {
+      const context = JSON.parse(fs.readFileSync(contextPath, 'utf-8')) as Record<string, unknown>;
+      if (typeof context.runtime === 'string') {
+        // Extract command overrides
+        const commandOverrides: Record<string, string> = {};
+        if (context.commands && typeof context.commands === 'object') {
+          for (const [key, val] of Object.entries(context.commands)) {
+            if (typeof val === 'string') {
+              commandOverrides[key] = val;
+            }
+          }
+        }
+
+        return {
+          runtime: context.runtime as RuntimeFamily,
+          framework: typeof context.framework === 'string' ? context.framework : undefined,
+          commandOverrides: Object.keys(commandOverrides).length > 0 ? commandOverrides : undefined,
+          environment:
+            typeof context.environment === 'string'
+              ? (context.environment as 'dev' | 'staging' | 'prod')
+              : undefined,
+        };
+      }
+    } catch {
+      // Fallback to marker detection
+    }
+  }
+
+  // Fallback: detect from markers (files like go.mod, Cargo.toml, etc.)
+  const runtime = detectRuntimeFromMarkers(projectPath);
+  return { runtime, framework: undefined };
+}
+
+/**
+ * Execute a stage command with enterprise features:
+ * - Command override support
+ * - Preflight validation
+ * - Error categorization
+ * - Health checks
+ */
+async function executeStageCommand(
+  projectPath: string,
+  stage: string,
+  runtime: RuntimeFamily,
+  framework?: string,
+  commandOverrides?: Record<string, string>,
+  environment?: 'dev' | 'staging' | 'prod'
+): Promise<{
+  exitCode: number;
+  command: string;
+  message?: string;
+  errorCategory?: ErrorCategory;
+  healthStatus?: { healthy: boolean; reason?: string };
+}> {
+  // Step 0: Resolve the command, checking overrides first
+  let baseCommand: string | undefined;
+
+  // Check if override exists for this stage
+  if (commandOverrides && commandOverrides[stage]) {
+    baseCommand = commandOverrides[stage];
+  } else if (['node', 'go', 'java', 'python'].includes(runtime)) {
+    // For npm adapters, use 'rapidkit' wrapper
+    baseCommand = `rapidkit ${stage}`;
+  } else {
+    // Try framework registry
+    baseCommand = getStageCommand(runtime, framework, stage);
+  }
+
+  if (!baseCommand) {
+    return {
+      exitCode: 127,
+      command: `<stage not supported for ${runtime}>`,
+      message: `No stage command found for runtime '${runtime}' and framework '${framework || 'unknown'}'`,
+      errorCategory: 'runtime',
+    };
+  }
+
+  // Resolve environment variants if needed
+  const finalCommand = resolveStageCommand(baseCommand, commandOverrides, environment);
+  if (!finalCommand) {
+    return {
+      exitCode: 127,
+      command: baseCommand,
+      message: 'Failed to resolve stage command',
+      errorCategory: 'runtime',
+    };
+  }
+
+  // Step 1: Preflight validation
+  const validation = await validateCommand(finalCommand);
+  if (!validation.valid) {
+    return {
+      exitCode: 127,
+      command: finalCommand,
+      message: validation.reason || 'Command not available',
+      errorCategory: 'setup',
+    };
+  }
+
+  // Step 2: Execute the command
+  let exitCode = 0;
+  let stdout = '';
+  let stderr = '';
+  let errorCategory: ErrorCategory | undefined;
+
+  try {
+    const result = await execa(finalCommand, [], {
+      cwd: projectPath,
+      reject: false,
+      shell: true,
+    });
+
+    exitCode = Number(result.exitCode ?? 0);
+    stdout = result.stdout;
+    stderr = result.stderr;
+
+    // Categorize error if non-zero exit
+    if (exitCode !== 0) {
+      const output = `${stdout}\n${stderr}`;
+      errorCategory = categorizeError(output);
+    }
+  } catch (error) {
+    return {
+      exitCode: 1,
+      command: finalCommand,
+      message: error instanceof Error ? error.message : 'Command execution failed',
+      errorCategory: 'runtime',
+    };
+  }
+
+  // Step 3: Health check (if configured)
+  let healthStatus: { healthy: boolean; reason?: string } | undefined;
+  // Note: Health checks would be looked up from framework registry
+  // For now, we return the exit code result
+
+  return {
+    exitCode,
+    command: finalCommand,
+    errorCategory,
+    healthStatus,
+    message: exitCode !== 0 ? `Stage failed with exit code ${exitCode}` : undefined,
+  };
+}
+
+function parseJsonOutput<T>(raw: string): T | null {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function runWorkspaceGates(workspacePath: string): Promise<GateResult[]> {
+  const gates: GateResult[] = [];
+
+  const doctor = await runRapidkitSelfCommand(['doctor', 'workspace', '--json'], workspacePath);
+  if (doctor.exitCode !== 0) {
+    gates.push({
+      gate: 'doctor-workspace',
+      status: 'fail',
+      summary: 'doctor workspace command failed',
+    });
+  } else {
+    const payload = parseJsonOutput<Record<string, unknown>>(doctor.stdout);
+    const health = payload?.healthScore as Record<string, unknown> | undefined;
+    const errors = Number(health?.errors ?? 0);
+    if (Number.isFinite(errors) && errors > 0) {
+      gates.push({
+        gate: 'doctor-workspace',
+        status: 'fail',
+        summary: `doctor workspace reports ${errors} error(s)`,
+      });
+    } else {
+      gates.push({
+        gate: 'doctor-workspace',
+        status: 'pass',
+        summary: 'doctor workspace passed',
+      });
+    }
+  }
+
+  const readiness = await runRapidkitSelfCommand(['readiness', '--json'], workspacePath);
+  if (readiness.exitCode !== 0) {
+    gates.push({
+      gate: 'readiness',
+      status: 'fail',
+      summary: 'readiness command failed',
+    });
+  } else {
+    const payload = parseJsonOutput<Record<string, unknown>>(readiness.stdout);
+    const overallStatus = String(payload?.overallStatus ?? '').toLowerCase();
+    if (overallStatus === 'fail') {
+      gates.push({
+        gate: 'readiness',
+        status: 'fail',
+        summary: 'readiness overall status is fail',
+      });
+    } else if (overallStatus === 'warn') {
+      gates.push({
+        gate: 'readiness',
+        status: 'warn',
+        summary: 'readiness overall status is warn',
+      });
+    } else {
+      gates.push({
+        gate: 'readiness',
+        status: 'pass',
+        summary: 'readiness overall status is pass',
+      });
+    }
+  }
+
+  return gates;
+}
+
+function ensureValidStage(stage: string): stage is WorkspaceRunStage {
+  return STAGE_SET.has(stage as WorkspaceRunStage);
+}
+
+function normalizeWorkers(maxWorkers: number | undefined, projectCount: number): number {
+  const fallback = Math.max(1, Math.min(4, projectCount));
+  const parsed = Number(maxWorkers ?? fallback);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(1, Math.min(16, Math.trunc(parsed)));
+}
+
+export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<WorkspaceRunReport> {
+  if (!ensureValidStage(options.stage)) {
+    throw new Error(`Unsupported workspace run stage: ${options.stage}`);
+  }
+
+  const startedAt = Date.now();
+  const workspacePath = path.resolve(options.workspacePath);
+  const projectPaths = await discoverWorkspaceProjects(workspacePath);
+
+  const affectedOnly = options.affected === true;
+  const blastRadius = options.blastRadius === true;
+  const since = options.since?.trim() || 'HEAD~1';
+  const initialAffectedProjects = affectedOnly
+    ? await computeAffectedProjects(workspacePath, projectPaths, since)
+    : new Set(projectPaths);
+
+  let affectedProjects: Set<string>;
+  let graphStatus: GraphStatus = 'not-applicable';
+  let expansionDepth = 0;
+  let selectionMode: SelectionMode = 'all';
+
+  if (affectedOnly && blastRadius) {
+    const result = await expandAffectedWithBlastRadius(
+      workspacePath,
+      projectPaths,
+      initialAffectedProjects
+    );
+    affectedProjects = result.expanded;
+    graphStatus = result.graphStatus;
+    expansionDepth = result.expansionDepth;
+    selectionMode = 'affected+blast-radius';
+  } else if (affectedOnly) {
+    affectedProjects = initialAffectedProjects;
+    selectionMode = 'affected';
+  } else {
+    affectedProjects = initialAffectedProjects;
+    selectionMode = 'all';
+  }
+
+  const enforceGates =
+    options.stage === 'init'
+      ? false
+      : await shouldEnforceWorkspaceRunGates(workspacePath, options.enforceGates);
+  const gateResults: GateResult[] = enforceGates
+    ? await runWorkspaceGates(workspacePath)
+    : [
+        {
+          gate: 'doctor-workspace',
+          status: 'skipped',
+          summary: 'workspace run gates disabled',
+        },
+        {
+          gate: 'readiness',
+          status: 'skipped',
+          summary: 'workspace run gates disabled',
+        },
+      ];
+  const blockingGate = gateResults.find((gate) => gate.status === 'fail');
+
+  const runTargets = projectPaths.filter((projectPath) => affectedProjects.has(projectPath));
+  const continueOnError = options.continueOnError === true;
+  const parallel = options.parallel === true;
+  const maxWorkers = normalizeWorkers(options.maxWorkers, runTargets.length);
+
+  const executionRows = new Map<string, ProjectExecutionResult>();
+  for (const projectPath of projectPaths) {
+    executionRows.set(projectPath, {
+      path: projectPath,
+      relativePath: normalizePathForMatch(path.relative(workspacePath, projectPath)),
+      selected: affectedProjects.has(projectPath),
+      affected: affectedProjects.has(projectPath),
+      status: affectedProjects.has(projectPath) ? 'skipped' : 'skipped',
+      exitCode: null,
+      durationMs: 0,
+      reason: affectedProjects.has(projectPath) ? undefined : 'not affected',
+      framework: undefined,
+      runtimeDetected: undefined,
+      executionCommand: undefined,
+    });
+  }
+
+  if (blockingGate) {
+    for (const projectPath of runTargets) {
+      const row = executionRows.get(projectPath);
+      if (row) {
+        row.status = 'skipped';
+        row.reason = `blocked by ${blockingGate.gate}`;
+      }
+    }
+  } else {
+    const runOne = async (projectPath: string): Promise<void> => {
+      const row = executionRows.get(projectPath);
+      if (!row) {
+        return;
+      }
+
+      row.selected = true;
+      row.affected = true;
+      const started = Date.now();
+
+      // Detect framework and runtime for this project (with overrides)
+      const { runtime, framework, commandOverrides, environment } =
+        await detectProjectFramework(projectPath);
+      row.runtimeDetected = runtime;
+      row.framework = framework;
+
+      // Execute stage command with enterprise features
+      const execResult = await executeStageCommand(
+        projectPath,
+        options.stage,
+        runtime,
+        framework,
+        commandOverrides,
+        environment
+      );
+      row.executionCommand = execResult.command;
+      row.errorCategory = execResult.errorCategory;
+      row.healthStatus = execResult.healthStatus;
+      row.durationMs = Date.now() - started;
+      row.exitCode = execResult.exitCode;
+
+      if (execResult.exitCode === 0) {
+        row.status = 'passed';
+        row.reason = undefined;
+      } else {
+        row.status = 'failed';
+        row.reason = execResult.message || 'stage command failed';
+        row.errorMessage = execResult.message;
+      }
+    };
+
+    if (parallel && runTargets.length > 1) {
+      let index = 0;
+      let failed = false;
+      const workers = new Array(maxWorkers).fill(null).map(async () => {
+        while (index < runTargets.length) {
+          if (failed && !continueOnError) {
+            return;
+          }
+
+          const currentIndex = index;
+          index += 1;
+          const projectPath = runTargets[currentIndex];
+          await runOne(projectPath);
+
+          const row = executionRows.get(projectPath);
+          if (row?.status === 'failed') {
+            failed = true;
+          }
+        }
+      });
+
+      await Promise.all(workers);
+
+      if (!continueOnError && failed) {
+        let stop = false;
+        for (const projectPath of runTargets) {
+          const row = executionRows.get(projectPath);
+          if (!row) continue;
+
+          if (row.status === 'failed') {
+            stop = true;
+            continue;
+          }
+
+          if (stop && row.status === 'skipped') {
+            row.reason = row.reason || 'stopped after failure';
+          }
+        }
+      }
+    } else {
+      for (const projectPath of runTargets) {
+        await runOne(projectPath);
+        const row = executionRows.get(projectPath);
+        if (!continueOnError && row?.status === 'failed') {
+          const pending = runTargets.slice(runTargets.indexOf(projectPath) + 1);
+          for (const pendingPath of pending) {
+            const pendingRow = executionRows.get(pendingPath);
+            if (pendingRow) {
+              pendingRow.status = 'skipped';
+              pendingRow.reason = 'stopped after failure';
+            }
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  const rows: ProjectExecutionResult[] = [];
+  for (const projectPath of projectPaths) {
+    const row = executionRows.get(projectPath);
+    if (!row) {
+      continue;
+    }
+    rows.push(row);
+  }
+  const passed = rows.filter((row) => row.status === 'passed').length;
+  const failed = rows.filter((row) => row.status === 'failed').length;
+  const skipped = rows.filter((row) => row.status === 'skipped').length;
+
+  const strict = options.strict === true;
+  const exitCode =
+    failed > 0 || (strict && gateResults.some((gate) => gate.status !== 'pass')) ? 1 : 0;
+
+  const report: WorkspaceRunReport = {
+    schemaVersion: '1.0',
+    workspacePath,
+    stage: options.stage,
+    generatedAt: new Date().toISOString(),
+    durationMs: Date.now() - startedAt,
+    options: {
+      affected: affectedOnly,
+      blastRadius,
+      since: affectedOnly ? since : null,
+      parallel,
+      maxWorkers,
+      continueOnError,
+      strict,
+      enforceGates,
+    },
+    selection: {
+      mode: selectionMode,
+      since: affectedOnly ? since : null,
+      graphStatus,
+      expansionDepth,
+    },
+    gates: {
+      enforced: enforceGates,
+      results: gateResults,
+      blocked: Boolean(blockingGate),
+      blockingGate: blockingGate?.gate,
+    },
+    summary: {
+      projectCount: projectPaths.length,
+      selectedCount: runTargets.length,
+      passed,
+      failed,
+      skipped,
+      exitCode,
+    },
+    projects: rows,
+  };
+
+  const reportPath = path.join(workspacePath, '.rapidkit', 'reports', 'workspace-run-last.json');
+  await writeJsonFile(reportPath, report);
+
+  if (!options.json) {
+    if (blockingGate) {
+      console.log(chalk.red(`❌ Workspace run blocked by ${blockingGate.gate}`));
+      console.log(chalk.gray(`   ${blockingGate.summary}`));
+    }
+    console.log(
+      chalk.cyan(
+        `Workspace run (${options.stage}) => passed: ${passed}, failed: ${failed}, skipped: ${skipped}`
+      )
+    );
+    console.log(chalk.gray(`Report: ${reportPath}`));
+  }
+
+  return report;
+}

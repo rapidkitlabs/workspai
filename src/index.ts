@@ -1531,7 +1531,7 @@ async function writeJsonFile(filePath: string, payload: unknown): Promise<void> 
   await fsExtra.outputFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
 }
 
-async function installWorkspaceDependencies(workspacePath: string): Promise<number> {
+export async function installWorkspaceDependencies(workspacePath: string): Promise<number> {
   const PYTHON_REQUIRED_PROFILES = new Set(['python-only', 'polyglot', 'enterprise']);
 
   let workspaceProfile = 'minimal';
@@ -3306,10 +3306,11 @@ export async function handleInitCommand(args: string[]): Promise<number> {
     const lifecycle = await withWorkspaceDependencyPolicyContext(cwd, async () => {
       const workspacePathForPolicy = findWorkspaceUp(cwd);
       const pythonAdapter = getRuntimeAdapter('python', { runCommandInCwd, runCoreRapidkit });
+      const explicitTargetArgs = args.slice(1).filter((arg) => !arg.startsWith('-'));
 
-      if (args.length > 1) {
+      if (explicitTargetArgs.length > 0) {
         // If called with a path argument, check if that path is a Go project
-        const targetPath = path.resolve(cwd, args[1]);
+        const targetPath = path.resolve(cwd, explicitTargetArgs[0]);
         const targetJson = readRapidkitProjectJson(targetPath);
         const inferredRuntime = await inferRuntimeByFiles(targetPath);
 
@@ -3382,77 +3383,31 @@ export async function handleInitCommand(args: string[]): Promise<number> {
       }
 
       if (workspacePath && cwd === workspacePath) {
+        console.log(chalk.yellow('⚠️  Running `npx rapidkit init` at workspace root.'));
+        console.log(
+          chalk.gray(
+            '   Root `init`, `workspace init`, and `workspace run init` now share the same full-init flow:\n' +
+              '   workspace-profile dependencies first, then project dependency initialization.\n'
+          )
+        );
+
         const workspaceInitCode = await installWorkspaceDependencies(workspacePath);
         if (workspaceInitCode !== 0) return workspaceInitCode;
 
-        const projectPaths = await collectWorkspaceProjects(workspacePath);
+        const { runWorkspaceStage } = await import('./workspace-run.js');
+        const report = await runWorkspaceStage({
+          workspacePath,
+          stage: 'init',
+          affected: false,
+          blastRadius: false,
+          parallel: false,
+          continueOnError: false,
+          strict: false,
+          json: false,
+          enforceGates: false,
+        });
 
-        if (projectPaths.length === 0) {
-          // No sub-projects yet — give context-aware guidance based on profile.
-          let wsProfile = 'minimal';
-          try {
-            const manifest = JSON.parse(
-              await fs.promises.readFile(
-                path.join(workspacePath, '.rapidkit', 'workspace.json'),
-                'utf-8'
-              )
-            ) as { profile?: string };
-            wsProfile = manifest.profile ?? 'minimal';
-          } catch {
-            /* use default */
-          }
-
-          if (wsProfile === 'go-only') {
-            console.log(chalk.green('✔ Go workspace ready'));
-            console.log(chalk.gray('\nNo projects yet — create one and then run init inside it:'));
-            console.log(chalk.white('  npx rapidkit create project gofiber.standard my-api'));
-            console.log(chalk.white('  cd my-api && npx rapidkit init'));
-            console.log(
-              chalk.gray('\n💡 Go dependencies are managed per-project (go.mod / go mod tidy).')
-            );
-          } else if (wsProfile === 'java-only') {
-            console.log(chalk.green('✔ Java workspace ready'));
-            console.log(chalk.gray('\nNo projects yet — create one and then run init inside it:'));
-            console.log(
-              chalk.white('  npx rapidkit create project springboot.standard my-service')
-            );
-            console.log(chalk.white('  cd my-service && npx rapidkit init'));
-            console.log(
-              chalk.gray('\n💡 Java dependencies are managed per-project (Maven/Gradle).')
-            );
-          } else {
-            console.log(chalk.green('✔ Workspace ready'));
-            console.log(chalk.gray('\nNo projects yet — create one to get started:'));
-            console.log(chalk.white('  npx rapidkit create project'));
-          }
-          return 0;
-        }
-
-        for (const projectPath of projectPaths) {
-          const projJson = readRapidkitProjectJson(projectPath);
-          if (isGoProject(projJson, projectPath)) {
-            const code = await handleGoInit(projectPath);
-            if (code !== 0) return code;
-          } else if (isJavaProject(projJson, projectPath)) {
-            const javaCode = await handleJavaCommand('init', projectPath);
-            if (javaCode !== 0) return javaCode;
-          } else {
-            if (isNodeProject(projJson, projectPath)) {
-              const nodeCode = await handleNodeInitSmart(projectPath);
-              if (nodeCode !== 0) return nodeCode;
-              continue;
-            }
-            if (isPythonProject(projJson, projectPath)) {
-              const pythonCode = await handlePythonInitSmart(projectPath, pythonAdapter);
-              if (pythonCode !== 0) return pythonCode;
-              continue;
-            }
-            const projectInitCode = await runCoreRapidkit(['init'], { cwd: projectPath });
-            if (projectInitCode !== 0) return projectInitCode;
-          }
-        }
-
-        return 0;
+        return report.summary.exitCode;
       }
 
       if (!workspacePath) {
@@ -4425,20 +4380,25 @@ program
 program
   .command('doctor [scope]')
   .description(
-    '🩺 Check RapidKit system health by default; use workspace for full workspace checks'
+    '🩺 Check RapidKit system health by default; use workspace or project for scoped checks'
   )
   .option('--workspace', 'Check entire workspace (including all projects)')
+  .option('--project', 'Check only the current project (or nearest parent project)')
   .option('--json', 'Output results in JSON format (for CI/CD pipelines)')
   .option('--fix', 'Automatically fix common issues (with confirmation)')
   .action(
     async (
       scope: string | undefined,
-      options: { workspace?: boolean; json?: boolean; fix?: boolean }
+      options: { workspace?: boolean; project?: boolean; json?: boolean; fix?: boolean }
     ) => {
-      if (scope && scope !== 'workspace') {
+      if (scope && scope !== 'workspace' && scope !== 'project') {
         console.log(chalk.red(`Unknown doctor scope: ${scope}`));
-        console.log(chalk.gray('Available: workspace'));
-        console.log(chalk.gray('Usage: npx rapidkit doctor or npx rapidkit doctor workspace'));
+        console.log(chalk.gray('Available: workspace, project'));
+        console.log(
+          chalk.gray(
+            'Usage: npx rapidkit doctor | npx rapidkit doctor workspace | npx rapidkit doctor project'
+          )
+        );
         process.exit(1);
       }
 
@@ -4470,6 +4430,7 @@ program
       await runDoctor({
         ...options,
         workspace: options.workspace || scope === 'workspace',
+        project: options.project || scope === 'project',
       });
     }
   );
@@ -4477,10 +4438,23 @@ program
 // Workspace management command
 program
   .command('workspace <action> [subaction] [key] [value]')
-  .description('Manage RapidKit workspaces (list, sync, policy, share)')
+  .description(
+    'Manage RapidKit workspaces (list, sync, policy, share, run)\n' +
+      '  workspace run <stage>   \u2014 fleet stage execution across discovered projects\n' +
+      '                            stages: init | test | build | start  (dev excluded by design)'
+  )
   .option('--output <file>', 'Output file path for workspace share bundle')
   .option('--include-paths', 'Include absolute paths in workspace share bundle')
   .option('--no-doctor', 'Exclude doctor evidence in workspace share bundle')
+  .option('--affected', 'Run only affected projects (requires git diff context)')
+  .option('--blast-radius', 'Include downstream dependents from workspace dependency graph')
+  .option('--since <ref>', 'Git ref for affected calculation (default: HEAD~1)')
+  .option('--parallel', 'Run project stages in parallel')
+  .option('--max-workers <count>', 'Maximum parallel workers (default: min(4, selected))')
+  .option('--continue-on-error', 'Continue running remaining projects after a failure')
+  .option('--json', 'Emit machine-readable JSON output')
+  .option('--strict', 'Return non-zero exit on warn/fail gate outcomes')
+  .option('--no-gates', 'Skip doctor/readiness pre-run gates')
   .action(async function (
     this: Command,
     action: string,
@@ -4492,36 +4466,58 @@ program
       output?: string;
       includePaths?: boolean;
       doctor?: boolean;
+      affected?: boolean;
+      blastRadius?: boolean;
+      since?: string;
+      parallel?: boolean;
+      maxWorkers?: string;
+      continueOnError?: boolean;
+      json?: boolean;
+      strict?: boolean;
+      gates?: boolean;
     };
+
+    const requireWorkspaceRootForAction = (actionName: string): string => {
+      const workspacePath = findWorkspaceUp(process.cwd());
+      if (!workspacePath) {
+        console.log(chalk.red('❌ Not inside a RapidKit workspace'));
+        console.log(chalk.gray('💡 Run this command from within a workspace directory'));
+        process.exit(1);
+      }
+
+      const cwd = path.resolve(process.cwd());
+      const root = path.resolve(workspacePath);
+      if (cwd !== root) {
+        console.log(
+          chalk.red(`❌ Workspace action "${actionName}" must be run from workspace root.`)
+        );
+        console.log(chalk.gray(`💡 Workspace root: ${workspacePath}`));
+        console.log(chalk.white(`   cd ${workspacePath}`));
+        if (actionName === 'run init' || actionName === 'init') {
+          console.log(
+            chalk.gray('   For project-only init in the current directory, run: npx rapidkit init')
+          );
+        }
+        process.exit(1);
+      }
+
+      return workspacePath;
+    };
+
     if (action === 'list') {
       const { listWorkspaces } = await import('./workspace.js');
       await listWorkspaces();
     } else if (action === 'sync') {
-      const workspacePath = findWorkspaceUp(process.cwd());
-      if (!workspacePath) {
-        console.log(chalk.red('❌ Not inside a RapidKit workspace'));
-        console.log(chalk.gray('💡 Run this command from within a workspace directory'));
-        process.exit(1);
-      }
+      const workspacePath = requireWorkspaceRootForAction('sync');
       const { syncWorkspaceProjects } = await import('./workspace.js');
       console.log(chalk.cyan(`📂 Scanning workspace: ${path.basename(workspacePath)}`));
       await syncWorkspaceProjects(workspacePath);
     } else if (action === 'policy') {
-      const workspacePath = findWorkspaceUp(process.cwd());
-      if (!workspacePath) {
-        console.log(chalk.red('❌ Not inside a RapidKit workspace'));
-        console.log(chalk.gray('💡 Run this command from within a workspace directory'));
-        process.exit(1);
-      }
+      const workspacePath = requireWorkspaceRootForAction('policy');
       const code = await handleWorkspacePolicyCommand(workspacePath, subaction, key, value);
       if (code !== 0) process.exit(code);
     } else if (action === 'share') {
-      const workspacePath = findWorkspaceUp(process.cwd());
-      if (!workspacePath) {
-        console.log(chalk.red('❌ Not inside a RapidKit workspace'));
-        console.log(chalk.gray('💡 Run this command from within a workspace directory'));
-        process.exit(1);
-      }
+      const workspacePath = requireWorkspaceRootForAction('share');
 
       const outputPath = actionOptions.output || subaction;
       const { createWorkspaceShareBundle } = await import('./workspace.js');
@@ -4535,9 +4531,104 @@ program
       console.log(
         chalk.gray('Share this JSON with your team for reproducible workspace/project diagnostics.')
       );
+    } else if (action === 'run') {
+      const workspacePath = requireWorkspaceRootForAction(`run ${subaction || ''}`.trim());
+
+      if (!subaction || !['init', 'test', 'build', 'start'].includes(subaction)) {
+        console.log(chalk.red(`Unknown workspace run stage: ${subaction || '(none provided)'}`));
+        console.log(chalk.gray('Available stages: init | test | build | start'));
+        console.log(chalk.gray('  • init   — run install/bootstrap across the project fleet'));
+        console.log(chalk.gray('  • test   — run test suite across selected projects'));
+        console.log(chalk.gray('  • build  — compile/package across selected projects'));
+        console.log(chalk.gray('  • start  — start services (smoke/e2e scenarios)'));
+        console.log(
+          chalk.gray('  Note: dev is excluded — it is a local-only primitive, not a CI stage')
+        );
+        process.exit(2);
+      }
+
+      const maxWorkersRaw = Number(actionOptions.maxWorkers ?? '');
+      const maxWorkers = Number.isFinite(maxWorkersRaw)
+        ? Math.max(1, Math.trunc(maxWorkersRaw))
+        : undefined;
+
+      if (subaction === 'init') {
+        const workspaceInitCode = await installWorkspaceDependencies(workspacePath);
+        if (workspaceInitCode !== 0) {
+          process.exit(workspaceInitCode);
+        }
+      }
+
+      const { runWorkspaceStage } = await import('./workspace-run.js');
+      const report = await runWorkspaceStage({
+        workspacePath,
+        stage: subaction as 'init' | 'test' | 'build' | 'start',
+        affected: actionOptions.affected === true,
+        blastRadius: actionOptions.blastRadius === true,
+        since: actionOptions.since,
+        parallel: actionOptions.parallel === true,
+        maxWorkers,
+        continueOnError: actionOptions.continueOnError === true,
+        strict: actionOptions.strict === true,
+        json: actionOptions.json === true,
+        enforceGates: actionOptions.gates,
+      });
+
+      if (actionOptions.json) {
+        console.log(JSON.stringify(report, null, 2));
+      }
+
+      if (report.summary.exitCode !== 0) {
+        process.exit(report.summary.exitCode);
+      }
+    } else if (action === 'init') {
+      console.log(
+        chalk.yellow('ℹ  workspace init is an alias of: npx rapidkit workspace run init')
+      );
+      console.log(
+        chalk.gray(
+          '   Equivalent full-init aliases at workspace root:\n' +
+            '   npx rapidkit init | npx rapidkit workspace init | npx rapidkit workspace run init\n'
+        )
+      );
+
+      const workspacePath = requireWorkspaceRootForAction('init');
+
+      const maxWorkersRaw = Number(actionOptions.maxWorkers ?? '');
+      const maxWorkers = Number.isFinite(maxWorkersRaw)
+        ? Math.max(1, Math.trunc(maxWorkersRaw))
+        : undefined;
+
+      const workspaceInitCode = await installWorkspaceDependencies(workspacePath);
+      if (workspaceInitCode !== 0) {
+        process.exit(workspaceInitCode);
+      }
+
+      const { runWorkspaceStage } = await import('./workspace-run.js');
+      const report = await runWorkspaceStage({
+        workspacePath,
+        stage: 'init',
+        affected: actionOptions.affected === true,
+        blastRadius: actionOptions.blastRadius === true,
+        since: actionOptions.since,
+        parallel: actionOptions.parallel === true,
+        maxWorkers,
+        continueOnError: actionOptions.continueOnError === true,
+        strict: actionOptions.strict === true,
+        json: actionOptions.json === true,
+        enforceGates: actionOptions.gates,
+      });
+
+      if (actionOptions.json) {
+        console.log(JSON.stringify(report, null, 2));
+      }
+
+      if (report.summary.exitCode !== 0) {
+        process.exit(report.summary.exitCode);
+      }
     } else {
       console.log(chalk.red(`Unknown workspace action: ${action}`));
-      console.log(chalk.gray('Available: list, sync, policy, share'));
+      console.log(chalk.gray('Available: list, sync, policy, share, run'));
       process.exit(1);
     }
   });

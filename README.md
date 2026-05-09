@@ -98,8 +98,11 @@ npx rapidkit workspace policy show
 npx rapidkit workspace policy set <key> <value>
 npx rapidkit doctor
 npx rapidkit doctor workspace [--fix]
+npx rapidkit doctor project [--fix]
 npx rapidkit workspace list # Display all workspaces created on this system
 npx rapidkit workspace share [--output <file>] [--include-paths] [--no-doctor]
+npx rapidkit workspace init # Full-init alias (same behavior as root init/workspace run init at workspace root)
+npx rapidkit workspace run <init|test|build|start> [--affected] [--blast-radius] [--since <ref>] [--parallel] [--max-workers <n>] [--strict] [--json]
 ```
 
 ### Workspace collaboration bundle
@@ -132,13 +135,15 @@ RapidKit keeps the wrapper boundary explicit so users know which layer owns each
 | Command family | Owner | Notes |
 |---|---|---|
 | `create workspace`, `workspace`, `cache`, `mirror` | RapidKit wrapper | Platform-level orchestration |
-| `init` | Wrapper orchestrated | Chooses the right runtime flow for the current project |
+| `init` | Wrapper orchestrated | Project init in project dirs; full-init alias at workspace root |
 | `dev`, `test`, `build`, `start` | Runtime aware | Delegates to the active project/runtime when available |
 | `readiness` | Wrapper release gate | Generates release-readiness evidence (`--json` for CI, `--strict` for fail-fast) |
 | `doctor` | Wrapper system check | Checks host prerequisites by default |
 | `doctor workspace` | Workspace health | Full workspace scan with project-level details and fixes |
+| `doctor project` | Project health | Current project (or nearest parent) diagnostics with project evidence and scoped fixes |
+| `workspace run` | Workspace orchestrator | Stage execution across discovered projects with optional affected-only, blast-radius expansion, and policy-gated pre-checks |
 
-Use `npx rapidkit doctor` for a quick host pre-flight and `npx rapidkit doctor workspace` inside a workspace for the full health picture.
+Use `npx rapidkit doctor` for a quick host pre-flight, `npx rapidkit doctor project` for a service-level check, and `npx rapidkit doctor workspace` for the full workspace picture.
 Use `npx rapidkit readiness` when you need machine-readable release evidence or strict CI gating.
 
 ### Doctor workspace fix behavior
@@ -159,6 +164,25 @@ Use `npx rapidkit readiness` when you need machine-readable release evidence or 
 - `projectKind`
 - `supportTier`
 - `frameworkConfidence`
+
+### Doctor project behavior
+
+- `npx rapidkit doctor project` resolves the current project or the nearest parent project when run from nested directories.
+- Project mode supports RapidKit and non-RapidKit backend projects (generic runtime diagnostics still run when `.rapidkit` is missing).
+- JSON evidence is written to `.rapidkit/reports/doctor-project-last-run.json` (workspace-level when available).
+- `--fix` in project mode applies only project-scoped actionable fixes, with the same safe/guarded handling used by doctor fix flows.
+- Project diagnostics include built-in probes (configuration surface, migration surface, runtime health surface) and optional custom probe/adapter contracts.
+
+### Doctor project JSON fields (AI/automation)
+
+`npx rapidkit doctor project --json` includes project-scoped evidence fields for extension and automation consumers:
+
+- `scope` (`project`)
+- `contract` (doctor evidence contract + scoring policy version)
+- `project` (framework/runtime metadata, issues, fix commands, probes)
+- `summary.scopeProvenance`
+- `driftDelta`
+- `scoreBreakdown`
 
 ### Project lifecycle
 
@@ -287,6 +311,104 @@ Primary docs live under `docs/`:
 - Package manager policy: [docs/PACKAGE_MANAGER_POLICY.md](docs/PACKAGE_MANAGER_POLICY.md)
 - Security: [docs/SECURITY.md](docs/SECURITY.md)
 - Development: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+
+## Workspace Run — Polyglot Fleet Orchestration
+
+`workspace run` is an enterprise-grade orchestrator for executing CI-safe stages (init, test, build, start) across polyglot monorepos. It supports 20+ frameworks across 9 runtimes with professional-grade features.
+
+### Quick Start
+
+```bash
+# Test all discovered projects in parallel
+npx rapidkit workspace run test --parallel
+
+# Test only affected projects since last commit
+npx rapidkit workspace run test --affected --since HEAD~1
+
+# Test affected + their dependents (requires dependency graph)
+npx rapidkit workspace run test --affected --blast-radius
+
+# Build specific projects with custom stages (if defined in .rapidkit/context.json)
+npx rapidkit workspace run build --json --max-workers 8
+```
+
+### Supported Runtimes & Frameworks
+
+| Runtime | Frameworks | Status |
+|---------|-----------|--------|
+| **Node** | NestJS, Express, Next.js, Nuxt | Built-in |
+| **Go** | Fiber, Gin, Echo, Chi | Built-in |
+| **Java** | Spring Boot, Quarkus, Gradle | Built-in |
+| **Python** | FastAPI, Django, Flask, Poetry | Built-in |
+| **PHP** | Laravel, Symfony, Slim | Stable |
+| **Rust** | Actix, Axum, Rocket, Tokio | Stable |
+| **.NET** | ASP.NET Core, Entity Framework | Stable |
+| **Elixir** | Phoenix, Umbrella Projects | Stable |
+| **Ruby** | Rails, Sinatra, RSpec | Stable |
+
+### Enterprise Features
+
+1. **Command Overrides** — Customize stage commands per project via `.rapidkit/context.json`
+2. **Multi-Framework Projects** — Support full-stack apps (e.g., Laravel + Vue in same directory)
+3. **Error Diagnostics** — Categorize errors (setup vs test failure vs runtime) for better CI feedback
+4. **Preflight Validation** — Validate command availability before execution
+5. **Health Checks** — Verify services are ready (port listening, HTTP health, log grep)
+6. **Custom Stages** — Define project-specific stages (lint, docs, bench, etc.)
+7. **Stage Dependencies** — Define execution order and prerequisites
+8. **Environment Variants** — dev/staging/prod command variants
+9. **Caching** — Skip re-runs of completed stages
+10. **Composite Steps** — Multi-step build logic
+
+Enterprise deployment and governance deep dives are intentionally excluded from OSS docs.
+
+### Configuration Example
+
+```json
+{
+  ".rapidkit/context.json": {
+    "runtime": "php",
+    "framework": "Laravel",
+    "commands": {
+      "test": "php artisan test --parallel=4",
+      "build": "php artisan config:cache && php artisan route:cache",
+      "lint": "php bin/phpstan analyse --level=8"
+    },
+    "environment": "dev"
+  }
+}
+```
+
+### Output & Reporting
+
+```bash
+# JSON report for CI integration
+workspace run test --json > test-results.json
+
+cat test-results.json | jq '.projects[] | {path, status, errorCategory}'
+# Output:
+# {
+#   "path": "services/api",
+#   "status": "failed",
+#   "errorCategory": "setup"  # setup | test-failure | runtime | dependency | timeout
+# }
+```
+
+## Command Semantics
+
+RapidKit has two workspace-level execution surfaces, and three equivalent full-init aliases at workspace root:
+
+| Command | Intent | Scope |
+|---|---|---|
+| `init` (at workspace root), `workspace init`, `workspace run init` | Mirrored full-init orchestration (workspace-profile deps + selected project init) | Workspace root + discovered project fleet |
+| `workspace run <test\|build\|start>` | Fleet stage execution — run a CI-safe stage across discovered projects | Selected project fleet |
+| `init`, `test`, `build`, `start`, `dev` (inside project directory) | Project primitive — run one stage in the current project only | Single project |
+
+**Key design rule:** at workspace root, these are equivalent aliases: `npx rapidkit init`, `npx rapidkit workspace init`, `npx rapidkit workspace run init`.
+Inside a project directory, `npx rapidkit init` remains a project-scoped primitive.
+
+`dev` is intentionally excluded from `workspace run` — it is a long-running local process, not a CI batch stage.
+
+Detailed enterprise semantic specs and governance evidence contracts are intentionally excluded from OSS docs.
 
 ## Development
 

@@ -49,7 +49,7 @@ describe('init scenarios integration (non-regression)', () => {
     expect(createSpy).toHaveBeenCalledWith('my-workspace', expect.objectContaining({ yes: true }));
   });
 
-  it('scenario 2: in workspace root initializes workspace then child project deps', async () => {
+  it('scenario 2: in workspace root runs mirrored full init for workspace and child projects', async () => {
     process.env.RAPIDKIT_ENABLE_RUNTIME_ADAPTERS = '1';
 
     const workspaceRoot = path.join(tempDir, 'ws-root');
@@ -63,16 +63,33 @@ describe('init scenarios integration (non-regression)', () => {
     );
     fs.writeFileSync(
       path.join(projectDir, 'package.json'),
-      JSON.stringify({ name: 'node-app', version: '1.0.0', private: true }, null, 2)
+      JSON.stringify(
+        {
+          name: 'node-app',
+          version: '1.0.0',
+          private: true,
+          dependencies: {
+            lodash: '^4.17.21',
+          },
+        },
+        null,
+        2
+      )
     );
 
     process.chdir(workspaceRoot);
 
     const index = await import('../index.js');
     const code = await index.handleInitCommand(['init']);
+    const report = await fsExtra.readJSON(
+      path.join(workspaceRoot, '.rapidkit', 'reports', 'workspace-run-last.json')
+    );
 
     expect(code).toBe(0);
-    expect(fs.existsSync(path.join(projectDir, 'package-lock.json'))).toBe(true);
+    expect(report.stage).toBe('init');
+    expect(report.summary.selectedCount).toBe(1);
+    expect(report.summary.passed).toBe(1);
+    expect(report.projects[0]?.relativePath).toBe('node-app');
   });
 
   it('scenario 3: in project folder initializes only project deps', async () => {

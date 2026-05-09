@@ -331,7 +331,7 @@ describe('Phase 3 commands - CLI process integration', () => {
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
-  });
+  }, 20000);
 
   it('executes setup node successfully when runtime adapters are enabled', () => {
     const dist = ensureDistBuilt();

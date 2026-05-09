@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.3] - 2026-05-09
+
+### Added
+
+- Added canonical `doctor project` scope support in CLI and docs (`npx rapidkit doctor project`).
+- Added project-scoped doctor evidence contract fields and scoring metadata for automation consumers:
+  - `contract`
+  - `scoreBreakdown`
+  - `summary.scopeProvenance`
+  - `driftDelta`
+- Added deterministic project probes and adapter-contract coverage in doctor tests, including nested-directory project resolution scenarios.
+- Added enterprise-grade workspace stage orchestrator implementation and coverage:
+  - `src/workspace-run.ts`
+  - `src/framework-registry.ts`
+  - `src/__tests__/workspace-run.test.ts`
+
+### Changed
+
+- Updated root init semantics so workspace-root aliases share one full-init orchestration flow:
+  - `npx rapidkit init`
+  - `npx rapidkit workspace init`
+  - `npx rapidkit workspace run init`
+- Updated workspace command surface to include `workspace run <init|test|build|start>` options for affected-only execution, blast-radius expansion, JSON output, parallel execution, and gate controls.
+- Updated docs to be OSS-focused by removing enterprise-only runbook links from open-source README indices.
+
+### Fixed
+
+- Enforced workspace-root-only behavior for workspace management actions (for professional/strict operation semantics).
+- Fixed init argument target parsing to ignore flags and resolve only explicit path targets.
+- Fixed phase-3 integration timeout flake for workspace-root init wrapper scenario by aligning test timeout with full-init pre-step behavior.
+- Removed duplicate enterprise governance runbook from npm OSS docs path (`docs/ENTERPRISE_GOVERNANCE_RUNBOOK.md`).
+
 ## [0.27.2] - 2026-05-04
 
 ### Added

@@ -1,6 +1,55 @@
 # Release Notes
 
-## Latest Release: v0.27.2 (May 4, 2026)
+## Latest Release: v0.27.3 (May 9, 2026)
+
+### 🎯 v0.27.3 — Doctor Project Scope, Workspace Run Orchestration, and OSS Docs Cleanup (Patch)
+
+This patch adds project-scoped doctor diagnostics, introduces enterprise-grade workspace stage orchestration in the npm wrapper, hardens workspace-root command semantics, and cleans OSS-facing docs from internal enterprise-path references.
+
+**What's New:**
+
+- 🔍 **New canonical `doctor project` scope**
+  - Added `npx rapidkit doctor project` as first-class scope.
+  - Supports nested-directory resolution to nearest parent project.
+  - Supports JSON output and scoped `--fix` flows.
+
+- 🧾 **Doctor contract + explainability metadata expanded**
+  - JSON/evidence outputs now expose deterministic metadata for automation:
+    - `contract`
+    - `scoreBreakdown`
+    - `summary.scopeProvenance`
+    - `driftDelta`
+
+- 🚀 **Workspace run orchestration implemented and covered**
+  - Added workspace stage runner and registry contracts for polyglot fleets:
+    - `workspace run <init|test|build|start>`
+    - affected-only selection (`--affected`)
+    - blast-radius expansion (`--blast-radius`)
+    - parallel execution (`--parallel`, `--max-workers`)
+    - machine output (`--json`)
+    - gate control (`--strict`, `--no-gates`)
+
+- 🧭 **Root init aliases unified**
+  - At workspace root, these now follow one mirrored full-init flow:
+    - `npx rapidkit init`
+    - `npx rapidkit workspace init`
+    - `npx rapidkit workspace run init`
+
+- 📚 **OSS docs cleanup**
+  - Removed internal enterprise-path links from OSS README/docs index.
+  - Removed duplicate enterprise governance runbook file from `docs/` in npm package repo.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.27.3
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.27.3.md)
+
+---
+
+## Previous Release: v0.27.2 (May 4, 2026)
 
 ### 🩺 v0.27.2 — Smart Doctor Classification, Advisory Alignment, and Readiness Docs (Patch)
 

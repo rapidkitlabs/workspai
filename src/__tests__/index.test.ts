@@ -361,6 +361,100 @@ describe('CLI Entry Point', () => {
   });
 
   describe('Error Handling', () => {
+    it('should route workspace-root init through the same full-init flow without misreading flags', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-root-'));
+      await fs.writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '');
+
+      try {
+        const { stdout, stderr, exitCode } = await execa(
+          'node',
+          [CLI_PATH, 'init', '--no-update-check'],
+          { cwd: workspaceRoot }
+        );
+
+        expect(exitCode).toBe(0);
+        const output = `${stdout || ''}\n${stderr || ''}`;
+        expect(output).toContain('workspace root');
+        expect(output).toContain('same full-init flow');
+        expect(output).toContain('Workspace run (init)');
+        expect(output).not.toContain('No such option: --no-update-check');
+      } finally {
+        await fs.remove(workspaceRoot);
+      }
+    }, 30000);
+
+    it('should redirect workspace init to workspace run init with a hint', async () => {
+      try {
+        await execa('node', [CLI_PATH, 'workspace', 'init'], {
+          cwd: TEST_DIR,
+        });
+        expect.fail('Should have thrown because test dir is not a workspace');
+      } catch (error: any) {
+        expect(error.exitCode).toBe(1);
+        const output = `${error.stdout || ''}\n${error.stderr || ''}`;
+        expect(output).toContain('workspace init');
+        expect(output).toContain('workspace run init');
+        expect(output).not.toContain('Unknown workspace action: init');
+      }
+    });
+
+    it('should require workspace root for workspace run init when called from a nested directory', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-root-nested-'));
+      const nestedDir = path.join(workspaceRoot, 'my-nest-services');
+      await fs.ensureDir(nestedDir);
+      await fs.writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '');
+
+      try {
+        await execa('node', [CLI_PATH, 'workspace', 'run', 'init'], {
+          cwd: nestedDir,
+        });
+        expect.fail('Should have thrown because command is not executed from workspace root');
+      } catch (error: any) {
+        expect(error.exitCode).toBe(1);
+        const output = `${error.stdout || ''}\n${error.stderr || ''}`;
+        expect(output).toContain('must be run from workspace root');
+        expect(output).toContain(workspaceRoot);
+        expect(output).toContain('For project-only init');
+      } finally {
+        await fs.remove(workspaceRoot);
+      }
+    });
+
+    it('should require workspace root for workspace init when called from a nested directory', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-root-nested-init-'));
+      const nestedDir = path.join(workspaceRoot, 'my-nest-services');
+      await fs.ensureDir(nestedDir);
+      await fs.writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '');
+
+      try {
+        await execa('node', [CLI_PATH, 'workspace', 'init'], {
+          cwd: nestedDir,
+        });
+        expect.fail('Should have thrown because command is not executed from workspace root');
+      } catch (error: any) {
+        expect(error.exitCode).toBe(1);
+        const output = `${error.stdout || ''}\n${error.stderr || ''}`;
+        expect(output).toContain('workspace init is an alias');
+        expect(output).toContain('must be run from workspace root');
+        expect(output).toContain(workspaceRoot);
+        expect(output).toContain('For project-only init');
+      } finally {
+        await fs.remove(workspaceRoot);
+      }
+    });
+
+    it('should list workspace init in unknown workspace action help', async () => {
+      try {
+        await execa('node', [CLI_PATH, 'workspace', 'unknown-action']);
+        expect.fail('Should have thrown for unknown workspace action');
+      } catch (error: any) {
+        expect(error.exitCode).toBe(1);
+        const output = `${error.stdout || ''}\n${error.stderr || ''}`;
+        expect(output).toContain('Unknown workspace action: unknown-action');
+        expect(output).toContain('Available: list, sync, policy, share, run');
+      }
+    });
+
     it('should handle invalid project names gracefully', async () => {
       try {
         await execa(

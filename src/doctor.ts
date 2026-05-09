@@ -125,6 +125,14 @@ type DetectedFramework =
   | 'Go/Fiber'
   | 'Go/Gin'
   | 'Spring Boot'
+  | 'Rust'
+  | 'Elixir'
+  | 'Phoenix'
+  | 'Clojure'
+  | 'Scala'
+  | 'Kotlin'
+  | 'Deno'
+  | 'Bun'
   | 'PHP'
   | 'Laravel'
   | 'Ruby'
@@ -138,6 +146,10 @@ type ProjectRuntimeFamily =
   | 'node'
   | 'go'
   | 'java'
+  | 'rust'
+  | 'elixir'
+  | 'clojure'
+  | 'deno'
   | 'php'
   | 'ruby'
   | 'dotnet'
@@ -174,6 +186,36 @@ interface ProjectHealth {
   hasDocker?: boolean;
   hasCodeQuality?: boolean;
   vulnerabilities?: number;
+  probes?: ProjectProbeResult[];
+}
+
+type DoctorScopeLabel = 'host-system' | 'workspace-aggregate' | 'project-scoped';
+
+interface ProjectProbeResult {
+  id: string;
+  label: string;
+  status: 'pass' | 'warn' | 'fail';
+  severity: 'info' | 'warn' | 'error';
+  scope: DoctorScopeLabel;
+  reason: string;
+  recommendation?: string;
+}
+
+interface ScoreBreakdownItem {
+  id: string;
+  label: string;
+  status: 'ok' | 'warn' | 'error';
+  scope: DoctorScopeLabel;
+  policyRuleId: string;
+  reason: string;
+}
+
+interface DoctorContractMetadata {
+  version: 'doctor-evidence-v1';
+  scoringPolicyVersion: 'doctor-score-policy-v1';
+  generatedBy: 'rapidkit-npm';
+  deterministicScoreBreakdown: true;
+  scopeModel: 'workspace-aggregate-or-project-scoped';
 }
 
 interface HealthScore {
@@ -199,6 +241,49 @@ interface WorkspaceHealth {
   projectScanSignature?: string;
   projectScanCachePath?: string;
   evidencePath?: string;
+  scoreBreakdown?: ScoreBreakdownItem[];
+  driftDelta?: DoctorDriftDelta;
+  scopeProvenance?: ScopeProvenanceSummary;
+}
+
+interface ProjectHealthEnvelope {
+  workspacePath?: string;
+  projectPath: string;
+  projectName: string;
+  python: HealthCheckResult;
+  poetry: HealthCheckResult;
+  pipx: HealthCheckResult;
+  go: HealthCheckResult;
+  rapidkitCore: HealthCheckResult;
+  project: ProjectHealth;
+  healthScore: HealthScore;
+  evidencePath?: string;
+  scoreBreakdown?: ScoreBreakdownItem[];
+  driftDelta?: DoctorDriftDelta;
+  scopeProvenance?: ScopeProvenanceSummary;
+}
+
+interface ScopeProvenanceSummary {
+  scopedCount: number;
+  aggregatedCount: number;
+  mixedCount: number;
+  dominantScope: 'scoped' | 'aggregated' | 'mixed' | 'unknown';
+}
+
+interface DoctorDriftDelta {
+  baselineAvailable: boolean;
+  previousGeneratedAt?: string;
+  newIssueCount: number;
+  resolvedIssueCount: number;
+  netIssueDelta: number;
+  scoreDeltaPercent: number | null;
+  systemStatusChanges: Array<{
+    id: 'python' | 'poetry' | 'pipx' | 'go' | 'rapidkitCore';
+    from: HealthCheckResult['status'];
+    to: HealthCheckResult['status'];
+  }>;
+  regressedProjects: string[];
+  improvedProjects: string[];
 }
 
 function getProjectAdvisoryWarningCount(project: ProjectHealth): number {
@@ -234,7 +319,265 @@ interface DoctorWorkspaceCacheEntry {
   projects: ProjectHealth[];
 }
 
+type DoctorEvidenceLike = {
+  generatedAt?: string;
+  healthScore?: HealthScore;
+  summary?: {
+    totalIssues?: number;
+  };
+  projects?: Array<{ name?: string; path?: string; issues?: number | string[] }>;
+  project?: { name?: string; path?: string; issues?: number | string[] };
+  system?: {
+    python?: HealthCheckResult;
+    poetry?: HealthCheckResult;
+    pipx?: HealthCheckResult;
+    go?: HealthCheckResult;
+    rapidkitCore?: HealthCheckResult;
+  };
+};
+
 const DOCTOR_PROJECT_SCAN_SCHEMA = 'doctor-project-scan-v2';
+const DOCTOR_CONTRACT_METADATA: DoctorContractMetadata = Object.freeze({
+  version: 'doctor-evidence-v1',
+  scoringPolicyVersion: 'doctor-score-policy-v1',
+  generatedBy: 'rapidkit-npm',
+  deterministicScoreBreakdown: true,
+  scopeModel: 'workspace-aggregate-or-project-scoped',
+});
+
+function getDoctorContractMetadata(): DoctorContractMetadata {
+  return { ...DOCTOR_CONTRACT_METADATA };
+}
+
+function toHealthPercent(score: HealthScore | undefined): number | null {
+  if (!score || score.total <= 0) {
+    return null;
+  }
+  return Math.round((score.passed / score.total) * 100);
+}
+
+function getIssueCountFromEvidenceValue(value: number | string[] | undefined): number {
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.length;
+  }
+  return 0;
+}
+
+async function readDoctorEvidenceIfPresent(filePath: string): Promise<DoctorEvidenceLike | null> {
+  try {
+    if (!(await fsExtra.pathExists(filePath))) {
+      return null;
+    }
+    const payload = await fsExtra.readJSON(filePath);
+    if (!payload || typeof payload !== 'object') {
+      return null;
+    }
+    return payload as DoctorEvidenceLike;
+  } catch {
+    return null;
+  }
+}
+
+function collectSystemStatusChanges(
+  previous: DoctorEvidenceLike | null,
+  current: {
+    python: HealthCheckResult;
+    poetry: HealthCheckResult;
+    pipx: HealthCheckResult;
+    go: HealthCheckResult;
+    rapidkitCore: HealthCheckResult;
+  }
+): DoctorDriftDelta['systemStatusChanges'] {
+  if (!previous?.system) {
+    return [];
+  }
+
+  const pairs: Array<{
+    id: DoctorDriftDelta['systemStatusChanges'][number]['id'];
+    current: HealthCheckResult;
+  }> = [
+    { id: 'python', current: current.python },
+    { id: 'poetry', current: current.poetry },
+    { id: 'pipx', current: current.pipx },
+    { id: 'go', current: current.go },
+    { id: 'rapidkitCore', current: current.rapidkitCore },
+  ];
+
+  const changes: DoctorDriftDelta['systemStatusChanges'] = [];
+  for (const pair of pairs) {
+    const previousStatus = previous.system?.[pair.id]?.status;
+    if (!previousStatus || previousStatus === pair.current.status) {
+      continue;
+    }
+    changes.push({
+      id: pair.id,
+      from: previousStatus,
+      to: pair.current.status,
+    });
+  }
+
+  return changes;
+}
+
+function buildWorkspaceDriftDelta(
+  previous: DoctorEvidenceLike | null,
+  health: WorkspaceHealth
+): DoctorDriftDelta {
+  const currentIssuesByProject = new Map<string, number>();
+  for (const project of health.projects) {
+    currentIssuesByProject.set(project.path || project.name, project.issues.length);
+  }
+
+  if (!previous) {
+    return {
+      baselineAvailable: false,
+      newIssueCount: 0,
+      resolvedIssueCount: 0,
+      netIssueDelta: 0,
+      scoreDeltaPercent: null,
+      systemStatusChanges: [],
+      regressedProjects: [],
+      improvedProjects: [],
+    };
+  }
+
+  const previousProjects = Array.isArray(previous.projects) ? previous.projects : [];
+  const previousIssuesByProject = new Map<string, number>();
+  for (const project of previousProjects) {
+    const projectKey = project.path || project.name;
+    if (!projectKey) {
+      continue;
+    }
+    previousIssuesByProject.set(projectKey, getIssueCountFromEvidenceValue(project.issues));
+  }
+
+  let newIssueCount = 0;
+  let resolvedIssueCount = 0;
+  const regressedProjects = new Set<string>();
+  const improvedProjects = new Set<string>();
+  const allProjectKeys = new Set<string>([
+    ...Array.from(previousIssuesByProject.keys()),
+    ...Array.from(currentIssuesByProject.keys()),
+  ]);
+
+  for (const projectKey of allProjectKeys) {
+    const prevIssues = previousIssuesByProject.get(projectKey) ?? 0;
+    const currIssues = currentIssuesByProject.get(projectKey) ?? 0;
+    if (currIssues > prevIssues) {
+      newIssueCount += currIssues - prevIssues;
+      regressedProjects.add(projectKey);
+    } else if (currIssues < prevIssues) {
+      resolvedIssueCount += prevIssues - currIssues;
+      improvedProjects.add(projectKey);
+    }
+  }
+
+  const previousPercent = toHealthPercent(previous.healthScore);
+  const currentPercent = toHealthPercent(health.healthScore);
+
+  return {
+    baselineAvailable: true,
+    previousGeneratedAt: previous.generatedAt,
+    newIssueCount,
+    resolvedIssueCount,
+    netIssueDelta: newIssueCount - resolvedIssueCount,
+    scoreDeltaPercent:
+      previousPercent === null || currentPercent === null ? null : currentPercent - previousPercent,
+    systemStatusChanges: collectSystemStatusChanges(previous, {
+      python: health.python,
+      poetry: health.poetry,
+      pipx: health.pipx,
+      go: health.go,
+      rapidkitCore: health.rapidkitCore,
+    }),
+    regressedProjects: Array.from(regressedProjects).sort(),
+    improvedProjects: Array.from(improvedProjects).sort(),
+  };
+}
+
+function buildProjectDriftDelta(
+  previous: DoctorEvidenceLike | null,
+  envelope: ProjectHealthEnvelope
+): DoctorDriftDelta {
+  if (!previous) {
+    return {
+      baselineAvailable: false,
+      newIssueCount: 0,
+      resolvedIssueCount: 0,
+      netIssueDelta: 0,
+      scoreDeltaPercent: null,
+      systemStatusChanges: [],
+      regressedProjects: [],
+      improvedProjects: [],
+    };
+  }
+
+  const previousProjectIssueCount = getIssueCountFromEvidenceValue(previous.project?.issues);
+  const currentProjectIssueCount = envelope.project.issues.length;
+  const newIssueCount = Math.max(currentProjectIssueCount - previousProjectIssueCount, 0);
+  const resolvedIssueCount = Math.max(previousProjectIssueCount - currentProjectIssueCount, 0);
+
+  const previousPercent = toHealthPercent(previous.healthScore);
+  const currentPercent = toHealthPercent(envelope.healthScore);
+  const projectKey = envelope.project.path || envelope.project.name;
+
+  return {
+    baselineAvailable: true,
+    previousGeneratedAt: previous.generatedAt,
+    newIssueCount,
+    resolvedIssueCount,
+    netIssueDelta: newIssueCount - resolvedIssueCount,
+    scoreDeltaPercent:
+      previousPercent === null || currentPercent === null ? null : currentPercent - previousPercent,
+    systemStatusChanges: collectSystemStatusChanges(previous, {
+      python: envelope.python,
+      poetry: envelope.poetry,
+      pipx: envelope.pipx,
+      go: envelope.go,
+      rapidkitCore: envelope.rapidkitCore,
+    }),
+    regressedProjects: newIssueCount > 0 ? [projectKey] : [],
+    improvedProjects: resolvedIssueCount > 0 ? [projectKey] : [],
+  };
+}
+
+function buildScopeProvenanceSummary(
+  scoreBreakdown: ScoreBreakdownItem[] | undefined
+): ScopeProvenanceSummary {
+  const breakdown = scoreBreakdown ?? [];
+  let scopedCount = 0;
+  let aggregatedCount = 0;
+
+  for (const item of breakdown) {
+    if (item.scope === 'project-scoped') {
+      scopedCount += 1;
+      continue;
+    }
+    if (item.scope === 'workspace-aggregate' || item.scope === 'host-system') {
+      aggregatedCount += 1;
+    }
+  }
+
+  const mixedCount = scopedCount > 0 && aggregatedCount > 0 ? 1 : 0;
+  const dominantScope =
+    mixedCount > 0
+      ? 'mixed'
+      : scopedCount > 0
+        ? 'scoped'
+        : aggregatedCount > 0
+          ? 'aggregated'
+          : 'unknown';
+
+  return {
+    scopedCount,
+    aggregatedCount,
+    mixedCount,
+    dominantScope,
+  };
+}
 
 function buildProjectFixCommand(projectPath: string, command: string): string {
   if (isWindowsPlatform()) {
@@ -256,7 +599,9 @@ function supportTierForFramework(framework: DetectedFramework): FrameworkSupport
     framework === 'NestJS' ||
     framework === 'Go/Fiber' ||
     framework === 'Go/Gin' ||
-    framework === 'Spring Boot'
+    framework === 'Spring Boot' ||
+    framework === 'Rust' ||
+    framework === 'Phoenix'
   ) {
     return 'first-class';
   }
@@ -267,6 +612,12 @@ function supportTierForFramework(framework: DetectedFramework): FrameworkSupport
     framework === 'Express' ||
     framework === 'Fastify' ||
     framework === 'Koa' ||
+    framework === 'Elixir' ||
+    framework === 'Clojure' ||
+    framework === 'Scala' ||
+    framework === 'Kotlin' ||
+    framework === 'Deno' ||
+    framework === 'Bun' ||
     framework === 'PHP' ||
     framework === 'Laravel' ||
     framework === 'Ruby' ||
@@ -307,6 +658,7 @@ function runtimeForFramework(framework: DetectedFramework): ProjectRuntimeFamily
     framework === 'Vue' ||
     framework === 'Angular' ||
     framework === 'SvelteKit' ||
+    framework === 'Bun' ||
     framework === 'Express' ||
     framework === 'Fastify' ||
     framework === 'Koa' ||
@@ -330,6 +682,22 @@ function runtimeForFramework(framework: DetectedFramework): ProjectRuntimeFamily
 
   if (framework === 'Spring Boot') {
     return 'java';
+  }
+
+  if (framework === 'Rust') {
+    return 'rust';
+  }
+
+  if (framework === 'Elixir' || framework === 'Phoenix') {
+    return 'elixir';
+  }
+
+  if (framework === 'Clojure') {
+    return 'clojure';
+  }
+
+  if (framework === 'Deno') {
+    return 'deno';
   }
 
   if (framework === 'Laravel' || framework === 'PHP') {
@@ -590,6 +958,7 @@ async function writeDoctorEvidence(
       evidencePath,
       {
         generatedAt: new Date().toISOString(),
+        contract: getDoctorContractMetadata(),
         workspacePath,
         workspaceName: health.workspaceName,
         projectScanCached: health.projectScanCached ?? false,
@@ -614,7 +983,10 @@ async function writeDoctorEvidence(
           projectAdvisoryWarningProjects: countProjectAdvisoryWarningProjects(health.projects),
           projectAdvisoryWarnings: countProjectAdvisoryWarnings(health.projects),
           hasSystemErrors: [health.python, health.rapidkitCore].some((c) => c.status === 'error'),
+          scopeProvenance: health.scopeProvenance,
         },
+        driftDelta: health.driftDelta,
+        scoreBreakdown: health.scoreBreakdown ?? [],
       },
       { spaces: 2 }
     );
@@ -1099,7 +1471,433 @@ async function performCommonChecks(projectPath: string, health: ProjectHealth): 
   }
 }
 
-async function checkProject(projectPath: string): Promise<ProjectHealth> {
+function pushProjectProbe(health: ProjectHealth, probe: ProjectProbeResult): void {
+  if (!health.probes) {
+    health.probes = [];
+  }
+  health.probes.push(probe);
+}
+
+async function appendRuntimeAdapterProbes(
+  projectPath: string,
+  health: ProjectHealth
+): Promise<void> {
+  const runtime = health.runtimeFamily || 'unknown';
+  const isBackend = health.projectKind === 'backend' || health.projectKind === 'generic';
+  if (!isBackend) {
+    return;
+  }
+
+  if (runtime === 'node') {
+    const lockExists =
+      (await fsExtra.pathExists(path.join(projectPath, 'package-lock.json'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'pnpm-lock.yaml'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'yarn.lock')));
+    pushProjectProbe(health, {
+      id: 'adapter-node-lockfile-integrity',
+      label: 'Node adapter lockfile integrity',
+      status: lockExists ? 'pass' : 'warn',
+      severity: 'warn',
+      scope: 'project-scoped',
+      reason: lockExists
+        ? 'Node lockfile detected for deterministic dependency restore.'
+        : 'No Node lockfile detected (package-lock/yarn.lock/pnpm-lock.yaml).',
+      recommendation: lockExists
+        ? undefined
+        : 'Commit a lockfile for deterministic installs and CI parity.',
+    });
+
+    const bootEntryExists =
+      (await fsExtra.pathExists(path.join(projectPath, 'src/main.ts'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'src/main.js'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'src/server.ts'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'src/server.js')));
+    pushProjectProbe(health, {
+      id: 'adapter-node-boot-entrypoint',
+      label: 'Node adapter boot entrypoint',
+      status: bootEntryExists ? 'pass' : 'warn',
+      severity: 'warn',
+      scope: 'project-scoped',
+      reason: bootEntryExists
+        ? 'Boot entrypoint markers detected for service startup path.'
+        : 'No canonical Node boot entrypoint markers detected.',
+      recommendation: bootEntryExists
+        ? undefined
+        : 'Define and document service bootstrap entrypoint (main/server).',
+    });
+    return;
+  }
+
+  if (runtime === 'python') {
+    const lockExists =
+      (await fsExtra.pathExists(path.join(projectPath, 'poetry.lock'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'requirements.txt'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'uv.lock')));
+    pushProjectProbe(health, {
+      id: 'adapter-python-lockfile-integrity',
+      label: 'Python adapter dependency integrity',
+      status: lockExists ? 'pass' : 'warn',
+      severity: 'warn',
+      scope: 'project-scoped',
+      reason: lockExists
+        ? 'Python dependency contract file detected.'
+        : 'No Python dependency contract file detected (poetry.lock/requirements/uv.lock).',
+      recommendation: lockExists
+        ? undefined
+        : 'Pin dependency contract for deterministic setup and reproducible CI.',
+    });
+
+    const bootEntryExists =
+      (await fsExtra.pathExists(path.join(projectPath, 'app/main.py'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'main.py'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'manage.py')));
+    pushProjectProbe(health, {
+      id: 'adapter-python-boot-entrypoint',
+      label: 'Python adapter boot entrypoint',
+      status: bootEntryExists ? 'pass' : 'warn',
+      severity: 'warn',
+      scope: 'project-scoped',
+      reason: bootEntryExists
+        ? 'Python application entrypoint markers detected.'
+        : 'No Python application entrypoint markers detected.',
+      recommendation: bootEntryExists
+        ? undefined
+        : 'Expose explicit app/main entrypoint for deterministic boot probes.',
+    });
+    return;
+  }
+
+  if (runtime === 'java') {
+    const buildWrapperExists =
+      (await fsExtra.pathExists(path.join(projectPath, 'mvnw'))) ||
+      (await fsExtra.pathExists(path.join(projectPath, 'gradlew')));
+    pushProjectProbe(health, {
+      id: 'adapter-java-build-wrapper',
+      label: 'Java adapter build wrapper',
+      status: buildWrapperExists ? 'pass' : 'warn',
+      severity: 'warn',
+      scope: 'project-scoped',
+      reason: buildWrapperExists
+        ? 'Build wrapper detected (mvnw/gradlew).'
+        : 'No Java build wrapper detected.',
+      recommendation: buildWrapperExists
+        ? undefined
+        : 'Commit mvnw or gradlew for reproducible enterprise pipelines.',
+    });
+    return;
+  }
+
+  if (runtime === 'go') {
+    const goSumExists = await fsExtra.pathExists(path.join(projectPath, 'go.sum'));
+    pushProjectProbe(health, {
+      id: 'adapter-go-module-integrity',
+      label: 'Go adapter module integrity',
+      status: goSumExists ? 'pass' : 'warn',
+      severity: 'warn',
+      scope: 'project-scoped',
+      reason: goSumExists
+        ? 'go.sum detected for deterministic module verification.'
+        : 'go.sum missing; module integrity baseline is incomplete.',
+      recommendation: goSumExists
+        ? undefined
+        : 'Generate and commit go.sum in the repository baseline.',
+    });
+  }
+}
+
+type CustomDoctorAdapterCheck = {
+  id?: string;
+  label?: string;
+  severity?: 'info' | 'warn' | 'error';
+  runtimes?: ProjectRuntimeFamily[];
+  anyOfPaths?: string[];
+  allOfPaths?: string[];
+  recommendation?: string;
+  passReason?: string;
+  failReason?: string;
+};
+
+async function appendCustomAdapterChecks(
+  projectPath: string,
+  health: ProjectHealth
+): Promise<void> {
+  const candidates = [
+    path.join(projectPath, '.rapidkit', 'doctor.adapters.json'),
+    path.join(projectPath, 'doctor.adapters.json'),
+  ];
+
+  for (const candidatePath of candidates) {
+    if (!(await fsExtra.pathExists(candidatePath))) {
+      continue;
+    }
+
+    try {
+      const raw = (await fsExtra.readJSON(candidatePath)) as {
+        checks?: CustomDoctorAdapterCheck[];
+      };
+      const checks = Array.isArray(raw?.checks) ? raw.checks : [];
+
+      for (let index = 0; index < checks.length; index += 1) {
+        const check = checks[index] || {};
+        const configuredRuntimes = Array.isArray(check.runtimes) ? check.runtimes : [];
+        if (
+          configuredRuntimes.length > 0 &&
+          !configuredRuntimes.includes(health.runtimeFamily || 'unknown')
+        ) {
+          continue;
+        }
+
+        const id =
+          typeof check.id === 'string' && check.id.trim().length > 0
+            ? check.id.trim()
+            : `adapter-check-${index + 1}`;
+        const label =
+          typeof check.label === 'string' && check.label.trim().length > 0
+            ? check.label.trim()
+            : id;
+        const severity = check.severity || 'warn';
+        const anyOfPaths = Array.isArray(check.anyOfPaths) ? check.anyOfPaths.filter(Boolean) : [];
+        const allOfPaths = Array.isArray(check.allOfPaths) ? check.allOfPaths.filter(Boolean) : [];
+
+        let passAny = anyOfPaths.length === 0;
+        for (const p of anyOfPaths) {
+          if (await fsExtra.pathExists(path.join(projectPath, p))) {
+            passAny = true;
+            break;
+          }
+        }
+
+        let passAll = true;
+        for (const p of allOfPaths) {
+          if (!(await fsExtra.pathExists(path.join(projectPath, p)))) {
+            passAll = false;
+            break;
+          }
+        }
+
+        const passed = passAny && passAll;
+        pushProjectProbe(health, {
+          id,
+          label,
+          status: passed ? 'pass' : severity === 'error' ? 'fail' : 'warn',
+          severity,
+          scope: 'project-scoped',
+          reason: passed
+            ? check.passReason || 'Custom adapter contract satisfied.'
+            : check.failReason ||
+              `Custom adapter check failed from ${path.basename(candidatePath)}.`,
+          recommendation: check.recommendation,
+        });
+      }
+    } catch {
+      pushProjectProbe(health, {
+        id: 'custom-adapter-config',
+        label: 'Custom doctor adapter configuration',
+        status: 'warn',
+        severity: 'warn',
+        scope: 'project-scoped',
+        reason: `Failed to parse ${path.basename(candidatePath)}.`,
+        recommendation: 'Fix JSON syntax in doctor.adapters.json to re-enable adapter checks.',
+      });
+    }
+  }
+}
+
+async function appendBuiltInBackendProbes(
+  projectPath: string,
+  health: ProjectHealth
+): Promise<void> {
+  const isBackend = health.projectKind === 'backend' || health.projectKind === 'generic';
+  if (!isBackend) {
+    return;
+  }
+
+  const envPath = path.join(projectPath, '.env');
+  const envExamplePath = path.join(projectPath, '.env.example');
+  const hasConfigSurface =
+    (await fsExtra.pathExists(envPath)) ||
+    (await fsExtra.pathExists(envExamplePath)) ||
+    (await fsExtra.pathExists(path.join(projectPath, 'config')));
+  pushProjectProbe(health, {
+    id: 'config-surface',
+    label: 'Configuration contract surface',
+    status: hasConfigSurface ? 'pass' : 'warn',
+    severity: 'warn',
+    scope: 'project-scoped',
+    reason: hasConfigSurface
+      ? 'Configuration artifacts detected (.env/.env.example/config).'
+      : 'No explicit configuration contract artifacts detected.',
+    recommendation: hasConfigSurface
+      ? undefined
+      : 'Add .env.example or explicit config contract documentation for deterministic setup.',
+  });
+
+  const migrationMarkersByRuntime: Record<ProjectRuntimeFamily, string[]> = {
+    python: ['alembic.ini', 'migrations', 'versions'],
+    node: ['prisma/schema.prisma', 'migrations', 'typeorm.config.ts', 'typeorm.config.js'],
+    go: ['migrations', 'db/migrations'],
+    java: ['src/main/resources/db/migration', 'src/main/resources/liquibase'],
+    rust: ['migrations', 'sqlx-data.json'],
+    elixir: ['priv/repo/migrations'],
+    clojure: ['resources/migrations', 'migrations'],
+    deno: ['migrations'],
+    php: ['database/migrations', 'migrations'],
+    ruby: ['db/migrate'],
+    dotnet: ['Migrations', 'Data/Migrations'],
+    unknown: ['migrations'],
+  };
+
+  const runtime = health.runtimeFamily || 'unknown';
+  const migrationMarkers = migrationMarkersByRuntime[runtime] || migrationMarkersByRuntime.unknown;
+  let hasMigrationSurface = false;
+  for (const marker of migrationMarkers) {
+    if (await fsExtra.pathExists(path.join(projectPath, marker))) {
+      hasMigrationSurface = true;
+      break;
+    }
+  }
+
+  pushProjectProbe(health, {
+    id: 'migration-surface',
+    label: 'Migration/readiness surface',
+    status: hasMigrationSurface ? 'pass' : 'warn',
+    severity: 'warn',
+    scope: 'project-scoped',
+    reason: hasMigrationSurface
+      ? 'Migration or schema evolution markers detected.'
+      : 'No migration markers detected for this backend runtime.',
+    recommendation: hasMigrationSurface
+      ? undefined
+      : 'Add migration tooling baseline (migrations dir or runtime-native migration config).',
+  });
+
+  const healthMarkers = [
+    'src/health',
+    'src/healthcheck',
+    'src/main/resources/application.yml',
+    'src/main/resources/application.properties',
+    'app/health.py',
+    'routes/health.ts',
+    'routes/health.js',
+  ];
+  let hasHealthSurface = false;
+  for (const marker of healthMarkers) {
+    if (await fsExtra.pathExists(path.join(projectPath, marker))) {
+      hasHealthSurface = true;
+      break;
+    }
+  }
+
+  pushProjectProbe(health, {
+    id: 'runtime-health-surface',
+    label: 'Runtime health probe surface',
+    status: hasHealthSurface ? 'pass' : 'warn',
+    severity: 'warn',
+    scope: 'project-scoped',
+    reason: hasHealthSurface
+      ? 'Health endpoint/config markers detected.'
+      : 'No explicit runtime health endpoint markers detected.',
+    recommendation: hasHealthSurface
+      ? undefined
+      : 'Expose a deterministic health endpoint and keep it covered in verify pack.',
+  });
+
+  await appendRuntimeAdapterProbes(projectPath, health);
+}
+
+type CustomDoctorProbeConfig = {
+  id?: string;
+  label?: string;
+  severity?: 'info' | 'warn' | 'error';
+  anyOfPaths?: string[];
+  allOfPaths?: string[];
+  recommendation?: string;
+};
+
+async function appendCustomConfiguredProbes(
+  projectPath: string,
+  health: ProjectHealth
+): Promise<void> {
+  const candidates = [
+    path.join(projectPath, '.rapidkit', 'doctor.probes.json'),
+    path.join(projectPath, 'doctor.probes.json'),
+  ];
+
+  for (const candidatePath of candidates) {
+    if (!(await fsExtra.pathExists(candidatePath))) {
+      continue;
+    }
+
+    try {
+      const raw = (await fsExtra.readJSON(candidatePath)) as {
+        probes?: CustomDoctorProbeConfig[];
+      };
+      const probes = Array.isArray(raw?.probes) ? raw.probes : [];
+
+      for (let index = 0; index < probes.length; index += 1) {
+        const probe = probes[index] || {};
+        const id =
+          typeof probe.id === 'string' && probe.id.trim().length > 0
+            ? probe.id.trim()
+            : `custom-probe-${index + 1}`;
+        const label =
+          typeof probe.label === 'string' && probe.label.trim().length > 0
+            ? probe.label.trim()
+            : id;
+        const severity = probe.severity || 'warn';
+
+        const anyOfPaths = Array.isArray(probe.anyOfPaths) ? probe.anyOfPaths.filter(Boolean) : [];
+        const allOfPaths = Array.isArray(probe.allOfPaths) ? probe.allOfPaths.filter(Boolean) : [];
+
+        let passAny = anyOfPaths.length === 0;
+        for (const p of anyOfPaths) {
+          if (await fsExtra.pathExists(path.join(projectPath, p))) {
+            passAny = true;
+            break;
+          }
+        }
+
+        let passAll = true;
+        for (const p of allOfPaths) {
+          if (!(await fsExtra.pathExists(path.join(projectPath, p)))) {
+            passAll = false;
+            break;
+          }
+        }
+
+        const passed = passAny && passAll;
+        pushProjectProbe(health, {
+          id,
+          label,
+          status: passed ? 'pass' : severity === 'error' ? 'fail' : 'warn',
+          severity,
+          scope: 'project-scoped',
+          reason: passed
+            ? 'Custom probe contract satisfied.'
+            : `Custom probe failed from ${path.basename(candidatePath)}.`,
+          recommendation: probe.recommendation,
+        });
+      }
+    } catch {
+      pushProjectProbe(health, {
+        id: 'custom-probe-config',
+        label: 'Custom doctor probe configuration',
+        status: 'warn',
+        severity: 'warn',
+        scope: 'project-scoped',
+        reason: `Failed to parse ${path.basename(candidatePath)}.`,
+        recommendation: 'Fix JSON syntax in doctor.probes.json to re-enable custom probes.',
+      });
+    }
+  }
+
+  await appendCustomAdapterChecks(projectPath, health);
+}
+
+async function checkProject(
+  projectPath: string,
+  options: { allowNonRapidkit?: boolean } = {}
+): Promise<ProjectHealth> {
   const projectName = path.basename(projectPath);
   const health: ProjectHealth = {
     name: projectName,
@@ -1111,11 +1909,15 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
     fixCommands: [],
   };
 
+  const allowNonRapidkit = options.allowNonRapidkit === true;
   // Check for .rapidkit directory
   const rapidkitDir = path.join(projectPath, '.rapidkit');
   if (!(await fsExtra.pathExists(rapidkitDir))) {
-    health.issues.push('Not a valid RapidKit project (missing .rapidkit directory)');
-    return health;
+    if (!allowNonRapidkit) {
+      health.issues.push('Not a valid RapidKit project (missing .rapidkit directory)');
+      return health;
+    }
+    health.issues.push('Not a RapidKit-managed project (running generic backend diagnostics)');
   }
 
   // Try to read kit info and stats from registry.json
@@ -1178,6 +1980,15 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
   const requirementsTxtPath = path.join(projectPath, 'requirements.txt');
   const goModPath = path.join(projectPath, 'go.mod');
   const pomXmlPath = path.join(projectPath, 'pom.xml');
+  const buildSbtPath = path.join(projectPath, 'build.sbt');
+  const cargoTomlPath = path.join(projectPath, 'Cargo.toml');
+  const mixExsPath = path.join(projectPath, 'mix.exs');
+  const depsEdnPath = path.join(projectPath, 'deps.edn');
+  const projectCljPath = path.join(projectPath, 'project.clj');
+  const denoJsonPath = path.join(projectPath, 'deno.json');
+  const denoJsoncPath = path.join(projectPath, 'deno.jsonc');
+  const bunLockbPath = path.join(projectPath, 'bun.lockb');
+  const bunLockPath = path.join(projectPath, 'bun.lock');
   const composerJsonPath = path.join(projectPath, 'composer.json');
   const gemfilePath = path.join(projectPath, 'Gemfile');
 
@@ -1187,6 +1998,13 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
     (await fsExtra.pathExists(requirementsTxtPath));
   const isPhpProject = await fsExtra.pathExists(composerJsonPath);
   const isRubyProject = await fsExtra.pathExists(gemfilePath);
+  const isRustProject = await fsExtra.pathExists(cargoTomlPath);
+  const isElixirProject = await fsExtra.pathExists(mixExsPath);
+  const isClojureProject =
+    (await fsExtra.pathExists(depsEdnPath)) || (await fsExtra.pathExists(projectCljPath));
+  const isScalaProject = await fsExtra.pathExists(buildSbtPath);
+  const isDenoProject =
+    (await fsExtra.pathExists(denoJsonPath)) || (await fsExtra.pathExists(denoJsoncPath));
   let isDotnetProject = false;
   try {
     const projectEntries = await fsExtra.readdir(projectPath);
@@ -1203,6 +2021,13 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
     (typeof projectJsonData?.kit_name === 'string' &&
       ((projectJsonData.kit_name as string).startsWith('gofiber') ||
         (projectJsonData.kit_name as string).startsWith('gogin')));
+
+  const isBunProject =
+    isNodeProject &&
+    ((await fsExtra.pathExists(bunLockbPath)) ||
+      (await fsExtra.pathExists(bunLockPath)) ||
+      (typeof (projectJsonData?.packageManager as string | undefined) === 'string' &&
+        (projectJsonData?.packageManager as string).toLowerCase().startsWith('bun@')));
 
   // Go project checks (Fiber or Gin)
   if (isGoProject) {
@@ -1234,6 +2059,8 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
     // Leave hasEnvFile undefined so the Environment row is hidden in the output.
 
     await performCommonChecks(projectPath, health);
+    await appendBuiltInBackendProbes(projectPath, health);
+    await appendCustomConfiguredProbes(projectPath, health);
     return health;
   }
 
@@ -1342,6 +2169,158 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
     }
 
     await performCommonChecks(projectPath, health);
+    await appendBuiltInBackendProbes(projectPath, health);
+    await appendCustomConfiguredProbes(projectPath, health);
+    return health;
+  }
+
+  if (isRustProject) {
+    applyFrameworkMetadata(health, 'Rust', 'high');
+    health.venvActive = true;
+    health.coreInstalled = false;
+
+    const cargoLockPath = path.join(projectPath, 'Cargo.lock');
+    const rustTargetPath = path.join(projectPath, 'target');
+    health.depsInstalled =
+      (await fsExtra.pathExists(cargoLockPath)) || (await fsExtra.pathExists(rustTargetPath));
+
+    if (!health.depsInstalled) {
+      health.issues.push('Rust dependencies are not resolved yet (Cargo.lock/target missing)');
+      health.fixCommands?.push(buildProjectFixCommand(projectPath, 'cargo fetch'));
+    }
+
+    const envPath = path.join(projectPath, '.env');
+    health.hasEnvFile = await fsExtra.pathExists(envPath);
+    if (!health.hasEnvFile) {
+      const envExamplePath = path.join(projectPath, '.env.example');
+      if (await fsExtra.pathExists(envExamplePath)) {
+        health.issues.push('Environment file missing (found .env.example)');
+        health.fixCommands?.push(buildEnvCopyFixCommand(projectPath));
+      }
+    }
+
+    await performCommonChecks(projectPath, health);
+    await appendBuiltInBackendProbes(projectPath, health);
+    await appendCustomConfiguredProbes(projectPath, health);
+    return health;
+  }
+
+  if (isElixirProject) {
+    let detectedFramework: DetectedFramework = 'Elixir';
+    let confidence: FrameworkConfidence = 'medium';
+    try {
+      const mixExsRaw = (await fsExtra.readFile(mixExsPath, 'utf8')).toLowerCase();
+      if (mixExsRaw.includes('phoenix')) {
+        detectedFramework = 'Phoenix';
+        confidence = 'high';
+      }
+    } catch {
+      confidence = 'low';
+    }
+
+    applyFrameworkMetadata(health, detectedFramework, confidence);
+    health.venvActive = true;
+    health.coreInstalled = false;
+
+    const mixLockPath = path.join(projectPath, 'mix.lock');
+    const depsPath = path.join(projectPath, 'deps');
+    health.depsInstalled =
+      (await fsExtra.pathExists(mixLockPath)) || (await fsExtra.pathExists(depsPath));
+
+    if (!health.depsInstalled) {
+      health.issues.push('Elixir dependencies not installed (mix.lock/deps missing)');
+      health.fixCommands?.push(buildProjectFixCommand(projectPath, 'mix deps.get'));
+    }
+
+    const envPath = path.join(projectPath, '.env');
+    health.hasEnvFile = await fsExtra.pathExists(envPath);
+    if (!health.hasEnvFile) {
+      const envExamplePath = path.join(projectPath, '.env.example');
+      if (await fsExtra.pathExists(envExamplePath)) {
+        health.issues.push('Environment file missing (found .env.example)');
+        health.fixCommands?.push(buildEnvCopyFixCommand(projectPath));
+      }
+    }
+
+    await performCommonChecks(projectPath, health);
+    await appendBuiltInBackendProbes(projectPath, health);
+    await appendCustomConfiguredProbes(projectPath, health);
+    return health;
+  }
+
+  if (isClojureProject) {
+    applyFrameworkMetadata(health, 'Clojure', 'medium');
+    health.venvActive = true;
+    health.coreInstalled = false;
+
+    const cpcachePath = path.join(projectPath, '.cpcache');
+    const targetPath = path.join(projectPath, 'target');
+    const hasDepsManifest =
+      (await fsExtra.pathExists(depsEdnPath)) || (await fsExtra.pathExists(projectCljPath));
+    health.depsInstalled =
+      (await fsExtra.pathExists(cpcachePath)) ||
+      (await fsExtra.pathExists(targetPath)) ||
+      hasDepsManifest;
+
+    if (!health.depsInstalled) {
+      health.issues.push('Clojure dependency cache not initialized');
+      health.fixCommands?.push(buildProjectFixCommand(projectPath, 'clojure -P'));
+    }
+
+    await performCommonChecks(projectPath, health);
+    await appendBuiltInBackendProbes(projectPath, health);
+    await appendCustomConfiguredProbes(projectPath, health);
+    return health;
+  }
+
+  if (isScalaProject) {
+    applyFrameworkMetadata(health, 'Scala', 'high');
+    health.venvActive = true;
+    health.coreInstalled = false;
+
+    const targetPath = path.join(projectPath, 'target');
+    health.depsInstalled = await fsExtra.pathExists(targetPath);
+
+    if (!health.depsInstalled) {
+      health.issues.push('Scala build artifacts missing (run dependency/build warmup)');
+      health.fixCommands?.push(buildProjectFixCommand(projectPath, 'sbt compile'));
+    }
+
+    const envPath = path.join(projectPath, '.env');
+    health.hasEnvFile = await fsExtra.pathExists(envPath);
+    if (!health.hasEnvFile) {
+      const envExamplePath = path.join(projectPath, '.env.example');
+      if (await fsExtra.pathExists(envExamplePath)) {
+        health.issues.push('Environment file missing (found .env.example)');
+        health.fixCommands?.push(buildEnvCopyFixCommand(projectPath));
+      }
+    }
+
+    await performCommonChecks(projectPath, health);
+    await appendBuiltInBackendProbes(projectPath, health);
+    await appendCustomConfiguredProbes(projectPath, health);
+    return health;
+  }
+
+  if (isDenoProject) {
+    applyFrameworkMetadata(health, 'Deno', 'high');
+    health.venvActive = true;
+    health.coreInstalled = false;
+    health.depsInstalled = true;
+
+    const envPath = path.join(projectPath, '.env');
+    health.hasEnvFile = await fsExtra.pathExists(envPath);
+    if (!health.hasEnvFile) {
+      const envExamplePath = path.join(projectPath, '.env.example');
+      if (await fsExtra.pathExists(envExamplePath)) {
+        health.issues.push('Environment file missing (found .env.example)');
+        health.fixCommands?.push(buildEnvCopyFixCommand(projectPath));
+      }
+    }
+
+    await performCommonChecks(projectPath, health);
+    await appendBuiltInBackendProbes(projectPath, health);
+    await appendCustomConfiguredProbes(projectPath, health);
     return health;
   }
 
@@ -1375,7 +2354,11 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
       scripts,
       kitName,
     });
-    applyFrameworkMetadata(health, nodeDetection.framework, nodeDetection.confidence);
+    if (isBunProject) {
+      applyFrameworkMetadata(health, 'Bun', 'high');
+    } else {
+      applyFrameworkMetadata(health, nodeDetection.framework, nodeDetection.confidence);
+    }
     health.venvActive = true; // N/A for Node.js projects
 
     // Check for node_modules
@@ -1393,7 +2376,9 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
 
     if (!health.depsInstalled) {
       health.issues.push('Dependencies not installed (node_modules empty or missing)');
-      health.fixCommands?.push(buildProjectFixCommand(projectPath, 'rapidkit init'));
+      health.fixCommands?.push(
+        buildProjectFixCommand(projectPath, isBunProject ? 'bun install' : 'rapidkit init')
+      );
     }
 
     // Node.js projects don't need Python venv
@@ -1455,6 +2440,8 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
 
     // Common checks for both Node.js and Python
     await performCommonChecks(projectPath, health);
+    await appendBuiltInBackendProbes(projectPath, health);
+    await appendCustomConfiguredProbes(projectPath, health);
 
     return health;
   }
@@ -1594,6 +2581,8 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
 
     // Common checks for both Node.js and Python
     await performCommonChecks(projectPath, health);
+    await appendBuiltInBackendProbes(projectPath, health);
+    await appendCustomConfiguredProbes(projectPath, health);
 
     return health;
   }
@@ -1641,6 +2630,8 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
     }
 
     await performCommonChecks(projectPath, health);
+    await appendBuiltInBackendProbes(projectPath, health);
+    await appendCustomConfiguredProbes(projectPath, health);
     return health;
   }
 
@@ -1676,6 +2667,8 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
     health.hasEnvFile = await fsExtra.pathExists(envPath);
 
     await performCommonChecks(projectPath, health);
+    await appendBuiltInBackendProbes(projectPath, health);
+    await appendCustomConfiguredProbes(projectPath, health);
     return health;
   }
 
@@ -1705,6 +2698,8 @@ async function checkProject(projectPath: string): Promise<ProjectHealth> {
   health.issues.push('Unknown project type (no recognized runtime marker files)');
 
   await performCommonChecks(projectPath, health);
+  await appendBuiltInBackendProbes(projectPath, health);
+  await appendCustomConfiguredProbes(projectPath, health);
   return health;
 }
 
@@ -1834,6 +2829,56 @@ async function findWorkspace(startPath: string): Promise<string | null> {
   return null;
 }
 
+async function findProjectRoot(startPath: string): Promise<string | null> {
+  let currentPath = startPath;
+  const root = path.parse(currentPath).root;
+
+  while (true) {
+    if (await hasRapidkitProjectMarkers(currentPath)) {
+      return currentPath;
+    }
+
+    if (await hasBackendProjectMarkers(currentPath)) {
+      return currentPath;
+    }
+
+    if (currentPath === root) {
+      break;
+    }
+
+    currentPath = path.dirname(currentPath);
+  }
+
+  return null;
+}
+
+async function hasBackendProjectMarkers(projectPath: string): Promise<boolean> {
+  const markerPaths = [
+    'package.json',
+    'pyproject.toml',
+    'requirements.txt',
+    'go.mod',
+    'pom.xml',
+    'build.sbt',
+    'Cargo.toml',
+    'mix.exs',
+    'deps.edn',
+    'project.clj',
+    'deno.json',
+    'deno.jsonc',
+    'composer.json',
+    'Gemfile',
+  ];
+
+  for (const marker of markerPaths) {
+    if (await fsExtra.pathExists(path.join(projectPath, marker))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function calculateHealthScore(
   systemChecks: HealthCheckResult[],
   projects: ProjectHealth[]
@@ -1867,6 +2912,115 @@ function calculateHealthScore(
 
   const total = passed + warnings + errors;
   return { total, passed, warnings, errors };
+}
+
+function buildScoreBreakdown(
+  systemChecks: Array<{ id: string; label: string; result: HealthCheckResult }>,
+  projects: ProjectHealth[],
+  options: { includeWorkspaceAggregateRules?: boolean } = {}
+): ScoreBreakdownItem[] {
+  const breakdown: ScoreBreakdownItem[] = [];
+
+  for (const check of systemChecks) {
+    breakdown.push({
+      id: check.id,
+      label: check.label,
+      status: check.result.status,
+      scope: 'host-system',
+      policyRuleId: 'system-status-derived',
+      reason: check.result.details || check.result.message,
+    });
+  }
+
+  const sortedProjects = [...projects].sort((a, b) => {
+    const left = `${a.path || ''}|${a.name || ''}`.toLowerCase();
+    const right = `${b.path || ''}|${b.name || ''}`.toLowerCase();
+    return left.localeCompare(right);
+  });
+
+  for (const project of sortedProjects) {
+    const hasBlockingIssue = project.issues.length > 0;
+    const advisoryWarnings = getProjectAdvisoryWarningCount(project);
+    const status: 'ok' | 'warn' | 'error' = hasBlockingIssue
+      ? 'warn'
+      : advisoryWarnings > 0
+        ? 'warn'
+        : 'ok';
+    const reason = hasBlockingIssue
+      ? `${project.issues.length} blocking issue(s)`
+      : advisoryWarnings > 0
+        ? `${advisoryWarnings} advisory warning(s)`
+        : 'Project checks passed';
+
+    breakdown.push({
+      id: `project:${project.name}`,
+      label: `Project ${project.name}`,
+      status,
+      scope: 'project-scoped',
+      policyRuleId: hasBlockingIssue
+        ? 'project-blocking-issues'
+        : advisoryWarnings > 0
+          ? 'project-advisory-warnings'
+          : 'project-checks-passed',
+      reason,
+    });
+  }
+
+  if (options.includeWorkspaceAggregateRules) {
+    const totalProjectIssues = projects.reduce((sum, project) => sum + project.issues.length, 0);
+    const advisoryWarnings = countProjectAdvisoryWarnings(projects);
+    const systemErrors = systemChecks.filter((check) => check.result.status === 'error').length;
+
+    breakdown.push({
+      id: 'workspace:projects-discovered',
+      label: 'Workspace projects discovered',
+      status: projects.length > 0 ? 'ok' : 'warn',
+      scope: 'workspace-aggregate',
+      policyRuleId: 'workspace-project-discovery',
+      reason:
+        projects.length > 0
+          ? `${projects.length} project(s) discovered for workspace analysis.`
+          : 'No projects discovered for workspace analysis.',
+    });
+
+    breakdown.push({
+      id: 'workspace:system-error-gate',
+      label: 'Workspace system error gate',
+      status: systemErrors > 0 ? 'error' : 'ok',
+      scope: 'workspace-aggregate',
+      policyRuleId: 'workspace-system-error-gate',
+      reason:
+        systemErrors > 0
+          ? `${systemErrors} system requirement gate(s) failed.`
+          : 'All system requirement gates passed.',
+    });
+
+    breakdown.push({
+      id: 'workspace:blocking-issues-gate',
+      label: 'Workspace blocking issues gate',
+      status: totalProjectIssues > 0 ? 'warn' : 'ok',
+      scope: 'workspace-aggregate',
+      policyRuleId: 'workspace-blocking-issues-gate',
+      reason:
+        totalProjectIssues > 0
+          ? `${totalProjectIssues} blocking project issue(s) detected.`
+          : 'No blocking project issues detected.',
+    });
+
+    breakdown.push({
+      id: 'workspace:advisory-warnings-gate',
+      label: 'Workspace advisory warnings gate',
+      status: advisoryWarnings > 0 ? 'warn' : 'ok',
+      scope: 'workspace-aggregate',
+      policyRuleId: 'workspace-advisory-warning-gate',
+      reason:
+        advisoryWarnings > 0
+          ? `${advisoryWarnings} advisory warning(s) detected.`
+          : 'No advisory warnings detected.',
+    });
+  }
+
+  return breakdown;
 }
 
 async function getWorkspaceHealth(
@@ -1945,6 +3099,18 @@ async function getWorkspaceHealth(
   // Calculate health score
   const healthChecks = [health.python, health.poetry, health.pipx, health.go, health.rapidkitCore];
   health.healthScore = calculateHealthScore(healthChecks, health.projects);
+  health.scoreBreakdown = buildScoreBreakdown(
+    [
+      { id: 'system-python', label: 'Python', result: health.python },
+      { id: 'system-poetry', label: 'Poetry', result: health.poetry },
+      { id: 'system-pipx', label: 'pipx', result: health.pipx },
+      { id: 'system-go', label: 'Go', result: health.go },
+      { id: 'system-rapidkit-core', label: 'RapidKit Core', result: health.rapidkitCore },
+    ],
+    health.projects,
+    { includeWorkspaceAggregateRules: true }
+  );
+  health.scopeProvenance = buildScopeProvenanceSummary(health.scoreBreakdown);
 
   // Extract version info
   if (health.rapidkitCore.status === 'ok') {
@@ -1954,9 +3120,117 @@ async function getWorkspaceHealth(
     }
   }
 
+  const previousEvidencePath = path.join(
+    workspacePath,
+    '.rapidkit',
+    'reports',
+    'doctor-last-run.json'
+  );
+  const previousEvidence = await readDoctorEvidenceIfPresent(previousEvidencePath);
+  health.driftDelta = buildWorkspaceDriftDelta(previousEvidence, health);
+
   health.evidencePath = await writeDoctorEvidence(workspacePath, health, cached ? cachePath : null);
 
   return health;
+}
+
+async function writeProjectDoctorEvidence(
+  workspacePath: string | undefined,
+  envelope: ProjectHealthEnvelope
+): Promise<string | undefined> {
+  const evidenceRoot = workspacePath || envelope.projectPath;
+  const evidencePath = path.join(
+    evidenceRoot,
+    '.rapidkit',
+    'reports',
+    'doctor-project-last-run.json'
+  );
+
+  try {
+    await fsExtra.ensureDir(path.dirname(evidencePath));
+    await fsExtra.writeJSON(
+      evidencePath,
+      {
+        generatedAt: new Date().toISOString(),
+        contract: getDoctorContractMetadata(),
+        workspacePath: workspacePath || null,
+        projectPath: envelope.projectPath,
+        projectName: envelope.projectName,
+        healthScore: envelope.healthScore,
+        system: {
+          python: envelope.python,
+          poetry: envelope.poetry,
+          pipx: envelope.pipx,
+          go: envelope.go,
+          rapidkitCore: envelope.rapidkitCore,
+        },
+        project: envelope.project,
+        driftDelta: envelope.driftDelta,
+        summary: {
+          scopeProvenance: envelope.scopeProvenance,
+        },
+        scoreBreakdown: envelope.scoreBreakdown ?? [],
+      },
+      { spaces: 2 }
+    );
+    return evidencePath;
+  } catch {
+    return undefined;
+  }
+}
+
+async function getProjectHealthEnvelope(projectPath: string): Promise<ProjectHealthEnvelope> {
+  const workspacePath = await findWorkspace(projectPath);
+  const systemHealth = await collectSystemChecks();
+  const projectHealth = await checkProject(projectPath, { allowNonRapidkit: true });
+  const healthScore = calculateHealthScore(
+    [
+      systemHealth.python,
+      systemHealth.poetry,
+      systemHealth.pipx,
+      systemHealth.go,
+      systemHealth.rapidkitCore,
+    ],
+    [projectHealth]
+  );
+
+  const envelope: ProjectHealthEnvelope = {
+    workspacePath: workspacePath || undefined,
+    projectPath,
+    projectName: path.basename(projectPath),
+    python: systemHealth.python,
+    poetry: systemHealth.poetry,
+    pipx: systemHealth.pipx,
+    go: systemHealth.go,
+    rapidkitCore: systemHealth.rapidkitCore,
+    project: projectHealth,
+    healthScore,
+  };
+
+  envelope.scoreBreakdown = buildScoreBreakdown(
+    [
+      { id: 'system-python', label: 'Python', result: envelope.python },
+      { id: 'system-poetry', label: 'Poetry', result: envelope.poetry },
+      { id: 'system-pipx', label: 'pipx', result: envelope.pipx },
+      { id: 'system-go', label: 'Go', result: envelope.go },
+      { id: 'system-rapidkit-core', label: 'RapidKit Core', result: envelope.rapidkitCore },
+    ],
+    [envelope.project]
+  );
+  envelope.scopeProvenance = buildScopeProvenanceSummary(envelope.scoreBreakdown);
+
+  const evidenceRoot = workspacePath || projectPath;
+  const previousEvidencePath = path.join(
+    evidenceRoot,
+    '.rapidkit',
+    'reports',
+    'doctor-project-last-run.json'
+  );
+  const previousEvidence = await readDoctorEvidenceIfPresent(previousEvidencePath);
+  envelope.driftDelta = buildProjectDriftDelta(previousEvidence, envelope);
+
+  envelope.evidencePath = await writeProjectDoctorEvidence(workspacePath || undefined, envelope);
+  return envelope;
 }
 
 function renderHealthCheck(check: HealthCheckResult, label: string): void {
@@ -2007,17 +3281,33 @@ function renderProjectHealth(project: ProjectHealth): void {
                     ? '🧡'
                     : project.framework === 'Spring Boot'
                       ? '☕'
-                      : project.framework === 'Go/Fiber'
-                        ? '🐹'
-                        : project.framework === 'Go/Gin'
-                          ? '🐹'
-                          : project.framework === 'Laravel' || project.framework === 'PHP'
-                            ? '🐘'
-                            : project.framework === 'Ruby on Rails' || project.framework === 'Ruby'
-                              ? '💎'
-                              : project.framework === 'ASP.NET'
-                                ? '🔷'
-                                : '📦';
+                      : project.framework === 'Rust'
+                        ? '🦀'
+                        : project.framework === 'Elixir' || project.framework === 'Phoenix'
+                          ? '🧪'
+                          : project.framework === 'Clojure'
+                            ? '⚙️'
+                            : project.framework === 'Scala'
+                              ? '🔺'
+                              : project.framework === 'Kotlin'
+                                ? '🟣'
+                                : project.framework === 'Deno'
+                                  ? '🦕'
+                                  : project.framework === 'Bun'
+                                    ? '🥖'
+                                    : project.framework === 'Go/Fiber'
+                                      ? '🐹'
+                                      : project.framework === 'Go/Gin'
+                                        ? '🐹'
+                                        : project.framework === 'Laravel' ||
+                                            project.framework === 'PHP'
+                                          ? '🐘'
+                                          : project.framework === 'Ruby on Rails' ||
+                                              project.framework === 'Ruby'
+                                            ? '💎'
+                                            : project.framework === 'ASP.NET'
+                                              ? '🔷'
+                                              : '📦';
     console.log(
       `   ${frameworkIcon} Framework: ${chalk.cyan(project.framework)}${project.kit ? chalk.gray(` (${project.kit})`) : ''}`
     );
@@ -2118,13 +3408,21 @@ function renderProjectHealth(project: ProjectHealth): void {
     const qualityTool =
       project.runtimeFamily === 'node'
         ? 'ESLint'
-        : project.framework === 'Spring Boot'
-          ? 'Static analysis'
-          : project.framework === 'Go/Fiber' || project.framework === 'Go/Gin'
-            ? 'golangci-lint'
-            : project.runtimeFamily === 'python'
-              ? 'Ruff'
-              : 'Lint';
+        : project.runtimeFamily === 'rust'
+          ? 'clippy'
+          : project.runtimeFamily === 'elixir'
+            ? 'Credo'
+            : project.runtimeFamily === 'clojure'
+              ? 'clj-kondo'
+              : project.runtimeFamily === 'deno'
+                ? 'deno lint'
+                : project.framework === 'Spring Boot'
+                  ? 'Static analysis'
+                  : project.framework === 'Go/Fiber' || project.framework === 'Go/Gin'
+                    ? 'golangci-lint'
+                    : project.runtimeFamily === 'python'
+                      ? 'Ruff'
+                      : 'Lint';
     additionalChecks.push(
       project.hasCodeQuality ? `✅ ${qualityTool}` : chalk.dim(`⊘ No ${qualityTool}`)
     );
@@ -2155,6 +3453,17 @@ function renderProjectHealth(project: ProjectHealth): void {
       });
     }
   }
+
+  if (project.probes && project.probes.length > 0) {
+    console.log(`   ${chalk.bold('Probe checks:')}`);
+    for (const probe of project.probes) {
+      const icon = probe.status === 'pass' ? '✅' : probe.status === 'warn' ? '⚠️' : '❌';
+      console.log(`     ${icon} ${probe.label}: ${chalk.gray(probe.reason)}`);
+      if (probe.recommendation) {
+        console.log(`       ${chalk.dim('↳')} ${chalk.gray(probe.recommendation)}`);
+      }
+    }
+  }
 }
 
 async function canRunGoModTidy(): Promise<boolean> {
@@ -2169,17 +3478,274 @@ async function canRunGoModTidy(): Promise<boolean> {
   }
 }
 
+type FixRiskLevel = 'safe' | 'guarded' | 'invasive';
+
+type FixStepKind =
+  | 'manual-url'
+  | 'env-copy'
+  | 'rapidkit-init'
+  | 'go-mod-tidy'
+  | 'dependency-sync'
+  | 'shell';
+
+interface FixPlanStep {
+  projectName: string;
+  projectPath: string;
+  originalCommand: string;
+  kind: FixStepKind;
+  risk: FixRiskLevel;
+  executable: boolean;
+  reason?: string;
+}
+
+interface ProjectSnapshotEntry {
+  snapshotRoot: string;
+  files: Map<string, string>;
+}
+
+function parseProjectCommandFix(
+  cmd: string,
+  expectedTailPattern: string
+): { projectPath: string } | null {
+  const patterns = [
+    new RegExp(`^cd\\s+"([^"]+)"\\s*(?:&&|;)\\s*${expectedTailPattern}\\s*$`, 'i'),
+    new RegExp(`^cd\\s+'([^']+)'\\s*(?:&&|;)\\s*${expectedTailPattern}\\s*$`, 'i'),
+    new RegExp(`^cd\\s+(.+?)\\s*(?:&&|;)\\s*${expectedTailPattern}\\s*$`, 'i'),
+  ];
+
+  for (const pattern of patterns) {
+    const match = cmd.match(pattern);
+    if (match?.[1]) {
+      return { projectPath: match[1].trim() };
+    }
+  }
+
+  return null;
+}
+
+function parseEnvCopyFix(cmd: string): { projectPath: string } | null {
+  return (
+    parseProjectCommandFix(cmd, 'cp\\s+\\.env\\.example\\s+\\.env') ||
+    parseProjectCommandFix(cmd, 'copy-item\\s+\\.env\\.example\\s+\\.env')
+  );
+}
+
+function parseDependencySyncFix(
+  cmd: string
+): { projectPath: string; command: string; args: string[] } | null {
+  const knownPatterns: Array<{ pattern: string; command: string; args: string[] }> = [
+    { pattern: 'npm\\s+install', command: 'npm', args: ['install'] },
+    { pattern: 'npm\\s+ci', command: 'npm', args: ['ci'] },
+    { pattern: 'pnpm\\s+install', command: 'pnpm', args: ['install'] },
+    { pattern: 'yarn\\s+install', command: 'yarn', args: ['install'] },
+    { pattern: 'poetry\\s+install', command: 'poetry', args: ['install'] },
+    {
+      pattern: 'pip\\s+install\\s+-r\\s+requirements\\.txt',
+      command: 'pip',
+      args: ['install', '-r', 'requirements.txt'],
+    },
+    { pattern: 'composer\\s+install', command: 'composer', args: ['install'] },
+    { pattern: 'bundle\\s+install', command: 'bundle', args: ['install'] },
+    { pattern: 'dotnet\\s+restore', command: 'dotnet', args: ['restore'] },
+    { pattern: 'cargo\\s+fetch', command: 'cargo', args: ['fetch'] },
+    { pattern: 'mix\\s+deps\\.get', command: 'mix', args: ['deps.get'] },
+    { pattern: 'clojure\\s+-P', command: 'clojure', args: ['-P'] },
+    { pattern: 'sbt\\s+compile', command: 'sbt', args: ['compile'] },
+  ];
+
+  for (const candidate of knownPatterns) {
+    const parsed = parseProjectCommandFix(cmd, candidate.pattern);
+    if (parsed) {
+      return {
+        projectPath: parsed.projectPath,
+        command: candidate.command,
+        args: candidate.args,
+      };
+    }
+  }
+
+  return null;
+}
+
+function classifyFixStep(project: ProjectHealth, cmd: string): FixPlanStep {
+  if (/^https?:\/\//i.test(cmd.trim())) {
+    return {
+      projectName: project.name,
+      projectPath: project.path,
+      originalCommand: cmd,
+      kind: 'manual-url',
+      risk: 'safe',
+      executable: false,
+      reason: 'Manual guidance URL',
+    };
+  }
+
+  if (parseEnvCopyFix(cmd)) {
+    return {
+      projectName: project.name,
+      projectPath: project.path,
+      originalCommand: cmd,
+      kind: 'env-copy',
+      risk: 'safe',
+      executable: true,
+      reason: 'Environment seed copy',
+    };
+  }
+
+  if (parseProjectCommandFix(cmd, 'rapidkit\\s+init')) {
+    return {
+      projectName: project.name,
+      projectPath: project.path,
+      originalCommand: cmd,
+      kind: 'rapidkit-init',
+      risk: 'guarded',
+      executable: true,
+      reason: 'RapidKit initializer may mutate dependencies and configs',
+    };
+  }
+
+  if (parseProjectCommandFix(cmd, 'go\\s+mod\\s+tidy')) {
+    return {
+      projectName: project.name,
+      projectPath: project.path,
+      originalCommand: cmd,
+      kind: 'go-mod-tidy',
+      risk: 'guarded',
+      executable: true,
+      reason: 'Go module graph reconciliation',
+    };
+  }
+
+  if (parseDependencySyncFix(cmd)) {
+    return {
+      projectName: project.name,
+      projectPath: project.path,
+      originalCommand: cmd,
+      kind: 'dependency-sync',
+      risk: 'guarded',
+      executable: true,
+      reason: 'Dependency synchronization command',
+    };
+  }
+
+  return {
+    projectName: project.name,
+    projectPath: project.path,
+    originalCommand: cmd,
+    kind: 'shell',
+    risk: 'invasive',
+    executable: true,
+    reason: 'Generic shell command',
+  };
+}
+
+function looksRetryableError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const retryableTokens = [
+    'ETIMEDOUT',
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'EAI_AGAIN',
+    'ENOTFOUND',
+    'network',
+    '503',
+    '504',
+  ];
+  const lower = message.toLowerCase();
+  return retryableTokens.some((token) => lower.includes(token.toLowerCase()));
+}
+
+async function ensureProjectSnapshot(
+  snapshotCache: Map<string, ProjectSnapshotEntry>,
+  projectPath: string
+): Promise<ProjectSnapshotEntry> {
+  const existing = snapshotCache.get(projectPath);
+  if (existing) {
+    return existing;
+  }
+
+  const snapshotId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const safeProjectName = path.basename(projectPath).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const snapshotRoot = path.join(
+    projectPath,
+    '.rapidkit',
+    'reports',
+    'fix-snapshots',
+    `${safeProjectName}-${snapshotId}`
+  );
+  await fsExtra.ensureDir(snapshotRoot);
+
+  const candidateFiles = [
+    '.env',
+    'package-lock.json',
+    'pnpm-lock.yaml',
+    'yarn.lock',
+    'poetry.lock',
+    'requirements.txt',
+    'go.mod',
+    'go.sum',
+    'Cargo.lock',
+    'composer.lock',
+    'Gemfile.lock',
+    'pom.xml',
+    'build.gradle',
+    'build.gradle.kts',
+    'gradle.lockfile',
+  ];
+
+  const files = new Map<string, string>();
+  for (const relativeFile of candidateFiles) {
+    const sourcePath = path.join(projectPath, relativeFile);
+    if (!(await fsExtra.pathExists(sourcePath))) {
+      continue;
+    }
+    const destinationPath = path.join(snapshotRoot, relativeFile);
+    await fsExtra.ensureDir(path.dirname(destinationPath));
+    await fsExtra.copy(sourcePath, destinationPath, { overwrite: true });
+    files.set(sourcePath, destinationPath);
+  }
+
+  const entry: ProjectSnapshotEntry = { snapshotRoot, files };
+  snapshotCache.set(projectPath, entry);
+  return entry;
+}
+
+async function rollbackProjectFromSnapshot(snapshot: ProjectSnapshotEntry): Promise<void> {
+  for (const [targetPath, snapshotPath] of snapshot.files.entries()) {
+    if (!(await fsExtra.pathExists(snapshotPath))) {
+      continue;
+    }
+    await fsExtra.ensureDir(path.dirname(targetPath));
+    await fsExtra.copy(snapshotPath, targetPath, { overwrite: true });
+  }
+}
+
+async function verifyProjectPostFix(
+  projectPath: string
+): Promise<{ issues: number; healthy: boolean }> {
+  const recheck = await checkProject(projectPath, { allowNonRapidkit: true });
+  return {
+    issues: recheck.issues.length,
+    healthy: recheck.issues.length === 0,
+  };
+}
+
 async function executeFixCommands(
   projects: ProjectHealth[],
   autoFix: boolean = false
 ): Promise<void> {
   const fixableProjects = projects.filter((p) => p.fixCommands && p.fixCommands.length > 0);
   let goToolchainAvailable: boolean | null = null;
+  const snapshotCache = new Map<string, ProjectSnapshotEntry>();
 
   if (fixableProjects.length === 0) {
     console.log(chalk.green('\n✅ No fixes needed - all projects are healthy!'));
     return;
   }
+
+  const planSteps = fixableProjects.flatMap((project) =>
+    (project.fixCommands ?? []).map((cmd) => classifyFixStep(project, cmd))
+  );
 
   console.log(chalk.bold.cyan('\n🔧 Available Fixes:\n'));
 
@@ -2193,35 +3759,25 @@ async function executeFixCommands(
   }
 
   let executableFixCount = 0;
-  for (const project of fixableProjects) {
-    const fixCommands = project.fixCommands ?? [];
-    for (const cmd of fixCommands) {
-      if (/^https?:\/\//i.test(cmd.trim())) {
-        continue;
-      }
-
-      if (
-        parseProjectCommandFix(cmd, 'cp\\s+\\.env\\.example\\s+\\.env') ||
-        parseProjectCommandFix(cmd, 'copy-item\\s+\\.env\\.example\\s+\\.env') ||
-        parseProjectCommandFix(cmd, 'rapidkit\\s+init')
-      ) {
-        executableFixCount += 1;
-        continue;
-      }
-
-      const goModTidyFix = parseProjectCommandFix(cmd, 'go\\s+mod\\s+tidy');
-      if (goModTidyFix) {
-        if (goToolchainAvailable === null) {
-          goToolchainAvailable = await canRunGoModTidy();
-        }
-        if (goToolchainAvailable) {
-          executableFixCount += 1;
-        }
-        continue;
-      }
-
-      executableFixCount += 1;
+  let safeSteps = 0;
+  let guardedSteps = 0;
+  let invasiveSteps = 0;
+  for (const step of planSteps) {
+    if (!step.executable) {
+      continue;
     }
+    if (step.kind === 'go-mod-tidy') {
+      if (goToolchainAvailable === null) {
+        goToolchainAvailable = await canRunGoModTidy();
+      }
+      if (!goToolchainAvailable) {
+        continue;
+      }
+    }
+    executableFixCount += 1;
+    if (step.risk === 'safe') safeSteps += 1;
+    if (step.risk === 'guarded') guardedSteps += 1;
+    if (step.risk === 'invasive') invasiveSteps += 1;
   }
 
   if (executableFixCount === 0) {
@@ -2243,6 +3799,12 @@ async function executeFixCommands(
     return;
   }
 
+  console.log(
+    chalk.gray(
+      `Risk policy: safe=${safeSteps}, guarded=${guardedSteps}, invasive=${invasiveSteps}. Guarded/invasive fixes use snapshot + rollback.`
+    )
+  );
+
   // Confirm before proceeding
   const { confirm } = await inquirer.prompt([
     {
@@ -2260,47 +3822,37 @@ async function executeFixCommands(
 
   console.log(chalk.bold.cyan('\n🚀 Applying fixes...\n'));
 
-  const isManualUrlFix = (cmd: string): boolean => /^https?:\/\//i.test(cmd.trim());
-
-  function parseProjectCommandFix(
-    cmd: string,
-    expectedTailPattern: string
-  ): { projectPath: string } | null {
-    const patterns = [
-      new RegExp(`^cd\\s+"([^"]+)"\\s*(?:&&|;)\\s*${expectedTailPattern}\\s*$`, 'i'),
-      new RegExp(`^cd\\s+'([^']+)'\\s*(?:&&|;)\\s*${expectedTailPattern}\\s*$`, 'i'),
-      new RegExp(`^cd\\s+(.+?)\\s*(?:&&|;)\\s*${expectedTailPattern}\\s*$`, 'i'),
-    ];
-
-    for (const pattern of patterns) {
-      const match = cmd.match(pattern);
-      if (match?.[1]) {
-        return { projectPath: match[1].trim() };
-      }
-    }
-
-    return null;
-  }
-
-  function parseEnvCopyFix(cmd: string): { projectPath: string } | null {
-    return (
-      parseProjectCommandFix(cmd, 'cp\\s+\\.env\\.example\\s+\\.env') ||
-      parseProjectCommandFix(cmd, 'copy-item\\s+\\.env\\.example\\s+\\.env')
-    );
-  }
+  const executedSteps = new Set<string>();
 
   for (const project of fixableProjects) {
     const fixCommands = project.fixCommands ?? [];
     console.log(chalk.bold(`Fixing ${chalk.cyan(project.name)}...`));
 
     for (const cmd of fixCommands) {
+      const planStep = classifyFixStep(project, cmd);
+      const stepKey = `${project.path}::${cmd}`;
+      if (executedSteps.has(stepKey)) {
+        continue;
+      }
+      executedSteps.add(stepKey);
+
       try {
         console.log(chalk.gray(`  $ ${cmd}`));
 
-        if (isManualUrlFix(cmd)) {
+        if (planStep.kind === 'manual-url') {
           console.log(chalk.yellow(`  ℹ Manual action required: open ${cmd}`));
           console.log(chalk.green('  ✅ Recorded as guidance\n'));
           continue;
+        }
+
+        if (!planStep.executable) {
+          console.log(chalk.yellow('  ⚠ Step is non-executable by policy')); // defensive
+          console.log(chalk.green('  ✅ Recorded as guidance\n'));
+          continue;
+        }
+
+        if (planStep.risk !== 'safe') {
+          await ensureProjectSnapshot(snapshotCache, planStep.projectPath);
         }
 
         const envCopyFix = parseEnvCopyFix(cmd);
@@ -2358,18 +3910,103 @@ async function executeFixCommands(
           continue;
         }
 
+        const dependencySync = parseDependencySyncFix(cmd);
+        if (dependencySync) {
+          const maxAttempts = 2;
+          let lastError: unknown;
+          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            try {
+              await execa(dependencySync.command, dependencySync.args, {
+                cwd: dependencySync.projectPath,
+                shell: shouldUseShellExecution(),
+                stdio: 'inherit',
+              });
+              lastError = null;
+              break;
+            } catch (error) {
+              lastError = error;
+              if (attempt < maxAttempts && looksRetryableError(error)) {
+                console.log(
+                  chalk.yellow(`  ⚠ Retrying dependency sync (${attempt}/${maxAttempts - 1})...`)
+                );
+                continue;
+              }
+              throw error;
+            }
+          }
+
+          if (lastError) {
+            throw lastError;
+          }
+
+          console.log(chalk.green('  ✅ Success\n'));
+          continue;
+        }
+
         // Execute the full command through shell for proper command resolution
-        await execa(cmd, {
-          shell: true,
-          stdio: 'inherit',
-        });
+        const maxAttempts = planStep.kind === 'shell' ? 2 : 1;
+        let shellError: unknown;
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          try {
+            await execa(cmd, {
+              shell: true,
+              stdio: 'inherit',
+            });
+            shellError = null;
+            break;
+          } catch (error) {
+            shellError = error;
+            if (attempt < maxAttempts && looksRetryableError(error)) {
+              console.log(chalk.yellow(`  ⚠ Retrying command (${attempt}/${maxAttempts - 1})...`));
+              continue;
+            }
+            throw error;
+          }
+        }
+
+        if (shellError) {
+          throw shellError;
+        }
 
         console.log(chalk.green(`  ✅ Success\n`));
       } catch (error) {
+        const step = classifyFixStep(project, cmd);
+        if (step.risk !== 'safe') {
+          const snapshot = snapshotCache.get(step.projectPath);
+          if (snapshot) {
+            try {
+              await rollbackProjectFromSnapshot(snapshot);
+              console.log(chalk.yellow('  ↩ Rolled back snapshot after failed fix'));
+            } catch (rollbackError) {
+              console.log(
+                chalk.red(
+                  `  ❌ Rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`
+                )
+              );
+            }
+          }
+        }
         console.log(
           chalk.red(`  ❌ Failed: ${error instanceof Error ? error.message : String(error)}\n`)
         );
       }
+    }
+
+    try {
+      const verification = await verifyProjectPostFix(project.path);
+      console.log(
+        verification.healthy
+          ? chalk.green(`  ✅ Post-fix verification passed for ${project.name}`)
+          : chalk.yellow(
+              `  ⚠ Post-fix verification: ${verification.issues} issue(s) remain for ${project.name}`
+            )
+      );
+    } catch (verificationError) {
+      console.log(
+        chalk.yellow(
+          `  ⚠ Post-fix verification skipped: ${verificationError instanceof Error ? verificationError.message : String(verificationError)}`
+        )
+      );
     }
   }
 
@@ -2377,11 +4014,14 @@ async function executeFixCommands(
 }
 
 export async function runDoctor(
-  options: { workspace?: boolean; json?: boolean; fix?: boolean } = {}
+  options: { workspace?: boolean; project?: boolean; json?: boolean; fix?: boolean } = {}
 ): Promise<void> {
   const autoWorkspacePath =
-    !options.workspace && options.fix ? await findWorkspace(process.cwd()) : null;
+    !options.workspace && !options.project && options.fix
+      ? await findWorkspace(process.cwd())
+      : null;
   const workspaceMode = options.workspace || Boolean(autoWorkspacePath);
+  const projectMode = Boolean(options.project) && !workspaceMode;
 
   if (!options.json) {
     console.log(chalk.bold.cyan('\n🩺 RapidKit Health Check\n'));
@@ -2427,6 +4067,7 @@ export async function runDoctor(
     // JSON output mode
     if (options.json) {
       const output = {
+        contract: getDoctorContractMetadata(),
         workspace: {
           name: path.basename(workspacePath),
           path: workspacePath,
@@ -2463,6 +4104,7 @@ export async function runDoctor(
           coreVersion: p.coreVersion,
           issues: p.issues,
           fixCommands: p.fixCommands,
+          probes: p.probes,
         })),
         summary: {
           totalProjects: health.projects.length,
@@ -2470,7 +4112,10 @@ export async function runDoctor(
           projectAdvisoryWarningProjects: countProjectAdvisoryWarningProjects(health.projects),
           projectAdvisoryWarnings: countProjectAdvisoryWarnings(health.projects),
           hasSystemErrors: [health.python, health.rapidkitCore].some((c) => c.status === 'error'),
+          scopeProvenance: health.scopeProvenance,
         },
+        driftDelta: health.driftDelta,
+        scoreBreakdown: health.scoreBreakdown ?? [],
       };
 
       console.log(JSON.stringify(output, null, 2));
@@ -2587,6 +4232,130 @@ export async function runDoctor(
       }
     } else {
       console.log(chalk.bold.green('\n✅ All checks passed! Workspace is healthy.'));
+    }
+  } else if (projectMode) {
+    const projectPath = await findProjectRoot(process.cwd());
+
+    if (!projectPath) {
+      logger.error('No RapidKit project found in current directory or parents');
+      logger.info(
+        'Run this command from within a project, or use "rapidkit doctor workspace" for workspace checks'
+      );
+      process.exit(1);
+    }
+
+    const envelope = await getProjectHealthEnvelope(projectPath);
+
+    if (options.json) {
+      const output = {
+        contract: getDoctorContractMetadata(),
+        scope: 'project',
+        workspace: envelope.workspacePath
+          ? {
+              name: path.basename(envelope.workspacePath),
+              path: envelope.workspacePath,
+            }
+          : null,
+        project: {
+          name: envelope.project.name,
+          path: envelope.project.path,
+          framework: envelope.project.framework,
+          runtimeFamily: envelope.project.runtimeFamily,
+          projectKind: envelope.project.projectKind,
+          supportTier: envelope.project.supportTier,
+          frameworkConfidence: envelope.project.frameworkConfidence,
+          venvActive: envelope.project.venvActive,
+          depsInstalled: envelope.project.depsInstalled,
+          hasEnvFile: envelope.project.hasEnvFile,
+          vulnerabilities: envelope.project.vulnerabilities,
+          coreInstalled: envelope.project.coreInstalled,
+          coreVersion: envelope.project.coreVersion,
+          issues: envelope.project.issues,
+          fixCommands: envelope.project.fixCommands,
+          probes: envelope.project.probes,
+        },
+        evidencePath: envelope.evidencePath,
+        healthScore: envelope.healthScore,
+        system: {
+          python: envelope.python,
+          poetry: envelope.poetry,
+          pipx: envelope.pipx,
+          go: envelope.go,
+          rapidkitCore: envelope.rapidkitCore,
+        },
+        summary: {
+          totalProjects: 1,
+          totalIssues: envelope.project.issues.length,
+          projectAdvisoryWarningProjects:
+            getProjectAdvisoryWarningCount(envelope.project) > 0 ? 1 : 0,
+          projectAdvisoryWarnings: getProjectAdvisoryWarningCount(envelope.project),
+          hasSystemErrors: [envelope.python, envelope.rapidkitCore].some(
+            (c) => c.status === 'error'
+          ),
+          scopeProvenance: envelope.scopeProvenance,
+        },
+        driftDelta: envelope.driftDelta,
+        scoreBreakdown: envelope.scoreBreakdown ?? [],
+      };
+
+      console.log(JSON.stringify(output, null, 2));
+      return;
+    }
+
+    console.log(chalk.bold(`Project: ${chalk.cyan(path.basename(projectPath))}`));
+    console.log(chalk.gray(`Path: ${projectPath}`));
+    if (envelope.workspacePath) {
+      console.log(chalk.gray(`Workspace: ${path.basename(envelope.workspacePath)}`));
+    }
+    if (envelope.evidencePath) {
+      console.log(chalk.gray(`ℹ️  Evidence saved: ${envelope.evidencePath}`));
+    }
+
+    const score = envelope.healthScore;
+    const percentage = score.total > 0 ? Math.round((score.passed / score.total) * 100) : 0;
+    const scoreColor = percentage >= 80 ? chalk.green : percentage >= 50 ? chalk.yellow : chalk.red;
+    const bar =
+      '█'.repeat(Math.floor(percentage / 5)) + '░'.repeat(20 - Math.floor(percentage / 5));
+
+    console.log(chalk.bold('\n📊 Health Score:'));
+    console.log(`   ${scoreColor(`${percentage}%`)} ${chalk.gray(bar)}`);
+    console.log(
+      `   ${chalk.green(`✅ ${score.passed} passed`)} ${chalk.gray('|')} ${chalk.yellow(`⚠️ ${score.warnings} warnings`)} ${chalk.gray('|')} ${chalk.red(`❌ ${score.errors} errors`)}`
+    );
+
+    console.log(chalk.bold('\n\nSystem Tools:\n'));
+    renderHealthCheck(envelope.python, 'Python');
+    renderHealthCheck(envelope.poetry, 'Poetry');
+    renderHealthCheck(envelope.pipx, 'pipx');
+    renderHealthCheck(envelope.go, 'Go');
+    renderHealthCheck(envelope.rapidkitCore, 'RapidKit Core');
+
+    console.log(chalk.bold('\n📦 Project (1):'));
+    renderProjectHealth(envelope.project);
+
+    const hasSystemIssues = [envelope.python, envelope.rapidkitCore].some(
+      (c) => c.status === 'error'
+    );
+    const issueCount = envelope.project.issues.length;
+    const advisoryWarningCount = getProjectAdvisoryWarningCount(envelope.project);
+
+    if (hasSystemIssues || issueCount > 0 || advisoryWarningCount > 0) {
+      const advisorySummary =
+        advisoryWarningCount > 0 ? ` and ${advisoryWarningCount} advisory warning(s)` : '';
+      console.log(
+        chalk.bold.yellow(`\n⚠️  Found ${issueCount} project issue(s)${advisorySummary}`)
+      );
+      if (hasSystemIssues) {
+        console.log(chalk.bold.red('❌ System requirements not met'));
+      }
+
+      if (options.fix) {
+        await executeFixCommands([envelope.project], true);
+      } else if (issueCount > 0) {
+        await executeFixCommands([envelope.project], false);
+      }
+    } else {
+      console.log(chalk.bold.green('\n✅ All checks passed! Project is healthy.'));
     }
   } else {
     // System mode: check system tools only
