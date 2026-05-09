@@ -2852,6 +2852,14 @@ async function findProjectRoot(startPath: string): Promise<string | null> {
   return null;
 }
 
+function normalizeReportedPath(targetPath: string): string {
+  const resolvedPath = path.resolve(targetPath);
+  if (process.platform === 'darwin') {
+    return resolvedPath.replace(/^\/private(?=\/var\/)/, '');
+  }
+  return resolvedPath;
+}
+
 async function hasBackendProjectMarkers(projectPath: string): Promise<boolean> {
   const markerPaths = [
     'package.json',
@@ -4245,20 +4253,24 @@ export async function runDoctor(
     }
 
     const envelope = await getProjectHealthEnvelope(projectPath);
+    const reportedWorkspacePath = envelope.workspacePath
+      ? normalizeReportedPath(envelope.workspacePath)
+      : null;
+    const reportedProjectPath = normalizeReportedPath(envelope.project.path);
 
     if (options.json) {
       const output = {
         contract: getDoctorContractMetadata(),
         scope: 'project',
-        workspace: envelope.workspacePath
+        workspace: reportedWorkspacePath
           ? {
-              name: path.basename(envelope.workspacePath),
-              path: envelope.workspacePath,
+              name: path.basename(reportedWorkspacePath),
+              path: reportedWorkspacePath,
             }
           : null,
         project: {
           name: envelope.project.name,
-          path: envelope.project.path,
+          path: reportedProjectPath,
           framework: envelope.project.framework,
           runtimeFamily: envelope.project.runtimeFamily,
           projectKind: envelope.project.projectKind,

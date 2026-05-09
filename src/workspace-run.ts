@@ -356,6 +356,32 @@ async function runRapidkitSelfCommand(args: string[], cwd: string) {
   };
 }
 
+function isWrapperOwnedRuntime(runtime: RuntimeFamily): boolean {
+  return runtime === 'node' || runtime === 'go' || runtime === 'java' || runtime === 'python';
+}
+
+function isVitestRuntime(): boolean {
+  return (
+    process.env.VITEST === 'true' || process.env.VITEST === '1' || process.env.NODE_ENV === 'test'
+  );
+}
+
+async function runRapidkitInitInProcess(cwd: string) {
+  const originalCwd = process.cwd();
+  try {
+    process.chdir(cwd);
+    const { handleInitCommand } = await import('./index.js');
+    const exitCode = await handleInitCommand(['init']);
+    return {
+      exitCode,
+      stdout: '',
+      stderr: '',
+    };
+  } finally {
+    process.chdir(originalCwd);
+  }
+}
+
 /**
  * Detect project framework from metadata and file markers.
  * Reads .rapidkit/context.json for explicit configuration, falls back to file marker detection.
@@ -424,13 +450,15 @@ async function executeStageCommand(
   errorCategory?: ErrorCategory;
   healthStatus?: { healthy: boolean; reason?: string };
 }> {
+  const useRapidkitWrapper = !commandOverrides?.[stage] && isWrapperOwnedRuntime(runtime);
+
   // Step 0: Resolve the command, checking overrides first
   let baseCommand: string | undefined;
 
   // Check if override exists for this stage
   if (commandOverrides && commandOverrides[stage]) {
     baseCommand = commandOverrides[stage];
-  } else if (['node', 'go', 'java', 'python'].includes(runtime)) {
+  } else if (useRapidkitWrapper) {
     // For npm adapters, use 'rapidkit' wrapper
     baseCommand = `rapidkit ${stage}`;
   } else {
@@ -459,14 +487,16 @@ async function executeStageCommand(
   }
 
   // Step 1: Preflight validation
-  const validation = await validateCommand(finalCommand);
-  if (!validation.valid) {
-    return {
-      exitCode: 127,
-      command: finalCommand,
-      message: validation.reason || 'Command not available',
-      errorCategory: 'setup',
-    };
+  if (!useRapidkitWrapper) {
+    const validation = await validateCommand(finalCommand);
+    if (!validation.valid) {
+      return {
+        exitCode: 127,
+        command: finalCommand,
+        message: validation.reason || 'Command not available',
+        errorCategory: 'setup',
+      };
+    }
   }
 
   // Step 2: Execute the command
@@ -476,11 +506,15 @@ async function executeStageCommand(
   let errorCategory: ErrorCategory | undefined;
 
   try {
-    const result = await execa(finalCommand, [], {
-      cwd: projectPath,
-      reject: false,
-      shell: true,
-    });
+    const result = useRapidkitWrapper
+      ? stage === 'init' && isVitestRuntime()
+        ? await runRapidkitInitInProcess(projectPath)
+        : await runRapidkitSelfCommand([stage], projectPath)
+      : await execa(finalCommand, [], {
+          cwd: projectPath,
+          reject: false,
+          shell: true,
+        });
 
     exitCode = Number(result.exitCode ?? 0);
     stdout = result.stdout;
