@@ -53,7 +53,23 @@ Or run directly with `npx`:
 npx rapidkit --help
 ```
 
-All three commands above render the same root help output.
+The commands above provide install/help entry points for the same CLI.
+
+## 60-Second Quickstart
+
+```bash
+npx rapidkit my-workspace
+cd my-workspace
+npx rapidkit create project
+cd <project-name>
+npx rapidkit init && npx rapidkit dev
+```
+
+If you prefer explicit commands instead of shortcut mode:
+
+```bash
+npx rapidkit create workspace my-workspace --yes --profile polyglot
+```
 
 ## Quick Start (Recommended)
 
@@ -63,6 +79,14 @@ All three commands above render the same root help output.
 npx rapidkit create workspace my-workspace --yes --profile polyglot
 cd my-workspace
 ```
+
+Shortcut form (equivalent workspace creation flow):
+
+```bash
+npx rapidkit my-workspace
+```
+
+This shortcut launches the same interactive workspace wizard (author, profile, Python version, environment strategy).
 
 ### 2) Bootstrap and setup runtimes
 
@@ -77,6 +101,7 @@ npx rapidkit setup go --warm-deps
 ### 3) Create projects
 
 ```bash
+npx rapidkit create project                  # Interactive kit picker
 npx rapidkit create project fastapi.standard my-api --yes --skip-install
 npx rapidkit create project fastapi.ddd my-api --yes --skip-install
 npx rapidkit create project nestjs.standard my-nest --yes --skip-install
@@ -359,7 +384,10 @@ npx rapidkit workspace run build --json --max-workers 8
 9. **Caching** — Skip re-runs of completed stages
 10. **Composite Steps** — Multi-step build logic
 
-Enterprise deployment and governance deep dives are intentionally excluded from OSS docs.
+For deeper enterprise deployment and governance details, see:
+- [docs/README.md](docs/README.md)
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+- [docs/SECURITY.md](docs/SECURITY.md)
 
 ### Configuration Example
 
@@ -382,7 +410,7 @@ Enterprise deployment and governance deep dives are intentionally excluded from 
 
 ```bash
 # JSON report for CI integration
-workspace run test --json > test-results.json
+npx rapidkit workspace run test --json > test-results.json
 
 cat test-results.json | jq '.projects[] | {path, status, errorCategory}'
 # Output:
@@ -428,6 +456,16 @@ npx rapidkit --version
 ```
 
 ## Troubleshooting
+
+### Quick fixes matrix
+
+| Problem | Quick check | Fix |
+|---|---|---|
+| `python3` not found | `python3 --version` | Install Python 3.10+ and re-run `npx rapidkit create workspace ...` |
+| `setup --warm-deps` skipped | Check for `package.json` / `go.mod` in current dir | Run from the target project directory |
+| strict policy blocks command | Review `.rapidkit/policies.yml` | Set policy intentionally via `npx rapidkit workspace policy set ...` |
+| doctor output seems stale | Check report timestamp in `.rapidkit/reports/` | Re-run `npx rapidkit doctor workspace` or `npx rapidkit doctor project` |
+| affected run scope seems wrong | Verify git ref | Use `--since <ref>` explicitly |
 
 - If setup output looks stale, run `npx rapidkit setup <runtime>` again to refresh `.rapidkit/toolchain.lock`.
 - If dependency warm-up is skipped, verify you are inside the corresponding project directory (`package.json` for Node, `go.mod` for Go).

@@ -20,8 +20,6 @@ Goal: get productive quickly with minimal complexity.
 
 ### Steps
 
-Note: after `cd api`, use the local project launcher (`rapidkit`) for project lifecycle commands.
-
 ```bash
 npx rapidkit my-workspace
 cd my-workspace
@@ -30,8 +28,8 @@ npx rapidkit setup python
 npx rapidkit setup node --warm-deps
 npx rapidkit create project fastapi.standard api --output .
 cd api
-rapidkit init
-rapidkit dev
+npx rapidkit init
+npx rapidkit dev
 ```
 
 ### When manual vs automatic?
