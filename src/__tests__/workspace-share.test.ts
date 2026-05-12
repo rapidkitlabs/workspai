@@ -79,4 +79,28 @@ describe('createWorkspaceShareBundle', () => {
     expect(bundle.summary.doctor_evidence_included).toBe(false);
     expect(bundle.projects[0].doctor_report).toBeUndefined();
   });
+
+  it('skips invalid doctor report schemas when building share bundle', async () => {
+    const projectPath = path.join(testDir, 'payments-service');
+
+    await fsExtra.outputJson(path.join(projectPath, '.rapidkit', 'project.json'), {
+      runtime: 'node',
+      kit_name: 'nestjs.standard',
+    });
+
+    await fsExtra.outputJson(
+      path.join(projectPath, '.rapidkit', 'reports', 'doctor-last-run.json'),
+      {
+        schemaVersion: 'doctor-project-evidence-v999',
+        evidenceType: 'project',
+        status: 'pass',
+      }
+    );
+
+    const outputPath = await createWorkspaceShareBundle(testDir);
+    const bundle = await fsExtra.readJson(outputPath);
+
+    expect(bundle.summary.doctor_evidence_included).toBe(true);
+    expect(bundle.projects[0].doctor_report).toBeUndefined();
+  });
 });

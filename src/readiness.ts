@@ -9,6 +9,7 @@ import {
   isPythonProject,
   readRapidkitProjectJson,
 } from './utils/runtime-detection.js';
+import { isDoctorEvidencePayloadCompatible } from './utils/doctor-evidence-contract.js';
 
 export type ReadinessGateStatus = 'pass' | 'warn' | 'fail';
 export type ReadinessOverallStatus = 'pass' | 'warn' | 'fail';
@@ -180,6 +181,11 @@ function loadDoctorPayload(workspacePath: string): {
 
   try {
     const payload = JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as Record<string, unknown>;
+
+    if (!isDoctorEvidencePayloadCompatible(payload, 'workspace')) {
+      return { payload: null, path: reportPath };
+    }
+
     return { payload, path: reportPath };
   } catch {
     return { payload: null, path: reportPath };

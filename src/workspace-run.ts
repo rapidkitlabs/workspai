@@ -12,6 +12,14 @@ import {
   type RuntimeFamily,
   type ErrorCategory,
 } from './framework-registry.js';
+import {
+  detectBackendFrameworkFromProject,
+  detectRuntimeCandidatesFromProject,
+  normalizeBackendFrameworkLabel,
+  normalizeBackendRuntimeFamily,
+  type BackendPlatformKey,
+  type BackendRuntimeFamily,
+} from './utils/backend-framework-contract.js';
 
 export type WorkspaceRunStage = 'init' | 'test' | 'build' | 'start';
 
@@ -138,6 +146,7 @@ function normalizePathForMatch(value: string): string {
 
 async function discoverWorkspaceProjects(workspacePath: string): Promise<string[]> {
   const discovered = new Set<string>();
+  const resolvedWorkspacePath = path.resolve(workspacePath);
 
   async function scan(dirPath: string): Promise<void> {
     let entries: fs.Dirent[];
@@ -150,6 +159,14 @@ async function discoverWorkspaceProjects(workspacePath: string): Promise<string[
     if (
       (await pathExists(path.join(dirPath, '.rapidkit', 'context.json'))) ||
       (await pathExists(path.join(dirPath, '.rapidkit', 'project.json')))
+    ) {
+      discovered.add(path.resolve(dirPath));
+      return;
+    }
+
+    if (
+      path.resolve(dirPath) !== resolvedWorkspacePath &&
+      detectRuntimeCandidatesFromProject(dirPath).length > 0
     ) {
       discovered.add(path.resolve(dirPath));
       return;
@@ -393,6 +410,65 @@ async function detectProjectFramework(projectPath: string): Promise<{
   commandOverrides?: Record<string, string>;
   environment?: 'dev' | 'staging' | 'prod';
 }> {
+  const toWorkspaceRuntime = (runtime: string | undefined): RuntimeFamily => {
+    const canonicalRuntime = normalizeBackendRuntimeFamily(runtime);
+    if (canonicalRuntime === 'node' || canonicalRuntime === 'bun') return 'node';
+    if (canonicalRuntime === 'python') return 'python';
+    if (canonicalRuntime === 'go') return 'go';
+    if (canonicalRuntime === 'java') return 'java';
+    if (canonicalRuntime === 'php') return 'php';
+    if (canonicalRuntime === 'ruby') return 'ruby';
+    if (canonicalRuntime === 'rust') return 'rust';
+    if (canonicalRuntime === 'dotnet') return 'dotnet';
+    if (canonicalRuntime === 'elixir') return 'elixir';
+    if (
+      canonicalRuntime === 'clojure' ||
+      canonicalRuntime === 'scala' ||
+      canonicalRuntime === 'kotlin'
+    ) {
+      return 'jvm-generic';
+    }
+
+    const markerRuntime = detectRuntimeFromMarkers(projectPath);
+    return markerRuntime;
+  };
+
+  const toWorkspaceFramework = (framework: string | undefined): string | undefined => {
+    if (!framework) {
+      return undefined;
+    }
+
+    const canonicalFramework = normalizeBackendFrameworkLabel(framework);
+    const specificFrameworks = new Set<BackendPlatformKey>([
+      'fastapi',
+      'django',
+      'flask',
+      'nestjs',
+      'express',
+      'fastify',
+      'koa',
+      'gofiber',
+      'gogin',
+      'echo',
+      'springboot',
+      'laravel',
+      'symfony',
+      'rails',
+      'sinatra',
+      'dotnet',
+      'actix',
+      'axum',
+      'rocket',
+      'phoenix',
+    ]);
+
+    if (specificFrameworks.has(canonicalFramework)) {
+      return canonicalFramework;
+    }
+
+    return undefined;
+  };
+
   // Check .rapidkit/context.json for explicit metadata
   const contextPath = path.join(projectPath, '.rapidkit', 'context.json');
   if (fs.existsSync(contextPath)) {
@@ -410,8 +486,10 @@ async function detectProjectFramework(projectPath: string): Promise<{
         }
 
         return {
-          runtime: context.runtime as RuntimeFamily,
-          framework: typeof context.framework === 'string' ? context.framework : undefined,
+          runtime: toWorkspaceRuntime(context.runtime),
+          framework: toWorkspaceFramework(
+            typeof context.framework === 'string' ? context.framework : undefined
+          ),
           commandOverrides: Object.keys(commandOverrides).length > 0 ? commandOverrides : undefined,
           environment:
             typeof context.environment === 'string'
@@ -424,9 +502,10 @@ async function detectProjectFramework(projectPath: string): Promise<{
     }
   }
 
-  // Fallback: detect from markers (files like go.mod, Cargo.toml, etc.)
-  const runtime = detectRuntimeFromMarkers(projectPath);
-  return { runtime, framework: undefined };
+  const detection = detectBackendFrameworkFromProject(projectPath);
+  const runtime = toWorkspaceRuntime(detection.runtime as BackendRuntimeFamily);
+  const framework = toWorkspaceFramework(detection.key);
+  return { runtime, framework };
 }
 
 /**

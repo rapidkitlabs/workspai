@@ -16,6 +16,7 @@ These commands are implemented and orchestrated by `rapidkit-npm`:
 
 - `readiness`
 - `doctor`
+- `import`
 - `workspace`
 - `bootstrap`
 - `setup`

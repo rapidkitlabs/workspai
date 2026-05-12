@@ -121,6 +121,10 @@ jobs:
       - name: Build project
         run: npm run build
 
+      # Shared parity contract gate (npm <-> extension snapshot)
+      - name: Validate import stack parity contract snapshot
+        run: npm run test:parity-contract
+
       # Docs quality gates (Linux only)
       - name: Validate docs quality
         if: runner.os == 'Linux'

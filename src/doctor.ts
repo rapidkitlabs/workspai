@@ -13,6 +13,18 @@ import {
   isWindowsPlatform,
   shouldUseShellExecution,
 } from './utils/platform-capabilities.js';
+import {
+  detectBackendFrameworkFromProject,
+  type BackendFrameworkDetection,
+  type BackendPlatformKey,
+  type BackendImportStack,
+  type BackendRuntimeFamily,
+} from './utils/backend-framework-contract.js';
+import {
+  DOCTOR_PROJECT_EVIDENCE_SCHEMA,
+  DOCTOR_WORKSPACE_EVIDENCE_SCHEMA,
+  isDoctorEvidencePayloadCompatible,
+} from './utils/doctor-evidence-contract.js';
 
 function uniquePaths(paths: string[]): string[] {
   return [
@@ -121,9 +133,12 @@ type DetectedFramework =
   | 'Express'
   | 'Fastify'
   | 'Koa'
+  | 'Echo'
   | 'Node.js'
+  | 'Go'
   | 'Go/Fiber'
   | 'Go/Gin'
+  | 'Java'
   | 'Spring Boot'
   | 'Rust'
   | 'Elixir'
@@ -170,6 +185,8 @@ interface ProjectHealth {
   modulesHealthy?: boolean;
   missingModules?: string[];
   framework?: DetectedFramework;
+  frameworkKey?: BackendPlatformKey;
+  importStack?: BackendImportStack;
   supportTier?: FrameworkSupportTier;
   runtimeFamily?: ProjectRuntimeFamily;
   projectKind?: ProjectKind;
@@ -314,12 +331,15 @@ function countProjectAdvisoryWarnings(projects: ProjectHealth[]): number {
 }
 
 interface DoctorWorkspaceCacheEntry {
+  schemaVersion: 'doctor-workspace-cache-v1';
   signature: string;
   generatedAt: string;
   projects: ProjectHealth[];
 }
 
 type DoctorEvidenceLike = {
+  schemaVersion?: string;
+  evidenceType?: 'workspace' | 'project';
   generatedAt?: string;
   healthScore?: HealthScore;
   summary?: {
@@ -337,6 +357,7 @@ type DoctorEvidenceLike = {
 };
 
 const DOCTOR_PROJECT_SCAN_SCHEMA = 'doctor-project-scan-v2';
+const DOCTOR_WORKSPACE_CACHE_SCHEMA = 'doctor-workspace-cache-v1';
 const DOCTOR_CONTRACT_METADATA: DoctorContractMetadata = Object.freeze({
   version: 'doctor-evidence-v1',
   scoringPolicyVersion: 'doctor-score-policy-v1',
@@ -366,15 +387,19 @@ function getIssueCountFromEvidenceValue(value: number | string[] | undefined): n
   return 0;
 }
 
-async function readDoctorEvidenceIfPresent(filePath: string): Promise<DoctorEvidenceLike | null> {
+async function readDoctorEvidenceIfPresent(
+  filePath: string,
+  expectedType?: 'workspace' | 'project'
+): Promise<DoctorEvidenceLike | null> {
   try {
     if (!(await fsExtra.pathExists(filePath))) {
       return null;
     }
     const payload = await fsExtra.readJSON(filePath);
-    if (!payload || typeof payload !== 'object') {
+    if (!isDoctorEvidencePayloadCompatible(payload, expectedType)) {
       return null;
     }
+
     return payload as DoctorEvidenceLike;
   } catch {
     return null;
@@ -727,6 +752,124 @@ function applyFrameworkMetadata(
   health.runtimeFamily = runtimeForFramework(framework);
 }
 
+function toDoctorRuntimeFamily(runtime: BackendRuntimeFamily): ProjectRuntimeFamily {
+  if (runtime === 'python') return 'python';
+  if (runtime === 'node' || runtime === 'bun') return 'node';
+  if (runtime === 'go') return 'go';
+  if (runtime === 'java') return 'java';
+  if (runtime === 'rust') return 'rust';
+  if (runtime === 'elixir') return 'elixir';
+  if (runtime === 'clojure') return 'clojure';
+  if (runtime === 'deno') return 'deno';
+  if (runtime === 'php') return 'php';
+  if (runtime === 'ruby') return 'ruby';
+  if (runtime === 'dotnet') return 'dotnet';
+  return 'unknown';
+}
+
+function toDoctorFramework(detection: BackendFrameworkDetection): DetectedFramework {
+  switch (detection.key) {
+    case 'fastapi':
+      return 'FastAPI';
+    case 'django':
+      return 'Django';
+    case 'flask':
+      return 'Flask';
+    case 'python':
+      return 'Python';
+    case 'nestjs':
+      return 'NestJS';
+    case 'express':
+      return 'Express';
+    case 'fastify':
+      return 'Fastify';
+    case 'koa':
+      return 'Koa';
+    case 'node':
+      return 'Node.js';
+    case 'gofiber':
+      return 'Go/Fiber';
+    case 'gogin':
+      return 'Go/Gin';
+    case 'echo':
+      return 'Echo';
+    case 'go':
+      return 'Go';
+    case 'springboot':
+      return 'Spring Boot';
+    case 'java':
+      return 'Java';
+    case 'laravel':
+      return 'Laravel';
+    case 'php':
+      return 'PHP';
+    case 'rails':
+      return 'Ruby on Rails';
+    case 'ruby':
+      return 'Ruby';
+    case 'dotnet':
+      return 'ASP.NET';
+    case 'phoenix':
+      return 'Phoenix';
+    case 'elixir':
+      return 'Elixir';
+    case 'clojure':
+      return 'Clojure';
+    case 'scala':
+      return 'Scala';
+    case 'kotlin':
+      return 'Kotlin';
+    case 'deno':
+      return 'Deno';
+    case 'bun':
+      return 'Bun';
+    case 'actix':
+    case 'axum':
+    case 'rocket':
+    case 'rust':
+      return 'Rust';
+    case 'sinatra':
+    case 'symfony':
+    case 'unknown':
+      return 'Unknown';
+    default:
+      return 'Unknown';
+  }
+}
+
+function isGenericBackendDetection(detection: BackendFrameworkDetection): boolean {
+  return (
+    detection.key === 'python' ||
+    detection.key === 'node' ||
+    detection.key === 'go' ||
+    detection.key === 'java' ||
+    detection.key === 'php' ||
+    detection.key === 'ruby' ||
+    detection.key === 'dotnet' ||
+    detection.key === 'rust' ||
+    detection.key === 'elixir' ||
+    detection.key === 'clojure' ||
+    detection.key === 'scala' ||
+    detection.key === 'kotlin' ||
+    detection.key === 'deno' ||
+    detection.key === 'bun' ||
+    detection.key === 'unknown'
+  );
+}
+
+function applyBackendFrameworkDetection(
+  health: ProjectHealth,
+  detection: BackendFrameworkDetection
+): void {
+  health.framework = toDoctorFramework(detection);
+  health.frameworkKey = detection.key;
+  health.importStack = detection.importStack;
+  health.frameworkConfidence = detection.confidence;
+  health.supportTier = detection.supportTier;
+  health.projectKind = isGenericBackendDetection(detection) ? 'generic' : 'backend';
+  health.runtimeFamily = toDoctorRuntimeFamily(detection.runtime);
+}
+
 function detectNodeFrameworkFromManifest(input: {
   dependencies: Record<string, unknown>;
   scripts?: Record<string, unknown>;
@@ -780,35 +923,15 @@ async function detectPythonFramework(projectPath: string): Promise<{
   framework: DetectedFramework;
   confidence: FrameworkConfidence;
 }> {
-  const candidates = [
-    path.join(projectPath, 'pyproject.toml'),
-    path.join(projectPath, 'requirements.txt'),
-  ];
-  const contents: string[] = [];
-
-  for (const candidatePath of candidates) {
-    if (!(await fsExtra.pathExists(candidatePath))) {
-      continue;
-    }
-    try {
-      contents.push((await fsExtra.readFile(candidatePath, 'utf8')).toLowerCase());
-    } catch {
-      continue;
-    }
+  const detection = detectBackendFrameworkFromProject(projectPath);
+  if (detection.runtime !== 'python') {
+    return { framework: 'Python', confidence: 'low' };
   }
 
-  const merged = contents.join('\n');
-  if (merged.includes('fastapi')) {
-    return { framework: 'FastAPI', confidence: 'high' };
-  }
-  if (merged.includes('django')) {
-    return { framework: 'Django', confidence: 'high' };
-  }
-  if (merged.includes('flask')) {
-    return { framework: 'Flask', confidence: 'high' };
-  }
-
-  return { framework: 'Python', confidence: contents.length > 0 ? 'medium' : 'low' };
+  return {
+    framework: toDoctorFramework(detection),
+    confidence: detection.confidence,
+  };
 }
 
 async function statSignature(candidatePath: string): Promise<string> {
@@ -928,6 +1051,12 @@ async function loadWorkspaceProjectCache(
     if (!cached || cached.signature !== signature || !Array.isArray(cached.projects)) {
       return null;
     }
+    if (
+      typeof (cached as { schemaVersion?: unknown }).schemaVersion === 'string' &&
+      cached.schemaVersion !== DOCTOR_WORKSPACE_CACHE_SCHEMA
+    ) {
+      return null;
+    }
     return cached;
   } catch {
     return null;
@@ -957,6 +1086,8 @@ async function writeDoctorEvidence(
     await fsExtra.writeJSON(
       evidencePath,
       {
+        schemaVersion: DOCTOR_WORKSPACE_EVIDENCE_SCHEMA,
+        evidenceType: 'workspace',
         generatedAt: new Date().toISOString(),
         contract: getDoctorContractMetadata(),
         workspacePath,
@@ -2031,8 +2162,10 @@ async function checkProject(
 
   // Go project checks (Fiber or Gin)
   if (isGoProject) {
-    const kitName = (projectJsonData?.kit_name as string | undefined) ?? '';
-    applyFrameworkMetadata(health, kitName.startsWith('gogin') ? 'Go/Gin' : 'Go/Fiber', 'high');
+    applyBackendFrameworkDetection(
+      health,
+      detectBackendFrameworkFromProject(projectPath, projectJsonData ?? null)
+    );
     health.isGoProject = true;
     health.venvActive = true; // N/A for Go
     health.coreInstalled = false; // N/A for Go
@@ -2071,7 +2204,10 @@ async function checkProject(
       (projectJsonData.kit_name as string).startsWith('springboot'));
 
   if (isJavaProject) {
-    applyFrameworkMetadata(health, 'Spring Boot', 'high');
+    applyBackendFrameworkDetection(
+      health,
+      detectBackendFrameworkFromProject(projectPath, projectJsonData ?? null)
+    );
     health.venvActive = true;
     health.coreInstalled = false;
 
@@ -2175,7 +2311,10 @@ async function checkProject(
   }
 
   if (isRustProject) {
-    applyFrameworkMetadata(health, 'Rust', 'high');
+    applyBackendFrameworkDetection(
+      health,
+      detectBackendFrameworkFromProject(projectPath, projectJsonData ?? null)
+    );
     health.venvActive = true;
     health.coreInstalled = false;
 
@@ -2206,19 +2345,10 @@ async function checkProject(
   }
 
   if (isElixirProject) {
-    let detectedFramework: DetectedFramework = 'Elixir';
-    let confidence: FrameworkConfidence = 'medium';
-    try {
-      const mixExsRaw = (await fsExtra.readFile(mixExsPath, 'utf8')).toLowerCase();
-      if (mixExsRaw.includes('phoenix')) {
-        detectedFramework = 'Phoenix';
-        confidence = 'high';
-      }
-    } catch {
-      confidence = 'low';
-    }
-
-    applyFrameworkMetadata(health, detectedFramework, confidence);
+    applyBackendFrameworkDetection(
+      health,
+      detectBackendFrameworkFromProject(projectPath, projectJsonData ?? null)
+    );
     health.venvActive = true;
     health.coreInstalled = false;
 
@@ -2249,7 +2379,10 @@ async function checkProject(
   }
 
   if (isClojureProject) {
-    applyFrameworkMetadata(health, 'Clojure', 'medium');
+    applyBackendFrameworkDetection(
+      health,
+      detectBackendFrameworkFromProject(projectPath, projectJsonData ?? null)
+    );
     health.venvActive = true;
     health.coreInstalled = false;
 
@@ -2274,7 +2407,10 @@ async function checkProject(
   }
 
   if (isScalaProject) {
-    applyFrameworkMetadata(health, 'Scala', 'high');
+    applyBackendFrameworkDetection(
+      health,
+      detectBackendFrameworkFromProject(projectPath, projectJsonData ?? null)
+    );
     health.venvActive = true;
     health.coreInstalled = false;
 
@@ -2303,7 +2439,10 @@ async function checkProject(
   }
 
   if (isDenoProject) {
-    applyFrameworkMetadata(health, 'Deno', 'high');
+    applyBackendFrameworkDetection(
+      health,
+      detectBackendFrameworkFromProject(projectPath, projectJsonData ?? null)
+    );
     health.venvActive = true;
     health.coreInstalled = false;
     health.depsInstalled = true;
@@ -2357,7 +2496,20 @@ async function checkProject(
     if (isBunProject) {
       applyFrameworkMetadata(health, 'Bun', 'high');
     } else {
-      applyFrameworkMetadata(health, nodeDetection.framework, nodeDetection.confidence);
+      const backendDetection = detectBackendFrameworkFromProject(
+        projectPath,
+        projectJsonData ?? null
+      );
+      if (
+        backendDetection.key === 'nestjs' ||
+        backendDetection.key === 'express' ||
+        backendDetection.key === 'fastify' ||
+        backendDetection.key === 'koa'
+      ) {
+        applyBackendFrameworkDetection(health, backendDetection);
+      } else {
+        applyFrameworkMetadata(health, nodeDetection.framework, nodeDetection.confidence);
+      }
     }
     health.venvActive = true; // N/A for Node.js projects
 
@@ -2588,27 +2740,10 @@ async function checkProject(
   }
 
   if (isPhpProject) {
-    let framework: DetectedFramework = 'PHP';
-    let confidence: FrameworkConfidence = 'medium';
-    try {
-      const composerJson = await fsExtra.readJson(composerJsonPath);
-      const dependencies = {
-        ...((composerJson?.require as Record<string, unknown> | undefined) ?? {}),
-        ...((composerJson?.['require-dev'] as Record<string, unknown> | undefined) ?? {}),
-      };
-      if (dependencies['laravel/framework']) {
-        framework = 'Laravel';
-        confidence = 'high';
-      } else {
-        framework = 'PHP';
-        confidence = 'medium';
-      }
-    } catch {
-      framework = 'PHP';
-      confidence = 'low';
-    }
-
-    applyFrameworkMetadata(health, framework, confidence);
+    applyBackendFrameworkDetection(
+      health,
+      detectBackendFrameworkFromProject(projectPath, projectJsonData ?? null)
+    );
     health.venvActive = true;
     health.coreInstalled = false;
 
@@ -2636,22 +2771,10 @@ async function checkProject(
   }
 
   if (isRubyProject) {
-    let framework: DetectedFramework = 'Ruby';
-    let confidence: FrameworkConfidence = 'low';
-    try {
-      const gemfileRaw = (await fsExtra.readFile(gemfilePath, 'utf8')).toLowerCase();
-      if (gemfileRaw.includes("gem 'rails'") || gemfileRaw.includes('gem "rails"')) {
-        framework = 'Ruby on Rails';
-        confidence = 'high';
-      } else {
-        framework = 'Ruby';
-        confidence = 'medium';
-      }
-    } catch {
-      confidence = 'low';
-    }
-
-    applyFrameworkMetadata(health, framework, confidence);
+    applyBackendFrameworkDetection(
+      health,
+      detectBackendFrameworkFromProject(projectPath, projectJsonData ?? null)
+    );
     health.venvActive = true;
     health.coreInstalled = false;
 
@@ -2673,7 +2796,10 @@ async function checkProject(
   }
 
   if (isDotnetProject) {
-    applyFrameworkMetadata(health, 'ASP.NET', 'medium');
+    applyBackendFrameworkDetection(
+      health,
+      detectBackendFrameworkFromProject(projectPath, projectJsonData ?? null)
+    );
     health.venvActive = true;
     health.coreInstalled = false;
 
@@ -2806,21 +2932,16 @@ async function findRapidkitProjectsDeep(
 }
 
 async function findWorkspace(startPath: string): Promise<string | null> {
-  let currentPath = startPath;
+  let currentPath = path.resolve(startPath);
   const root = path.parse(currentPath).root;
 
-  while (currentPath !== root) {
-    // Check for workspace marker files (multiple formats)
-    const markerFiles = [
-      path.join(currentPath, '.rapidkit-workspace'), // npm CLI workspace marker
-      path.join(currentPath, '.rapidkit', 'workspace-marker.json'), // alternative format
-      path.join(currentPath, '.rapidkit', 'config.json'), // VS Code extension format
-    ];
+  while (true) {
+    if (await hasWorkspaceRootMarkers(currentPath)) {
+      return currentPath;
+    }
 
-    for (const markerFile of markerFiles) {
-      if (await fsExtra.pathExists(markerFile)) {
-        return currentPath;
-      }
+    if (currentPath === root) {
+      break;
     }
 
     currentPath = path.dirname(currentPath);
@@ -2830,8 +2951,9 @@ async function findWorkspace(startPath: string): Promise<string | null> {
 }
 
 async function findProjectRoot(startPath: string): Promise<string | null> {
-  let currentPath = startPath;
-  const root = path.parse(currentPath).root;
+  let currentPath = path.resolve(startPath);
+  const workspaceRoot = await findWorkspace(currentPath);
+  const root = workspaceRoot ?? path.parse(currentPath).root;
 
   while (true) {
     if (await hasRapidkitProjectMarkers(currentPath)) {
@@ -2839,7 +2961,11 @@ async function findProjectRoot(startPath: string): Promise<string | null> {
     }
 
     if (await hasBackendProjectMarkers(currentPath)) {
-      return currentPath;
+      // Inside a workspace, backend markers at workspace root are usually
+      // toolchain/workspace metadata and should not be treated as project scope.
+      if (!workspaceRoot || currentPath !== workspaceRoot) {
+        return currentPath;
+      }
     }
 
     if (currentPath === root) {
@@ -2885,6 +3011,25 @@ async function hasBackendProjectMarkers(projectPath: string): Promise<boolean> {
   }
 
   return false;
+}
+
+async function hasWorkspaceRootMarkers(candidatePath: string): Promise<boolean> {
+  const markerFiles = [
+    path.join(candidatePath, '.rapidkit-workspace'),
+    path.join(candidatePath, '.rapidkit', 'workspace-marker.json'),
+    path.join(candidatePath, '.rapidkit', 'config.json'),
+  ];
+
+  const hasAnyMarker = await Promise.all(
+    markerFiles.map((marker) => fsExtra.pathExists(marker))
+  ).then((results) => results.some(Boolean));
+
+  if (!hasAnyMarker) {
+    return false;
+  }
+
+  // Keep workspace detection aligned with RapidKit architecture expectations.
+  return fsExtra.pathExists(path.join(candidatePath, '.rapidkit'));
 }
 
 function calculateHealthScore(
@@ -3091,6 +3236,7 @@ async function getWorkspaceHealth(
       health.projects = projectHealthResults;
       health.projectScanCached = false;
       await saveWorkspaceProjectCache(cachePath, {
+        schemaVersion: DOCTOR_WORKSPACE_CACHE_SCHEMA,
         signature: projectSignature,
         generatedAt: new Date().toISOString(),
         projects: projectHealthResults,
@@ -3134,7 +3280,7 @@ async function getWorkspaceHealth(
     'reports',
     'doctor-last-run.json'
   );
-  const previousEvidence = await readDoctorEvidenceIfPresent(previousEvidencePath);
+  const previousEvidence = await readDoctorEvidenceIfPresent(previousEvidencePath, 'workspace');
   health.driftDelta = buildWorkspaceDriftDelta(previousEvidence, health);
 
   health.evidencePath = await writeDoctorEvidence(workspacePath, health, cached ? cachePath : null);
@@ -3159,6 +3305,8 @@ async function writeProjectDoctorEvidence(
     await fsExtra.writeJSON(
       evidencePath,
       {
+        schemaVersion: DOCTOR_PROJECT_EVIDENCE_SCHEMA,
+        evidenceType: 'project',
         generatedAt: new Date().toISOString(),
         contract: getDoctorContractMetadata(),
         workspacePath: workspacePath || null,
@@ -3234,7 +3382,7 @@ async function getProjectHealthEnvelope(projectPath: string): Promise<ProjectHea
     'reports',
     'doctor-project-last-run.json'
   );
-  const previousEvidence = await readDoctorEvidenceIfPresent(previousEvidencePath);
+  const previousEvidence = await readDoctorEvidenceIfPresent(previousEvidencePath, 'project');
   envelope.driftDelta = buildProjectDriftDelta(previousEvidence, envelope);
 
   envelope.evidencePath = await writeProjectDoctorEvidence(workspacePath || undefined, envelope);
@@ -4100,6 +4248,8 @@ export async function runDoctor(
           name: p.name,
           path: p.path,
           framework: p.framework,
+          frameworkKey: p.frameworkKey,
+          importStack: p.importStack,
           runtimeFamily: p.runtimeFamily,
           projectKind: p.projectKind,
           supportTier: p.supportTier,
@@ -4245,7 +4395,13 @@ export async function runDoctor(
     const projectPath = await findProjectRoot(process.cwd());
 
     if (!projectPath) {
-      logger.error('No RapidKit project found in current directory or parents');
+      const workspacePath = await findWorkspace(process.cwd());
+      if (workspacePath) {
+        logger.error('No backend project found in current directory within this workspace');
+        logger.info('Run this command from inside a project directory in the workspace');
+      } else {
+        logger.error('No RapidKit project found in current directory or parents');
+      }
       logger.info(
         'Run this command from within a project, or use "rapidkit doctor workspace" for workspace checks'
       );
@@ -4272,6 +4428,8 @@ export async function runDoctor(
           name: envelope.project.name,
           path: reportedProjectPath,
           framework: envelope.project.framework,
+          frameworkKey: envelope.project.frameworkKey,
+          importStack: envelope.project.importStack,
           runtimeFamily: envelope.project.runtimeFamily,
           projectKind: envelope.project.projectKind,
           supportTier: envelope.project.supportTier,

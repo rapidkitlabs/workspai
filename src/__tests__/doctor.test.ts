@@ -538,6 +538,16 @@ describe('Doctor Command', () => {
           path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json')
         )
       ).toBe(true);
+
+      const workspaceCache = await fsExtra.readJSON(
+        path.join(workspacePath, '.rapidkit', 'reports', 'doctor-workspace-cache.json')
+      );
+      const workspaceEvidence = await fsExtra.readJSON(
+        path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json')
+      );
+      expect(workspaceCache.schemaVersion).toBe('doctor-workspace-cache-v1');
+      expect(workspaceEvidence.schemaVersion).toBe('doctor-workspace-evidence-v1');
+      expect(workspaceEvidence.evidenceType).toBe('workspace');
     } finally {
       process.chdir(originalCwd);
       logSpy.mockRestore();
@@ -865,6 +875,8 @@ describe('Doctor Command', () => {
       expect(payload.contract?.scoringPolicyVersion).toBe('doctor-score-policy-v1');
       expect(payload.project.name).toBe('my-nest-services');
       expect(payload.project.framework).toBe('NestJS');
+      expect(payload.project.frameworkKey).toBe('nestjs');
+      expect(payload.project.importStack).toBe('nestjs');
       expect(payload.summary.totalProjects).toBe(1);
       expect(payload.evidencePath).toContain('doctor-project-last-run.json');
       expect(Array.isArray(payload.project.probes)).toBe(true);
@@ -875,6 +887,12 @@ describe('Doctor Command', () => {
       expect(payload.summary.scopeProvenance.scopedCount).toBeGreaterThan(0);
       expect(payload.driftDelta).toBeDefined();
       expect(payload.driftDelta.baselineAvailable).toBe(false);
+
+      const projectEvidence = await fsExtra.readJSON(
+        path.join(workspacePath, '.rapidkit', 'reports', 'doctor-project-last-run.json')
+      );
+      expect(projectEvidence.schemaVersion).toBe('doctor-project-evidence-v1');
+      expect(projectEvidence.evidenceType).toBe('project');
     } finally {
       process.chdir(originalCwd);
       logSpy.mockRestore();
@@ -929,12 +947,74 @@ describe('Doctor Command', () => {
       expect(jsonLine).toBeDefined();
       const payload = JSON.parse(jsonLine as string);
       expect(payload.project.framework).toBe('Rust');
+      expect(payload.project.frameworkKey).toBe('rust');
+      expect(payload.project.importStack).toBe('unknown');
       expect(payload.project.runtimeFamily).toBe('rust');
       expect(payload.project.depsInstalled).toBe(true);
       expect(Array.isArray(payload.project.probes)).toBe(true);
       expect(payload.project.probes.some((p: { id: string }) => p.id === 'migration-surface')).toBe(
         true
       );
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('should detect Deno project contract metadata in doctor project mode', async () => {
+    const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rapidkit-doctor-deno-'));
+    const projectPath = path.join(tempRoot, 'edge-deno-service');
+
+    await fsExtra.ensureDir(projectPath);
+    await fsExtra.writeJSON(path.join(projectPath, 'deno.json'), {
+      tasks: {
+        dev: 'deno run --watch src/main.ts',
+      },
+    });
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'python3' || cmd === 'python') {
+        if (args?.[0] === '--version') {
+          return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+        }
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx' && args?.[0] === '--version') {
+        return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(projectPath);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ project: true, json: true });
+
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string | undefined;
+
+      expect(jsonLine).toBeDefined();
+      const payload = JSON.parse(jsonLine as string);
+      expect(payload.project.framework).toBe('Deno');
+      expect(payload.project.frameworkKey).toBe('deno');
+      expect(payload.project.importStack).toBe('unknown');
+      expect(payload.project.runtimeFamily).toBe('deno');
+      expect(payload.project.projectKind).toBe('generic');
+      expect(payload.project.supportTier).toBe('extended');
+      expect(payload.project.frameworkConfidence).toBe('high');
     } finally {
       process.chdir(originalCwd);
       logSpy.mockRestore();
@@ -1002,6 +1082,87 @@ describe('Doctor Command', () => {
     } finally {
       process.chdir(originalCwd);
       logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('should not resolve workspace root backend markers as project scope target', async () => {
+    const tempRoot = await fsExtra.mkdtemp(
+      path.join(os.tmpdir(), 'rapidkit-doctor-project-scope-guard-')
+    );
+    const workspacePath = path.join(tempRoot, 'workspace');
+    const nestedPath = path.join(workspacePath, 'tests', 'fixtures');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit-workspace'), {
+      name: 'workspace',
+      version: '1.0',
+    });
+    await fsExtra.writeFile(
+      path.join(workspacePath, 'pyproject.toml'),
+      '[tool.poetry]\nname = "workspace-shell"\n'
+    );
+    await fsExtra.ensureDir(nestedPath);
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'python3' || cmd === 'python') {
+        if (args?.[0] === '--version') {
+          return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+        }
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx' && args?.[0] === '--version') {
+        return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`__EXIT__${code ?? 0}`);
+    }) as never);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(nestedPath);
+      const { runDoctor } = await import('../doctor.js');
+      await expect(runDoctor({ project: true, json: true })).rejects.toThrow('__EXIT__1');
+    } finally {
+      process.chdir(originalCwd);
+      exitSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('should reject workspace mode when marker exists without RapidKit workspace structure', async () => {
+    const tempRoot = await fsExtra.mkdtemp(
+      path.join(os.tmpdir(), 'rapidkit-doctor-workspace-guard-')
+    );
+
+    await fsExtra.writeJSON(path.join(tempRoot, '.rapidkit-workspace'), {
+      name: 'invalid-workspace',
+      version: '1.0',
+    });
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`__EXIT__${code ?? 0}`);
+    }) as never);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(tempRoot);
+      const { runDoctor } = await import('../doctor.js');
+      await expect(runDoctor({ workspace: true, json: true })).rejects.toThrow('__EXIT__1');
+    } finally {
+      process.chdir(originalCwd);
+      exitSpy.mockRestore();
       await fsExtra.remove(tempRoot);
     }
   });
@@ -1074,6 +1235,230 @@ describe('Doctor Command', () => {
       );
       expect(adapterProbe).toBeDefined();
       expect(adapterProbe.status).toBe('fail');
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('should accept legacy workspace evidence without schemaVersion when computing drift', async () => {
+    const tempRoot = await fsExtra.mkdtemp(
+      path.join(os.tmpdir(), 'rapidkit-doctor-legacy-evidence-')
+    );
+    const workspacePath = path.join(tempRoot, 'workspace');
+    const nodeProjectPath = path.join(workspacePath, 'legacy-api');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit', 'reports'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit-workspace'), {
+      name: 'workspace',
+      version: '1.0',
+    });
+
+    await fsExtra.ensureDir(path.join(nodeProjectPath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(nodeProjectPath, '.rapidkit', 'project.json'), {
+      name: 'legacy-api',
+      kit_name: 'generic.imported',
+      runtime: 'unknown',
+    });
+    await fsExtra.writeJSON(path.join(nodeProjectPath, 'package.json'), {
+      name: 'legacy-api',
+      version: '1.0.0',
+      dependencies: {
+        express: '^4.19.2',
+      },
+    });
+    await fsExtra.ensureDir(path.join(nodeProjectPath, 'node_modules', 'express'));
+
+    await fsExtra.writeJSON(
+      path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
+      {
+        generatedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+        workspacePath,
+        healthScore: {
+          total: 5,
+          passed: 4,
+          warnings: 1,
+          errors: 0,
+        },
+        projects: [
+          {
+            name: 'legacy-api',
+            path: nodeProjectPath,
+            issues: [],
+          },
+        ],
+        summary: {
+          totalIssues: 0,
+        },
+        system: {
+          python: { status: 'ok', message: 'Python 3.11.0' },
+          poetry: { status: 'ok', message: 'Poetry 2.3.2' },
+          pipx: { status: 'ok', message: 'pipx 1.8.0' },
+          go: { status: 'warn', message: 'Go not installed' },
+          rapidkitCore: { status: 'ok', message: 'RapidKit Core 0.3.9' },
+        },
+      }
+    );
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'python3' || cmd === 'python') {
+        if (args?.[0] === '--version') {
+          return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+        }
+        if (args?.[0] === '-m' && args?.[1] === 'rapidkit') {
+          return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+        }
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx' && args?.[0] === '--version') {
+        return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'npm' && Array.isArray(args) && args[0] === 'audit') {
+        return {
+          stdout: JSON.stringify({ metadata: { vulnerabilities: { total: 0 } } }),
+          stderr: '',
+          exitCode: 0,
+        } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(workspacePath);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ workspace: true, json: true });
+
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string | undefined;
+
+      expect(jsonLine).toBeDefined();
+      const payload = JSON.parse(jsonLine as string);
+      expect(payload.driftDelta).toBeDefined();
+      expect(payload.driftDelta.baselineAvailable).toBe(true);
+      expect(payload.cache.evidencePath).toContain('doctor-last-run.json');
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('should invalidate unknown workspace evidence schema safely and treat baseline as unavailable', async () => {
+    const tempRoot = await fsExtra.mkdtemp(
+      path.join(os.tmpdir(), 'rapidkit-doctor-unknown-schema-')
+    );
+    const workspacePath = path.join(tempRoot, 'workspace');
+    const nodeProjectPath = path.join(workspacePath, 'unknown-schema-api');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit', 'reports'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit-workspace'), {
+      name: 'workspace',
+      version: '1.0',
+    });
+
+    await fsExtra.ensureDir(path.join(nodeProjectPath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(nodeProjectPath, '.rapidkit', 'project.json'), {
+      name: 'unknown-schema-api',
+      kit_name: 'generic.imported',
+      runtime: 'unknown',
+    });
+    await fsExtra.writeJSON(path.join(nodeProjectPath, 'package.json'), {
+      name: 'unknown-schema-api',
+      version: '1.0.0',
+      dependencies: {
+        express: '^4.19.2',
+      },
+    });
+    await fsExtra.ensureDir(path.join(nodeProjectPath, 'node_modules', 'express'));
+
+    await fsExtra.writeJSON(
+      path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
+      {
+        schemaVersion: 'doctor-workspace-evidence-v999',
+        evidenceType: 'workspace',
+        generatedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+        workspacePath,
+        healthScore: {
+          total: 5,
+          passed: 5,
+          warnings: 0,
+          errors: 0,
+        },
+        projects: [],
+        summary: {
+          totalIssues: 0,
+        },
+        system: {
+          python: { status: 'ok', message: 'Python 3.11.0' },
+          poetry: { status: 'ok', message: 'Poetry 2.3.2' },
+          pipx: { status: 'ok', message: 'pipx 1.8.0' },
+          go: { status: 'warn', message: 'Go not installed' },
+          rapidkitCore: { status: 'ok', message: 'RapidKit Core 0.3.9' },
+        },
+      }
+    );
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'python3' || cmd === 'python') {
+        if (args?.[0] === '--version') {
+          return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+        }
+        if (args?.[0] === '-m' && args?.[1] === 'rapidkit') {
+          return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+        }
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx' && args?.[0] === '--version') {
+        return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'npm' && Array.isArray(args) && args[0] === 'audit') {
+        return {
+          stdout: JSON.stringify({ metadata: { vulnerabilities: { total: 0 } } }),
+          stderr: '',
+          exitCode: 0,
+        } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(workspacePath);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ workspace: true, json: true });
+
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string | undefined;
+
+      expect(jsonLine).toBeDefined();
+      const payload = JSON.parse(jsonLine as string);
+      expect(payload.driftDelta).toBeDefined();
+      expect(payload.driftDelta.baselineAvailable).toBe(false);
+      expect(payload.cache.evidencePath).toContain('doctor-last-run.json');
     } finally {
       process.chdir(originalCwd);
       logSpy.mockRestore();

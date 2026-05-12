@@ -9,18 +9,28 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 import { spawnSync } from 'child_process';
 
+import { handleImportCommand } from '../index';
+
 function ensureDistBuilt(): string {
   const repoRoot = process.cwd();
   const distPath = path.join(repoRoot, 'dist', 'index.js');
-  const srcEntryPath = path.join(repoRoot, 'src', 'index.ts');
+  const sourcePaths = [
+    path.join(repoRoot, 'src', 'index.ts'),
+    path.join(repoRoot, 'src', 'import-project.ts'),
+    path.join(repoRoot, 'src', 'imported-projects-registry.ts'),
+  ];
 
   const shouldBuild = (() => {
     if (!fs.existsSync(distPath)) return true;
-    if (!fs.existsSync(srcEntryPath)) return false;
-
     const distMtime = fs.statSync(distPath).mtimeMs;
-    const srcMtime = fs.statSync(srcEntryPath).mtimeMs;
-    return srcMtime > distMtime;
+
+    return sourcePaths.some((sourcePath) => {
+      if (!fs.existsSync(sourcePath)) {
+        return false;
+      }
+
+      return fs.statSync(sourcePath).mtimeMs > distMtime;
+    });
   })();
 
   if (shouldBuild) {
@@ -77,6 +87,7 @@ describe('CLI Entry Point', () => {
       expect(stdout).toContain('rapidkit init');
       expect(stdout).toContain('rapidkit dev');
       expect(stdout).toContain('rapidkit workspace list');
+      expect(stdout).toContain('rapidkit import <path|git-url>');
       expect(stdout).toContain('mirror [status|sync|verify|rotate]');
       expect(stdout).toContain('cache [status|clear|prune|repair]');
 
@@ -140,6 +151,7 @@ describe('CLI Entry Point', () => {
         "Workspace commands (inside a workspace):
           npx rapidkit bootstrap [--profile <p>]   Re-bootstrap toolchains
           npx rapidkit workspace list               List registered workspaces
+          npx rapidkit import <path|git-url>        Copy or clone a backend project into this workspace
           npx rapidkit workspace share [--output <file>] Export collaboration bundle
           npx rapidkit workspace policy show        Show effective workspace policies
           npx rapidkit workspace policy set <k> <v> Update workspace policy values
@@ -361,6 +373,347 @@ describe('CLI Entry Point', () => {
   });
 
   describe('Error Handling', () => {
+    it('should roll back imported files when workspace sync fails after import', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-import-fail-'));
+      const sourceDir = await fs.mkdtemp(path.join(TEST_DIR, 'source-import-fail-'));
+
+      await fs.ensureDir(path.join(workspaceRoot, '.rapidkit'));
+      await fs.writeJson(path.join(workspaceRoot, '.rapidkit', 'workspace.json'), {
+        workspace_name: 'demo-workspace',
+      });
+      await fs.writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '{}');
+      await fs.writeJson(path.join(sourceDir, 'package.json'), {
+        name: 'orders-api',
+        dependencies: {
+          express: '^4.19.2',
+        },
+      });
+
+      const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+      try {
+        const exitCode = await handleImportCommand(
+          sourceDir,
+          {
+            workspace: workspaceRoot,
+            name: 'orders-api',
+            json: true,
+          },
+          {
+            syncWorkspaceProjects: async () => {
+              throw new Error('sync failed');
+            },
+          }
+        );
+
+        expect(exitCode).toBe(1);
+        expect(await fs.pathExists(path.join(workspaceRoot, 'orders-api'))).toBe(false);
+
+        const registry = await fs.readJson(
+          path.join(workspaceRoot, '.rapidkit', 'imported-projects.json')
+        );
+        expect(registry.projects).toEqual([]);
+        expect(consoleLog).toHaveBeenCalledWith(
+          JSON.stringify(
+            {
+              error:
+                'Workspace sync failed after import and the imported project was rolled back: sync failed',
+            },
+            null,
+            2
+          )
+        );
+      } finally {
+        consoleLog.mockRestore();
+        await fs.remove(workspaceRoot);
+        await fs.remove(sourceDir);
+      }
+    });
+
+    it('should import a local project through the CLI wrapper and emit registry JSON', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-import-'));
+      const sourceDir = await fs.mkdtemp(path.join(TEST_DIR, 'source-import-'));
+
+      await fs.ensureDir(path.join(workspaceRoot, '.rapidkit'));
+      await fs.writeJson(path.join(workspaceRoot, '.rapidkit', 'workspace.json'), {
+        workspace_name: 'demo-workspace',
+      });
+      await fs.writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '{}');
+      await fs.writeJson(path.join(sourceDir, 'package.json'), {
+        name: 'orders-api',
+        dependencies: {
+          express: '^4.19.2',
+        },
+      });
+
+      try {
+        const { stdout, exitCode } = await execa('node', [
+          CLI_PATH,
+          'import',
+          sourceDir,
+          '--workspace',
+          workspaceRoot,
+          '--name',
+          'orders-api',
+          '--json',
+        ]);
+
+        expect(exitCode).toBe(0);
+
+        const payload = JSON.parse(stdout) as {
+          workspacePath: string;
+          importedProject: { name: string; stack: string; source: string; path: string };
+        };
+
+        expect(payload.workspacePath).toBe(workspaceRoot);
+        expect(payload.importedProject).toMatchObject({
+          name: 'orders-api',
+          stack: 'express',
+          source: 'local-folder',
+        });
+        expect(await fs.pathExists(path.join(payload.importedProject.path, 'package.json'))).toBe(
+          true
+        );
+
+        const registry = await fs.readJson(
+          path.join(workspaceRoot, '.rapidkit', 'imported-projects.json')
+        );
+        expect(registry.projects).toEqual([
+          expect.objectContaining({
+            name: 'orders-api',
+            stack: 'express',
+            source: 'local-folder',
+          }),
+        ]);
+      } finally {
+        await fs.remove(workspaceRoot);
+        await fs.remove(sourceDir);
+      }
+    }, 20000);
+
+    it('should import a git repository through the CLI wrapper with --git', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-import-git-'));
+      const gitSource = await fs.mkdtemp(path.join(TEST_DIR, 'source-import-git-'));
+
+      await fs.ensureDir(path.join(workspaceRoot, '.rapidkit'));
+      await fs.writeJson(path.join(workspaceRoot, '.rapidkit', 'workspace.json'), {
+        workspace_name: 'demo-workspace',
+      });
+      await fs.writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '{}');
+      await fs.writeJson(path.join(gitSource, 'package.json'), {
+        name: 'git-orders-api',
+        dependencies: {
+          express: '^4.19.2',
+        },
+      });
+      await fs.writeFile(path.join(gitSource, 'README.md'), '# git import\n');
+      await execa('git', ['init'], { cwd: gitSource });
+      await execa('git', ['config', 'user.email', 'rapidkit@example.com'], { cwd: gitSource });
+      await execa('git', ['config', 'user.name', 'RapidKit Test'], { cwd: gitSource });
+      await execa('git', ['add', '.'], { cwd: gitSource });
+      await execa('git', ['commit', '-m', 'init'], { cwd: gitSource });
+
+      try {
+        const { stdout, exitCode } = await execa('node', [
+          CLI_PATH,
+          'import',
+          gitSource,
+          '--git',
+          '--workspace',
+          workspaceRoot,
+          '--name',
+          'git-orders-api',
+          '--json',
+        ]);
+
+        expect(exitCode).toBe(0);
+
+        const payload = JSON.parse(stdout) as {
+          workspacePath: string;
+          importedProject: { name: string; stack: string; source: string; path: string };
+        };
+
+        expect(payload.workspacePath).toBe(workspaceRoot);
+        expect(payload.importedProject).toMatchObject({
+          name: 'git-orders-api',
+          stack: 'express',
+          source: 'git-url',
+        });
+        expect(await fs.pathExists(path.join(payload.importedProject.path, '.git'))).toBe(true);
+      } finally {
+        await fs.remove(workspaceRoot);
+        await fs.remove(gitSource);
+      }
+    }, 20000);
+
+    it('should auto-create or reuse the default workspace when import runs outside any workspace', async () => {
+      const fakeHome = await fs.mkdtemp(path.join(TEST_DIR, 'home-import-default-'));
+      const cwdOutsideWorkspace = await fs.mkdtemp(path.join(TEST_DIR, 'cwd-import-default-'));
+      const sourceDir = await fs.mkdtemp(path.join(TEST_DIR, 'source-import-default-'));
+
+      await fs.writeJson(path.join(sourceDir, 'package.json'), {
+        name: 'default-orders-api',
+        dependencies: {
+          express: '^4.19.2',
+        },
+      });
+
+      try {
+        const { stdout, exitCode } = await execa(
+          'node',
+          [CLI_PATH, 'import', sourceDir, '--name', 'default-orders-api', '--json'],
+          {
+            cwd: cwdOutsideWorkspace,
+            env: {
+              ...process.env,
+              HOME: fakeHome,
+            },
+          }
+        );
+
+        expect(exitCode).toBe(0);
+
+        const expectedWorkspacePath = path.join(
+          fakeHome,
+          'Workspai',
+          'rapidkits',
+          'default-workspace'
+        );
+        const payload = JSON.parse(stdout) as {
+          workspacePath: string;
+          workspaceResolution: string;
+          defaultWorkspaceCreated: boolean;
+          suggestedCdCommand: string;
+          importedProject: { name: string; stack: string; source: string; path: string };
+        };
+
+        expect(payload.workspacePath).toBe(expectedWorkspacePath);
+        expect(payload.workspaceResolution).toBe('default-auto');
+        expect(payload.defaultWorkspaceCreated).toBe(true);
+        expect(payload.suggestedCdCommand).toBe(`cd ${expectedWorkspacePath}`);
+        expect(payload.importedProject).toMatchObject({
+          name: 'default-orders-api',
+          stack: 'express',
+          source: 'local-folder',
+        });
+        expect(await fs.pathExists(path.join(expectedWorkspacePath, '.rapidkit-workspace'))).toBe(
+          true
+        );
+        expect(
+          await fs.pathExists(path.join(expectedWorkspacePath, '.rapidkit', 'workspace.json'))
+        ).toBe(true);
+      } finally {
+        await fs.remove(fakeHome);
+        await fs.remove(cwdOutsideWorkspace);
+        await fs.remove(sourceDir);
+      }
+    }, 20000);
+
+    it('should not silently fall back when an explicit workspace path is invalid', async () => {
+      const fakeHome = await fs.mkdtemp(path.join(TEST_DIR, 'home-import-explicit-'));
+      const cwdOutsideWorkspace = await fs.mkdtemp(path.join(TEST_DIR, 'cwd-import-explicit-'));
+      const sourceDir = await fs.mkdtemp(path.join(TEST_DIR, 'source-import-explicit-'));
+      const invalidWorkspace = path.join(cwdOutsideWorkspace, 'not-a-workspace');
+
+      await fs.ensureDir(invalidWorkspace);
+      await fs.writeJson(path.join(sourceDir, 'package.json'), {
+        name: 'explicit-orders-api',
+        dependencies: {
+          express: '^4.19.2',
+        },
+      });
+
+      try {
+        await execa(
+          'node',
+          [CLI_PATH, 'import', sourceDir, '--workspace', invalidWorkspace, '--json'],
+          {
+            cwd: cwdOutsideWorkspace,
+            env: {
+              ...process.env,
+              HOME: fakeHome,
+            },
+            reject: false,
+          }
+        ).then(({ stdout, exitCode }) => {
+          expect(exitCode).toBe(1);
+          const payload = JSON.parse(stdout) as { error: string };
+          expect(payload.error).toContain('Workspace path is not a valid RapidKit workspace');
+        });
+
+        expect(
+          await fs.pathExists(path.join(fakeHome, 'Workspai', 'rapidkits', 'default-workspace'))
+        ).toBe(false);
+      } finally {
+        await fs.remove(fakeHome);
+        await fs.remove(cwdOutsideWorkspace);
+        await fs.remove(sourceDir);
+      }
+    }, 20000);
+
+    it('should roll back imported local project via dist CLI when sync fails by injected test hook', async () => {
+      const workspaceRoot = await fs.mkdtemp(
+        path.join(TEST_DIR, 'workspace-import-injected-fail-')
+      );
+      const sourceDir = await fs.mkdtemp(path.join(TEST_DIR, 'source-import-injected-fail-'));
+
+      await fs.ensureDir(path.join(workspaceRoot, '.rapidkit'));
+      await fs.writeJson(path.join(workspaceRoot, '.rapidkit', 'workspace.json'), {
+        workspace_name: 'demo-workspace',
+      });
+      await fs.writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '{}');
+      await fs.writeJson(path.join(sourceDir, 'package.json'), {
+        name: 'orders-api-injected-fail',
+        dependencies: {
+          express: '^4.19.2',
+        },
+      });
+
+      try {
+        const { stdout, exitCode } = await execa(
+          'node',
+          [
+            CLI_PATH,
+            'import',
+            sourceDir,
+            '--workspace',
+            workspaceRoot,
+            '--name',
+            'orders-api-injected-fail',
+            '--json',
+          ],
+          {
+            reject: false,
+            env: {
+              ...process.env,
+              RAPIDKIT_TEST_IMPORT_SYNC_FAIL: '1',
+            },
+          }
+        );
+
+        expect(exitCode).toBe(1);
+        const payload = JSON.parse(stdout) as { error: string };
+        expect(payload.error).toContain(
+          'Workspace sync failed after import and the imported project was rolled back'
+        );
+        expect(payload.error).toContain(
+          'forced sync failure for command-level import rollback test'
+        );
+
+        expect(await fs.pathExists(path.join(workspaceRoot, 'orders-api-injected-fail'))).toBe(
+          false
+        );
+
+        const registry = await fs.readJson(
+          path.join(workspaceRoot, '.rapidkit', 'imported-projects.json')
+        );
+        expect(registry.projects).toEqual([]);
+      } finally {
+        await fs.remove(workspaceRoot);
+        await fs.remove(sourceDir);
+      }
+    }, 20000);
+
     it('should route workspace-root init through the same full-init flow without misreading flags', async () => {
       const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-root-'));
       await fs.writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '');

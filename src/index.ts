@@ -13,7 +13,7 @@ import { validateProjectName } from './validation.js';
 import { RapidKitError } from './errors.js';
 import fsExtra from 'fs-extra';
 import fs from 'fs';
-import { tmpdir } from 'os';
+import { homedir, tmpdir } from 'os';
 import { detectRapidkitProject } from './core-bridge/pythonRapidkit.js';
 import {
   getCachedCoreTopLevelCommands,
@@ -37,6 +37,11 @@ import {
 import { evaluateReleaseReadiness, runReleaseReadinessCommand } from './readiness.js';
 import { runMirrorLifecycle } from './utils/mirror.js';
 import {
+  cleanupImportedProjectImport,
+  importProjectIntoWorkspace,
+  isGitUrl,
+} from './import-project.js';
+import {
   getDefaultPythonCommand,
   getPythonCommandCandidates,
   getRapidkitLocalScriptCandidates,
@@ -45,6 +50,7 @@ import {
   isWindowsPlatform,
   shouldUseShellExecution,
 } from './utils/platform-capabilities.js';
+import { createNpmWorkspaceMarker, writeWorkspaceMarker } from './workspace-marker.js';
 
 type BridgeFailureCode =
   | 'PYTHON_NOT_FOUND'
@@ -1120,6 +1126,7 @@ const LOCAL_COMMANDS = [
 export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
   'readiness',
   'doctor',
+  'import',
   'workspace',
   'bootstrap',
   'setup',
@@ -1133,6 +1140,7 @@ export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
 const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
   'readiness',
   'doctor',
+  'import',
   'workspace',
   'ai',
   'config',
@@ -1531,6 +1539,149 @@ async function writeJsonFile(filePath: string, payload: unknown): Promise<void> 
   await fsExtra.outputFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
 }
 
+export async function handleImportCommand(
+  source: string,
+  options: {
+    workspace?: string;
+    name?: string;
+    git?: boolean;
+    json?: boolean;
+  },
+  dependencies?: {
+    syncWorkspaceProjects?: (workspacePath: string) => Promise<void>;
+    rollbackImportedProjectImport?: (workspacePath: string, projectPath: string) => Promise<void>;
+  }
+): Promise<number> {
+  const shouldInjectImportSyncFailure =
+    process.env.RAPIDKIT_TEST_IMPORT_SYNC_FAIL === '1' &&
+    (process.env.VITEST === 'true' ||
+      process.env.VITEST === '1' ||
+      process.env.NODE_ENV === 'test');
+
+  const explicitWorkspace = options.workspace ? path.resolve(options.workspace) : null;
+  let workspacePath = explicitWorkspace ?? findWorkspaceUp(process.cwd());
+  let usedDefaultWorkspace = false;
+  let createdDefaultWorkspace = false;
+
+  if (explicitWorkspace) {
+    if (!hasWorkspaceRootMarkers(explicitWorkspace)) {
+      const message = `Workspace path is not a valid RapidKit workspace: ${explicitWorkspace}`;
+      if (options.json) {
+        console.log(JSON.stringify({ error: message }, null, 2));
+      } else {
+        console.log(chalk.red(`❌ ${message}`));
+      }
+      return 1;
+    }
+  } else if (!workspacePath || !hasWorkspaceRootMarkers(workspacePath)) {
+    const ensuredWorkspace = await ensureManagedDefaultImportWorkspace();
+    workspacePath = ensuredWorkspace.workspacePath;
+    usedDefaultWorkspace = true;
+    createdDefaultWorkspace = ensuredWorkspace.created;
+  }
+
+  if (!workspacePath || !hasWorkspaceRootMarkers(workspacePath)) {
+    const message = 'Not inside a RapidKit workspace';
+    if (options.json) {
+      console.log(JSON.stringify({ error: message }, null, 2));
+    } else {
+      console.log(chalk.red(`❌ ${message}`));
+      console.log(
+        chalk.gray('💡 Run this command from a workspace root or pass --workspace <path>.')
+      );
+    }
+    return 1;
+  }
+
+  const suggestedCdCommand = `cd ${workspacePath}`;
+
+  const syncImportedWorkspace =
+    dependencies?.syncWorkspaceProjects ??
+    (async (nextWorkspacePath: string) => {
+      if (shouldInjectImportSyncFailure) {
+        throw new Error('forced sync failure for command-level import rollback test');
+      }
+      const { syncWorkspaceProjects } = await import('./workspace.js');
+      await syncWorkspaceProjects(nextWorkspacePath, true);
+    });
+  const rollbackImportedProject =
+    dependencies?.rollbackImportedProjectImport ?? cleanupImportedProjectImport;
+
+  try {
+    const importedProject = await importProjectIntoWorkspace({
+      workspacePath,
+      source,
+      name: options.name,
+      sourceType: options.git === true ? 'git-url' : undefined,
+    });
+
+    try {
+      await syncImportedWorkspace(workspacePath);
+    } catch (syncError) {
+      await rollbackImportedProject(workspacePath, importedProject.path);
+
+      try {
+        await syncImportedWorkspace(workspacePath);
+      } catch {
+        // Best-effort restore only.
+      }
+
+      throw new Error(
+        `Workspace sync failed after import and the imported project was rolled back: ${syncError instanceof Error ? syncError.message : String(syncError)}`
+      );
+    }
+
+    if (options.json) {
+      console.log(
+        JSON.stringify(
+          {
+            workspacePath,
+            workspaceResolution: usedDefaultWorkspace
+              ? 'default-auto'
+              : explicitWorkspace
+                ? 'explicit'
+                : 'nearest',
+            defaultWorkspaceCreated: usedDefaultWorkspace ? createdDefaultWorkspace : false,
+            suggestedCdCommand,
+            importedProject,
+          },
+          null,
+          2
+        )
+      );
+      return 0;
+    }
+
+    if (usedDefaultWorkspace) {
+      console.log(
+        chalk.yellow(
+          `ℹ Imported outside a workspace, so RapidKit used the default workspace: ${workspacePath}`
+        )
+      );
+    }
+
+    console.log(chalk.green(`✔ Imported project: ${importedProject.name}`));
+    console.log(chalk.gray(`   Workspace: ${workspacePath}`));
+    console.log(chalk.gray(`   Destination: ${importedProject.path}`));
+    console.log(chalk.gray(`   Stack: ${importedProject.stack} (${importedProject.confidence})`));
+    console.log(
+      chalk.gray(
+        `   Source: ${options.git === true || isGitUrl(source) ? 'git-url' : 'local-folder'}`
+      )
+    );
+    console.log(chalk.gray(`   Next shell step: ${suggestedCdCommand}`));
+    return 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (options.json) {
+      console.log(JSON.stringify({ error: message }, null, 2));
+    } else {
+      console.log(chalk.red(`❌ Import failed: ${message}`));
+    }
+    return 1;
+  }
+}
+
 export async function installWorkspaceDependencies(workspacePath: string): Promise<number> {
   const PYTHON_REQUIRED_PROFILES = new Set(['python-only', 'polyglot', 'enterprise']);
 
@@ -1703,6 +1854,40 @@ function resolveDefaultWorkspacePath(basePath: string): { name: string; targetPa
     }
     index += 1;
   }
+}
+
+const DEFAULT_IMPORT_WORKSPACE_NAME = 'default-workspace';
+
+function resolveManagedDefaultImportWorkspacePath(): string {
+  return path.join(homedir(), 'Workspai', 'rapidkits', DEFAULT_IMPORT_WORKSPACE_NAME);
+}
+
+async function ensureManagedDefaultImportWorkspace(): Promise<{
+  workspacePath: string;
+  created: boolean;
+}> {
+  const workspacePath = resolveManagedDefaultImportWorkspacePath();
+  const workspaceName = path.basename(workspacePath);
+  const existed = hasWorkspaceRootMarkers(workspacePath);
+
+  await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+  await writeWorkspaceMarker(workspacePath, createNpmWorkspaceMarker(workspaceName, getVersion()));
+
+  const workspaceManifestPath = path.join(workspacePath, '.rapidkit', 'workspace.json');
+  if (!(await fsExtra.pathExists(workspaceManifestPath))) {
+    await writeJsonFile(workspaceManifestPath, {
+      name: workspaceName,
+      workspace_name: workspaceName,
+      profile: 'minimal',
+      createdAt: new Date().toISOString(),
+      createdBy: 'rapidkit-npm-import-fallback',
+    });
+  }
+
+  return {
+    workspacePath,
+    created: !existed,
+  };
 }
 
 // ─── Go/Fiber command handlers ───────────────────────────────────────────────
@@ -4378,6 +4563,27 @@ program
 
 // Doctor command - health check for RapidKit environment
 program
+  .command('import <source>')
+  .description(
+    'Import a local backend project folder or clone a git repository into the current workspace'
+  )
+  .option('--workspace <path>', 'Workspace root path (defaults to nearest RapidKit workspace)')
+  .option('--name <projectName>', 'Override imported project folder name')
+  .option('--git', 'Force source to be treated as a git repository URL')
+  .option('--json', 'Emit machine-readable JSON output')
+  .action(
+    async (
+      source: string,
+      options: { workspace?: string; name?: string; git?: boolean; json?: boolean }
+    ) => {
+      const code = await handleImportCommand(source, options);
+      if (code !== 0) {
+        process.exit(code);
+      }
+    }
+  );
+
+program
   .command('doctor [scope]')
   .description(
     '🩺 Check RapidKit system health by default; use workspace or project for scoped checks'
@@ -4670,6 +4876,11 @@ function printHelp() {
   console.log(chalk.bold('Workspace commands (inside a workspace):'));
   console.log(chalk.gray('  npx rapidkit bootstrap [--profile <p>]   Re-bootstrap toolchains'));
   console.log(chalk.gray('  npx rapidkit workspace list               List registered workspaces'));
+  console.log(
+    chalk.gray(
+      '  npx rapidkit import <path|git-url>        Copy or clone a backend project into this workspace'
+    )
+  );
   console.log(
     chalk.gray('  npx rapidkit workspace share [--output <file>] Export collaboration bundle')
   );

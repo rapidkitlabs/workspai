@@ -1,6 +1,6 @@
 {
   "name": "rapidkit",
-  "version": "0.27.3",
+  "version": "0.27.4",
   "type": "module",
   "description": "Official CLI for RapidKit, an open-source workspace platform that standardizes how teams build, scale, and deploy backend services.",
   "keywords": [
@@ -47,6 +47,7 @@
     "test:e2e:user-first-install": "bash scripts/e2e-user-first-install.sh",
     "test": "vitest run",
     "test:drift": "RAPIDKIT_DRIFT_GUARD=1 vitest run src/__tests__/drift-guard.test.ts",
+    "test:parity-contract": "vitest run src/__tests__/contracts/import-stack-parity.snapshot.test.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:prepare-embeddings": "npx tsx scripts/generate-mock-embeddings.ts",

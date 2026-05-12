@@ -1,7 +1,32 @@
 import fs from 'fs';
 import path from 'path';
 
+import {
+  detectBackendFrameworkFromProject,
+  detectBackendFrameworkFromHints,
+} from './backend-framework-contract.js';
+
 export type RapidkitProjectJson = Record<string, unknown> | null;
+
+function detectBackendRuntime(projectJson: RapidkitProjectJson, projectPath: string): string {
+  const hinted = detectBackendFrameworkFromHints({
+    runtime: typeof projectJson?.runtime === 'string' ? (projectJson.runtime as string) : undefined,
+    framework:
+      typeof projectJson?.framework === 'string' ? (projectJson.framework as string) : undefined,
+    kitName:
+      typeof projectJson?.kit_name === 'string'
+        ? (projectJson.kit_name as string)
+        : typeof projectJson?.kit === 'string'
+          ? (projectJson.kit as string)
+          : undefined,
+  });
+
+  if (hinted.runtime !== 'unknown') {
+    return hinted.runtime;
+  }
+
+  return detectBackendFrameworkFromProject(projectPath, projectJson).runtime;
+}
 
 export function readRapidkitProjectJson(start: string): RapidkitProjectJson {
   let currentPath = start;
@@ -25,60 +50,17 @@ export function readRapidkitProjectJson(start: string): RapidkitProjectJson {
 }
 
 export function isGoProject(projectJson: RapidkitProjectJson, projectPath: string): boolean {
-  const runtime = (projectJson?.runtime as string | undefined)?.toLowerCase();
-  const kitName = (projectJson?.kit_name as string | undefined)?.toLowerCase();
-  const hasGoMod = fs.existsSync(path.join(projectPath, 'go.mod'));
-
-  return (
-    runtime === 'go' ||
-    (kitName?.startsWith('gofiber') ?? false) ||
-    (kitName?.startsWith('gogin') ?? false) ||
-    hasGoMod
-  );
+  return detectBackendRuntime(projectJson, projectPath) === 'go';
 }
 
 export function isNodeProject(projectJson: RapidkitProjectJson, projectPath: string): boolean {
-  const runtime = (projectJson?.runtime as string | undefined)?.toLowerCase();
-  const kitName = (projectJson?.kit_name as string | undefined)?.toLowerCase();
-  const hasPackageJson = fs.existsSync(path.join(projectPath, 'package.json'));
-
-  return (
-    runtime === 'node' ||
-    runtime === 'typescript' ||
-    (kitName?.startsWith('nestjs') ?? false) ||
-    hasPackageJson
-  );
+  return detectBackendRuntime(projectJson, projectPath) === 'node';
 }
 
 export function isJavaProject(projectJson: RapidkitProjectJson, projectPath: string): boolean {
-  const runtime = (projectJson?.runtime as string | undefined)?.toLowerCase();
-  const kitName = (projectJson?.kit_name as string | undefined)?.toLowerCase();
-  const hasPomXml = fs.existsSync(path.join(projectPath, 'pom.xml'));
-  const hasGradle =
-    fs.existsSync(path.join(projectPath, 'build.gradle')) ||
-    fs.existsSync(path.join(projectPath, 'build.gradle.kts'));
-
-  return (
-    runtime === 'java' ||
-    runtime === 'spring' ||
-    (kitName?.startsWith('springboot') ?? false) ||
-    hasPomXml ||
-    hasGradle
-  );
+  return detectBackendRuntime(projectJson, projectPath) === 'java';
 }
 
 export function isPythonProject(projectJson: RapidkitProjectJson, projectPath: string): boolean {
-  const runtime = (projectJson?.runtime as string | undefined)?.toLowerCase();
-  const kitName = (projectJson?.kit_name as string | undefined)?.toLowerCase();
-  const hasPyproject = fs.existsSync(path.join(projectPath, 'pyproject.toml'));
-  const hasRequirements =
-    fs.existsSync(path.join(projectPath, 'requirements.txt')) ||
-    fs.existsSync(path.join(projectPath, 'requirements.in'));
-
-  return (
-    runtime === 'python' ||
-    (kitName?.startsWith('fastapi') ?? false) ||
-    hasPyproject ||
-    hasRequirements
-  );
+  return detectBackendRuntime(projectJson, projectPath) === 'python';
 }

@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.4] - 2026-05-11
+
+### Added
+
+- Added new shared contract parity tests to keep npm import-stack mapping aligned with the shared snapshot contract:
+  - `src/__tests__/contracts/import-stack-parity.snapshot.test.ts`
+- Added backend framework contract utility and coverage to normalize framework/runtime detection and canonical stack mapping:
+  - `src/utils/backend-framework-contract.ts`
+  - `src/__tests__/backend-framework-contract.test.ts`
+- Added new workspace import command support for bringing local folders or git repositories into a workspace:
+  - `rapidkit import <path|git-url> [--workspace <path>] [--name <project-name>] [--git] [--json]`
+  - `src/import-project.ts`
+  - `src/imported-projects-registry.ts`
+  - `src/__tests__/import-project.test.ts`
+- Added regression coverage for strict doctor scope semantics:
+  - guards against workspace-root misclassification in project mode.
+  - guards against invalid workspace marker-only structures in workspace mode.
+
+### Changed
+
+- Hardened parity contract validation with strict schema pinning and bidirectional key-set checks to fail fast on contract drift.
+- Updated CI to enforce shared import-stack parity via dedicated parity test gate (`npm run test:parity-contract`).
+- Updated doctor/readiness/workspace-share evidence compatibility handling to safely reject unknown schema versions while preserving legacy evidence compatibility.
+- Expanded doctor JSON metadata with canonical framework identity for automation:
+  - `frameworkKey`
+  - `importStack`
+- Improved workspace project detection and stage command framework normalization for better runtime/framework command routing consistency.
+- Hardened doctor scope resolution boundaries to avoid confusing parent fallback behavior:
+  - `doctor project` now resolves only real project scope inside a workspace and no longer treats workspace-root backend markers as project target.
+  - `doctor workspace` now enforces stricter workspace-root architecture validation before execution.
+- Improved project-scope failure messaging so users get deterministic guidance when running `doctor project` outside a valid project directory.
+
+### Fixed
+
+- Fixed import rollback flow to remove imported files and registry entries when post-import workspace sync fails.
+- Fixed explicit workspace import behavior to fail deterministically for invalid workspace paths (no silent fallback).
+- Fixed potential path brittleness in parity tests by adding resilient shared snapshot resolution and optional env override support.
+
 ## [0.27.3] - 2026-05-09
 
 ### Added

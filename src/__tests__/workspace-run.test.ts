@@ -24,6 +24,15 @@ async function createProject(workspacePath: string, relPath: string) {
   return projectPath;
 }
 
+async function createProjectWithoutContext(
+  workspacePath: string,
+  relPath: string
+): Promise<string> {
+  const projectPath = path.join(workspacePath, relPath);
+  await fsExtra.ensureDir(projectPath);
+  return projectPath;
+}
+
 function noGateMock(extraArgs?: Record<string, { exitCode: number; stdout: string }>) {
   const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
   execaMock.mockImplementation(async (_cmd: string, args: string[]) => {
@@ -505,6 +514,72 @@ describe('workspace-run', () => {
       expect(typeof project.status).toBe('string');
       expect(typeof project.durationMs).toBe('number');
     }
+
+    await fsExtra.remove(workspacePath);
+  });
+
+  it('detects rails from manifests and uses the explicit framework init command without context metadata', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
+    const projectPath = await createProjectWithoutContext(workspacePath, 'apps/rails-api');
+    await fsExtra.writeFile(path.join(projectPath, 'Gemfile'), 'gem "rails", "~> 7.1.0"\n');
+    await fsExtra.ensureDir(path.join(projectPath, 'config'));
+    await fsExtra.writeFile(
+      path.join(projectPath, 'config', 'application.rb'),
+      'require "rails/all"\n'
+    );
+
+    const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
+    execaMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'bundle install && rails db:prepare') {
+        return { exitCode: 0, stdout: 'ok', stderr: '' };
+      }
+      return { exitCode: 0, stdout: '{}', stderr: '' };
+    });
+
+    const report = await runWorkspaceStage({
+      workspacePath,
+      stage: 'init',
+      enforceGates: false,
+      json: true,
+    });
+
+    const projectReport = report.projects.find((item) => item.relativePath === 'apps/rails-api');
+    expect(projectReport?.framework).toBe('rails');
+    expect(projectReport?.runtimeDetected).toBe('ruby');
+    expect(projectReport?.executionCommand).toBe('bundle install && rails db:prepare');
+    expect(projectReport?.status).toBe('passed');
+
+    await fsExtra.remove(workspacePath);
+  });
+
+  it('reports canonical framework labels from manifest detection when context metadata is missing', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
+    const projectPath = await createProjectWithoutContext(workspacePath, 'apps/gin-api');
+    await fsExtra.writeFile(
+      path.join(projectPath, 'go.mod'),
+      'module example\n\nrequire github.com/gin-gonic/gin v1.9.1\n'
+    );
+
+    const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
+    execaMock.mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args.includes('test')) {
+        return { exitCode: 0, stdout: 'ok', stderr: '' };
+      }
+      return { exitCode: 0, stdout: '{}', stderr: '' };
+    });
+
+    const report = await runWorkspaceStage({
+      workspacePath,
+      stage: 'test',
+      enforceGates: false,
+      json: true,
+    });
+
+    const projectReport = report.projects.find((item) => item.relativePath === 'apps/gin-api');
+    expect(projectReport?.framework).toBe('gogin');
+    expect(projectReport?.runtimeDetected).toBe('go');
+    expect(projectReport?.executionCommand).toBe('rapidkit test');
+    expect(projectReport?.status).toBe('passed');
 
     await fsExtra.remove(workspacePath);
   });

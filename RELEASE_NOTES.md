@@ -1,6 +1,60 @@
 # Release Notes
 
-## Latest Release: v0.27.3 (May 9, 2026)
+## Latest Release: v0.27.4 (May 11, 2026)
+
+### 🧭 v0.27.4 — Import Command, Shared Parity Contract Gate, Evidence Schema Hardening, and Strict Doctor Scope Boundaries (Patch)
+
+This patch introduces workspace import flows in the npm wrapper, hardens shared npm/extension import-stack parity gates, strengthens doctor/readiness schema compatibility behavior, and enforces strict doctor scope boundaries for deterministic behavior.
+
+**What's New:**
+
+- 🧭 **Strict project scope behavior**
+  - `doctor project` no longer falls back to workspace-root backend markers when run from non-project paths inside a workspace.
+  - Project mode now requires a real project directory boundary and returns explicit guidance when scope is invalid.
+
+- 🏗️ **Stricter workspace architecture validation**
+  - `doctor workspace` now validates workspace-root structure more strictly before execution.
+  - Marker-only paths that do not satisfy RapidKit workspace architecture are rejected.
+
+- 🧪 **New regression guarantees**
+  - Added tests to prevent project-mode misclassification against workspace root.
+  - Added tests to prevent workspace-mode execution on invalid marker-only roots.
+
+- 📥 **New workspace import command**
+  - Added: `npx rapidkit import <path|git-url> [--workspace <path>] [--name <project-name>] [--git] [--json]`
+  - Supports local-folder copy and git clone imports.
+  - Adds rollback-safe behavior when post-import workspace sync fails.
+  - Adds deterministic JSON output including workspace resolution and suggested shell navigation.
+
+- 🔒 **Shared parity contract gate hardening**
+  - Added strict schema pinning for shared parity snapshot (`backend-import-stack-parity-v1`).
+  - Added bidirectional key-set checks for framework/runtime parity mapping.
+  - Added resilient snapshot path resolution with optional override:
+    - `RAPIDKIT_BACKEND_IMPORT_PARITY_SNAPSHOT`
+  - Added CI gate to run `npm run test:parity-contract` in npm pipeline.
+
+- 🧾 **Doctor evidence compatibility hardening**
+  - Introduced explicit doctor evidence schema compatibility checks.
+  - Unknown/incompatible schema versions are now treated as invalid evidence (safe fallback).
+  - Legacy evidence without schema tags remains supported.
+
+- 🧠 **Canonical backend metadata alignment**
+  - Doctor JSON outputs now include canonical backend identity fields:
+    - `frameworkKey`
+    - `importStack`
+  - Runtime/framework normalization was consolidated through shared backend contract utilities.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.27.4
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.27.4.md)
+
+---
+
+## Previous Release: v0.27.3 (May 9, 2026)
 
 ### 🎯 v0.27.3 — Doctor Project Scope, Workspace Run Orchestration, and OSS Docs Cleanup (Patch)
 

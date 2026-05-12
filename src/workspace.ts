@@ -5,6 +5,7 @@ import ora from 'ora';
 import { execa } from 'execa';
 import { getVersion } from './update-checker.js';
 import { getWorkspaceRegistryDirectory } from './utils/platform-capabilities.js';
+import { isDoctorEvidencePayloadCompatible } from './utils/doctor-evidence-contract.js';
 
 interface WorkspaceProject {
   name: string;
@@ -1348,6 +1349,10 @@ async function readJsonIfExists(filePath: string): Promise<unknown | null> {
   }
 }
 
+function shouldIncludeDoctorShareReport(payload: unknown): boolean {
+  return isDoctorEvidencePayloadCompatible(payload);
+}
+
 async function pathExists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath);
@@ -1462,7 +1467,7 @@ export async function createWorkspaceShareBundle(
       const doctorReport = await readJsonIfExists(
         path.join(projectReportsDir, 'doctor-last-run.json')
       );
-      if (doctorReport) {
+      if (shouldIncludeDoctorShareReport(doctorReport)) {
         projectEntry.doctor_report = doctorReport;
       }
     }

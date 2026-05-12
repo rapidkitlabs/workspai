@@ -152,4 +152,48 @@ describe('release readiness', () => {
     expect(dependencyGate?.status).toBe('fail');
     expect(dependencyGate?.summary).toContain('vulnerability');
   });
+
+  it('treats unknown doctor evidence schema as missing evidence', async () => {
+    const workspace = await makeWorkspace();
+
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'toolchain.lock'), {
+      runtime: {
+        node: { version: '20.12.0' },
+      },
+    });
+
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'reports', 'doctor-last-run.json'), {
+      schemaVersion: 'doctor-workspace-evidence-v999',
+      evidenceType: 'workspace',
+      summary: {
+        totalIssues: 0,
+        hasSystemErrors: false,
+      },
+      projects: [
+        {
+          name: 'api-service',
+          depsInstalled: true,
+          vulnerabilities: 0,
+        },
+      ],
+    });
+
+    await fsExtra.writeJSON(
+      path.join(workspace, '.rapidkit', 'reports', 'workspace-verify-pack-contract.json'),
+      {
+        schemaVersion: 'v1',
+        status: 'pass',
+        summary: {
+          failedChecks: 0,
+        },
+      }
+    );
+
+    const readiness = await evaluateReleaseReadiness({ startPath: workspace, writeReport: false });
+    const doctorGate = readiness.gates.find((gate) => gate.gate === 'doctor');
+
+    expect(readiness.overallStatus).toBe('fail');
+    expect(doctorGate?.status).toBe('fail');
+    expect(doctorGate?.summary).toContain('missing');
+  });
 });

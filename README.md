@@ -126,9 +126,43 @@ npx rapidkit doctor workspace [--fix]
 npx rapidkit doctor project [--fix]
 npx rapidkit workspace list # Display all workspaces created on this system
 npx rapidkit workspace share [--output <file>] [--include-paths] [--no-doctor]
+npx rapidkit import <path|git-url> [--workspace <path>] [--name <project-name>] [--git] [--json]
 npx rapidkit workspace init # Full-init alias (same behavior as root init/workspace run init at workspace root)
 npx rapidkit workspace run <init|test|build|start> [--affected] [--blast-radius] [--since <ref>] [--parallel] [--max-workers <n>] [--strict] [--json]
 ```
+
+### Project import into workspace
+
+Use `import` to bring an existing backend project (local folder or git repository) into a RapidKit workspace.
+
+```bash
+# Local folder import
+npx rapidkit import ../orders-api
+
+# Git import
+npx rapidkit import https://github.com/acme/orders-api.git --git
+
+# Explicit workspace and custom target name
+npx rapidkit import ../orders-api --workspace ./my-workspace --name orders-api
+
+# Machine-readable output
+npx rapidkit import ../orders-api --json
+```
+
+Import behavior:
+
+- Local folders are copied; git sources are cloned with shallow history.
+- If you run import outside any workspace and do not pass `--workspace`, RapidKit auto-creates/reuses the default workspace at `~/Workspai/rapidkits/default-workspace`.
+- CLI cannot change your parent shell directory; instead it prints a next-step `cd ...` hint (and returns `suggestedCdCommand` in JSON mode).
+- If workspace sync fails after import, RapidKit rolls back imported files and registry entries before returning an error.
+
+JSON output (`--json`) includes:
+
+- `workspacePath`
+- `workspaceResolution` (`explicit` | `nearest` | `default-auto`)
+- `defaultWorkspaceCreated`
+- `suggestedCdCommand`
+- `importedProject` (`name`, `path`, `stack`, `confidence`, `source`)
 
 ### Workspace collaboration bundle
 
@@ -163,6 +197,7 @@ RapidKit keeps the wrapper boundary explicit so users know which layer owns each
 | `init` | Wrapper orchestrated | Project init in project dirs; full-init alias at workspace root |
 | `dev`, `test`, `build`, `start` | Runtime aware | Delegates to the active project/runtime when available |
 | `readiness` | Wrapper release gate | Generates release-readiness evidence (`--json` for CI, `--strict` for fail-fast) |
+| `import` | Workspace ingestion | Imports local folders or git backends with rollback-safe sync behavior |
 | `doctor` | Wrapper system check | Checks host prerequisites by default |
 | `doctor workspace` | Workspace health | Full workspace scan with project-level details and fixes |
 | `doctor project` | Project health | Current project (or nearest parent) diagnostics with project evidence and scoped fixes |
@@ -185,6 +220,8 @@ Use `npx rapidkit readiness` when you need machine-readable release evidence or 
 `npx rapidkit doctor workspace --json` includes project-level runtime/profile metadata used by extension and AI tooling:
 
 - `framework`
+- `frameworkKey`
+- `importStack`
 - `runtimeFamily`
 - `projectKind`
 - `supportTier`
@@ -204,10 +241,24 @@ Use `npx rapidkit readiness` when you need machine-readable release evidence or 
 
 - `scope` (`project`)
 - `contract` (doctor evidence contract + scoring policy version)
-- `project` (framework/runtime metadata, issues, fix commands, probes)
+- `project` (framework/runtime metadata, canonical `frameworkKey` and `importStack`, issues, fix commands, probes)
 - `summary.scopeProvenance`
 - `driftDelta`
 - `scoreBreakdown`
+
+### Doctor evidence schema compatibility
+
+Doctor persisted evidence now carries explicit schema tags:
+
+- Workspace evidence: `schemaVersion = doctor-workspace-evidence-v1`, `evidenceType = workspace`
+- Project evidence: `schemaVersion = doctor-project-evidence-v1`, `evidenceType = project`
+- Workspace scan cache: `schemaVersion = doctor-workspace-cache-v1`
+
+Compatibility policy for automation consumers:
+
+- Legacy doctor evidence without `schemaVersion` is still accepted.
+- Unknown or incompatible doctor evidence schema versions are treated as invalid evidence (safe fallback, no crash).
+- `readiness` and `workspace share` use the same compatibility validation path, so behavior is consistent across CLI surfaces.
 
 ### Project lifecycle
 

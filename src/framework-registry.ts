@@ -2,6 +2,10 @@ import fs from 'fs';
 import path from 'path';
 
 import { execa } from 'execa';
+import {
+  detectRuntimeCandidatesFromProject,
+  normalizeBackendFrameworkLabel,
+} from './utils/backend-framework-contract.js';
 
 /**
  * Framework Registry for Workspace Run
@@ -554,7 +558,24 @@ export function getStageCommand(
 ): string | undefined {
   // Exact match: php-laravel, rust-actix, etc.
   if (framework) {
-    const key = `${runtime}-${framework.toLowerCase().replace(/\s+/g, '-')}`;
+    const normalizedRaw = framework
+      .trim()
+      .toLowerCase()
+      .replace(/[_.\s]+/g, '-');
+    const canonicalFramework = normalizeBackendFrameworkLabel(framework);
+    const registryFramework = (() => {
+      if (canonicalFramework === 'gofiber') return 'fiber';
+      if (canonicalFramework === 'gogin') return 'gin';
+      if (canonicalFramework === 'dotnet') return 'aspnetcore';
+      if (canonicalFramework !== 'unknown') return canonicalFramework;
+      if (normalizedRaw === 'fiber') return 'fiber';
+      if (normalizedRaw === 'aspnetcore' || normalizedRaw === 'asp-net-core') {
+        return 'aspnetcore';
+      }
+      return normalizedRaw;
+    })();
+
+    const key = `${runtime}-${registryFramework}`;
     const entry = FRAMEWORK_REGISTRY[key];
     if (entry && entry.commands[stage]) {
       return entry.commands[stage];
@@ -574,30 +595,24 @@ export function detectRuntimesFromMarkers(projectPath: string): {
   primary: RuntimeFamily;
   secondary: RuntimeFamily[];
 } {
-  const checks: Array<{ file: string; runtime: RuntimeFamily }> = [
-    { file: 'go.mod', runtime: 'go' },
-    { file: 'Cargo.toml', runtime: 'rust' },
-    { file: 'pom.xml', runtime: 'java' },
-    { file: 'build.gradle', runtime: 'java' },
-    { file: 'mix.exs', runtime: 'elixir' },
-    { file: 'composer.json', runtime: 'php' },
-    { file: '.csproj', runtime: 'dotnet' },
-    { file: '.sln', runtime: 'dotnet' },
-    { file: 'package.json', runtime: 'node' },
-    { file: 'Gemfile', runtime: 'ruby' },
-    { file: 'pyproject.toml', runtime: 'python' },
-    { file: 'setup.py', runtime: 'python' },
-    { file: 'requirements.txt', runtime: 'python' },
-  ];
-
-  const detected: RuntimeFamily[] = [];
-  for (const { file, runtime } of checks) {
-    if (fs.existsSync(path.join(projectPath, file))) {
-      if (!detected.includes(runtime)) {
-        detected.push(runtime);
+  const detected = detectRuntimeCandidatesFromProject(projectPath)
+    .map((runtime): RuntimeFamily | null => {
+      if (runtime === 'python') return 'python';
+      if (runtime === 'node' || runtime === 'bun') return 'node';
+      if (runtime === 'go') return 'go';
+      if (runtime === 'java') return 'java';
+      if (runtime === 'php') return 'php';
+      if (runtime === 'rust') return 'rust';
+      if (runtime === 'dotnet') return 'dotnet';
+      if (runtime === 'elixir') return 'elixir';
+      if (runtime === 'ruby') return 'ruby';
+      if (runtime === 'clojure' || runtime === 'scala' || runtime === 'kotlin') {
+        return 'jvm-generic';
       }
-    }
-  }
+      return null;
+    })
+    .filter((runtime): runtime is RuntimeFamily => runtime !== null)
+    .filter((runtime, index, all) => all.indexOf(runtime) === index);
 
   return {
     primary: detected.length > 0 ? detected[0] : 'unknown',
