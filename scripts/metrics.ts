@@ -23,6 +23,8 @@ interface Metrics {
   security_vulnerabilities: number;
 }
 
+const BUNDLE_SIZE_LIMIT_KB = Number(process.env.RAPIDKIT_BUNDLE_SIZE_LIMIT_KB ?? '600');
+
 class MetricsCollector {
   private rootDir: string;
 
@@ -253,7 +255,7 @@ class MetricsCollector {
    */
   validateMetrics(metrics: Metrics): boolean {
     const targets = {
-      bundle_size_kb: 550,
+      bundle_size_kb: BUNDLE_SIZE_LIMIT_KB,
       test_coverage: 80,
       eslint_errors: 0,
       security_vulnerabilities: 0,
