@@ -567,6 +567,7 @@ describe('CLI Entry Point', () => {
             env: {
               ...process.env,
               HOME: fakeHome,
+              USERPROFILE: fakeHome,
             },
           }
         );
