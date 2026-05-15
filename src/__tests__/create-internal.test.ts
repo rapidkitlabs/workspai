@@ -6,10 +6,19 @@ import { promises as fsPromises } from 'fs';
 import { createProject } from '../create';
 import { getPythonCommand } from '../utils';
 import { DirectoryExistsError } from '../errors';
+import { checkRapidkitCoreVersionCompatible } from '../core-bridge/pythonRapidkitExec.js';
 
 vi.mock('fs-extra');
 vi.mock('execa');
 vi.mock('inquirer');
+vi.mock('../core-bridge/pythonRapidkitExec.js', () => ({
+  checkRapidkitCoreVersionCompatible: vi.fn().mockResolvedValue({
+    isCompatible: false,
+    installedVersion: null,
+    expectedConstraint: null,
+    reason: 'constraint-missing',
+  }),
+}));
 vi.mock('ora', () => ({
   default: vi.fn(() => ({
     start: vi.fn().mockReturnThis(),
@@ -26,6 +35,12 @@ describe('Create Module - Internal Functions', () => {
     vi.mocked(fsExtra.pathExists).mockResolvedValue(false);
     vi.mocked(fsExtra.ensureDir).mockResolvedValue(undefined);
     vi.mocked(fsExtra.outputFile).mockResolvedValue(undefined);
+    vi.mocked(checkRapidkitCoreVersionCompatible).mockResolvedValue({
+      isCompatible: false,
+      installedVersion: null,
+      expectedConstraint: null,
+      reason: 'constraint-missing',
+    });
     vi.spyOn(fsPromises, 'readFile').mockResolvedValue('');
     vi.spyOn(fsPromises, 'writeFile').mockResolvedValue(undefined);
   });
@@ -195,6 +210,13 @@ describe('Create Module - Internal Functions', () => {
     });
 
     it('should not prompt to install pipx when Poetry is missing (fallback to venv)', async () => {
+      vi.mocked(checkRapidkitCoreVersionCompatible).mockResolvedValue({
+        isCompatible: true,
+        installedVersion: '0.27.4',
+        expectedConstraint: '>=0.27.0,<0.28.0',
+        reason: 'compatible',
+      });
+
       vi.mocked(inquirer.prompt).mockImplementation(async (questions: any) => {
         const names = Array.isArray(questions) ? questions.map((q) => q?.name) : [];
         if (names.includes('installPoetry')) return { installPoetry: true } as any;
@@ -326,24 +348,76 @@ describe('Create Module - Internal Functions', () => {
       expect(execa).toHaveBeenCalledWith(pythonCmd, ['-m', 'venv', '.venv'], expect.any(Object));
     });
 
-    it('should throw error when Python not found', async () => {
+    it('should fallback to minimal when Python not found in interactive mode', async () => {
+      // Test the new smart fallback behavior: when Python is missing but
+      // user is in interactive mode (inquirer is available), offer options
+      vi.mocked(inquirer.prompt).mockImplementation((questions: any) => {
+        // When asked about profile selection, return python-only
+        if (Array.isArray(questions) && questions[0]?.name === 'selectedProfile') {
+          return Promise.resolve({ selectedProfile: 'python-only' });
+        }
+        // When asked about Python missing action, choose fallback
+        if (Array.isArray(questions) && questions[0]?.name === 'pythonAction') {
+          return Promise.resolve({ pythonAction: 'fallback' });
+        }
+        // Default responses
+        return Promise.resolve({
+          pythonVersion: '3.10',
+          installMethod: 'venv',
+        });
+      });
+
+      vi.mocked(execa).mockImplementation((command: string, args?: readonly string[]) => {
+        // Reject on python --version to simulate Python not found
+        if ((command === 'python' || command === 'python3') && args?.[0] === '--version') {
+          return Promise.reject(new Error('Command not found: python'));
+        }
+        // Mock git init for fallback path
+        if (command === 'git' && args?.[0] === 'init') {
+          return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 } as any);
+        }
+        if (command === 'git' && (args?.[0] === 'add' || args?.[0] === 'commit')) {
+          return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 } as any);
+        }
+        // Return success for other commands
+        return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 } as any);
+      });
+
+      // Smart fallback should succeed by creating workspace with minimal profile
+      // instead of throwing an error
+      await expect(
+        createProject('test-project', { profile: 'python-only' })
+      ).resolves.toBeUndefined();
+    });
+
+    it('should auto-fallback to minimal when Python not found with --yes flag', async () => {
+      // Test auto-fallback behavior: when Python missing and --yes (non-interactive),
+      // automatically switch to minimal profile without prompting
       vi.mocked(inquirer.prompt).mockResolvedValue({
         pythonVersion: '3.10',
         installMethod: 'venv',
       });
 
       vi.mocked(execa).mockImplementation((command: string, args?: readonly string[]) => {
-        // Reject on any python --version call (both python and python3)
+        // Reject on python --version to simulate Python not found
         if ((command === 'python' || command === 'python3') && args?.[0] === '--version') {
           return Promise.reject(new Error('Command not found: python'));
         }
-        // Return success for other commands to avoid unrelated failures
+        // Mock git init for fallback path
+        if (command === 'git' && args?.[0] === 'init') {
+          return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 } as any);
+        }
+        if (command === 'git' && (args?.[0] === 'add' || args?.[0] === 'commit')) {
+          return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 } as any);
+        }
+        // Return success for other commands
         return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 } as any);
       });
 
-      await expect(createProject('test-project', { profile: 'python-only' })).rejects.toThrow(
-        'process.exit unexpectedly called with "1"'
-      );
+      // Auto-fallback should succeed with --yes flag
+      await expect(
+        createProject('test-project', { profile: 'python-only', yes: true })
+      ).resolves.toBeUndefined();
     });
 
     it('should install from local path in venv test mode', async () => {
@@ -399,6 +473,32 @@ describe('Create Module - Internal Functions', () => {
       expect(execa).toHaveBeenCalledWith('pipx', ['install', 'rapidkit-core']);
     });
 
+    it('should skip pipx install when RapidKit is already available globally', async () => {
+      vi.mocked(inquirer.prompt).mockResolvedValue({
+        pythonVersion: '3.10',
+        installMethod: 'pipx',
+      });
+      vi.mocked(checkRapidkitCoreVersionCompatible).mockResolvedValue({
+        isCompatible: true,
+        installedVersion: '0.27.4',
+        expectedConstraint: '>=0.27.0,<0.28.0',
+        reason: 'compatible',
+      });
+
+      vi.mocked(execa).mockImplementation((command: string) => {
+        if (command === 'git') {
+          return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 } as any);
+        }
+        return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 } as any);
+      });
+
+      await createProject('test-project', { profile: 'python-only' });
+
+      expect(checkRapidkitCoreVersionCompatible).toHaveBeenCalled();
+      expect(execa).not.toHaveBeenCalledWith('pipx', ['--version']);
+      expect(execa).not.toHaveBeenCalledWith('pipx', ['install', 'rapidkit-core']);
+    });
+
     it('should check for pipx before installation', async () => {
       vi.mocked(inquirer.prompt).mockResolvedValue({
         pythonVersion: '3.10',
@@ -410,6 +510,31 @@ describe('Create Module - Internal Functions', () => {
       await createProject('test-project', { profile: 'python-only' });
 
       expect(execa).toHaveBeenCalledWith('pipx', ['--version']);
+    });
+
+    it('should upgrade with pipx when install fails due existing global package', async () => {
+      vi.mocked(inquirer.prompt).mockResolvedValue({
+        pythonVersion: '3.10',
+        installMethod: 'pipx',
+      });
+
+      vi.mocked(execa).mockImplementation((command: string, args?: readonly string[]) => {
+        if (command === 'pipx' && args?.[0] === '--version') {
+          return Promise.resolve({ stdout: 'pipx 1.2.0', stderr: '', exitCode: 0 } as any);
+        }
+        if (command === 'pipx' && args?.[0] === 'install') {
+          return Promise.reject(new Error('Package is already installed.'));
+        }
+        if (command === 'pipx' && args?.[0] === 'upgrade') {
+          return Promise.resolve({ stdout: 'upgraded', stderr: '', exitCode: 0 } as any);
+        }
+        return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 } as any);
+      });
+
+      await createProject('test-project', { profile: 'python-only' });
+
+      expect(execa).toHaveBeenCalledWith('pipx', ['install', 'rapidkit-core']);
+      expect(execa).toHaveBeenCalledWith('pipx', ['upgrade', 'rapidkit-core']);
     });
 
     it('should install editable with pipx in test mode', async () => {

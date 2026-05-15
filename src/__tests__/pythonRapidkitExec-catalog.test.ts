@@ -437,3 +437,61 @@ describe('checkRapidkitCoreAvailable', () => {
     expect(result).toBe(false);
   });
 });
+
+describe('checkRapidkitCoreVersionCompatible', () => {
+  let bridge: typeof import('../core-bridge/pythonRapidkitExec');
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    delete process.env.RAPIDKIT_CORE_PYTHON_PACKAGE;
+    bridge = await import('../core-bridge/pythonRapidkitExec');
+  });
+
+  afterEach(() => {
+    delete process.env.RAPIDKIT_CORE_PYTHON_PACKAGE;
+  });
+
+  it('returns compatible=true when installed version satisfies explicit constraint', async () => {
+    process.env.RAPIDKIT_CORE_PYTHON_PACKAGE = 'rapidkit-core>=0.27.0,<0.28.0';
+
+    mockExeca.mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args?.[0] === '-m' && args?.[1] === 'pip' && args?.[2] === 'show') {
+        return { exitCode: 0, stdout: 'Name: rapidkit-core\nVersion: 0.27.4', stderr: '' };
+      }
+      throw new Error('not found');
+    });
+
+    const result = await bridge.__test__.checkRapidkitCoreVersionCompatible();
+    expect(result.isCompatible).toBe(true);
+    expect(result.installedVersion).toBe('0.27.4');
+    expect(result.expectedConstraint).toBe('>=0.27.0,<0.28.0');
+    expect(result.reason).toBe('compatible');
+  });
+
+  it('returns compatible=false when installed version is outside explicit constraint', async () => {
+    process.env.RAPIDKIT_CORE_PYTHON_PACKAGE = 'rapidkit-core>=0.27.0,<0.28.0';
+
+    mockExeca.mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args?.[0] === '-m' && args?.[1] === 'pip' && args?.[2] === 'show') {
+        return { exitCode: 0, stdout: 'Name: rapidkit-core\nVersion: 0.26.9', stderr: '' };
+      }
+      throw new Error('not found');
+    });
+
+    const result = await bridge.__test__.checkRapidkitCoreVersionCompatible();
+    expect(result.isCompatible).toBe(false);
+    expect(result.installedVersion).toBe('0.26.9');
+    expect(result.expectedConstraint).toBe('>=0.27.0,<0.28.0');
+    expect(result.reason).toBe('incompatible-version');
+  });
+
+  it('returns compatible=false when no explicit constraint is provided', async () => {
+    process.env.RAPIDKIT_CORE_PYTHON_PACKAGE = 'rapidkit-core';
+
+    const result = await bridge.__test__.checkRapidkitCoreVersionCompatible();
+    expect(result.isCompatible).toBe(false);
+    expect(result.expectedConstraint).toBeNull();
+    expect(result.reason).toBe('constraint-missing');
+  });
+});

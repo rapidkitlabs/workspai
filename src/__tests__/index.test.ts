@@ -511,7 +511,9 @@ describe('CLI Entry Point', () => {
       await execa('git', ['config', 'user.email', 'rapidkit@example.com'], { cwd: gitSource });
       await execa('git', ['config', 'user.name', 'RapidKit Test'], { cwd: gitSource });
       await execa('git', ['add', '.'], { cwd: gitSource });
-      await execa('git', ['commit', '-m', 'init'], { cwd: gitSource });
+      await execa('git', ['-c', 'commit.gpgsign=false', 'commit', '-m', 'init'], {
+        cwd: gitSource,
+      });
 
       try {
         const { stdout, exitCode } = await execa('node', [

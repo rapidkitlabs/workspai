@@ -787,7 +787,19 @@ export async function createProject(
 
   // Dry-run mode - show what would be created
   if (dryRun) {
-    await showDryRun(projectPath, name, demoMode, userConfig);
+    const defaultProfile = profile || (yes ? 'minimal' : undefined);
+    const defaultInstallMethod =
+      providedInstallMethod || userConfig.defaultInstallMethod || 'poetry';
+    const defaultPythonVersion = userConfig.pythonVersion || '3.10';
+    await showDryRun(
+      projectPath,
+      name,
+      demoMode,
+      userConfig,
+      defaultProfile,
+      defaultInstallMethod,
+      defaultPythonVersion
+    );
     return;
   }
 
@@ -874,8 +886,8 @@ export async function createProject(
   const installMethodChoices = [
     {
       name: installMethodAvailability.poetry
-        ? '🎯 Poetry (Recommended - includes virtual env)'
-        : '🎯 Poetry (Recommended - includes virtual env) — not detected (we can install it)',
+        ? '🎯 Poetry (Recommended - includes virtual env + dependency mgmt)'
+        : '🎯 Poetry (Recommended) — not detected (we can install it)',
       value: 'poetry',
     },
     {
@@ -884,8 +896,8 @@ export async function createProject(
     },
     {
       name: installMethodAvailability.pipx
-        ? '🔧 pipx (Global isolated install)'
-        : '🔧 pipx (Global isolated install) — not detected (we can install it)',
+        ? '🔧 pipx (Global isolated - RapidKit CLI only, no local venv)'
+        : '🔧 pipx (Global isolated) — not detected (we can install it)',
       value: 'pipx',
     },
   ] as const;
@@ -928,6 +940,31 @@ export async function createProject(
           installMethod: resolvedMethod,
         };
       })();
+
+  // Show version pinning hints
+  if (needsPythonPrompts) {
+    console.log(chalk.gray(`\n📌 Configuration notes:`));
+    if (pythonAnswers.pythonVersion === '3.10') {
+      console.log(chalk.gray(`  • Python 3.10: Latest stable with widespread compatibility`));
+    } else if (pythonAnswers.pythonVersion === '3.11') {
+      console.log(chalk.gray(`  • Python 3.11: Newer, faster (3.10-3.11: ~10% speed improvement)`));
+    } else if (pythonAnswers.pythonVersion === '3.12') {
+      console.log(chalk.gray(`  • Python 3.12: Cutting edge, excellent for performance`));
+    }
+
+    if (pythonAnswers.installMethod === 'poetry') {
+      console.log(
+        chalk.gray(`  • Poetry: Dependency management + virtual env (recommended for teams)`)
+      );
+    } else if (pythonAnswers.installMethod === 'venv') {
+      console.log(
+        chalk.gray(`  • venv: Standard library approach, lightweight, zero dependencies`)
+      );
+    } else {
+      console.log(chalk.gray(`  • pipx: Global isolated, RapidKit CLI only, no local venv`));
+    }
+    console.log('');
+  }
 
   // ── Lite workspace fast path ─────────────────────────────────────────────────
   // Profiles that don't involve a Python engine skip Poetry/venv/pipx entirely.
@@ -1069,10 +1106,15 @@ export async function createProject(
         console.log(chalk.white('   npx rapidkit dev\n'));
         console.log(
           chalk.gray(
-            '💡 Bootstrap a specific runtime any time: rapidkit bootstrap --profile java-only|python-only|node-only|go-only'
+            '💡 Bootstrap a specific runtime: rapidkit bootstrap --profile java-only|python-only|node-only|go-only|polyglot|enterprise'
           )
         );
       }
+
+      console.log(chalk.cyan('\n📚 More info:'));
+      console.log(chalk.gray('  • Change profile anytime: rapidkit bootstrap --profile <profile>'));
+      console.log(chalk.gray('  • View config: cat ' + name + '/.rapidkit-workspace'));
+      console.log(chalk.gray('  • Check health: rapidkit doctor'));
       console.log('');
     } catch (_err) {
       spinner2.fail('Failed to create workspace');
@@ -1085,6 +1127,7 @@ export async function createProject(
   // ── Python pre-check (only for python-required profiles) ───────────────────
   // go-only / java-only / node-only / minimal users have already returned above without
   // needing Python at all. Only python-only / polyglot / enterprise reach here.
+  // Smart fallback: if Python is not found, offer options instead of hard failure.
   {
     const pythonCmd = getPythonCommand();
     let pythonAvailable = false;
@@ -1101,15 +1144,242 @@ export async function createProject(
     }
 
     if (!pythonAvailable) {
-      console.log(
-        chalk.red(`\n❌ Python 3.10+ is required for the "${resolvedProfile}" profile.\n`)
-      );
-      console.log(chalk.cyan('💡 How to install Python:\n'));
-      console.log(chalk.white('   Ubuntu / Debian:  sudo apt install python3.10'));
-      console.log(chalk.white('   macOS (Homebrew): brew install python@3.10'));
-      console.log(chalk.white('   Windows:          https://python.org/downloads\n'));
-      console.log(chalk.gray(`   After installing Python, run:  npx rapidkit ${name}\n`));
-      process.exit(1);
+      // Smart fallback profiles: if Python is not available, suggest alternatives
+      const fallbackProfile: Record<string, string> = {
+        'python-only': 'minimal', // python-only → minimal (no Python needed)
+        polyglot: 'node-only', // polyglot → node-only (drop Python, keep Node)
+        enterprise: 'polyglot', // enterprise → polyglot (drop governance features)
+      };
+
+      const fallback = fallbackProfile[resolvedProfile];
+      const isInteractive = needsPythonPrompts && !yes; // User was prompted before
+
+      if (isInteractive) {
+        // Interactive mode: ask user what to do
+        console.log(chalk.yellow(`\n⚠️  Python 3.10+ is not detected on this system.\n`));
+        console.log(chalk.cyan('You have 3 options:\n'));
+
+        const { pythonAction } = (await inquirer.prompt([
+          {
+            type: 'rawlist',
+            name: 'pythonAction',
+            message: 'What would you like to do?',
+            choices: [
+              {
+                name: `📥 Install Python now (I'll show you the command for your OS)`,
+                value: 'install',
+              },
+              {
+                name: `🔄 Switch to "${fallback}" profile (no Python required)`,
+                value: 'fallback',
+              },
+              {
+                name: '❌ Cancel and install Python manually',
+                value: 'cancel',
+              },
+            ],
+          },
+        ])) as { pythonAction: string };
+
+        if (pythonAction === 'cancel') {
+          console.log(chalk.cyan('\n💡 How to install Python:\n'));
+          console.log(chalk.white('   Ubuntu / Debian:  sudo apt install python3.10'));
+          console.log(chalk.white('   macOS (Homebrew): brew install python@3.10'));
+          console.log(chalk.white('   Windows:          https://python.org/downloads\n'));
+          console.log(chalk.gray(`   After installing Python, run:  npx rapidkit ${name}\n`));
+          process.exit(1);
+        }
+
+        if (pythonAction === 'install') {
+          console.log(chalk.cyan('\n💡 Install Python on your system:\n'));
+          const osType = process.platform;
+          if (osType === 'linux') {
+            console.log(
+              chalk.white('   sudo apt update && sudo apt install python3.10 python3.10-venv\n')
+            );
+          } else if (osType === 'darwin') {
+            console.log(chalk.white('   brew install python@3.10\n'));
+          } else if (osType === 'win32') {
+            console.log(chalk.white('   Download: https://python.org/downloads\n'));
+            console.log(chalk.white('   Run the installer and check "Add Python to PATH"\n'));
+          }
+          console.log(chalk.gray(`   After installing, run:  npx rapidkit ${name}\n`));
+          process.exit(0);
+        }
+
+        if (pythonAction === 'fallback') {
+          console.log(
+            chalk.green(`\n✅ Switching to "${fallback}" profile (no Python required).\n`)
+          );
+          resolvedProfile = fallback;
+          // Restart with fallback profile in PYTHON_FREE_PROFILES path
+          // We'll return early and restart the creation with the fallback profile
+          const PYTHON_FREE_PROFILES = new Set(['go-only', 'java-only', 'node-only', 'minimal']);
+          if (PYTHON_FREE_PROFILES.has(fallback)) {
+            const spinner2 = ora('Creating workspace').start();
+            try {
+              await fsExtra.ensureDir(projectPath);
+              spinner2.succeed('Directory created');
+
+              await writeWorkspaceMarker(projectPath, name, 'venv', undefined);
+              await writeWorkspaceFoundationFiles(projectPath, name, 'venv', undefined, fallback);
+              await writeWorkspaceGitignore(projectPath);
+              await writePyprojectStub(projectPath, name);
+
+              const profileLabel: Record<string, string> = {
+                'go-only': 'Go-only',
+                'java-only': 'Java-only',
+                'node-only': 'Node.js-only',
+                minimal: 'Minimal',
+              };
+              await fsExtra.outputFile(
+                path.join(projectPath, 'README.md'),
+                `# ${name}\n\nRapidKit **${profileLabel[fallback]}** workspace (switched from ${resolvedProfile} due to missing Python).\n\n` +
+                  `## Quick start\n\n` +
+                  `\`\`\`bash\n` +
+                  (fallback === 'go-only'
+                    ? `npx rapidkit create project gofiber.standard my-api\n` +
+                      `cd my-api\n` +
+                      `npx rapidkit init\n` +
+                      `npx rapidkit dev\n`
+                    : fallback === 'java-only'
+                      ? `npx rapidkit create project springboot.standard my-service\n` +
+                        `cd my-service\n` +
+                        `npx rapidkit init\n` +
+                        `npx rapidkit dev\n`
+                      : fallback === 'node-only'
+                        ? `npx rapidkit create project nestjs.standard my-app\n` +
+                          `cd my-app\n` +
+                          `npx rapidkit init\n` +
+                          `npx rapidkit dev\n`
+                        : `npx rapidkit create project\ncd <project-name>\nnpx rapidkit init\nnpx rapidkit dev\n`) +
+                  `\`\`\`\n`,
+                'utf-8'
+              );
+
+              if (!skipGit) {
+                spinner2.start('Initializing git repository');
+                try {
+                  await execa('git', ['init'], { cwd: projectPath });
+                  await execa('git', ['add', '.'], { cwd: projectPath });
+                  await execa(
+                    'git',
+                    ['commit', '-m', `Initial commit: RapidKit workspace (${fallback} profile)`],
+                    {
+                      cwd: projectPath,
+                    }
+                  );
+                  spinner2.succeed('Git repository initialized');
+                } catch {
+                  spinner2.warn('Could not initialize git repository');
+                }
+              }
+
+              try {
+                const { registerWorkspace } = await import('./workspace.js');
+                await registerWorkspace(projectPath, name);
+              } catch {
+                /* silent */
+              }
+
+              console.log(chalk.green('\n✨ Workspace created with fallback profile!\n'));
+              console.log(chalk.cyan('📂 Location:'), chalk.white(projectPath));
+              console.log(chalk.cyan('\n🚀 Get started:\n'));
+              console.log(chalk.white(`   cd ${name}`));
+              console.log(chalk.white('   npx rapidkit create project'));
+              console.log(chalk.white('   cd <project-name>'));
+              console.log(chalk.white('   npx rapidkit init'));
+              console.log(chalk.white('   npx rapidkit dev\n'));
+              console.log(chalk.cyan('💡 To use Python later:\n'));
+              console.log(chalk.gray('   1. Install Python 3.10+'));
+              console.log(
+                chalk.gray(`   2. Run: rapidkit bootstrap --profile ${resolvedProfile}\n`)
+              );
+              console.log('');
+              return; // Exit successfully with fallback profile
+            } catch (_err) {
+              spinner2.fail('Failed to create workspace');
+              console.error(chalk.red('\n❌ Error:'), _err);
+              throw _err;
+            }
+          }
+        }
+      } else {
+        // Non-interactive mode (--yes): auto-fallback
+        console.log(
+          chalk.yellow(
+            `\n⚠️  Python not detected. Auto-switching to "${fallback}" profile (no Python required).\n`
+          )
+        );
+        resolvedProfile = fallback;
+
+        // Immediately restart with fallback profile
+        const PYTHON_FREE_PROFILES = new Set(['go-only', 'java-only', 'node-only', 'minimal']);
+        if (PYTHON_FREE_PROFILES.has(fallback)) {
+          const spinner2 = ora('Creating workspace').start();
+          try {
+            await fsExtra.ensureDir(projectPath);
+            spinner2.succeed('Directory created');
+
+            await writeWorkspaceMarker(projectPath, name, 'venv', undefined);
+            await writeWorkspaceFoundationFiles(projectPath, name, 'venv', undefined, fallback);
+            await writeWorkspaceGitignore(projectPath);
+            await writePyprojectStub(projectPath, name);
+
+            if (!skipGit) {
+              spinner2.start('Initializing git repository');
+              try {
+                await execa('git', ['init'], { cwd: projectPath });
+                await execa('git', ['add', '.'], { cwd: projectPath });
+                await execa(
+                  'git',
+                  ['commit', '-m', `Initial commit: RapidKit workspace (${fallback})`],
+                  {
+                    cwd: projectPath,
+                  }
+                );
+                spinner2.succeed('Git repository initialized');
+              } catch {
+                spinner2.warn('Could not initialize git repository');
+              }
+            }
+
+            try {
+              const { registerWorkspace } = await import('./workspace.js');
+              await registerWorkspace(projectPath, name);
+            } catch {
+              /* silent */
+            }
+
+            console.log(chalk.green('\n✨ Workspace created (auto-fallback profile)!\n'));
+            console.log(chalk.cyan('📂 Location:'), chalk.white(projectPath));
+            console.log(chalk.cyan('📦 Profile:'), chalk.yellow(fallback));
+            console.log(
+              chalk.cyan('💡 Reason:'),
+              chalk.gray('Python not detected; switched from ' + resolvedProfile)
+            );
+            console.log(chalk.cyan('\n🚀 Get started:\n'));
+            console.log(chalk.white(`   cd ${name}`));
+            console.log(chalk.white('   npx rapidkit create project'));
+            console.log(chalk.white('   cd <project-name>'));
+            console.log(chalk.white('   npx rapidkit init'));
+            console.log(chalk.white('   npx rapidkit dev\n'));
+            console.log(chalk.cyan('💡 Add Python later:\n'));
+            console.log(chalk.gray('   1. Install Python 3.10+'));
+            console.log(
+              chalk.gray(
+                `   2. Run: cd ${name} && rapidkit bootstrap --profile ${resolvedProfile}\n`
+              )
+            );
+            console.log('');
+            return; // Exit successfully
+          } catch (_err) {
+            spinner2.fail('Failed to create workspace');
+            console.error(chalk.red('\n❌ Error:'), _err);
+            throw _err;
+          }
+        }
+      }
     }
   }
 
@@ -1271,7 +1541,11 @@ export async function createProject(
     // Success message
     console.log(chalk.green('\n✨ RapidKit environment created successfully!\n'));
     console.log(chalk.cyan('📂 Location:'), chalk.white(projectPath));
-    console.log(chalk.cyan('🚀 Get started:\n'));
+    console.log(chalk.cyan('⚙️  Configuration:'));
+    console.log(chalk.gray(`  • Profile: ${resolvedProfile}`));
+    console.log(chalk.gray(`  • Python: ${pythonAnswers.pythonVersion}`));
+    console.log(chalk.gray(`  • Install method: ${pythonAnswers.installMethod}`));
+    console.log(chalk.cyan('\n🚀 Get started:\n'));
     console.log(chalk.white(`   cd ${name}`));
 
     if (pythonAnswers.installMethod === 'poetry') {
@@ -1300,6 +1574,9 @@ export async function createProject(
       console.log(chalk.white('   cd <project-name>'));
       console.log(chalk.white('   rapidkit init'));
       console.log(chalk.white('   rapidkit dev'));
+      console.log(
+        chalk.gray('\n   📦 Why Poetry? Includes dependency management + virtual environment')
+      );
     } else if (pythonAnswers.installMethod === 'venv') {
       console.log(
         chalk.white('   source .venv/bin/activate  # On Windows: .venv\\Scripts\\activate')
@@ -1308,33 +1585,50 @@ export async function createProject(
       console.log(chalk.white('   cd <project-name>'));
       console.log(chalk.white('   rapidkit init'));
       console.log(chalk.white('   rapidkit dev'));
+      console.log(chalk.gray('\n   📦 Why venv? Standard, zero extra tools, lightweight'));
     } else {
       console.log(chalk.white('   rapidkit create  # Interactive mode'));
       console.log(chalk.white('   cd <project-name>'));
       console.log(chalk.white('   rapidkit init'));
       console.log(chalk.white('   rapidkit dev'));
+      console.log(chalk.gray('\n   📦 Why pipx? Global isolated install, no local venv'));
     }
 
-    console.log(chalk.white('\n💡 For more information, check the README.md file.'));
-    console.log(chalk.cyan('\n📚 RapidKit commands:'));
-    console.log(chalk.white('   rapidkit create          - Create a new project (interactive)'));
-    console.log(chalk.white('   rapidkit dev             - Run development server'));
-    console.log(chalk.white('   rapidkit add module <name> - Add a module (e.g., settings)'));
-    console.log(chalk.white('   rapidkit list            - List available kits'));
-    console.log(chalk.white('   rapidkit modules         - List available modules'));
-    console.log(chalk.white('   rapidkit --help          - Show all commands\n'));
+    console.log(chalk.cyan('\n📚 Next steps:'));
+    console.log(chalk.gray('  1. Check README.md for workspace details'));
+    console.log(chalk.gray('  2. Create your first project: rapidkit create project'));
+    console.log(
+      chalk.gray(
+        `  3. See all runtimes: rapidkit list  # Shows: fastapi, nestjs, springboot, gofiber, gogin`
+      )
+    );
+
+    console.log(chalk.cyan('\n💡 Profile management:'));
+    console.log(chalk.gray(`  • Add Python? → rapidkit bootstrap --profile python-only|polyglot`));
+    console.log(chalk.gray(`  • Add Node.js? → rapidkit bootstrap --profile node-only|polyglot`));
+    console.log(chalk.gray(`  • Add Go? → rapidkit bootstrap --profile go-only|polyglot`));
+    console.log(chalk.gray(`  • Full setup? → rapidkit bootstrap --profile enterprise`));
+
+    console.log(chalk.cyan('\n📖 Common commands:'));
+    console.log(
+      chalk.white('   rapidkit create              - Create a new project (interactive)')
+    );
+    console.log(chalk.white('   rapidkit list                - List available kits'));
+    console.log(chalk.white('   rapidkit modules             - List available modules'));
+    console.log(chalk.white('   rapidkit doctor              - Check workspace health'));
+    console.log(
+      chalk.white('   rapidkit bootstrap --help    - Advanced workspace configuration\n')
+    );
 
     // Go toolchain check — informational note for gofiber.standard projects
     try {
       const { stdout: goOut } = await execa('go', ['version'], { timeout: 3000 });
       const goMatch = goOut.match(/go version go(\d+\.\d+(?:\.\d+)?)/);
       const goVer = goMatch ? goMatch[1] : 'unknown';
-      console.log(
-        chalk.gray(`🐹 Go toolchain: Go ${goVer} detected — ready for gofiber.standard projects`)
-      );
+      console.log(chalk.gray(`🐹 Go ${goVer} detected — ready for gofiber.standard projects`));
     } catch {
       console.log(
-        chalk.yellow('⚠️  Go toolchain not installed — needed for gofiber.standard projects')
+        chalk.yellow('⚠️  Go not installed — needed for gofiber.standard/gogin.standard projects')
       );
       console.log(chalk.gray('   Install: https://go.dev/dl/'));
     }
@@ -1876,6 +2170,43 @@ async function installWithPipx(
   userConfig?: UserConfig,
   yes = false
 ) {
+  if (!testMode) {
+    try {
+      const { checkRapidkitCoreVersionCompatible } = await import(
+        './core-bridge/pythonRapidkitExec.js'
+      );
+      const compatibility = await checkRapidkitCoreVersionCompatible();
+
+      if (compatibility.isCompatible) {
+        spinner.succeed(
+          `RapidKit ${compatibility.installedVersion ?? ''} already compatible globally; skipping pipx installation`
+        );
+        await fsExtra.outputFile(
+          path.join(projectPath, '.rapidkit-global'),
+          `RapidKit already available globally (version ${compatibility.installedVersion ?? 'unknown'}) and satisfies expected constraint ${compatibility.expectedConstraint ?? 'n/a'}; workspace will reuse the existing installation\n`,
+          'utf-8'
+        );
+        return;
+      }
+
+      if (compatibility.reason === 'constraint-missing') {
+        spinner.warn(
+          'Version-aware global reuse skipped: no explicit rapidkit-core version constraint found. Set RAPIDKIT_CORE_PYTHON_PACKAGE (example: RAPIDKIT_CORE_PYTHON_PACKAGE="rapidkit-core>=0.4.0,<0.9.0") to enable version-aware reuse. Proceeding with pipx install/upgrade.'
+        );
+      } else if (compatibility.reason === 'constraint-unsupported') {
+        spinner.warn(
+          'Version-aware global reuse skipped: RAPIDKIT_CORE_PYTHON_PACKAGE uses an unsupported spec (path/url/git). Use a version range instead (example: RAPIDKIT_CORE_PYTHON_PACKAGE="rapidkit-core==0.4.0" or "rapidkit-core>=0.4.0,<0.9.0"). Proceeding with pipx install/upgrade.'
+        );
+      }
+
+      logger.debug(
+        `Global RapidKit install is not reusable via version-aware policy (reason=${compatibility.reason}, installed=${compatibility.installedVersion ?? 'unknown'}, expected=${compatibility.expectedConstraint ?? 'none'}). Proceeding with pipx install/upgrade.`
+      );
+    } catch (checkError) {
+      logger.debug(`Global RapidKit version-aware check failed before pipx install: ${checkError}`);
+    }
+  }
+
   const pipx = await ensurePipxAvailable(spinner, yes);
 
   spinner.start('Installing RapidKit globally with pipx');
@@ -1896,9 +2227,18 @@ async function installWithPipx(
     spinner.text = 'Installing RapidKit from PyPI';
     try {
       await execaPipx(pipx, ['install', 'rapidkit-core']);
-    } catch (_error) {
-      // pipx failed to install - could be network, PyPI availability, etc.
-      throw new RapidKitNotAvailableError();
+    } catch (installError) {
+      // If already installed, upgrade to ensure expected version/range compatibility.
+      try {
+        spinner.text = 'RapidKit already installed globally, upgrading to match expected version';
+        await execaPipx(pipx, ['upgrade', 'rapidkit-core']);
+      } catch (_upgradeError) {
+        logger.debug(
+          `pipx install/upgrade failed: install=${installError}, upgrade=${_upgradeError}`
+        );
+        // pipx failed to install/upgrade - could be network, PyPI availability, etc.
+        throw new RapidKitNotAvailableError();
+      }
     }
   }
   spinner.succeed('RapidKit installed globally');
@@ -2717,41 +3057,91 @@ ${name}/
  */
 async function showDryRun(
   projectPath: string,
-  _name: string,
+  name: string,
   demoMode: boolean,
-  userConfig: UserConfig
+  userConfig: UserConfig,
+  profileArg?: string,
+  installMethodArg?: string,
+  pythonVersionArg?: string
 ): Promise<void> {
-  console.log(chalk.cyan('\n🔍 Dry-run mode - showing what would be created:\n'));
-  console.log(chalk.white('📂 Project path:'), projectPath);
-  console.log(
-    chalk.white('📦 Project type:'),
-    demoMode ? 'Demo workspace' : 'Full RapidKit environment'
-  );
+  console.log(chalk.cyan('\n🔍 Dry-run mode - what would be created:\n'));
+  console.log(chalk.white('📂 Workspace path:'), projectPath);
+  console.log(chalk.white('📛 Name:'), chalk.cyan(name));
 
   if (demoMode) {
+    console.log(chalk.white('📦 Type:'), 'Demo environment');
     console.log(chalk.white('\n📝 Files to create:'));
     console.log(chalk.gray('  - package.json'));
     console.log(chalk.gray('  - generate-demo.js (project generator)'));
     console.log(chalk.gray('  - README.md'));
     console.log(chalk.gray('  - .gitignore'));
     console.log(chalk.white('\n🎯 Capabilities:'));
-    console.log(chalk.gray('  - Generate multiple FastAPI demo projects'));
+    console.log(chalk.gray('  - Generate FastAPI/NestJS demo projects'));
     console.log(chalk.gray('  - No Python RapidKit installation required'));
-    console.log(chalk.gray('  - Bundled templates included'));
+    console.log(chalk.gray('  - Bundled templates'));
   } else {
-    console.log(chalk.white('\n⚙️  Configuration:'));
-    console.log(chalk.gray(`  - Python version: ${userConfig.pythonVersion || '3.10'}`));
-    console.log(chalk.gray(`  - Install method: ${userConfig.defaultInstallMethod || 'poetry'}`));
-    console.log(chalk.gray(`  - Git initialization: ${userConfig.skipGit ? 'No' : 'Yes'}`));
-    console.log(chalk.white('\n📝 Files to create:'));
-    console.log(chalk.gray('  - pyproject.toml (Poetry) or .venv/ (venv)'));
+    const profile = profileArg || 'minimal';
+    const installMethod = installMethodArg || userConfig.defaultInstallMethod || 'poetry';
+    const pythonVersion = pythonVersionArg || userConfig.pythonVersion || '3.10';
+
+    const PYTHON_PROFILES = new Set(['python-only', 'polyglot', 'enterprise']);
+    const isPythonProfile = PYTHON_PROFILES.has(profile);
+
+    console.log(chalk.white('📦 Profile:'), chalk.cyan(profile));
+    console.log(chalk.white('📝 Configuration:'));
+
+    if (isPythonProfile) {
+      console.log(chalk.gray(`  - Python version: ${pythonVersion}`));
+      console.log(chalk.gray(`  - Install method: ${installMethod}`));
+      console.log(chalk.gray(`  - Git init: ${userConfig.skipGit ? 'No' : 'Yes'}`));
+    } else {
+      console.log(chalk.gray(`  - Python-free profile (no Python needed)`));
+      console.log(chalk.gray(`  - Git init: ${userConfig.skipGit ? 'No' : 'Yes'}`));
+    }
+
+    console.log(chalk.white('\n📋 Files to create:'));
+    console.log(chalk.gray('  - .rapidkit-workspace (workspace marker)'));
+    console.log(chalk.gray('  - .rapidkit/ (workspace config directory)'));
     console.log(chalk.gray('  - README.md'));
     console.log(chalk.gray('  - .gitignore'));
-    console.log(chalk.white('\n🎯 Next steps after creation:'));
-    console.log(chalk.gray('  1. Install RapidKit Python package'));
-    console.log(chalk.gray('  2. Create projects with rapidkit CLI'));
-    console.log(chalk.gray('  3. Add modules and customize'));
+    if (isPythonProfile) {
+      console.log(
+        chalk.gray(
+          `  - ${installMethod === 'poetry' ? 'pyproject.toml + poetry.lock' : '.venv/ (virtual environment)'}`
+        )
+      );
+    }
+
+    console.log(chalk.white('\n⚙️  Environment setup:'));
+    if (isPythonProfile) {
+      if (installMethod === 'poetry') {
+        console.log(
+          chalk.gray(
+            `  - Poetry virtual environment created (recommended, includes dependency management)`
+          )
+        );
+      } else if (installMethod === 'venv') {
+        console.log(chalk.gray(`  - Python venv created in .venv/ (standard, zero extra tools)`));
+      } else {
+        console.log(chalk.gray(`  - Global pipx install (isolated, not local to workspace)`));
+      }
+    }
+
+    console.log(chalk.white('\n🚀 Next steps:'));
+    console.log(chalk.gray('  1. cd ' + name));
+    console.log(chalk.gray('  2. npx rapidkit create project'));
+    console.log(chalk.gray('  3. npx rapidkit init'));
+    console.log(chalk.gray('  4. npx rapidkit dev'));
+
+    console.log(chalk.white('\n💡 Learn more:'));
+    console.log(chalk.gray('  • Change profile later: rapidkit bootstrap --profile <profile>'));
+    console.log(
+      chalk.gray(
+        '  • Profile options: minimal|java-only|python-only|node-only|go-only|polyglot|enterprise'
+      )
+    );
+    console.log(chalk.gray('  • Help: npx rapidkit --help'));
   }
 
-  console.log(chalk.white('\n💡 To proceed with actual creation, run without --dry-run flag\n'));
+  console.log(chalk.white('\n✨ To proceed: remove --dry-run flag\n'));
 }

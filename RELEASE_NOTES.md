@@ -1,6 +1,40 @@
 # Release Notes
 
-## Latest Release: v0.27.4 (May 11, 2026)
+## Latest Release: v0.27.5 (May 15, 2026)
+
+### ⚙️ v0.27.5 — Version-Aware Global Core Reuse, Optional Workspace .venv Advisory, and Workspace Run Progress Visibility (Patch)
+
+This patch focuses on stabilization and operator clarity. It hardens global RapidKit Core reuse decisions with compatibility checks, refines doctor messaging for global-only installations, and adds live progress output for `workspace run init`.
+
+**What's New:**
+
+- ✅ **Version-aware global Core reuse**
+  - Global `rapidkit-core` reuse is now guarded by compatibility checks against required constraints.
+  - Missing/unsupported constraint states now provide actionable fallback warnings.
+
+- 🩺 **Optional workspace `.venv` advisory in doctor**
+  - If Core is available globally but not in workspace `.venv`, doctor remains `ok` and now shows optional guidance to run:
+    - `npx rapidkit workspace run init`
+
+- ⏳ **Live progress for `workspace run init`**
+  - Non-JSON runs now show start banner, per-project start lines, and completion lines with percentage and duration.
+  - Removes long silent periods during dependency/bootstrap operations.
+
+- 🧪 **Regression coverage expansion**
+  - Added doctor test coverage for global-only Core + optional workspace `.venv` advisory behavior.
+  - Existing workspace-run and doctor suites remain green.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.27.5
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.27.5.md)
+
+---
+
+## Previous Release: v0.27.4 (May 11, 2026)
 
 ### 🧭 v0.27.4 — Import Command, Shared Parity Contract Gate, Evidence Schema Hardening, and Strict Doctor Scope Boundaries (Patch)
 

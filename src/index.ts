@@ -672,6 +672,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
     try {
       const hasYes = args.includes('--yes') || args.includes('-y');
       const skipGit = args.includes('--skip-git') || args.includes('--no-git');
+      const hasDryRun = args.includes('--dry-run');
       const providedName = args[2] && !args[2].startsWith('-') ? args[2] : undefined;
       const installMethodRaw = readFlagValue(args, '--install-method');
       const installMethod =
@@ -721,7 +722,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
       }
 
       const targetPath = path.resolve(process.cwd(), workspaceName);
-      if (await fsExtra.pathExists(targetPath)) {
+      if (!hasDryRun && (await fsExtra.pathExists(targetPath))) {
         process.stderr.write(`❌ Directory "${workspaceName}" already exists\n`);
         return 1;
       }
@@ -748,6 +749,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
       await createPythonEnvironment(workspaceName, {
         skipGit,
         yes: hasYes,
+        dryRun: hasDryRun,
         userConfig: {
           ...userConfig,
           author,

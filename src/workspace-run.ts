@@ -774,6 +774,16 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
   const continueOnError = options.continueOnError === true;
   const parallel = options.parallel === true;
   const maxWorkers = normalizeWorkers(options.maxWorkers, runTargets.length);
+  const totalTargets = runTargets.length;
+  let completedTargets = 0;
+
+  if (!options.json) {
+    console.log(
+      chalk.gray(
+        `Workspace run (${options.stage}) started: ${totalTargets} target(s), ${parallel ? `parallel x${maxWorkers}` : 'sequential'}`
+      )
+    );
+  }
 
   const executionRows = new Map<string, ProjectExecutionResult>();
   for (const projectPath of projectPaths) {
@@ -805,6 +815,14 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
       const row = executionRows.get(projectPath);
       if (!row) {
         return;
+      }
+
+      const relativePath = normalizePathForMatch(path.relative(workspacePath, projectPath));
+
+      if (!options.json) {
+        console.log(
+          chalk.gray(`⏳ [${completedTargets}/${totalTargets}] ${options.stage} ${relativePath}`)
+        );
       }
 
       row.selected = true;
@@ -839,6 +857,19 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
         row.status = 'failed';
         row.reason = execResult.message || 'stage command failed';
         row.errorMessage = execResult.message;
+      }
+
+      completedTargets += 1;
+
+      if (!options.json) {
+        const percentage =
+          totalTargets > 0 ? Math.round((completedTargets / totalTargets) * 100) : 100;
+        const statusIcon = row.status === 'passed' ? chalk.green('✅') : chalk.red('❌');
+        console.log(
+          chalk.gray(
+            `${statusIcon} [${completedTargets}/${totalTargets}] (${percentage}%) ${relativePath} ${row.durationMs}ms`
+          )
+        );
       }
     };
 

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.5] - 2026-05-15
+
+### Added
+
+- Added live non-JSON progress output for `workspace run <stage>` execution, including per-project start/completion visibility with completion percentage and per-project duration.
+- Added doctor regression coverage for global-only RapidKit Core installations where workspace `.venv` is missing, ensuring optional advisory messaging remains stable.
+
+### Changed
+
+- Updated global RapidKit Core reuse behavior in create/bootstrap flows to be version-aware and constraint-compatible before skip/reuse decisions.
+- Updated doctor guidance text for global-only RapidKit Core setups to recommend workspace-level bootstrap via:
+  - `npx rapidkit workspace run init`
+
+### Fixed
+
+- Reduced operator ambiguity during long `workspace run init` executions by surfacing real-time terminal progress instead of end-only summary output.
+
 ## [0.27.4] - 2026-05-11
 
 ### Added

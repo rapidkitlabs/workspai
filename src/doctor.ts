@@ -1342,9 +1342,22 @@ async function checkRapidKitCore(): Promise<HealthCheckResult> {
     if (installedPackagePaths.length > 0) {
       const sortedInstalledPaths = sortRapidkitInstalledPaths(installedPackagePaths);
       const primaryVersion = sortedInstalledPaths[0].version;
+      const hasWorkspaceVenvInstall = sortedInstalledPaths.some(
+        (entry) => entry.location === 'Workspace (.venv)'
+      );
+      const hasGlobalInstall = sortedInstalledPaths.some((entry) =>
+        entry.location.startsWith('Global (')
+      );
+
+      const workspaceVenvAdvisory =
+        !hasWorkspaceVenvInstall && hasGlobalInstall
+          ? 'Workspace (.venv): not installed (optional). For best project-level performance and isolation, run npx rapidkit workspace run init inside this workspace.'
+          : undefined;
+
       return {
         status: 'ok',
         message: `RapidKit Core ${primaryVersion}`,
+        details: workspaceVenvAdvisory,
         paths: sortedInstalledPaths.map((f) => ({
           location: f.location,
           path: f.path,
@@ -3020,16 +3033,9 @@ async function hasWorkspaceRootMarkers(candidatePath: string): Promise<boolean> 
     path.join(candidatePath, '.rapidkit', 'config.json'),
   ];
 
-  const hasAnyMarker = await Promise.all(
-    markerFiles.map((marker) => fsExtra.pathExists(marker))
-  ).then((results) => results.some(Boolean));
-
-  if (!hasAnyMarker) {
-    return false;
-  }
-
-  // Keep workspace detection aligned with RapidKit architecture expectations.
-  return fsExtra.pathExists(path.join(candidatePath, '.rapidkit'));
+  return Promise.all(markerFiles.map((marker) => fsExtra.pathExists(marker))).then((results) =>
+    results.some(Boolean)
+  );
 }
 
 function calculateHealthScore(
@@ -3404,7 +3410,9 @@ function renderHealthCheck(check: HealthCheckResult, label: string): void {
         `   ${chalk.cyan('•')} ${chalk.gray(p.location)}: ${chalk.dim(p.path)}${versionSuffix}`
       );
     });
-  } else if (check.details) {
+  }
+
+  if (check.details) {
     console.log(`   ${chalk.gray(check.details)}`);
   }
 }
@@ -4555,7 +4563,11 @@ export async function runDoctor(
           )
         );
       }
-      console.log(chalk.gray('\nTip: Run "rapidkit doctor workspace" for detailed project checks'));
+      console.log(
+        chalk.gray(
+          '\nTip: Run "rapidkit doctor workspace" for workspace-wide checks, or "rapidkit doctor project" for the current project'
+        )
+      );
     } else {
       console.log(chalk.bold.green('\n✅ All required tools are installed!'));
       if (options.fix) {
@@ -4565,7 +4577,11 @@ export async function runDoctor(
           )
         );
       }
-      console.log(chalk.gray('\nTip: Run "rapidkit doctor workspace" for detailed project checks'));
+      console.log(
+        chalk.gray(
+          '\nTip: Run "rapidkit doctor workspace" for workspace-wide checks, or "rapidkit doctor project" for the current project'
+        )
+      );
     }
   }
 

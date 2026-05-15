@@ -4,15 +4,15 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 
-// Mock execa to avoid actual npm install
+// Mock execa to avoid shell/network side effects and git interactive hangs.
 vi.mock('execa', async (importOriginal) => {
   const actual = await importOriginal<typeof import('execa')>();
   return {
     ...actual,
     execa: vi.fn().mockImplementation((cmd, args, options) => {
-      // Allow git commands to work normally for git init tests
+      // Mock git commands to avoid commit/signing prompts in local environments.
       if (cmd === 'git') {
-        return actual.execa(cmd, args, options);
+        return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 });
       }
       // Mock npm/yarn/pnpm install to succeed immediately
       if (cmd === 'npm' || cmd === 'yarn' || cmd === 'pnpm') {

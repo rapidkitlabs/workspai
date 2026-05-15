@@ -761,6 +761,238 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
   return false;
 }
 
+type VersionCompareOp = '==' | '>=' | '<=' | '>' | '<' | '~=';
+
+type VersionConstraintPart = {
+  op: VersionCompareOp;
+  version: string;
+};
+
+type RapidkitCoreVersionCompatibility = {
+  isCompatible: boolean;
+  installedVersion: string | null;
+  expectedConstraint: string | null;
+  reason:
+    | 'compatible'
+    | 'incompatible-version'
+    | 'constraint-missing'
+    | 'constraint-unsupported'
+    | 'version-not-detected';
+};
+
+function parseRapidkitCoreConstraint(spec: string): string | null {
+  const trimmed = spec.trim();
+
+  if (!trimmed || !trimmed.startsWith('rapidkit-core')) {
+    return null;
+  }
+
+  // Examples:
+  // rapidkit-core==0.27.4
+  // rapidkit-core>=0.27,<0.28
+  // rapidkit-core ~=0.27.4
+  const constraint = trimmed.slice('rapidkit-core'.length).trim();
+  if (!constraint) return null;
+
+  // Unsupported install targets (URL/git/path/whl/tar) cannot be compared safely.
+  if (/[\/@]|\.whl$|\.tar\.gz$|\.zip$|git\+|https?:\/\//.test(constraint)) {
+    return null;
+  }
+
+  return constraint;
+}
+
+function normalizeVersionTuple(version: string): number[] | null {
+  const cleaned = version.trim();
+  if (!cleaned) return null;
+  const parts = cleaned.split('.');
+  const tuple: number[] = [];
+
+  for (const part of parts) {
+    const match = part.match(/^(\d+)/);
+    if (!match) {
+      tuple.push(0);
+      continue;
+    }
+    tuple.push(Number.parseInt(match[1], 10));
+  }
+
+  return tuple;
+}
+
+function compareVersionTuple(a: number[], b: number[]): number {
+  const maxLen = Math.max(a.length, b.length);
+  for (let i = 0; i < maxLen; i += 1) {
+    const av = i < a.length ? a[i] : 0;
+    const bv = i < b.length ? b[i] : 0;
+    if (av > bv) return 1;
+    if (av < bv) return -1;
+  }
+  return 0;
+}
+
+function bumpCompatibleUpperBound(version: number[]): number[] {
+  if (version.length <= 1) {
+    return [version[0] + 1];
+  }
+
+  // PEP 440 ~= behavior:
+  // ~=X.Y   => >=X.Y,<X+1
+  // ~=X.Y.Z => >=X.Y.Z,<X.Y+1
+  if (version.length === 2) {
+    return [version[0] + 1, 0];
+  }
+
+  return [version[0], version[1] + 1, 0];
+}
+
+function parseConstraintParts(constraint: string): VersionConstraintPart[] | null {
+  const rawParts = constraint
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (rawParts.length === 0) return null;
+
+  const parts: VersionConstraintPart[] = [];
+  for (const raw of rawParts) {
+    const match = raw.match(/^(==|>=|<=|>|<|~=)\s*([0-9][0-9A-Za-z+._-]*)$/);
+    if (!match) return null;
+    parts.push({ op: match[1] as VersionCompareOp, version: match[2] });
+  }
+  return parts;
+}
+
+function isVersionSatisfyingConstraint(version: string, constraint: string): boolean {
+  const installed = normalizeVersionTuple(version);
+  if (!installed) return false;
+
+  const parts = parseConstraintParts(constraint);
+  if (!parts) return false;
+
+  for (const part of parts) {
+    const target = normalizeVersionTuple(part.version);
+    if (!target) return false;
+
+    const cmp = compareVersionTuple(installed, target);
+    if (part.op === '==' && cmp !== 0) return false;
+    if (part.op === '>=' && cmp < 0) return false;
+    if (part.op === '<=' && cmp > 0) return false;
+    if (part.op === '>' && cmp <= 0) return false;
+    if (part.op === '<' && cmp >= 0) return false;
+
+    if (part.op === '~=') {
+      if (cmp < 0) return false;
+      const upperBound = bumpCompatibleUpperBound(target);
+      if (compareVersionTuple(installed, upperBound) >= 0) return false;
+    }
+  }
+
+  return true;
+}
+
+async function detectRapidkitCoreVersion(): Promise<string | null> {
+  const dynamicPythonCommands = Array.from(
+    new Set([
+      ...getPythonCommandCandidates(),
+      ...getPythonVersionProbeCandidates(14, 10).map((probe) => probe.command),
+    ])
+  );
+
+  const parseVersionFromPipShow = (text: string): string | null => {
+    const match = text.match(/^Version:\s*(.+)$/m);
+    return match ? match[1].trim() : null;
+  };
+
+  for (const cmd of dynamicPythonCommands) {
+    try {
+      const result = await execa(
+        cmd,
+        pythonLauncherArgs(cmd, ['-m', 'pip', 'show', 'rapidkit-core']),
+        {
+          reject: false,
+          stdio: 'pipe',
+          timeout: 3000,
+        }
+      );
+
+      if (result.exitCode === 0) {
+        const parsed = parseVersionFromPipShow(result.stdout || '');
+        if (parsed) return parsed;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  for (const cmd of ['pip', 'pip3']) {
+    try {
+      const result = await execa(cmd, ['show', 'rapidkit-core'], {
+        reject: false,
+        stdio: 'pipe',
+        timeout: 3000,
+      });
+
+      if (result.exitCode === 0) {
+        const parsed = parseVersionFromPipShow(result.stdout || '');
+        if (parsed) return parsed;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  try {
+    const result = await execa('pipx', ['list'], {
+      reject: false,
+      stdio: 'pipe',
+      timeout: 3000,
+    });
+    if (result.exitCode === 0 && result.stdout) {
+      const match = result.stdout.match(/rapidkit-core\s+([0-9][0-9A-Za-z+._-]*)/i);
+      if (match?.[1]) return match[1];
+    }
+  } catch {
+    // ignore and continue
+  }
+
+  return null;
+}
+
+async function checkRapidkitCoreVersionCompatible(): Promise<RapidkitCoreVersionCompatibility> {
+  const spec = coreInstallTarget();
+  const expectedConstraint = parseRapidkitCoreConstraint(spec);
+
+  if (!expectedConstraint) {
+    // Version-aware reuse requires explicit constraint (e.g. ==, >=,<, ~=)
+    // in RAPIDKIT_CORE_PYTHON_PACKAGE.
+    return {
+      isCompatible: false,
+      installedVersion: null,
+      expectedConstraint: null,
+      reason: isPinnedSpec(spec) ? 'constraint-unsupported' : 'constraint-missing',
+    };
+  }
+
+  const installedVersion = await detectRapidkitCoreVersion();
+  if (!installedVersion) {
+    return {
+      isCompatible: false,
+      installedVersion: null,
+      expectedConstraint,
+      reason: 'version-not-detected',
+    };
+  }
+
+  const isCompatible = isVersionSatisfyingConstraint(installedVersion, expectedConstraint);
+  return {
+    isCompatible,
+    installedVersion,
+    expectedConstraint,
+    reason: isCompatible ? 'compatible' : 'incompatible-version',
+  };
+}
+
 async function ensureBridgeVenv(pythonCmd: PythonCommand): Promise<string> {
   const desiredDir = bridgeVenvDir();
   const legacyDir = legacyBridgeVenvDir();
@@ -1423,7 +1655,9 @@ export const __test__ = {
   parseCoreCommandsFromHelp,
   tryRapidkit,
   checkRapidkitCoreAvailable,
+  checkRapidkitCoreVersionCompatible,
+  isVersionSatisfyingConstraint,
 };
 
 // Export the comprehensive detection function for public use
-export { checkRapidkitCoreAvailable };
+export { checkRapidkitCoreAvailable, checkRapidkitCoreVersionCompatible };
