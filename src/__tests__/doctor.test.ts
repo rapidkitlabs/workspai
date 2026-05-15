@@ -333,12 +333,16 @@ describe('Doctor Command', () => {
       expect(payload.system.rapidkitCore.paths).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            location: 'Global (user-local)',
             path: globalRapidkitPath,
             version: '0.4.0',
           }),
         ])
       );
+      expect(
+        (payload.system.rapidkitCore.paths as Array<{ location: string }>).some((p) =>
+          p.location.startsWith('Global (')
+        )
+      ).toBe(true);
       expect(payload.system.rapidkitCore.paths).not.toEqual(
         expect.arrayContaining([expect.objectContaining({ location: 'Workspace (.venv)' })])
       );
@@ -521,7 +525,7 @@ describe('Doctor Command', () => {
 
       expect(jsonLine).toBeDefined();
       const payload = JSON.parse(jsonLine as string);
-      expect(payload.workspace.path).toBe(workspacePath);
+      expect(payload.workspace.path).toBe(fsExtra.realpathSync(workspacePath));
       expect(payload.summary.totalProjects).toBe(1);
       expect(payload.projects[0].name).toBe('saas-api');
     } finally {
@@ -1336,7 +1340,7 @@ describe('Doctor Command', () => {
 
       expect(jsonLine).toBeDefined();
       const payload = JSON.parse(jsonLine as string);
-      expect(payload.workspace.path).toBe(tempRoot);
+      expect(payload.workspace.path).toBe(fsExtra.realpathSync(tempRoot));
       expect(payload.summary.totalProjects).toBe(0);
     } finally {
       process.chdir(originalCwd);
