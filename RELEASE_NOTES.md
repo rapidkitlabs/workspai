@@ -1,6 +1,51 @@
 # Release Notes
 
-## Latest Release: v0.27.5 (May 15, 2026)
+## Latest Release: v0.27.6 (May 19, 2026)
+
+### 🛡️ v0.27.6 — Stabilization Hardening, Unified Config Security, and Doctor Remediation Plan/Apply (Patch)
+
+This patch focuses on enterprise-grade stabilization and operational predictability. It unifies config handling for AI settings, introduces centralized timeout policy helpers, removes duplicated workspace discovery logic, and ships structured doctor remediation planning with non-interactive execution mode.
+
+**What's New:**
+
+- 🛠️ **Doctor remediation planning and non-interactive apply**
+  - Added plan-only mode for safe previews:
+    - `npx rapidkit doctor workspace --plan`
+    - `npx rapidkit doctor project --plan`
+  - Added non-interactive remediation apply mode:
+    - `npx rapidkit doctor workspace --apply`
+    - `npx rapidkit doctor project --apply`
+  - Added conflict guard for invalid flag combinations (`--plan` with `--fix`/`--apply`).
+
+- 🔐 **Unified config security hardening**
+  - Unified AI/user config model usage under `.rapidkitrc.json`.
+  - Added legacy compatibility fallback from older AI config path to avoid user disruption.
+  - Hardened config file permissions for secret-bearing config writes on Unix-like systems.
+
+- 🧭 **Shared workspace project discovery**
+  - Introduced a common discovery utility reused by `workspace run` and `workspace share`.
+  - Reduces behavior drift risk and keeps workspace scanning rules consistent.
+
+- ⏱️ **Centralized timeout policy**
+  - Added shared timeout helpers for probe/network/bridge command paths.
+  - Replaced scattered literals with policy-driven defaults to improve operational consistency.
+
+- ✅ **Reliability and test hardening**
+  - Fixed doctor fix-flow compile regression around Go toolchain availability checks.
+  - Added dedicated doctor tests for `--plan` and `--apply`.
+  - Full test suite validated green before release metadata finalization.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.27.6
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.27.6.md)
+
+---
+
+## Previous Release: v0.27.5 (May 15, 2026)
 
 ### ⚙️ v0.27.5 — Version-Aware Global Core Reuse, Optional Workspace .venv Advisory, and Workspace Run Progress Visibility (Patch)
 

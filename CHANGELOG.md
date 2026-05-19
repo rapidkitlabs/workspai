@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.6] - 2026-05-19
+
+### Added
+
+- Added shared workspace project discovery utility to unify scan behavior across `workspace run` and `workspace share`.
+- Added centralized timeout policy helpers for probe/network/bridge paths:
+  - `src/utils/command-timeouts.ts`
+- Added doctor remediation planning and non-interactive apply flows:
+  - `npx rapidkit doctor workspace --plan`
+  - `npx rapidkit doctor workspace --apply`
+  - `npx rapidkit doctor project --plan`
+  - `npx rapidkit doctor project --apply`
+- Added dedicated doctor regression coverage for `--plan` and `--apply` modes.
+
+### Changed
+
+- Unified AI/user config schema usage through `.rapidkitrc.json` with legacy fallback compatibility for older AI config path.
+- Hardened user config file permissions for sensitive key material on Unix-like systems.
+- Updated update-checker and Python bridge paths to use centralized timeout policy instead of scattered literals.
+- Updated README doctor command surface and behavior docs to include remediation planning and non-interactive apply guidance.
+
+### Fixed
+
+- Fixed doctor fix execution scope regression (`goToolchainAvailable` resolution) causing compile failure in fix flows.
+- Removed duplicated workspace discovery implementations that could drift behavior between command surfaces.
+
 ## [0.27.5] - 2026-05-15
 
 ### Added

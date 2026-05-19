@@ -122,8 +122,8 @@ npx rapidkit readiness [--json] [--strict]
 npx rapidkit workspace policy show
 npx rapidkit workspace policy set <key> <value>
 npx rapidkit doctor
-npx rapidkit doctor workspace [--fix]
-npx rapidkit doctor project [--fix]
+npx rapidkit doctor workspace [--fix] [--plan] [--apply]
+npx rapidkit doctor project [--fix] [--plan] [--apply]
 npx rapidkit workspace list # Display all workspaces created on this system
 npx rapidkit workspace share [--output <file>] [--include-paths] [--no-doctor]
 npx rapidkit import <path|git-url> [--workspace <path>] [--name <project-name>] [--git] [--json]
@@ -204,16 +204,21 @@ RapidKit keeps the wrapper boundary explicit so users know which layer owns each
 | `workspace run` | Workspace orchestrator | Stage execution across discovered projects with optional affected-only, blast-radius expansion, and policy-gated pre-checks |
 
 Use `npx rapidkit doctor` for a quick host pre-flight, `npx rapidkit doctor project` for a service-level check, and `npx rapidkit doctor workspace` for the full workspace picture.
+Use `npx rapidkit doctor workspace --plan` or `npx rapidkit doctor project --plan` to preview remediation safely.
+Use `npx rapidkit doctor workspace --apply` or `npx rapidkit doctor project --apply` for non-interactive remediation runs.
 Use `npx rapidkit readiness` when you need machine-readable release evidence or strict CI gating.
 
 ### Doctor workspace fix behavior
 
 - `npx rapidkit doctor workspace` reuses cached project scans when valid and refreshes evidence under `.rapidkit/reports/doctor-last-run.json`.
-- `npx rapidkit doctor workspace --fix` only executes actionable fix commands.
+- `npx rapidkit doctor workspace --fix` runs interactive remediation (confirmation prompt).
+- `npx rapidkit doctor workspace --plan` prints remediation plan only (no mutations).
+- `npx rapidkit doctor workspace --apply` applies remediation plan non-interactively.
 - Advisory warnings (for example, detected vulnerabilities or optional env metadata gaps) are reported in workspace health, but they do not automatically become shell fix commands.
-- It is valid to see `No fixes needed` after `--fix` when only advisory warnings are present.
+- It is valid to see `No fixes needed` after `--fix`/`--apply` when only advisory warnings are present.
 - URL-based fixes are recorded as manual guidance (for example, install pages) and are not executed as shell commands.
 - Go project fixes that require `go mod tidy` are skipped when the Go toolchain is not available, with a clear install-and-rerun hint.
+- `--plan` cannot be combined with `--fix` or `--apply`.
 
 ### Doctor workspace JSON fields (AI/automation)
 
@@ -233,6 +238,9 @@ Use `npx rapidkit readiness` when you need machine-readable release evidence or 
 - Project mode supports RapidKit and non-RapidKit backend projects (generic runtime diagnostics still run when `.rapidkit` is missing).
 - JSON evidence is written to `.rapidkit/reports/doctor-project-last-run.json` (workspace-level when available).
 - `--fix` in project mode applies only project-scoped actionable fixes, with the same safe/guarded handling used by doctor fix flows.
+- `--plan` in project mode prints remediation plan only (no mutations).
+- `--apply` in project mode applies project-scoped remediation non-interactively.
+- `--plan` cannot be combined with `--fix` or `--apply`.
 - Project diagnostics include built-in probes (configuration surface, migration surface, runtime health surface) and optional custom probe/adapter contracts.
 
 ### Doctor project JSON fields (AI/automation)
