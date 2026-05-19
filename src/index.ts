@@ -4594,10 +4594,19 @@ program
   .option('--project', 'Check only the current project (or nearest parent project)')
   .option('--json', 'Output results in JSON format (for CI/CD pipelines)')
   .option('--fix', 'Automatically fix common issues (with confirmation)')
+  .option('--plan', 'Generate remediation plan without applying changes')
+  .option('--apply', 'Apply remediation plan non-interactively')
   .action(
     async (
       scope: string | undefined,
-      options: { workspace?: boolean; project?: boolean; json?: boolean; fix?: boolean }
+      options: {
+        workspace?: boolean;
+        project?: boolean;
+        json?: boolean;
+        fix?: boolean;
+        plan?: boolean;
+        apply?: boolean;
+      }
     ) => {
       if (scope && scope !== 'workspace' && scope !== 'project') {
         console.log(chalk.red(`Unknown doctor scope: ${scope}`));
@@ -4606,6 +4615,13 @@ program
           chalk.gray(
             'Usage: npx rapidkit doctor | npx rapidkit doctor workspace | npx rapidkit doctor project'
           )
+        );
+        process.exit(1);
+      }
+
+      if (options.plan && (options.fix || options.apply)) {
+        console.log(
+          chalk.red('Invalid doctor flags: --plan cannot be combined with --fix or --apply')
         );
         process.exit(1);
       }

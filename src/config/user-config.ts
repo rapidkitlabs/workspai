@@ -1,30 +1,56 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { type UserConfig } from '../config.js';
 
-export interface UserConfig {
-  openaiApiKey?: string;
-  aiEnabled?: boolean;
-  telemetry?: boolean;
-}
+const CONFIG_FILE = path.join(os.homedir(), '.rapidkitrc.json');
+const LEGACY_CONFIG_FILE = path.join(os.homedir(), '.rapidkit', 'config.json');
 
-const CONFIG_DIR = path.join(os.homedir(), '.rapidkit');
-const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
-
-/**
- * Get user configuration from ~/.rapidkit/config.json
- */
-export function getUserConfig(): UserConfig {
+function readConfigFile(filePath: string): UserConfig {
   try {
-    if (!fs.existsSync(CONFIG_FILE)) {
+    if (!fs.existsSync(filePath)) {
       return {};
     }
-    const data = fs.readFileSync(CONFIG_FILE, 'utf-8');
-    return JSON.parse(data);
-  } catch (_error) {
-    // Return empty config on any error (file not found, parse error, etc.)
+    const data = fs.readFileSync(filePath, 'utf-8');
+    const parsed = JSON.parse(data) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed as UserConfig;
+  } catch {
     return {};
   }
+}
+
+function ensureConfigFilePermissions(filePath: string): void {
+  if (process.platform !== 'win32') {
+    try {
+      fs.chmodSync(filePath, 0o600);
+    } catch {
+      // Permission hardening is best-effort and must not block CLI.
+    }
+  }
+}
+
+/**
+ * Get user configuration from ~/.rapidkitrc.json
+ * Legacy fallback: ~/.rapidkit/config.json (AI keys/settings from older versions)
+ */
+export function getUserConfig(): UserConfig {
+  const primary = readConfigFile(CONFIG_FILE);
+  const legacy = readConfigFile(LEGACY_CONFIG_FILE);
+
+  if (fs.existsSync(CONFIG_FILE)) {
+    ensureConfigFilePermissions(CONFIG_FILE);
+  }
+
+  // Preserve non-AI keys from primary config while safely inheriting missing legacy AI keys.
+  return {
+    ...primary,
+    openaiApiKey: primary.openaiApiKey ?? legacy.openaiApiKey,
+    aiEnabled: primary.aiEnabled ?? legacy.aiEnabled,
+    telemetry: primary.telemetry ?? legacy.telemetry,
+  };
 }
 
 /**
@@ -34,13 +60,12 @@ export function setUserConfig(config: Partial<UserConfig>): void {
   const current = getUserConfig();
   const updated = { ...current, ...config };
 
-  // Create config directory if it doesn't exist
-  if (!fs.existsSync(CONFIG_DIR)) {
-    fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  }
-
   // Write updated config
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(updated, null, 2), 'utf-8');
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(updated, null, 2), {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  ensureConfigFilePermissions(CONFIG_FILE);
 }
 
 /**

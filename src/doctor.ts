@@ -25,6 +25,7 @@ import {
   DOCTOR_WORKSPACE_EVIDENCE_SCHEMA,
   isDoctorEvidencePayloadCompatible,
 } from './utils/doctor-evidence-contract.js';
+import { getProbeTimeoutMs } from './utils/command-timeouts.js';
 
 function uniquePaths(paths: string[]): string[] {
   return [
@@ -3633,7 +3634,7 @@ function renderProjectHealth(project: ProjectHealth): void {
 async function canRunGoModTidy(): Promise<boolean> {
   try {
     const result = await execa('go', ['version'], {
-      timeout: 3000,
+      timeout: getProbeTimeoutMs(),
       reject: false,
     });
     return result.exitCode === 0;
@@ -3665,6 +3666,24 @@ interface FixPlanStep {
 interface ProjectSnapshotEntry {
   snapshotRoot: string;
   files: Map<string, string>;
+}
+
+interface PlannedFixStep extends FixPlanStep {
+  executableInCurrentEnvironment: boolean;
+  blockedReason?: string;
+}
+
+interface RemediationPlan {
+  generatedAt: string;
+  fixableProjects: number;
+  totalSteps: number;
+  executableSteps: number;
+  risk: {
+    safe: number;
+    guarded: number;
+    invasive: number;
+  };
+  steps: PlannedFixStep[];
 }
 
 function parseProjectCommandFix(
@@ -3803,6 +3822,61 @@ function classifyFixStep(project: ProjectHealth, cmd: string): FixPlanStep {
   };
 }
 
+async function buildRemediationPlan(projects: ProjectHealth[]): Promise<RemediationPlan> {
+  const fixableProjects = projects.filter((p) => p.fixCommands && p.fixCommands.length > 0);
+  const baseSteps = fixableProjects.flatMap((project) =>
+    (project.fixCommands ?? []).map((cmd) => classifyFixStep(project, cmd))
+  );
+
+  let goToolchainAvailable: boolean | null = null;
+  const steps: PlannedFixStep[] = [];
+  let executableSteps = 0;
+  let safe = 0;
+  let guarded = 0;
+  let invasive = 0;
+
+  for (const step of baseSteps) {
+    let executableInCurrentEnvironment = step.executable;
+    let blockedReason: string | undefined;
+
+    if (step.kind === 'go-mod-tidy') {
+      if (goToolchainAvailable === null) {
+        goToolchainAvailable = await canRunGoModTidy();
+      }
+      if (!goToolchainAvailable) {
+        executableInCurrentEnvironment = false;
+        blockedReason = 'Go toolchain not available';
+      }
+    }
+
+    if (executableInCurrentEnvironment) {
+      executableSteps += 1;
+      if (step.risk === 'safe') safe += 1;
+      if (step.risk === 'guarded') guarded += 1;
+      if (step.risk === 'invasive') invasive += 1;
+    }
+
+    steps.push({
+      ...step,
+      executableInCurrentEnvironment,
+      blockedReason,
+    });
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    fixableProjects: fixableProjects.length,
+    totalSteps: steps.length,
+    executableSteps,
+    risk: {
+      safe,
+      guarded,
+      invasive,
+    },
+    steps,
+  };
+}
+
 function looksRetryableError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   const retryableTokens = [
@@ -3896,20 +3970,21 @@ async function verifyProjectPostFix(
 
 async function executeFixCommands(
   projects: ProjectHealth[],
-  autoFix: boolean = false
+  autoFix: boolean = false,
+  options: { planOnly?: boolean; skipConfirmation?: boolean; json?: boolean } = {}
 ): Promise<void> {
+  const remediationPlan = await buildRemediationPlan(projects);
   const fixableProjects = projects.filter((p) => p.fixCommands && p.fixCommands.length > 0);
   let goToolchainAvailable: boolean | null = null;
+  const goFixBlocked = remediationPlan.steps.some(
+    (step) => step.kind === 'go-mod-tidy' && !step.executableInCurrentEnvironment
+  );
   const snapshotCache = new Map<string, ProjectSnapshotEntry>();
 
   if (fixableProjects.length === 0) {
     console.log(chalk.green('\n✅ No fixes needed - all projects are healthy!'));
     return;
   }
-
-  const planSteps = fixableProjects.flatMap((project) =>
-    (project.fixCommands ?? []).map((cmd) => classifyFixStep(project, cmd))
-  );
 
   console.log(chalk.bold.cyan('\n🔧 Available Fixes:\n'));
 
@@ -3922,31 +3997,44 @@ async function executeFixCommands(
     console.log();
   }
 
-  let executableFixCount = 0;
-  let safeSteps = 0;
-  let guardedSteps = 0;
-  let invasiveSteps = 0;
-  for (const step of planSteps) {
-    if (!step.executable) {
-      continue;
+  if (options.planOnly) {
+    if (options.json) {
+      console.log(JSON.stringify(remediationPlan, null, 2));
+      return;
     }
-    if (step.kind === 'go-mod-tidy') {
-      if (goToolchainAvailable === null) {
-        goToolchainAvailable = await canRunGoModTidy();
-      }
-      if (!goToolchainAvailable) {
-        continue;
-      }
+
+    console.log(chalk.bold('\n🧭 Remediation Plan\n'));
+    console.log(
+      chalk.gray(
+        `Executable steps: ${remediationPlan.executableSteps}/${remediationPlan.totalSteps} | risk: safe=${remediationPlan.risk.safe}, guarded=${remediationPlan.risk.guarded}, invasive=${remediationPlan.risk.invasive}`
+      )
+    );
+
+    for (const step of remediationPlan.steps) {
+      const state = step.executableInCurrentEnvironment
+        ? chalk.green('ready')
+        : chalk.yellow(`blocked${step.blockedReason ? ` (${step.blockedReason})` : ''}`);
+      console.log(
+        `  - ${chalk.cyan(step.projectName)} [${step.risk}] ${step.originalCommand} ${chalk.gray(`=> ${state}`)}`
+      );
     }
-    executableFixCount += 1;
-    if (step.risk === 'safe') safeSteps += 1;
-    if (step.risk === 'guarded') guardedSteps += 1;
-    if (step.risk === 'invasive') invasiveSteps += 1;
+
+    console.log(
+      chalk.gray(
+        '\nUse --apply to execute this plan non-interactively, or --fix for interactive confirmation.'
+      )
+    );
+    return;
   }
+
+  const executableFixCount = remediationPlan.executableSteps;
+  const safeSteps = remediationPlan.risk.safe;
+  const guardedSteps = remediationPlan.risk.guarded;
+  const invasiveSteps = remediationPlan.risk.invasive;
 
   if (executableFixCount === 0) {
     console.log(chalk.gray('💡 No automatic fixes can be applied right now.'));
-    if (goToolchainAvailable === false) {
+    if (goFixBlocked) {
       console.log(
         chalk.gray(
           '   Install Go to enable go mod tidy fixes, then rerun `rapidkit doctor workspace --fix`.'
@@ -3969,19 +4057,21 @@ async function executeFixCommands(
     )
   );
 
-  // Confirm before proceeding
-  const { confirm } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'confirm',
-      message: `Apply ${fixableProjects.reduce((sum, p) => sum + (p.fixCommands?.length ?? 0), 0)} fix(es)?`,
-      default: false,
-    },
-  ]);
+  if (!options.skipConfirmation) {
+    // Confirm before proceeding
+    const { confirm } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: `Apply ${fixableProjects.reduce((sum, p) => sum + (p.fixCommands?.length ?? 0), 0)} fix(es)?`,
+        default: false,
+      },
+    ]);
 
-  if (!confirm) {
-    console.log(chalk.yellow('\n⚠️  Fixes cancelled by user'));
-    return;
+    if (!confirm) {
+      console.log(chalk.yellow('\n⚠️  Fixes cancelled by user'));
+      return;
+    }
   }
 
   console.log(chalk.bold.cyan('\n🚀 Applying fixes...\n'));
@@ -4178,10 +4268,18 @@ async function executeFixCommands(
 }
 
 export async function runDoctor(
-  options: { workspace?: boolean; project?: boolean; json?: boolean; fix?: boolean } = {}
+  options: {
+    workspace?: boolean;
+    project?: boolean;
+    json?: boolean;
+    fix?: boolean;
+    plan?: boolean;
+    apply?: boolean;
+  } = {}
 ): Promise<void> {
+  const wantsWorkspaceScope = Boolean(options.fix || options.plan || options.apply);
   const autoWorkspacePath =
-    !options.workspace && !options.project && options.fix
+    !options.workspace && !options.project && wantsWorkspaceScope
       ? await findWorkspace(process.cwd())
       : null;
   const workspaceMode = options.workspace || Boolean(autoWorkspacePath);
@@ -4230,6 +4328,9 @@ export async function runDoctor(
 
     // JSON output mode
     if (options.json) {
+      const remediationPlan = options.plan
+        ? await buildRemediationPlan(health.projects)
+        : undefined;
       const output = {
         contract: getDoctorContractMetadata(),
         workspace: {
@@ -4282,6 +4383,7 @@ export async function runDoctor(
         },
         driftDelta: health.driftDelta,
         scoreBreakdown: health.scoreBreakdown ?? [],
+        ...(remediationPlan ? { remediationPlan } : {}),
       };
 
       console.log(JSON.stringify(output, null, 2));
@@ -4351,9 +4453,16 @@ export async function runDoctor(
         console.log(chalk.bold.red('❌ System requirements not met'));
       }
 
-      // Execute fixes if requested
-      if (options.fix) {
-        await executeFixCommands(health.projects, true);
+      // Plan or execute fixes when requested
+      if (options.plan) {
+        await executeFixCommands(health.projects, false, {
+          planOnly: true,
+          json: options.json,
+        });
+      } else if (options.fix || options.apply) {
+        await executeFixCommands(health.projects, true, {
+          skipConfirmation: options.apply === true,
+        });
 
         if (!options.json) {
           const refreshedHealth = await getWorkspaceHealth(workspacePath, false);
@@ -4423,6 +4532,9 @@ export async function runDoctor(
     const reportedProjectPath = normalizeReportedPath(envelope.project.path);
 
     if (options.json) {
+      const remediationPlan = options.plan
+        ? await buildRemediationPlan([envelope.project])
+        : undefined;
       const output = {
         contract: getDoctorContractMetadata(),
         scope: 'project',
@@ -4474,6 +4586,7 @@ export async function runDoctor(
         },
         driftDelta: envelope.driftDelta,
         scoreBreakdown: envelope.scoreBreakdown ?? [],
+        ...(remediationPlan ? { remediationPlan } : {}),
       };
 
       console.log(JSON.stringify(output, null, 2));
@@ -4527,8 +4640,15 @@ export async function runDoctor(
         console.log(chalk.bold.red('❌ System requirements not met'));
       }
 
-      if (options.fix) {
-        await executeFixCommands([envelope.project], true);
+      if (options.plan) {
+        await executeFixCommands([envelope.project], false, {
+          planOnly: true,
+          json: options.json,
+        });
+      } else if (options.fix || options.apply) {
+        await executeFixCommands([envelope.project], true, {
+          skipConfirmation: options.apply === true,
+        });
       } else if (issueCount > 0) {
         await executeFixCommands([envelope.project], false);
       }
@@ -4556,7 +4676,7 @@ export async function runDoctor(
 
     if (hasErrors) {
       console.log(chalk.bold.red('\n❌ Some required tools are missing'));
-      if (options.fix) {
+      if (options.fix || options.apply) {
         console.log(
           chalk.gray(
             '\nTip: Project auto-fix runs in workspace mode. Run from a workspace and use "rapidkit doctor workspace --fix"'
@@ -4570,7 +4690,7 @@ export async function runDoctor(
       );
     } else {
       console.log(chalk.bold.green('\n✅ All required tools are installed!'));
-      if (options.fix) {
+      if (options.fix || options.apply) {
         console.log(
           chalk.gray(
             '\nTip: Project auto-fix runs in workspace mode. Run from a workspace and use "rapidkit doctor workspace --fix"'

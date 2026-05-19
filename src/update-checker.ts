@@ -5,6 +5,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import { logger } from './logger.js';
+import { getNetworkTimeoutMs } from './utils/command-timeouts.js';
 
 const PACKAGE_NAME = 'rapidkit';
 
@@ -147,7 +148,7 @@ export async function checkForUpdates(): Promise<void> {
 
     // Cache miss — fetch from npm registry
     const { stdout } = await execa('npm', ['view', PACKAGE_NAME, 'version'], {
-      timeout: 3000,
+      timeout: getNetworkTimeoutMs(),
     });
 
     const latestVersion = stdout.trim();

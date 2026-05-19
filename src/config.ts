@@ -11,6 +11,9 @@ export interface UserConfig {
   author?: string;
   license?: string;
   skipGit?: boolean;
+  openaiApiKey?: string;
+  aiEnabled?: boolean;
+  telemetry?: boolean;
   // Test mode configuration (for development only)
   testRapidKitPath?: string;
 }

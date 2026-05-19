@@ -12,8 +12,11 @@ import {
   getVenvRapidkitPath,
   isWindowsPlatform,
 } from '../utils/platform-capabilities.js';
+import { getProbeTimeoutMs } from '../utils/command-timeouts.js';
 
 export type PythonCommand = 'python3' | 'python' | 'py';
+
+const probeTimeoutMs = getProbeTimeoutMs();
 
 function pythonCommandCandidates(): PythonCommand[] {
   return getPythonCommandCandidates() as PythonCommand[];
@@ -542,7 +545,7 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
         {
           reject: false,
           stdio: 'pipe',
-          timeout: 3000,
+          timeout: probeTimeoutMs,
         }
       );
       if (result.exitCode === 0 && result.stdout?.trim() === '1') {
@@ -564,7 +567,7 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
         {
           reject: false,
           stdio: 'pipe',
-          timeout: 3000,
+          timeout: probeTimeoutMs,
         }
       );
       if (result.exitCode === 0 && result.stdout?.includes('Name: rapidkit-core')) {
@@ -583,7 +586,7 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
       const result = await execa(cmd, ['show', 'rapidkit-core'], {
         reject: false,
         stdio: 'pipe',
-        timeout: 3000,
+        timeout: probeTimeoutMs,
       });
       if (result.exitCode === 0 && result.stdout?.includes('Name: rapidkit-core')) {
         debug(`✓ Found via ${cmd} show`);
@@ -600,7 +603,7 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
     const versionsResult = await execa('pyenv', ['versions', '--bare'], {
       reject: false,
       stdio: 'pipe',
-      timeout: 3000,
+      timeout: probeTimeoutMs,
     });
 
     if (versionsResult.exitCode === 0 && versionsResult.stdout) {
@@ -615,7 +618,7 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
           const result = await execa(pipPath, ['show', 'rapidkit-core'], {
             reject: false,
             stdio: 'pipe',
-            timeout: 3000,
+            timeout: probeTimeoutMs,
           });
           if (result.exitCode === 0 && result.stdout?.includes('Name: rapidkit-core')) {
             debug(`✓ Found in pyenv ${version}`);
@@ -627,7 +630,7 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
             const result = await execa('pyenv', ['exec', 'pip', 'show', 'rapidkit-core'], {
               reject: false,
               stdio: 'pipe',
-              timeout: 3000,
+              timeout: probeTimeoutMs,
               env: {
                 ...process.env,
                 PYENV_VERSION: version.trim(),
@@ -654,7 +657,7 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
       const result = await execa(cmd, pythonLauncherArgs(cmd, ['-m', 'site', '--user-site']), {
         reject: false,
         stdio: 'pipe',
-        timeout: 3000,
+        timeout: probeTimeoutMs,
       });
 
       if (result.exitCode === 0 && result.stdout) {
@@ -677,7 +680,7 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
     const result = await execa('pipx', ['list'], {
       reject: false,
       stdio: 'pipe',
-      timeout: 3000,
+      timeout: probeTimeoutMs,
     });
     if (result.exitCode === 0 && result.stdout?.includes('rapidkit-core')) {
       debug(`✓ Found via pipx`);
@@ -693,7 +696,7 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
       const result = await execa(cmd, pythonLauncherArgs(cmd, ['-m', 'pipx', 'list']), {
         reject: false,
         stdio: 'pipe',
-        timeout: 3000,
+        timeout: probeTimeoutMs,
       });
       if (result.exitCode === 0 && result.stdout?.includes('rapidkit-core')) {
         debug(`✓ Found via ${cmd} -m pipx list`);
@@ -710,7 +713,7 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
     const result = await execa('poetry', ['show', 'rapidkit-core'], {
       reject: false,
       stdio: 'pipe',
-      timeout: 3000,
+      timeout: probeTimeoutMs,
     });
     if (result.exitCode === 0) {
       debug(`✓ Found via poetry`);
@@ -729,7 +732,7 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
         {
           reject: false,
           stdio: 'pipe',
-          timeout: 3000,
+          timeout: probeTimeoutMs,
         }
       );
       if (result.exitCode === 0) {
@@ -747,7 +750,7 @@ async function checkRapidkitCoreAvailable(): Promise<boolean> {
     const result = await execa('conda', ['list', 'rapidkit-core'], {
       reject: false,
       stdio: 'pipe',
-      timeout: 3000,
+      timeout: probeTimeoutMs,
     });
     if (result.exitCode === 0 && result.stdout?.includes('rapidkit-core')) {
       debug(`✓ Found via conda`);
@@ -912,7 +915,7 @@ async function detectRapidkitCoreVersion(): Promise<string | null> {
         {
           reject: false,
           stdio: 'pipe',
-          timeout: 3000,
+          timeout: probeTimeoutMs,
         }
       );
 
@@ -930,7 +933,7 @@ async function detectRapidkitCoreVersion(): Promise<string | null> {
       const result = await execa(cmd, ['show', 'rapidkit-core'], {
         reject: false,
         stdio: 'pipe',
-        timeout: 3000,
+        timeout: probeTimeoutMs,
       });
 
       if (result.exitCode === 0) {
@@ -946,7 +949,7 @@ async function detectRapidkitCoreVersion(): Promise<string | null> {
     const result = await execa('pipx', ['list'], {
       reject: false,
       stdio: 'pipe',
-      timeout: 3000,
+      timeout: probeTimeoutMs,
     });
     if (result.exitCode === 0 && result.stdout) {
       const match = result.stdout.match(/rapidkit-core\s+([0-9][0-9A-Za-z+._-]*)/i);

@@ -1,5 +1,6 @@
 import { execa } from 'execa';
 import { getPythonCommandCandidates } from '../utils/platform-capabilities.js';
+import { getBridgeTimeoutMs } from '../utils/command-timeouts.js';
 
 export type PythonCommand = 'python3' | 'python' | 'py';
 
@@ -43,7 +44,7 @@ async function tryRun(
   cmd: PythonCommand,
   args: string[],
   cwd?: string,
-  timeoutMs = 8000
+  timeoutMs = getBridgeTimeoutMs()
 ): Promise<{ ok: boolean; exitCode?: number; stdout?: string; stderr?: string }> {
   try {
     const result = await execa(cmd, args, {

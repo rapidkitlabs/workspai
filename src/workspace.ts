@@ -6,6 +6,7 @@ import { execa } from 'execa';
 import { getVersion } from './update-checker.js';
 import { getWorkspaceRegistryDirectory } from './utils/platform-capabilities.js';
 import { isDoctorEvidencePayloadCompatible } from './utils/doctor-evidence-contract.js';
+import { discoverWorkspaceProjects as discoverWorkspaceProjectsShared } from './utils/workspace-discovery.js';
 
 interface WorkspaceProject {
   name: string;
@@ -1353,55 +1354,12 @@ function shouldIncludeDoctorShareReport(payload: unknown): boolean {
   return isDoctorEvidencePayloadCompatible(payload);
 }
 
-async function pathExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function discoverWorkspaceProjects(workspacePath: string): Promise<string[]> {
-  const discovered: string[] = [];
-  const queue = [workspacePath];
-  const visited = new Set<string>();
-
-  while (queue.length > 0) {
-    const currentPath = queue.shift();
-    if (!currentPath || visited.has(currentPath)) {
-      continue;
-    }
-    visited.add(currentPath);
-
-    let entries: Array<{ isDirectory: () => boolean; name: string }> = [];
-    try {
-      entries = await fs.readdir(currentPath, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-
-    for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith('.')) {
-        continue;
-      }
-      if (['node_modules', 'dist', 'build', 'target', 'coverage', 'htmlcov'].includes(entry.name)) {
-        continue;
-      }
-
-      const candidate = path.join(currentPath, entry.name);
-      const hasContext = await pathExists(path.join(candidate, '.rapidkit', 'context.json'));
-      const hasProject = await pathExists(path.join(candidate, '.rapidkit', 'project.json'));
-
-      if (hasContext || hasProject) {
-        discovered.push(candidate);
-      }
-
-      queue.push(candidate);
-    }
-  }
-
-  return discovered.sort((a, b) => a.localeCompare(b));
+  return discoverWorkspaceProjectsShared(workspacePath, {
+    skipDirs: new Set(['node_modules', 'dist', 'build', 'target', 'coverage', 'htmlcov']),
+    includeHiddenDirs: false,
+    descendIntoMatchedProjects: true,
+  });
 }
 
 async function listReportJsonFiles(reportsDir: string): Promise<string[]> {

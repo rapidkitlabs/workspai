@@ -20,6 +20,7 @@ import {
   type BackendPlatformKey,
   type BackendRuntimeFamily,
 } from './utils/backend-framework-contract.js';
+import { discoverWorkspaceProjects as discoverWorkspaceProjectsShared } from './utils/workspace-discovery.js';
 
 export type WorkspaceRunStage = 'init' | 'test' | 'build' | 'start';
 
@@ -145,49 +146,25 @@ function normalizePathForMatch(value: string): string {
 }
 
 async function discoverWorkspaceProjects(workspacePath: string): Promise<string[]> {
-  const discovered = new Set<string>();
-  const resolvedWorkspacePath = path.resolve(workspacePath);
-
-  async function scan(dirPath: string): Promise<void> {
-    let entries: fs.Dirent[];
-    try {
-      entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    if (
-      (await pathExists(path.join(dirPath, '.rapidkit', 'context.json'))) ||
-      (await pathExists(path.join(dirPath, '.rapidkit', 'project.json')))
-    ) {
-      discovered.add(path.resolve(dirPath));
-      return;
-    }
-
-    if (
-      path.resolve(dirPath) !== resolvedWorkspacePath &&
-      detectRuntimeCandidatesFromProject(dirPath).length > 0
-    ) {
-      discovered.add(path.resolve(dirPath));
-      return;
-    }
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {
-        continue;
+  return discoverWorkspaceProjectsShared(workspacePath, {
+    skipDirs: SKIP_DIRS,
+    includeHiddenDirs: false,
+    descendIntoMatchedProjects: false,
+    isProjectDir: async (dirPath, rootPath) => {
+      if (
+        (await pathExists(path.join(dirPath, '.rapidkit', 'context.json'))) ||
+        (await pathExists(path.join(dirPath, '.rapidkit', 'project.json')))
+      ) {
+        return true;
       }
 
-      if (SKIP_DIRS.has(entry.name)) {
-        continue;
+      if (path.resolve(dirPath) === path.resolve(rootPath)) {
+        return false;
       }
 
-      const next = path.join(dirPath, entry.name);
-      await scan(next);
-    }
-  }
-
-  await scan(path.resolve(workspacePath));
-  return [...discovered].sort((a, b) => a.localeCompare(b));
+      return detectRuntimeCandidatesFromProject(dirPath).length > 0;
+    },
+  });
 }
 
 async function computeAffectedProjects(

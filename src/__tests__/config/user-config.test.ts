@@ -29,8 +29,7 @@ describe('User Config', () => {
     it('should return config file path', () => {
       const configPath = getConfigPath();
       expect(configPath).toBeDefined();
-      expect(configPath).toContain('.rapidkit');
-      expect(configPath).toContain('config.json');
+      expect(configPath).toContain('.rapidkitrc.json');
     });
   });
 
@@ -76,15 +75,13 @@ describe('User Config', () => {
   });
 
   describe('setUserConfig', () => {
-    it('should create config directory if it does not exist', () => {
+    it('should write config even when file does not exist', () => {
       vi.spyOn(fs, 'existsSync').mockReturnValue(false);
-      const mkdirSpy = vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
       const writeSpy = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
       vi.spyOn(fs, 'readFileSync').mockReturnValue('{}');
 
       setUserConfig({ openaiApiKey: 'test-key' });
 
-      expect(mkdirSpy).toHaveBeenCalled();
       expect(writeSpy).toHaveBeenCalled();
     });
 
