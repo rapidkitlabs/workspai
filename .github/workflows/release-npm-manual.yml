@@ -1,0 +1,165 @@
+name: Release npm (manual gated)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to release (branch, tag, or SHA)"
+        required: true
+        default: "main"
+      dist_tag:
+        description: "npm dist-tag"
+        required: true
+        default: "latest"
+      dry_run:
+        description: "Run npm publish --dry-run only"
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: npm-release-${{ github.event.inputs.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+jobs:
+  verify-release-gates:
+    name: Verify Required Workflows Are Green
+    runs-on: ubuntu-latest
+    outputs:
+      resolved_sha: ${{ steps.resolve_sha.outputs.sha }}
+
+    steps:
+      - name: Checkout target ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+          fetch-depth: 0
+
+      - name: Resolve target SHA
+        id: resolve_sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Resolved SHA: $(git rev-parse HEAD)"
+
+      - name: Verify required workflow runs for SHA are successful
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = '${{ steps.resolve_sha.outputs.sha }}';
+            const required = [
+              'CI & Metrics Matrix',
+              'Security Audit',
+              'Bridge Regression Smoke',
+              'Workspace E2E Matrix',
+              'Windows Bridge E2E'
+            ];
+
+            const { owner, repo } = context.repo;
+            const runsResp = await github.rest.actions.listWorkflowRunsForRepo({
+              owner,
+              repo,
+              head_sha: sha,
+              per_page: 100
+            });
+
+            const runs = runsResp.data.workflow_runs || [];
+            const latestByName = new Map();
+            for (const run of runs) {
+              if (!required.includes(run.name)) continue;
+              const current = latestByName.get(run.name);
+              if (!current || new Date(run.created_at) > new Date(current.created_at)) {
+                latestByName.set(run.name, run);
+              }
+            }
+
+            const missing = required.filter((name) => !latestByName.has(name));
+            if (missing.length > 0) {
+              core.setFailed(
+                `Missing required workflow runs for ${sha}: ${missing.join(', ')}. ` +
+                'Run the missing workflows and ensure they pass before publishing.'
+              );
+              return;
+            }
+
+            const notGreen = [];
+            for (const name of required) {
+              const run = latestByName.get(name);
+              const ok = run.status === 'completed' && run.conclusion === 'success';
+              if (!ok) {
+                notGreen.push(`${name} => status=${run.status}, conclusion=${run.conclusion}`);
+              }
+            }
+
+            if (notGreen.length > 0) {
+              core.setFailed(
+                `Required workflows are not green for ${sha}:\n- ${notGreen.join('\n- ')}`
+              );
+              return;
+            }
+
+            core.info(`All required workflows are green for ${sha}.`);
+
+  publish-npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: verify-release-gates
+    environment: npm-production
+
+    steps:
+      - name: Checkout verified SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-release-gates.outputs.resolved_sha }}
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run release quality gates
+        run: npm run validate
+
+      - name: Build distribution
+        run: npm run build
+
+      - name: Ensure package version is not already published
+        id: version_guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "package_name=${PKG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "package_version=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
+
+          if npm view "${PKG_NAME}@${PKG_VERSION}" version >/dev/null 2>&1; then
+            echo "${PKG_NAME}@${PKG_VERSION} is already published on npm."
+            exit 1
+          fi
+
+      - name: npm publish (dry-run)
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          npm publish --dry-run --provenance --access public --tag "${{ github.event.inputs.dist_tag }}"
+
+      - name: npm publish
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          npm publish --provenance --access public --tag "${{ github.event.inputs.dist_tag }}"
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          echo "Published ${{ steps.version_guard.outputs.package_name }}@${{ steps.version_guard.outputs.package_version }} with dist-tag '${{ github.event.inputs.dist_tag }}'."
