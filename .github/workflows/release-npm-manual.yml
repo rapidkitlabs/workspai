@@ -118,10 +118,10 @@ jobs:
         with:
           ref: ${{ needs.verify-release-gates.outputs.resolved_sha }}
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24 (required for OIDC trusted publishing)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
           registry-url: 'https://registry.npmjs.org'
 
