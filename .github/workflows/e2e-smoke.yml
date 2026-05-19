@@ -10,6 +10,7 @@ on:
       - "src/__tests__/core-bridge.test.ts"
       - "src/__tests__/scenario-c-system-python-has-core.test.ts"
       - ".github/workflows/e2e-smoke.yml"
+      - ".github/workflows/release-npm-manual.yml"
   pull_request:
     branches: [main, develop]
     paths:
@@ -19,6 +20,7 @@ on:
       - "src/__tests__/core-bridge.test.ts"
       - "src/__tests__/scenario-c-system-python-has-core.test.ts"
       - ".github/workflows/e2e-smoke.yml"
+      - ".github/workflows/release-npm-manual.yml"
   workflow_dispatch:
 
 jobs:
