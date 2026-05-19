@@ -33,6 +33,10 @@
     "dist",
     "scripts/enforce-package-manager.cjs"
   ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
   "scripts": {
     "preinstall": "node scripts/enforce-package-manager.cjs",
     "sync-kits": "bash scripts/sync-kits.sh",
