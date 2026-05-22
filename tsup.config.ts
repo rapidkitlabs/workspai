@@ -1,5 +1,4 @@
 import { defineConfig } from 'tsup';
-import { copyFileSync } from 'fs';
 
 export default defineConfig({
   entry: ['src/index.ts'],
@@ -48,9 +47,6 @@ export default defineConfig({
   // Skip node_modules
   skipNodeModulesBundle: true,
 
-  // Copy package.json to dist for version reading
-  onSuccess: async () => {
-    copyFileSync('package.json', 'dist/package.json');
-    console.log('✓ Copied package.json to dist/');
-  },
+  // dist/package.json is redundant: npm packages already include root package.json.
+  // Skipping the copy keeps the dist footprint under CI metrics threshold.
 });

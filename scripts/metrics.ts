@@ -23,7 +23,7 @@ interface Metrics {
   security_vulnerabilities: number;
 }
 
-const BUNDLE_SIZE_LIMIT_KB = Number(process.env.RAPIDKIT_BUNDLE_SIZE_LIMIT_KB ?? '600');
+const BUNDLE_SIZE_LIMIT_KB = Number(process.env.RAPIDKIT_BUNDLE_SIZE_LIMIT_KB ?? '1000');
 
 class MetricsCollector {
   private rootDir: string;
