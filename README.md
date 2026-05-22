@@ -2,11 +2,11 @@
 
 > RapidKit is an open-source workspace platform that standardizes how teams build, scale, and deploy backend services.
 
-FastAPI, NestJS, Spring Boot, Go/Fiber, and Go/Gin scaffolding with production-ready defaults.  
-**27+ plug-and-play modules** are available for FastAPI & NestJS projects. Spring Boot and Go kits run as npm-level generators.  
-Clean architecture • Zero boilerplate • Instant deployment.
+Production-ready scaffolding for FastAPI, NestJS, Spring Boot, Go/Fiber, and Go/Gin.  
+**27+ plug-and-play modules** are available for FastAPI and NestJS projects. Spring Boot and Go kits run as npm-level generators.  
+Built for clean architecture, minimal boilerplate, and fast deployment.
 
-> **💡 Recommended:** Install the [Workspai VS Code extension](https://marketplace.visualstudio.com/items?itemName=rapidkit.rapidkit-vscode) for AI-powered project creation, a visual workspace explorer, and context-aware coding assistance — all backed by this CLI.
+> **💡 Recommended:** Install the [Workspai VS Code extension](https://marketplace.visualstudio.com/items?itemName=rapidkit.rapidkit-vscode) for AI-assisted project creation, workspace exploration, and context-aware coding — all backed by this CLI.
 
 [![npm version](https://img.shields.io/npm/v/rapidkit.svg?style=flat-square)](https://www.npmjs.com/package/rapidkit)
 [![Downloads](https://img.shields.io/npm/dm/rapidkit.svg?style=flat-square)](https://www.npmjs.com/package/rapidkit)
@@ -14,25 +14,36 @@ Clean architecture • Zero boilerplate • Instant deployment.
 [![GitHub Stars](https://img.shields.io/github/stars/getrapidkit/rapidkit-npm.svg?style=flat-square)](https://github.com/getrapidkit/rapidkit-npm/stargazers)
 [![Built by RapidKit](https://img.shields.io/badge/Built%20by-RapidKit-0f172a?logo=github)](https://www.getrapidkit.com)
 
-The official RapidKit CLI npm package for creating and operating RapidKit workspaces and projects.
+The official RapidKit npm CLI for creating and operating workspaces and projects.
 
 - Workspace-first lifecycle (`create workspace` → `bootstrap` → `setup` → `create project`)
-- Multi-runtime support (Python, Node.js, Java, Go)
-- Profile + policy enforcement (`warn` / `strict`)
+- Multi-runtime support across Python, Node.js, Java, and Go
+- Policy enforcement with `warn` / `strict` modes
 - Cache and mirror lifecycle commands for stable environments
+
+## Workspace-First Architecture
+
+RapidKit is designed around the workspace as the operational boundary.
+
+- The workspace owns policy, readiness, and shared tooling state.
+- Projects are discovered and managed inside that workspace boundary.
+- Wrapper-owned commands stay in the npm CLI; runtime-specific execution is delegated only when appropriate.
+- Release evidence is written into `.rapidkit/reports/` so CI, docs, and local workflows use the same contract surface.
+
+This layout keeps workspace setup deterministic, makes cross-project orchestration explicit, and avoids drifting behavior between the CLI and the core runtime.
 
 ## RapidKit CLI in the Workspai Ecosystem
 
 The `rapidkit` npm package remains the official RapidKit CLI.
 
-It works alongside Workspai, which is a product developed by RapidKit.
+It works alongside Workspai, a product developed by RapidKit.
 
-| Component | Repository | Role |
-|---|---|---|
-| CLI | [getrapidkit/rapidkit-npm](https://github.com/getrapidkit/rapidkit-npm) | Official RapidKit npm CLI |
-| VS Code Extension | [getrapidkit/rapidkit-vscode](https://github.com/getrapidkit/rapidkit-vscode) | **Workspai** — visual explorer + AI features (recommended) |
-| Core Engine | [getrapidkit/rapidkit-core](https://github.com/getrapidkit/rapidkit-core) | Official RapidKit Core |
-| Examples | [getrapidkit/rapidkit-examples](https://github.com/getrapidkit/rapidkit-examples) | Example workspaces and starter references |
+| Component         | Repository                                                                        | Role                                                       |
+| ----------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| CLI               | [getrapidkit/rapidkit-npm](https://github.com/getrapidkit/rapidkit-npm)           | Official RapidKit npm CLI                                  |
+| VS Code Extension | [getrapidkit/rapidkit-vscode](https://github.com/getrapidkit/rapidkit-vscode)     | **Workspai** — visual explorer + AI features (recommended) |
+| Core Engine       | [getrapidkit/rapidkit-core](https://github.com/getrapidkit/rapidkit-core)         | Official RapidKit Core                                     |
+| Examples          | [getrapidkit/rapidkit-examples](https://github.com/getrapidkit/rapidkit-examples) | Example workspaces and starter references                  |
 
 ## Requirements
 
@@ -122,6 +133,11 @@ npx rapidkit bootstrap [--profile <profile>] [--json]
 npx rapidkit setup <python|node|go|java> [--warm-deps]
 npx rapidkit readiness [--json] [--strict]
 npx rapidkit autopilot release [--mode <audit|safe-fix|enforce>] [--json] [--output <file>] [--since <ref>] [--parallel] [--max-workers <n>]
+```
+
+Recommended for CI: `npx rapidkit autopilot release --mode enforce --json --output .rapidkit/reports/autopilot-release.json`
+
+```bash
 npx rapidkit workspace policy show
 npx rapidkit workspace policy set <key> <value>
 npx rapidkit doctor
@@ -194,18 +210,18 @@ Bundle content includes:
 
 RapidKit keeps the wrapper boundary explicit so users know which layer owns each action.
 
-| Command family | Owner | Notes |
-|---|---|---|
-| `create workspace`, `workspace`, `cache`, `mirror` | RapidKit wrapper | Platform-level orchestration |
-| `init` | Wrapper orchestrated | Project init in project dirs; full-init alias at workspace root |
-| `dev`, `test`, `build`, `start` | Runtime aware | Delegates to the active project/runtime when available |
-| `readiness` | Wrapper release gate | Generates release-readiness evidence (`--json` for CI, `--strict` for fail-fast) |
-| `autopilot release` | Wrapper orchestrator | Runs doctor/readiness/remediation/workspace-run gates and emits release verdict evidence |
-| `import` | Workspace ingestion | Imports local folders or git backends with rollback-safe sync behavior |
-| `doctor` | Wrapper system check | Checks host prerequisites by default |
-| `doctor workspace` | Workspace health | Full workspace scan with project-level details and fixes |
-| `doctor project` | Project health | Current project (or nearest parent) diagnostics with project evidence and scoped fixes |
-| `workspace run` | Workspace orchestrator | Stage execution across discovered projects with optional affected-only, blast-radius expansion, and policy-gated pre-checks |
+| Command family                                     | Owner                  | Notes                                                                                                                       |
+| -------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `create workspace`, `workspace`, `cache`, `mirror` | RapidKit wrapper       | Platform-level orchestration                                                                                                |
+| `init`                                             | Wrapper orchestrated   | Project init in project dirs; full-init alias at workspace root                                                             |
+| `dev`, `test`, `build`, `start`                    | Runtime aware          | Delegates to the active project/runtime when available                                                                      |
+| `readiness`                                        | Wrapper release gate   | Generates release-readiness evidence (`--json` for CI, `--strict` for fail-fast)                                            |
+| `autopilot release`                                | Wrapper orchestrator   | Runs doctor/readiness/remediation/workspace-run gates and emits release verdict evidence                                    |
+| `import`                                           | Workspace ingestion    | Imports local folders or git backends with rollback-safe sync behavior                                                      |
+| `doctor`                                           | Wrapper system check   | Checks host prerequisites by default                                                                                        |
+| `doctor workspace`                                 | Workspace health       | Full workspace scan with project-level details and fixes                                                                    |
+| `doctor project`                                   | Project health         | Current project (or nearest parent) diagnostics with project evidence and scoped fixes                                      |
+| `workspace run`                                    | Workspace orchestrator | Stage execution across discovered projects with optional affected-only, blast-radius expansion, and policy-gated pre-checks |
 
 Use `npx rapidkit doctor` for a quick host pre-flight, `npx rapidkit doctor project` for a service-level check, and `npx rapidkit doctor workspace` for the full workspace picture.
 Use `npx rapidkit doctor workspace --plan` or `npx rapidkit doctor project --plan` to preview remediation safely.
@@ -320,6 +336,7 @@ npx rapidkit workspace policy set rules.enforce_toolchain_lock true
 ```
 
 Supported keys:
+
 - `mode`
 - `dependency_sharing_mode`
 - `rules.enforce_workspace_marker`
@@ -347,15 +364,15 @@ visual workspace explorer, AI-powered project creation, and context-aware coding
 
 ### Why use the extension?
 
-| Feature | CLI | Extension |
-|---|---|---|
-| Create workspace / project | ✅ | ✅ Visual wizard |
-| AI Create — describe → scaffold | ❌ | ✅ |
-| Project Assistant (context-aware Q&A) | ❌ | ✅ |
-| Workspace tree explorer | ❌ | ✅ |
-| Module catalog browser | ❌ | ✅ |
-| One-click `rapidkit init / dev / test` | ❌ | ✅ |
-| Inline AI on every workspace item | ❌ | ✅ |
+| Feature                                | CLI | Extension        |
+| -------------------------------------- | --- | ---------------- |
+| Create workspace / project             | ✅  | ✅ Visual wizard |
+| AI Create — describe → scaffold        | ❌  | ✅               |
+| Project Assistant (context-aware Q&A)  | ❌  | ✅               |
+| Workspace tree explorer                | ❌  | ✅               |
+| Module catalog browser                 | ❌  | ✅               |
+| One-click `rapidkit init / dev / test` | ❌  | ✅               |
+| Inline AI on every workspace item      | ❌  | ✅               |
 
 ### Install
 
@@ -423,17 +440,17 @@ npx rapidkit workspace run build --json --max-workers 8
 
 ### Supported Runtimes & Frameworks
 
-| Runtime | Frameworks | Status |
-|---------|-----------|--------|
-| **Node** | NestJS, Express, Next.js, Nuxt | Built-in |
-| **Go** | Fiber, Gin, Echo, Chi | Built-in |
-| **Java** | Spring Boot, Quarkus, Gradle | Built-in |
+| Runtime    | Frameworks                     | Status   |
+| ---------- | ------------------------------ | -------- |
+| **Node**   | NestJS, Express, Next.js, Nuxt | Built-in |
+| **Go**     | Fiber, Gin, Echo, Chi          | Built-in |
+| **Java**   | Spring Boot, Quarkus, Gradle   | Built-in |
 | **Python** | FastAPI, Django, Flask, Poetry | Built-in |
-| **PHP** | Laravel, Symfony, Slim | Stable |
-| **Rust** | Actix, Axum, Rocket, Tokio | Stable |
-| **.NET** | ASP.NET Core, Entity Framework | Stable |
-| **Elixir** | Phoenix, Umbrella Projects | Stable |
-| **Ruby** | Rails, Sinatra, RSpec | Stable |
+| **PHP**    | Laravel, Symfony, Slim         | Stable   |
+| **Rust**   | Actix, Axum, Rocket, Tokio     | Stable   |
+| **.NET**   | ASP.NET Core, Entity Framework | Stable   |
+| **Elixir** | Phoenix, Umbrella Projects     | Stable   |
+| **Ruby**   | Rails, Sinatra, RSpec          | Stable   |
 
 ### Enterprise Features
 
@@ -449,6 +466,7 @@ npx rapidkit workspace run build --json --max-workers 8
 10. **Composite Steps** — Multi-step build logic
 
 For deeper enterprise deployment and governance details, see:
+
 - [docs/README.md](docs/README.md)
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
 - [docs/SECURITY.md](docs/SECURITY.md)
@@ -489,11 +507,11 @@ cat test-results.json | jq '.projects[] | {path, status, errorCategory}'
 
 RapidKit has two workspace-level execution surfaces, and three equivalent full-init aliases at workspace root:
 
-| Command | Intent | Scope |
-|---|---|---|
+| Command                                                            | Intent                                                                            | Scope                                     |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------- | ----------------------------------------- |
 | `init` (at workspace root), `workspace init`, `workspace run init` | Mirrored full-init orchestration (workspace-profile deps + selected project init) | Workspace root + discovered project fleet |
-| `workspace run <test\|build\|start>` | Fleet stage execution — run a CI-safe stage across discovered projects | Selected project fleet |
-| `init`, `test`, `build`, `start`, `dev` (inside project directory) | Project primitive — run one stage in the current project only | Single project |
+| `workspace run <test\|build\|start>`                               | Fleet stage execution — run a CI-safe stage across discovered projects            | Selected project fleet                    |
+| `init`, `test`, `build`, `start`, `dev` (inside project directory) | Project primitive — run one stage in the current project only                     | Single project                            |
 
 **Key design rule:** at workspace root, these are equivalent aliases: `npx rapidkit init`, `npx rapidkit workspace init`, `npx rapidkit workspace run init`.
 Inside a project directory, `npx rapidkit init` remains a project-scoped primitive.
@@ -523,13 +541,13 @@ npx rapidkit --version
 
 ### Quick fixes matrix
 
-| Problem | Quick check | Fix |
-|---|---|---|
-| `python3` not found | `python3 --version` | Install Python 3.10+ and re-run `npx rapidkit create workspace ...` |
-| `setup --warm-deps` skipped | Check for `package.json` / `go.mod` in current dir | Run from the target project directory |
-| strict policy blocks command | Review `.rapidkit/policies.yml` | Set policy intentionally via `npx rapidkit workspace policy set ...` |
-| doctor output seems stale | Check report timestamp in `.rapidkit/reports/` | Re-run `npx rapidkit doctor workspace` or `npx rapidkit doctor project` |
-| affected run scope seems wrong | Verify git ref | Use `--since <ref>` explicitly |
+| Problem                        | Quick check                                        | Fix                                                                     |
+| ------------------------------ | -------------------------------------------------- | ----------------------------------------------------------------------- |
+| `python3` not found            | `python3 --version`                                | Install Python 3.10+ and re-run `npx rapidkit create workspace ...`     |
+| `setup --warm-deps` skipped    | Check for `package.json` / `go.mod` in current dir | Run from the target project directory                                   |
+| strict policy blocks command   | Review `.rapidkit/policies.yml`                    | Set policy intentionally via `npx rapidkit workspace policy set ...`    |
+| doctor output seems stale      | Check report timestamp in `.rapidkit/reports/`     | Re-run `npx rapidkit doctor workspace` or `npx rapidkit doctor project` |
+| affected run scope seems wrong | Verify git ref                                     | Use `--since <ref>` explicitly                                          |
 
 - If setup output looks stale, run `npx rapidkit setup <runtime>` again to refresh `.rapidkit/toolchain.lock`.
 - If dependency warm-up is skipped, verify you are inside the corresponding project directory (`package.json` for Node, `go.mod` for Go).
