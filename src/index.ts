@@ -1128,6 +1128,7 @@ const LOCAL_COMMANDS = [
 export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
   'readiness',
   'doctor',
+  'autopilot',
   'import',
   'workspace',
   'bootstrap',
@@ -1142,6 +1143,7 @@ export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
 const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
   'readiness',
   'doctor',
+  'autopilot',
   'import',
   'workspace',
   'ai',
@@ -4097,6 +4099,7 @@ Workspace Setup Commands
   rapidkit bootstrap         Bootstrap projects in workspace (--profile java-only|python-only|node-only|go-only|polyglot|enterprise)
   rapidkit setup <runtime>   Set up runtime toolchain  (runtime: python | node | go | java)
   rapidkit readiness         Build release-readiness evidence (use --json for CI)
+  rapidkit autopilot release Run end-to-end release gate orchestration (audit|safe-fix|enforce)
   rapidkit workspace list    List registered workspaces on this system
   rapidkit mirror            Manage registry mirrors   (mirror status --json | sync | verify | rotate)
   rapidkit cache             Manage package cache      (cache status | clear | prune | repair)
@@ -4562,6 +4565,75 @@ program
   .action(async (options: { json?: boolean; strict?: boolean }) => {
     await runReleaseReadinessCommand(options);
   });
+
+program
+  .command('autopilot <action>')
+  .description('Run end-to-end release autopilot workflows')
+  .option('--mode <mode>', 'Autopilot mode: audit | safe-fix | enforce', 'audit')
+  .option('--json', 'Emit machine-readable JSON output')
+  .option('--output <file>', 'Write autopilot report to an additional output path')
+  .option('--since <ref>', 'Git ref for affected project selection (default: HEAD~1)')
+  .option('--parallel', 'Run workspace stage execution in parallel')
+  .option('--max-workers <count>', 'Maximum parallel workers')
+  .action(
+    async (
+      action: string,
+      options: {
+        mode?: string;
+        json?: boolean;
+        output?: string;
+        since?: string;
+        parallel?: boolean;
+        maxWorkers?: string;
+      }
+    ) => {
+      if (action !== 'release') {
+        console.log(chalk.red(`Unknown autopilot action: ${action}`));
+        console.log(chalk.gray('Available: release'));
+        process.exit(1);
+      }
+
+      const mode = String(options.mode || 'audit')
+        .trim()
+        .toLowerCase();
+      if (!['audit', 'safe-fix', 'enforce'].includes(mode)) {
+        console.log(chalk.red(`Invalid autopilot mode: ${options.mode}`));
+        console.log(chalk.gray('Allowed modes: audit | safe-fix | enforce'));
+        process.exit(1);
+      }
+
+      const maxWorkersRaw = Number(options.maxWorkers ?? '');
+      const maxWorkers = Number.isFinite(maxWorkersRaw)
+        ? Math.max(1, Math.trunc(maxWorkersRaw))
+        : undefined;
+
+      const { runAutopilotRelease } = await import('./autopilot-release.js');
+      let report;
+      try {
+        report = await runAutopilotRelease({
+          workspacePath: process.cwd(),
+          mode: mode as 'audit' | 'safe-fix' | 'enforce',
+          since: options.since,
+          parallel: options.parallel === true,
+          maxWorkers,
+          json: options.json === true,
+          output: options.output,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.log(chalk.red(`Autopilot release failed: ${message}`));
+        process.exit(3);
+      }
+
+      if (options.json) {
+        console.log(JSON.stringify(report, null, 2));
+      }
+
+      if (report.summary.exitCode !== 0) {
+        process.exit(report.summary.exitCode);
+      }
+    }
+  );
 
 // Doctor command - health check for RapidKit environment
 program

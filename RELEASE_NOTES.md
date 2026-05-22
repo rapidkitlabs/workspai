@@ -1,6 +1,47 @@
 # Release Notes
 
-## Latest Release: v0.27.6 (May 19, 2026)
+## Latest Release: v0.28.0 (May 22, 2026)
+
+### 🤖 Autopilot Release Commander — Enterprise Orchestration and Stable Gate Verdicts
+
+This release adds `autopilot release` as a top-level wrapper command to run a full, deterministic release readiness flow using existing stable command contracts.
+
+**What's New:**
+
+- 🤖 **New release commander flow**
+  - Added command:
+    - `npx rapidkit autopilot release --mode <audit|enforce|safe-fix> --json --output <path>`
+  - Stages orchestrate `doctor workspace`, `readiness`, remediation planning/apply, and `workspace run test/build`.
+
+- 🧱 **Enterprise fail-closed behavior**
+  - Enforce mode blocks on warnings and failures with deterministic blocker reasons.
+  - Execution-level command crashes are classified separately and return exit code `3`.
+
+- 🔁 **Safe-fix post-apply revalidation**
+  - In `safe-fix`, successful remediation apply now triggers post-apply `doctor` and `readiness` re-checks.
+  - Final verdict reflects post-apply gate status, not pre-fix assumptions.
+
+- 🧾 **Stable JSON contract and artifacts**
+  - Report schema pinned to `autopilot-release-v1`.
+  - Deterministic report writing via `--output`.
+  - Additional stage artifacts for workspace test/build runs are emitted under `.rapidkit/reports/`.
+
+- ✅ **Regression coverage expansion**
+  - Added contract-level tests for enforce warning blockers.
+  - Added execution crash -> exit code `3` mapping test.
+  - Added safe-fix revalidation call-path test coverage.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.28.0
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.28.0.md)
+
+---
+
+## Previous Release: v0.27.6 (May 19, 2026)
 
 ### 🛡️ v0.27.6 — Stabilization Hardening, Unified Config Security, and Doctor Remediation Plan/Apply (Patch)
 

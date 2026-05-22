@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-05-22
+
+### Added
+
+- Added new release orchestration command:
+  - `npx rapidkit autopilot release --mode <audit|safe-fix|enforce> [--json] [--output <file>] [--since <ref>] [--parallel] [--max-workers <n>]`
+- Added dedicated autopilot report contract and artifact output:
+  - `.rapidkit/reports/autopilot-release-last-run.json`
+- Added dedicated regression coverage for autopilot release orchestration:
+  - `src/__tests__/autopilot-release.test.ts`
+
+### Changed
+
+- Updated npm-only top-level command ownership and help surface to include `autopilot` as a wrapper-owned command.
+- Updated README command docs and ownership matrix to include `autopilot release` behavior and usage.
+- Hardened `autopilot release` enforce policy with deterministic blocker reasons for warning-grade gate results.
+- Hardened `autopilot release --mode safe-fix` to re-run doctor/readiness after apply and derive final verdict from post-apply gate status.
+- Hardened command execution classification in `autopilot release` to map process-level crashes to explicit execution-error exit code `3`.
+
+### Fixed
+
+- Expanded autopilot regression coverage with a lightweight end-to-end enforce flow test over a real workspace fixture and warned stage gate behavior.
+
 ## [0.27.6] - 2026-05-19
 
 ### Added

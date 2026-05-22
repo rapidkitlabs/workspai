@@ -14,7 +14,7 @@ Clean architecture • Zero boilerplate • Instant deployment.
 [![GitHub Stars](https://img.shields.io/github/stars/getrapidkit/rapidkit-npm.svg?style=flat-square)](https://github.com/getrapidkit/rapidkit-npm/stargazers)
 [![Built by RapidKit](https://img.shields.io/badge/Built%20by-RapidKit-0f172a?logo=github)](https://www.getrapidkit.com)
 
-Official CLI for creating and operating RapidKit workspaces and projects.
+The official RapidKit CLI npm package for creating and operating RapidKit workspaces and projects.
 
 - Workspace-first lifecycle (`create workspace` → `bootstrap` → `setup` → `create project`)
 - Multi-runtime support (Python, Node.js, Java, Go)
@@ -42,6 +42,8 @@ It works alongside Workspai, which is a product developed by RapidKit.
 - Go (optional, for Go projects)
 
 ## Install
+
+Install the RapidKit CLI npm package (`rapidkit`) globally:
 
 ```bash
 npm install -g rapidkit
@@ -119,6 +121,7 @@ npx rapidkit create workspace <name> [--profile <profile>] [--author <name>] [--
 npx rapidkit bootstrap [--profile <profile>] [--json]
 npx rapidkit setup <python|node|go|java> [--warm-deps]
 npx rapidkit readiness [--json] [--strict]
+npx rapidkit autopilot release [--mode <audit|safe-fix|enforce>] [--json] [--output <file>] [--since <ref>] [--parallel] [--max-workers <n>]
 npx rapidkit workspace policy show
 npx rapidkit workspace policy set <key> <value>
 npx rapidkit doctor
@@ -197,6 +200,7 @@ RapidKit keeps the wrapper boundary explicit so users know which layer owns each
 | `init` | Wrapper orchestrated | Project init in project dirs; full-init alias at workspace root |
 | `dev`, `test`, `build`, `start` | Runtime aware | Delegates to the active project/runtime when available |
 | `readiness` | Wrapper release gate | Generates release-readiness evidence (`--json` for CI, `--strict` for fail-fast) |
+| `autopilot release` | Wrapper orchestrator | Runs doctor/readiness/remediation/workspace-run gates and emits release verdict evidence |
 | `import` | Workspace ingestion | Imports local folders or git backends with rollback-safe sync behavior |
 | `doctor` | Wrapper system check | Checks host prerequisites by default |
 | `doctor workspace` | Workspace health | Full workspace scan with project-level details and fixes |
@@ -207,6 +211,7 @@ Use `npx rapidkit doctor` for a quick host pre-flight, `npx rapidkit doctor proj
 Use `npx rapidkit doctor workspace --plan` or `npx rapidkit doctor project --plan` to preview remediation safely.
 Use `npx rapidkit doctor workspace --apply` or `npx rapidkit doctor project --apply` for non-interactive remediation runs.
 Use `npx rapidkit readiness` when you need machine-readable release evidence or strict CI gating.
+Use `npx rapidkit autopilot release` to run an end-to-end pre-merge release gate in one command.
 
 ### Doctor workspace fix behavior
 

@@ -3,7 +3,7 @@
  * Tests command parsing, option handling, and workflow orchestration
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { execa } from 'execa';
 import * as path from 'path';
 import * as fs from 'fs-extra';
@@ -171,6 +171,30 @@ describe('CLI Entry Point', () => {
       expect(noArg.stdout.replace(/\r/g, '')).toBe(withHelp.stdout.replace(/\r/g, ''));
       expect(noArg.stdout.replace(/\r/g, '')).toBe(withHelpCommand.stdout.replace(/\r/g, ''));
     });
+  });
+
+  describe('Autopilot Command (CLI Entrypoint)', () => {
+    it('should reject unknown autopilot action from CLI entrypoint', async () => {
+      const result = await execa('node', [CLI_PATH, 'autopilot', 'unknown'], {
+        cwd: TEST_DIR,
+        reject: false,
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Unknown autopilot action: unknown');
+      expect(result.stdout).toContain('Available: release');
+    }, 15000);
+
+    it('should reject invalid autopilot mode from CLI entrypoint', async () => {
+      const result = await execa('node', [CLI_PATH, 'autopilot', 'release', '--mode', 'invalid'], {
+        cwd: TEST_DIR,
+        reject: false,
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain('Invalid autopilot mode: invalid');
+      expect(result.stdout).toContain('Allowed modes: audit | safe-fix | enforce');
+    }, 15000);
   });
 
   describe('Dry-run Mode', () => {

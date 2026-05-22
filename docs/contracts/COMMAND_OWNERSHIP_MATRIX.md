@@ -15,6 +15,7 @@ This document defines which layer owns command execution in RapidKit npm CLI (`r
 These commands are implemented and orchestrated by `rapidkit-npm`:
 
 - `readiness`
+- `autopilot`
 - `doctor`
 - `import`
 - `workspace`
