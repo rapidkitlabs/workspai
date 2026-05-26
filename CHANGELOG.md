@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-05-26
+
+### Changed
+
+- Hardened CLI process test builds with a shared locked `dist/index.js` build helper to avoid parallel rebuild races across integration suites.
+- Updated direct CLI bootstrap detection to support generated `dist/index.js` and source-entry execution paths consistently.
+- Updated CI with a dedicated backend project import rollback guard.
+
+### Fixed
+
+- Fixed workspace project import cleanup so failed local copies and git clones remove partially prepared destination directories.
+- Fixed workspace import source boundary checks to use `path.relative` semantics for safer cross-platform path handling.
+- Fixed CLI subprocess output reliability by forcing stdout/stderr into blocking mode during direct CLI execution.
+- Refreshed transitive dependency locks to clear npm audit findings for `basic-ftp`, `brace-expansion`, `fast-uri`, `ip-address`, `postcss`, and `ws`.
+
 ## [0.29.0] - 2026-05-26
 
 ### Added
@@ -267,8 +282,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `dist/index.js` reduced from 258 KB to 126 KB (-51%) by converting five static module imports (`create`, `demo-kit`, `gofiber-standard`, `gogin-standard`, `doctor`) to inline lazy `await import()` calls at their respective call sites.
 - Cold-start time reduced from 366 ms to 317 ms on reference hardware.
 
-
-
 ### Added
 
 - `detectWindowsDoctorWorkspaceShadow()` — detects when a workspace-local `rapidkit.cmd` / `rapidkit.exe` launcher on Windows would shadow the global CLI during `doctor --workspace` runs; prints a yellow warning and falls back to the npm-wrapper doctor workflow to avoid ambiguous binary resolution.
@@ -280,34 +293,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.25.4] - 2026-04-16
 
 ### Added
+
 - ⚡ **Update check caching** — `checkForUpdates()` now caches the npm registry result to `~/.rapidkit/cache/update-check.json` with a 4-hour TTL. Subsequent CLI invocations within the TTL window skip the `npm view rapidkit version` network call entirely, eliminating up to 3 seconds of blocking startup time on slow or offline networks.
 - 🔒 Cache is automatically invalidated when the installed CLI version changes (version-keyed), so upgrade notifications are never missed.
 
 ## [0.25.3] - 2026-03-22
 
 ### Added
+
 - 🩺 Added workspace doctor project-scan cache with signature invalidation and reuse metadata (`.rapidkit/reports/doctor-workspace-cache.json`).
 - 🧾 Added doctor evidence export on each workspace run (`.rapidkit/reports/doctor-last-run.json`) with system/project summary and cache context.
 - ✅ Added regression coverage for workspace scan caching/evidence generation and Go toolchain-missing auto-fix gating.
 
 ### Changed
+
 - ⚡ Parallelized system tool checks in workspace doctor path to reduce runtime for repeat diagnostics.
 - 🛠️ Updated `doctor workspace --fix` to run post-fix verification and refresh evidence automatically.
 - 📚 Clarified command ownership and doctor scope messaging (`doctor` vs `doctor workspace`) in CLI help and README.
 
 ### Fixed
+
 - 🧠 Fixed fix-command parsing for project-scoped commands so `go mod tidy` detection is reliable in auto-fix flow.
 - 🐹 Fixed Go auto-fix behavior to skip `go mod tidy` when Go toolchain is unavailable, with explicit guidance instead of failed shell execution.
 
 ## [0.25.2] - 2026-02-27
 
 ### Added
+
 - 🧭 Added explicit command ownership contract for wrapper/core boundaries:
   - Wrapper-orchestrated project command set now explicitly includes `init`.
   - Added ownership reference doc: `docs/contracts/COMMAND_OWNERSHIP_MATRIX.md`.
 - 🧪 Added forwarding-boundary assertions to prevent `init` delegation regressions.
 
 ### Changed
+
 - 🚀 Upgraded `init` orchestration to runtime-aware smart behavior:
   - Detects runtime by project markers and file heuristics (`go.mod`, `package.json`, `pyproject.toml`/`requirements.txt`).
   - Keeps `init` on npm wrapper path to apply policy context + fallback logic consistently.
@@ -316,6 +335,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🛡️ Lifecycle delegation for Go/Node projects is kept on wrapper/runtime adapter path to avoid local launcher argument drift (`dev --port` misrouting).
 
 ### Fixed
+
 - 🧩 Fixed scenario where `rapidkit init` could succeed without creating project-local `.venv` in Python projects due to cached/global Poetry env binding.
 - 🧱 Fixed Go lifecycle command forwarding issue that could pass unsupported args to `make` via local launcher delegation.
 - 🗣️ Fixed silent `rapidkit init` behavior for Go projects without Go installed by surfacing clear user-facing error messaging.
@@ -323,11 +343,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.25.1] - 2026-02-27
 
 ### Added
+
 - 🪟 Added Windows workspace launcher generation (`rapidkit.cmd`) for legacy workspace-local CLI wrappers.
 - 🧭 Added cross-platform local-bin path candidates utility for Python tool discovery:
   - `src/utils/platform-capabilities.ts`
 
 ### Changed
+
 - 🐍 Updated Poetry-missing behavior in workspace creation to auto-fallback to `venv` without blocking on Poetry installation prompts.
 - 🌍 Hardened cross-platform tool/path detection in doctor checks:
   - Poetry detection now probes `python -m poetry` across Python candidates.
@@ -336,6 +358,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🧪 Updated internal create-flow tests to reflect Poetry→venv fallback behavior while keeping pipx flow expectations intact.
 
 ### Fixed
+
 - ⛔ Fixed blocking UX where selecting Poetry could trigger install-prompt expectations/tests even when fallback-to-venv path should proceed non-interactively.
 - 🧹 Removed hardcoded Unix-only Python path assumptions in runtime Python discovery for create flow.
 - 🧱 Closed legacy cross-platform gap for workspace-local launcher availability on Windows.
@@ -343,6 +366,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.25.0] - 2026-02-26
 
 ### Added
+
 - 🧱 Extended workspace command contract coverage for `workspace list` and policy command surfaces across docs/help/tests.
 - 🧪 Expanded process-level Phase-3 integration coverage for workspace list/policy and lifecycle contract scenarios.
 - 🧰 Added deterministic dist artifact refresh behavior for CLI entry process tests when `dist/index.js` is missing/stale.
@@ -350,6 +374,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `src/utils/platform-capabilities.ts`
 
 ### Changed
+
 - 🖥️ Unified root help UX so `rapidkit`, `rapidkit --help`, and `rapidkit help` render aligned output.
 - 📚 Refreshed release-facing and governance docs for current workspace command model:
   - `README.md`
@@ -366,12 +391,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `.github/workflows/e2e-smoke.yml`
 
 ### Fixed
+
 - 🧩 Reduced test instability caused by absent build artifacts in process-invoked CLI tests.
 - 🧹 Reduced noisy workspace/debug output and improved workspace registry hygiene paths.
 
 ## [0.24.2] - 2026-02-25
 
 ### Added
+
 - 🧰 Added docs governance scripts:
   - `scripts/check-markdown-links.mjs`
   - `scripts/docs-drift-guard.mjs`
@@ -380,6 +407,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `check:markdown-links`, `check:docs-drift`, `smoke:readme`, `validate:docs`.
 
 ### Changed
+
 - 📚 Refreshed workspace-based docs and canonical command contracts:
   - `docs/SETUP.md`
   - `docs/doctor-command.md`
@@ -390,16 +418,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ⚙️ Improved runtime setup flow with optional warm dependency behavior (`--warm-deps`) and adapter cache warm hooks.
 
 ### Fixed
+
 - 🧭 Reduced docs/CI drift risk by enforcing command/workflow ownership presence checks in README.
 - 🪟🍎 Improved cross-workflow CI ownership clarity to avoid duplicated regression surface.
 
 ## [0.24.1] - 2026-02-25
 
 ### Fixed
+
 - 🧩 Restored setup command contract so `rapidkit setup <python|node|go>` no longer depends on `RAPIDKIT_ENABLE_RUNTIME_ADAPTERS=1`.
 - 🍎 Added macOS arm64 Rollup optional dependency workaround in CI matrix to avoid install-time module resolution failures.
 
 ### Changed
+
 - 🧭 Updated create prompt defaults to honor configured workspace defaults (`pythonVersion`, `defaultInstallMethod`) in profile-first flows.
 - 🐍 Python runtime adapter prereq checks now fall back to legacy `doctor` when `doctor check` is unavailable/non-zero.
 - 🧪 Aligned create/setup/runtime contract tests with current wrapper behavior.
@@ -408,6 +439,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.24.0] - 2026-02-25
 
 ### Added
+
 - 🪟 Added Windows-native bridge + workspace lifecycle CI workflow:
   - `.github/workflows/windows-bridge-e2e.yml`
 - 🧪 Added/updated cross-OS workspace matrix workflow:
@@ -429,19 +461,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `src/__tests__/user-level-scenarios.integration.test.ts`
 
 ### Changed
+
 - ⚙️ Hardened runtime adapter behavior across Python/Node/Go paths (cache/env and workspace-aware execution behavior).
 - 🧠 Improved Python bridge execution integration path (`pythonRapidkitExec` and adapter wiring).
 - 🧾 Expanded docs and developer guides for setup, doctor, optimization, and utility references.
 
 ### Fixed
+
 - 🧩 Continued help/UX and docs consistency updates around command surfaces and runtime adapter expectations.
 
 ### Removed
+
 - 🗑️ Removed obsolete phase handoff/conformance docs:
   - `docs/BLUEPRINT_CONFORMANCE_PHASE4.md`
   - `docs/RELEASE_HANDOFF_PHASE4.md`
 
 ### Testing
+
 - ✅ Extended regression coverage for index/runtime adapters/python bridge/update checker paths.
 - ✅ Added dedicated Windows bridge first-run checklist for CI triage and failure signatures:
   - `docs/WINDOWS_BRIDGE_FIRST_RUN_CHECKLIST.md`
@@ -449,17 +485,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.23.1] - 2026-02-22
 
 ### Fixed
+
 - 🧹 Removed deprecated `node-domexception` install warning by upgrading `openai` SDK to `^6.22.0` (no transitive `formdata-node` chain).
 - 🧯 Recovered dependency drift introduced by `npm audit fix --force` by restoring a compatible lint toolchain (`eslint@9` + `@typescript-eslint@8`) and removing unused `c8`.
 - 🪟 Fixed Windows CI test flakiness by making workspace foundation file path assertions cross-platform (`/` and `\\`).
 
 ### Security
+
 - ✅ Verified runtime dependency surface with `npm audit --omit=dev` reports zero vulnerabilities.
 - ✅ Added npm override for `minimatch@^10.2.1` to mitigate high-severity ReDoS findings in dev dependency graphs.
 
 ## [0.23.0] - 2026-02-22
 
 ### Added
+
 - 🧱 Added workspace foundation artifacts during create/register flows:
   - `.rapidkit/workspace.json`
   - `.rapidkit/toolchain.lock`
@@ -472,15 +511,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - process-level CLI integration coverage for `setup`, `cache`, and `bootstrap`
 
 ### Changed
+
 - 🧭 Added npm-level command contract handlers for `bootstrap`, `setup`, and `cache`.
 - 🧠 Updated command forwarding boundaries so `bootstrap/setup/cache` stay wrapper-local and are not forwarded to core.
 - ⚙️ Extended runtime-aware command dispatch (`init/dev/test/build/start`) with feature-flagged adapter routing (`RAPIDKIT_ENABLE_RUNTIME_ADAPTERS=1`).
 - 🗂️ Extracted runtime detection helpers into `src/utils/runtime-detection.ts` for shared project-type detection (`isGoProject`, `isNodeProject`, `isPythonProject`).
 
 ### Fixed
+
 - 🩹 Fixed npm global install failure by including `scripts/enforce-package-manager.cjs` in published package files so `preinstall` no longer fails with `MODULE_NOT_FOUND`.
 
 ### Testing
+
 - ✅ Added deterministic dist-refresh logic in process-level CLI tests to prevent stale-build false failures.
 - ✅ Verified Phase 3 test matrix passes end-to-end (unit + integration + process-level + typecheck).
 - ✅ Added non-regression integration coverage for the three `rapidkit init` scenarios (normal folder, workspace root, project folder).
@@ -489,22 +531,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.22.0] - 2026-02-21
 
 ### Added
+
 - 🐹 Added first-class Go kits in npm CLI: `gofiber.standard` and `gogin.standard`.
 - 🧭 Added Go kit support in interactive `create project` kit selection flow.
 
 ### Changed
+
 - 🔁 Standardized generated Go project commands (`init`, `dev`, `docs`, `test`, `build`, `start`) for parity with RapidKit DX.
 - 🛠️ Hardened Go Makefile/tooling flow by using explicit GOPATH binaries for `air` and `swag`, including docs generation in dev loop.
 - 🩺 Enhanced `doctor` command with Go toolchain checks and Go project health detection/reporting.
 - 📚 Updated README with Go/Fiber and Go/Gin usage and clarified module support scope.
 
 ### Fixed
+
 - ✅ Fixed wrapper test/runtime instability by avoiding CLI auto-delegation during Vitest execution.
 - 🧪 Fixed timezone-sensitive date assertion in edge-case tests.
 
 ## [0.21.2] - 2026-02-20
 
 ### Added
+
 - 📦 Added npm release shortcut scripts:
   - `npm run release:dry`
   - `npm run release:patch`
@@ -513,6 +559,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 📘 Added explicit package manager policy doc: `docs/PACKAGE_MANAGER_POLICY.md`.
 
 ### Changed
+
 - 🔧 Modernized `scripts/release.sh` to remove hardcoded versions and support:
   - semantic bump args (`patch|minor|major|x.y.z`)
   - `--no-publish`, `--yes`, and `--allow-dirty`
@@ -522,6 +569,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - updated E2E scripts to use npm paths
 
 ### Fixed
+
 - 🛡️ Enforced npm-only installs via `preinstall` guard (`scripts/enforce-package-manager.cjs`).
 - 📄 Aligned `docs/SECURITY.md` supported-version policy with the current `0.x` release line.
 - ✅ `release:dry` now supports local preflight checks on dirty working trees via `--allow-dirty` while keeping publish flow strict.
@@ -530,6 +578,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.21.1] - 2026-02-18
 
 ### Added
+
 - ✨ Added `create workspace` command mode in npm wrapper:
   - `npx rapidkit create workspace` (interactive naming)
   - `npx rapidkit create workspace <name>` (direct named creation)
@@ -539,6 +588,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - In project inside workspace: initializes only that project
 
 ### Changed
+
 - 🔄 Unified workspace creation UX between legacy and new command paths.
 - 🗂️ Updated README quick-start and command docs for:
   - Fastest onboarding via `npx rapidkit init`
@@ -546,12 +596,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Interactive prompt behavior for `create workspace`
 
 ### Fixed
+
 - 🩺 Doctor workspace scan now avoids counting workspace-root `.rapidkit` as a project unless project markers exist.
 - ✅ Added doctor test coverage for workspace root filtering behavior.
 
 ## [0.21.0] - 2026-02-16
 
 ### Added
+
 - ⚡ **Performance Optimizations** (Phase 1)
   - 🚀 Dynamic imports for heavy dependencies (OpenAI ~30-40KB, Inquirer ~25-30KB)
   - 📊 Performance benchmarking script (`npm run bench`)
@@ -575,6 +627,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `quality` - Comprehensive quality check (typecheck + lint + format + test + size)
 
 ### Changed
+
 - 🔧 **Optimized Files**
   - `src/ai/openai-client.ts` - Lazy load OpenAI
   - `src/ai/embeddings-manager.ts` - Lazy load Inquirer
@@ -588,6 +641,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Better organization for open source community
 
 ### Technical
+
 - 📦 Added devDependencies: `@size-limit/preset-big-lib@^12.0.0`, `vite-bundle-visualizer@^1.2.1`
 - 🎯 Bundle target: Node 20
 - 🔄 Code splitting: 7 chunks generated
@@ -595,11 +649,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🚀 Dynamic imports save ~40KB on initial load
 
 ### Fixed
+
 - 🐛 Fixed tsup.config.ts syntax error (duplicate closing brace)
 
 ## [0.20.0] - 2026-02-14
 
 ### Added
+
 - 📦 **FastAPI DDD Kit** - Domain-Driven Design template with clean architecture
   - 🏗️ Complete DDD structure (Domain, Application, Infrastructure layers)
   - 🎯 39 production-ready template files
@@ -608,12 +664,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - ✨ Same quality as `fastapi.standard` with advanced patterns
 
 ### Changed
+
 - 🔧 Updated `sync-kits.sh` to include all 3 kits (fastapi-standard, fastapi-ddd, nestjs-standard)
 - 🗺️ Enhanced `demo-kit.ts` mapping for proper kit name resolution
 - ⚡ Improved kit generation logic in `index.ts` and `workspace.ts`
 - 🛠️ Updated FastAPI standard CLI template with enhanced commands
 
 ### Technical
+
 - 📊 Total npm package size: ~512KB (all 3 kits included)
 - 🎁 Complete offline experience with full kit templates
 - 🔄 Seamless fallback when Python Core unavailable
@@ -621,19 +679,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.19.1] - 2026-02-12
 
 ### Changed
+
 - ⬆️ Upgraded `inquirer` from `^9.2.23` to `^13.2.2` to modernize prompt stack and reduce dependency noise.
 - 🔄 Refreshed lockfiles (`package-lock.json`, `yarn.lock`) to align transitive dependency graph with the upgrade.
 - 🧩 Updated generated demo Poetry template in `src/create.ts` from `python = "^3.10.14"` to `python = "^3.10"` for wider Python 3.10 patch compatibility.
 
 ### Security
+
 - ✅ Verified `npm audit --audit-level=high` reports zero known vulnerabilities after dependency update.
 
 ### Testing
+
 - ✅ Verified `npm test` passes after the upgrade (no regressions observed).
 
 ## [0.19.0] - 2026-02-10
 
 ### Added
+
 - 🤖 **AI Module Recommender** - Intelligent module suggestions using OpenAI embeddings
   - 🧠 Semantic search for modules (understands intent, not just keywords)
   - 🔄 **Dynamic module fetching from Python Core** (`rapidkit modules list --json`)
@@ -679,6 +741,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Integration tests for auto-generation flow
 
 ### Changed
+
 - 🔄 **Dynamic Module Catalog** - AI now fetches module list from Python Core in real-time
   - Automatically syncs with Python Core module registry
   - Single source of truth (Python Core)
@@ -693,6 +756,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Mock mode automatically activates when no API key configured
 
 ### Technical
+
 - New module: `src/config/user-config.ts` - User configuration management (API key, AI toggle)
 - New module: `src/ai/module-catalog.ts` - Dynamic module catalog with Python Core integration
 - New module: `src/ai/openai-client.ts` - OpenAI API wrapper with mock mode support
@@ -937,7 +1001,6 @@ New environment variables for Python bridge configuration:
 ### Notes
 
 - This patch release focuses on stability, test coverage, and safer command discovery behavior in the npm ↔ Python Core bridge layer.
-
 
 ## [0.15.0] - 2026-01-30
 

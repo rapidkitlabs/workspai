@@ -94,13 +94,18 @@ async function resolveDestinationProjectPath(
   }
 }
 
+function isSameOrInsideDirectory(parentPath: string, childPath: string): boolean {
+  const resolvedParent = path.resolve(parentPath);
+  const resolvedChild = path.resolve(childPath);
+  const relativePath = path.relative(resolvedParent, resolvedChild);
+  return (
+    relativePath === '' ||
+    (relativePath.length > 0 && !relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+  );
+}
+
 function assertImportSourceOutsideWorkspace(workspacePath: string, sourcePath: string): void {
-  const resolvedWorkspace = path.resolve(workspacePath);
-  const resolvedSource = path.resolve(sourcePath);
-  if (
-    resolvedSource === resolvedWorkspace ||
-    resolvedSource.startsWith(`${resolvedWorkspace}${path.sep}`)
-  ) {
+  if (isSameOrInsideDirectory(workspacePath, sourcePath)) {
     throw new Error('Import source must be outside the current workspace root.');
   }
 }
@@ -158,17 +163,17 @@ export async function importProjectIntoWorkspace(
       }
 
       assertImportSourceOutsideWorkspace(workspacePath, sourcePath);
+      destinationPrepared = true;
       await fsExtra.copy(sourcePath, destinationPath, {
         overwrite: false,
         errorOnExist: true,
       });
     } else {
+      destinationPrepared = true;
       await execa('git', ['clone', '--depth', '1', source, destinationPath], {
         timeout: 120000,
       });
     }
-
-    destinationPrepared = true;
 
     const detection = detectBackendFrameworkFromProject(destinationPath);
     const importedProject: ImportedProjectResult = {

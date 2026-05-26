@@ -144,4 +144,68 @@ describe('import-project', () => {
     expect(await fsExtra.pathExists(destinationPath)).toBe(false);
     expect(await readImportedProjectsRegistry(workspacePath)).toEqual([]);
   });
+
+  it('rolls back partially copied local projects when copy fails mid-import', async () => {
+    const workspacePath = await makeTempDir('rapidkit-import-workspace-');
+    const sourcePath = await makeTempDir('rapidkit-import-source-');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+    });
+    await fsExtra.writeFile(path.join(workspacePath, '.rapidkit-workspace'), '{}');
+    await fsExtra.writeJson(path.join(sourcePath, 'package.json'), {
+      name: 'edge-api',
+      dependencies: {
+        express: '^4.19.2',
+      },
+    });
+
+    const destinationPath = path.join(workspacePath, 'edge-api');
+    vi.spyOn(fsExtra, 'copy').mockImplementationOnce(async () => {
+      await fsExtra.ensureDir(destinationPath);
+      await fsExtra.writeFile(path.join(destinationPath, 'partial.txt'), 'partial');
+      throw new Error('copy failed');
+    });
+
+    await expect(
+      importProjectIntoWorkspace({
+        workspacePath,
+        source: sourcePath,
+        name: 'edge-api',
+      })
+    ).rejects.toThrow('copy failed');
+
+    expect(await fsExtra.pathExists(destinationPath)).toBe(false);
+    expect(await readImportedProjectsRegistry(workspacePath)).toEqual([]);
+  });
+
+  it('rolls back partially cloned git repositories when clone fails mid-import', async () => {
+    const workspacePath = await makeTempDir('rapidkit-import-workspace-');
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+    });
+    await fsExtra.writeFile(path.join(workspacePath, '.rapidkit-workspace'), '{}');
+
+    const destinationPath = path.join(workspacePath, 'checkout-api');
+    const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
+    execaMock.mockImplementationOnce(async (_cmd: string, args: string[]) => {
+      const destination = args[args.length - 1];
+      await fsExtra.ensureDir(destination);
+      await fsExtra.writeFile(path.join(destination, 'partial.txt'), 'partial');
+      throw new Error('clone failed');
+    });
+
+    await expect(
+      importProjectIntoWorkspace({
+        workspacePath,
+        source: 'https://github.com/acme/checkout-api.git',
+        sourceType: 'git-url',
+      })
+    ).rejects.toThrow('clone failed');
+
+    expect(await fsExtra.pathExists(destinationPath)).toBe(false);
+    expect(await readImportedProjectsRegistry(workspacePath)).toEqual([]);
+  });
 });

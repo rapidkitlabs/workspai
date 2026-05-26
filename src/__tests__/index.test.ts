@@ -10,6 +10,7 @@ import os from 'os';
 import { spawnSync } from 'child_process';
 
 import { handleImportCommand } from '../index';
+import { ensureDistBuilt } from './helpers/dist';
 
 interface CliExecOptions {
   cwd?: string;
@@ -60,45 +61,7 @@ async function execa(
   }
 }
 
-function ensureDistBuilt(): string {
-  const repoRoot = process.cwd();
-  const distPath = path.join(repoRoot, 'dist', 'index.js');
-  const sourcePaths = [
-    path.join(repoRoot, 'src', 'index.ts'),
-    path.join(repoRoot, 'src', 'import-project.ts'),
-    path.join(repoRoot, 'src', 'imported-projects-registry.ts'),
-    path.join(repoRoot, 'src', 'workspace-snapshot.ts'),
-  ];
-
-  const shouldBuild = (() => {
-    if (!fs.existsSync(distPath)) return true;
-    const distMtime = fs.statSync(distPath).mtimeMs;
-
-    return sourcePaths.some((sourcePath) => {
-      if (!fs.existsSync(sourcePath)) {
-        return false;
-      }
-
-      return fs.statSync(sourcePath).mtimeMs > distMtime;
-    });
-  })();
-
-  if (shouldBuild) {
-    const build = spawnSync('npm', ['run', 'build'], {
-      cwd: repoRoot,
-      stdio: 'inherit',
-      shell: process.platform === 'win32',
-    });
-
-    if (build.status !== 0) {
-      throw new Error('Failed to build dist/index.js for CLI entry point tests');
-    }
-  }
-
-  return distPath;
-}
-
-const CLI_PATH = ensureDistBuilt();
+const CLI_PATH = ensureDistBuilt('CLI entry point tests');
 const TEST_DIR = path.join(process.cwd(), 'test-cli-output');
 
 describe('CLI Entry Point', () => {

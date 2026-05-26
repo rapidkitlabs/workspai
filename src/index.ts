@@ -5477,17 +5477,39 @@ const isVitestRuntime =
 const isDirectCliExecution = (() => {
   const entryArg = process.argv[1];
   if (!entryArg) return false;
+  const normalizedEntry = entryArg.replace(/\\/g, '/');
+  const entryLooksLikeRapidkitCli =
+    normalizedEntry.endsWith('/dist/index.js') || normalizedEntry.endsWith('/src/index.ts');
   try {
-    return fs.realpathSync(entryArg) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return (
+      fs.realpathSync(entryArg) === fs.realpathSync(fileURLToPath(import.meta.url)) ||
+      entryLooksLikeRapidkitCli
+    );
   } catch {
-    return path.resolve(entryArg) === path.resolve(fileURLToPath(import.meta.url));
+    return (
+      path.resolve(entryArg) === path.resolve(fileURLToPath(import.meta.url)) ||
+      entryLooksLikeRapidkitCli
+    );
   }
 })();
 
 const shouldBootstrapCli = !isVitestRuntime || isDirectCliExecution;
 
+function forceBlockingCliOutput(): void {
+  for (const stream of [process.stdout, process.stderr]) {
+    const handle = (
+      stream as NodeJS.WriteStream & {
+        _handle?: { setBlocking?: (blocking: boolean) => void };
+      }
+    )._handle;
+    handle?.setBlocking?.(true);
+  }
+}
+
 // Delegate to local CLI if inside a RapidKit project
 if (shouldBootstrapCli) {
+  forceBlockingCliOutput();
+
   const preArgs = process.argv.slice(2);
   const preFirst = preArgs[0];
   const preCwd = process.cwd();

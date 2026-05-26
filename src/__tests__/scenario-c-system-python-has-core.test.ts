@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { execa } from 'execa';
 import * as fsExtra from 'fs-extra';
+import { ensureDistBuilt } from './helpers/dist';
 
 describe('Scenario C: System Python has rapidkit-core -> no bridge venv', () => {
   let tempDir: string;
@@ -68,7 +69,7 @@ exec "$sys_python" "$@"
     env.XDG_CACHE_HOME = cacheDir; // ensure bridge venv would go into our temp cache
 
     // Run a core-forwarding command that would normally trigger bridge resolution
-    const res = await execa('node', [join(process.cwd(), 'dist/index.js'), 'list'], {
+    const res = await execa('node', [ensureDistBuilt('scenario-c test'), 'list'], {
       cwd: tempDir,
       env,
       reject: false,

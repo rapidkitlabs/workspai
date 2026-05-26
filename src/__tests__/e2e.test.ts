@@ -3,11 +3,14 @@ import { mkdtemp, rm, readFile, access } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execa } from 'execa';
+import { ensureDistBuilt } from './helpers/dist';
 
 describe('E2E Tests', () => {
   let tempDir: string;
+  let cliPath: string;
 
   beforeEach(async () => {
+    cliPath = ensureDistBuilt('E2E tests');
     tempDir = await mkdtemp(join(tmpdir(), 'rapidkit-e2e-'));
   });
 
@@ -22,13 +25,9 @@ describe('E2E Tests', () => {
     const projectPath = join(tempDir, projectName);
 
     // Run rapidkit create command with --template fastapi
-    await execa(
-      'node',
-      [join(process.cwd(), 'dist/index.js'), projectName, '--template', 'fastapi', '--skip-git'],
-      {
-        cwd: tempDir,
-      }
-    );
+    await execa('node', [cliPath, projectName, '--template', 'fastapi', '--skip-git'], {
+      cwd: tempDir,
+    });
 
     // Verify project structure
     await expect(fileExists(join(projectPath, 'pyproject.toml'))).resolves.toBe(true);
@@ -46,14 +45,7 @@ describe('E2E Tests', () => {
     // Run rapidkit create command with --template nestjs
     await execa(
       'node',
-      [
-        join(process.cwd(), 'dist/index.js'),
-        projectName,
-        '--template',
-        'nestjs',
-        '--skip-git',
-        '--skip-install',
-      ],
+      [cliPath, projectName, '--template', 'nestjs', '--skip-git', '--skip-install'],
       {
         cwd: tempDir,
       }
@@ -77,7 +69,7 @@ describe('E2E Tests', () => {
     const workspacePath = join(tempDir, workspaceName);
 
     // Run rapidkit create command without --template (workspace mode)
-    await execa('node', [join(process.cwd(), 'dist/index.js'), workspaceName, '--skip-git'], {
+    await execa('node', [cliPath, workspaceName, '--skip-git'], {
       cwd: tempDir,
     });
 
@@ -92,20 +84,10 @@ describe('E2E Tests', () => {
 
     for (const invalidName of invalidNames) {
       await expect(
-        execa(
-          'node',
-          [
-            join(process.cwd(), 'dist/index.js'),
-            invalidName,
-            '--template',
-            'fastapi',
-            '--skip-git',
-          ],
-          {
-            cwd: tempDir,
-            reject: false,
-          }
-        )
+        execa('node', [cliPath, invalidName, '--template', 'fastapi', '--skip-git'], {
+          cwd: tempDir,
+          reject: false,
+        })
       ).resolves.toHaveProperty('exitCode', 1);
     }
   }, 30000);
@@ -115,7 +97,7 @@ describe('E2E Tests', () => {
 
     const { stdout } = await execa(
       'node',
-      [join(process.cwd(), 'dist/index.js'), projectName, '--template', 'fastapi', '--dry-run'],
+      [cliPath, projectName, '--template', 'fastapi', '--dry-run'],
       {
         cwd: tempDir,
       }
@@ -132,13 +114,9 @@ describe('E2E Tests', () => {
   it('handles dry-run mode correctly for workspace', async () => {
     const workspaceName = 'test-workspace';
 
-    const { stdout } = await execa(
-      'node',
-      [join(process.cwd(), 'dist/index.js'), workspaceName, '--dry-run'],
-      {
-        cwd: tempDir,
-      }
-    );
+    const { stdout } = await execa('node', [cliPath, workspaceName, '--dry-run'], {
+      cwd: tempDir,
+    });
 
     expect(stdout).toContain('Dry-run mode');
     expect(stdout.toLowerCase()).toContain('workspace');
@@ -149,13 +127,13 @@ describe('E2E Tests', () => {
   }, 15000);
 
   it('shows version correctly', async () => {
-    const { stdout } = await execa('node', [join(process.cwd(), 'dist/index.js'), '--version']);
+    const { stdout } = await execa('node', [cliPath, '--version']);
 
     expect(stdout).toMatch(/\d+\.\d+\.\d+/);
   }, 5000);
 
   it('shows help correctly', async () => {
-    const { stdout } = await execa('node', [join(process.cwd(), 'dist/index.js'), '--help']);
+    const { stdout } = await execa('node', [cliPath, '--help']);
 
     expect(stdout).toContain('rapidkit');
     // Accept either npm wrapper help (--skip-git) or Core help (create/add/version)

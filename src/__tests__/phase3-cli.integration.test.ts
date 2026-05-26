@@ -4,35 +4,7 @@ import { createHash } from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-
-function ensureDistBuilt(): string {
-  const repoRoot = path.resolve(__dirname, '..', '..');
-  const distPath = path.join(repoRoot, 'dist', 'index.js');
-  const srcEntryPath = path.join(repoRoot, 'src', 'index.ts');
-
-  const shouldBuild = (() => {
-    if (!fs.existsSync(distPath)) return true;
-    if (!fs.existsSync(srcEntryPath)) return false;
-
-    const distMtime = fs.statSync(distPath).mtimeMs;
-    const srcMtime = fs.statSync(srcEntryPath).mtimeMs;
-    return srcMtime > distMtime;
-  })();
-
-  if (shouldBuild) {
-    const build = spawnSync('npm', ['run', 'build'], {
-      cwd: repoRoot,
-      stdio: 'inherit',
-      shell: process.platform === 'win32',
-    });
-
-    if (build.status !== 0) {
-      throw new Error('Failed to build dist/index.js for CLI integration tests');
-    }
-  }
-
-  return distPath;
-}
+import { ensureDistBuilt } from './helpers/dist';
 
 describe('Phase 3 commands - CLI process integration', () => {
   it('lists registered workspaces via workspace list', () => {

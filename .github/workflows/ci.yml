@@ -127,6 +127,10 @@ jobs:
       - name: Validate import stack parity contract snapshot
         run: npm run test:parity-contract
 
+      # Backend operations import guard
+      - name: Validate backend project import rollback guard
+        run: npm run test -- src/__tests__/import-project.test.ts
+
       # Docs quality gates (Linux only)
       - name: Validate docs quality
         if: runner.os == 'Linux'
