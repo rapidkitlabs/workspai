@@ -74,6 +74,47 @@ describe('workspace-snapshot lifecycle', () => {
     expect(inspected.estimatedBytes).toBeGreaterThan(0);
   });
 
+  it('creates full snapshots without copying RapidKit operational history', async () => {
+    await fsExtra.outputFile(
+      path.join(workspacePath, '.rapidkit', 'snapshots', 'old', 'snapshot.json'),
+      '{}'
+    );
+    await fsExtra.outputFile(
+      path.join(workspacePath, '.rapidkit', 'archive', 'projects', 'old', 'rapidkit-archive.json'),
+      '{}'
+    );
+    await fsExtra.outputFile(
+      path.join(workspacePath, '.rapidkit', 'audit', 'events.jsonl'),
+      '{"event":"old"}\n'
+    );
+
+    const result = await createWorkspaceSnapshot({
+      workspacePath,
+      name: 'full-before-upgrade',
+      includeProjects: true,
+      reason: 'full regression guard',
+    });
+
+    expect(result.manifest.mode).toBe('full');
+    expect(
+      await fsExtra.pathExists(path.join(result.snapshotPath, 'files', 'orders', 'package.json'))
+    ).toBe(true);
+    expect(
+      await fsExtra.pathExists(
+        path.join(result.snapshotPath, 'files', '.rapidkit', 'workspace.json')
+      )
+    ).toBe(true);
+    expect(
+      await fsExtra.pathExists(path.join(result.snapshotPath, 'files', '.rapidkit', 'snapshots'))
+    ).toBe(false);
+    expect(
+      await fsExtra.pathExists(path.join(result.snapshotPath, 'files', '.rapidkit', 'archive'))
+    ).toBe(false);
+    expect(
+      await fsExtra.pathExists(path.join(result.snapshotPath, 'files', '.rapidkit', 'audit'))
+    ).toBe(false);
+  });
+
   it('restores metadata snapshots only with force and creates a safety snapshot', async () => {
     await createWorkspaceSnapshot({ workspacePath, name: 'clean-config' });
     await fsExtra.outputJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {

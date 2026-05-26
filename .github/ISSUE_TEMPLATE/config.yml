@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: RapidKit Discussions
-    url: https://github.com/getrapidkit/rapidkit-npm/discussions
+    url: https://github.com/rapidkitlabs/rapidkit-npm/discussions
     about: Ask questions and discuss ideas with maintainers and the community.

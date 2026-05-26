@@ -60,5 +60,5 @@ npm install -g rapidkit@0.25.7
 ### Links
 
 - 📦 [npm](https://www.npmjs.com/package/rapidkit)
-- 🐙 [GitHub](https://github.com/getrapidkit/rapidkit)
+- 🐙 [GitHub](https://github.com/rapidkitlabs/rapidkit)
 - 🌐 [Workspai](https://www.workspai.com/)

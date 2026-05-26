@@ -111,7 +111,7 @@ if command -v gh >/dev/null 2>&1; then
     gh release create "$TAG" --generate-notes
 else
     echo "ℹ️ gh CLI not found. Create release manually:"
-    echo "   https://github.com/getrapidkit/rapidkit-npm/releases/new"
+    echo "   https://github.com/rapidkitlabs/rapidkit-npm/releases/new"
 fi
 
 echo "✅ Release complete: $TAG"

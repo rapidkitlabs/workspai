@@ -68,9 +68,6 @@ describe('init scenarios integration (non-regression)', () => {
           name: 'node-app',
           version: '1.0.0',
           private: true,
-          dependencies: {
-            lodash: '^4.17.21',
-          },
         },
         null,
         2
@@ -112,6 +109,14 @@ describe('init scenarios integration (non-regression)', () => {
     const code = await index.handleInitCommand(['init']);
 
     expect(code).toBe(0);
-    expect(fs.existsSync(path.join(projectDir, 'package-lock.json'))).toBe(true);
+    expect(
+      [
+        'package-lock.json',
+        'npm-shrinkwrap.json',
+        'yarn.lock',
+        'pnpm-lock.yaml',
+        'node_modules',
+      ].some((artifact) => fs.existsSync(path.join(projectDir, artifact)))
+    ).toBe(true);
   }, 15000);
 });

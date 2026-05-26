@@ -11,7 +11,7 @@ Built for clean architecture, minimal boilerplate, and fast deployment.
 [![npm version](https://img.shields.io/npm/v/rapidkit.svg?style=flat-square)](https://www.npmjs.com/package/rapidkit)
 [![Downloads](https://img.shields.io/npm/dm/rapidkit.svg?style=flat-square)](https://www.npmjs.com/package/rapidkit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![GitHub Stars](https://img.shields.io/github/stars/getrapidkit/rapidkit-npm.svg?style=flat-square)](https://github.com/getrapidkit/rapidkit-npm/stargazers)
+[![GitHub Stars](https://img.shields.io/github/stars/rapidkitlabs/rapidkit-npm.svg?style=flat-square)](https://github.com/rapidkitlabs/rapidkit-npm/stargazers)
 [![Built by RapidKit](https://img.shields.io/badge/Built%20by-RapidKit-0f172a?logo=github)](https://www.getrapidkit.com)
 
 The official RapidKit npm CLI for creating and operating workspaces and projects.
@@ -38,12 +38,12 @@ The `rapidkit` npm package remains the official RapidKit CLI.
 
 It works alongside Workspai, a product developed by RapidKit.
 
-| Component         | Repository                                                                        | Role                                                       |
-| ----------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| CLI               | [getrapidkit/rapidkit-npm](https://github.com/getrapidkit/rapidkit-npm)           | Official RapidKit npm CLI                                  |
-| VS Code Extension | [getrapidkit/rapidkit-vscode](https://github.com/getrapidkit/rapidkit-vscode)     | **Workspai** — visual explorer + AI features (recommended) |
-| Core Engine       | [getrapidkit/rapidkit-core](https://github.com/getrapidkit/rapidkit-core)         | Official RapidKit Core                                     |
-| Examples          | [getrapidkit/rapidkit-examples](https://github.com/getrapidkit/rapidkit-examples) | Example workspaces and starter references                  |
+| Component         | Repository                                                                          | Role                                                       |
+| ----------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| CLI               | [rapidkitlabs/rapidkit-npm](https://github.com/rapidkitlabs/rapidkit-npm)           | Official RapidKit npm CLI                                  |
+| VS Code Extension | [rapidkitlabs/rapidkit-vscode](https://github.com/rapidkitlabs/rapidkit-vscode)     | **Workspai** — visual explorer + AI features (recommended) |
+| Core Engine       | [rapidkitlabs/rapidkit-core](https://github.com/rapidkitlabs/rapidkit-core)         | Official RapidKit Core                                     |
+| Examples          | [rapidkitlabs/rapidkit-examples](https://github.com/rapidkitlabs/rapidkit-examples) | Example workspaces and starter references                  |
 
 ## Requirements
 
@@ -428,7 +428,7 @@ ext install rapidkit.rapidkit-vscode
 > The extension calls this CLI under the hood — both tools work together seamlessly.
 > You do **not** need to install the CLI separately when using the extension.
 
-- Extension repository: https://github.com/getrapidkit/rapidkit-vscode
+- Extension repository: https://github.com/rapidkitlabs/rapidkit-vscode
 
 ## CI Workflow Ownership Map
 

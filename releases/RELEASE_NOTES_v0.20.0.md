@@ -183,6 +183,6 @@ Thanks to everyone who contributed to this release!
 
 ## 🔗 Links
 
-- [GitHub Repository](https://github.com/getrapidkit/rapidkit-npm)
+- [GitHub Repository](https://github.com/rapidkitlabs/rapidkit-npm)
 - [npm Package](https://www.npmjs.com/package/rapidkit)
-- [Report Issues](https://github.com/getrapidkit/rapidkit-npm/issues)
+- [Report Issues](https://github.com/rapidkitlabs/rapidkit-npm/issues)

@@ -69,5 +69,5 @@ Patch release addressing a security advisory in devDependencies, reducing the co
 ### Links
 
 - 📦 [npm](https://www.npmjs.com/package/rapidkit)
-- 🐙 [GitHub](https://github.com/getrapidkit/rapidkit)
+- 🐙 [GitHub](https://github.com/rapidkitlabs/rapidkit)
 - 🌐 [Workspai](https://www.workspai.com/)

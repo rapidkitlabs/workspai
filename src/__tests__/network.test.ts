@@ -100,7 +100,7 @@ describe('Network Operations', () => {
 
       global.fetch = fetchMock;
 
-      const response = await fetch('https://api.github.com/repos/getrapidkit/rapidkit-npm');
+      const response = await fetch('https://api.github.com/repos/rapidkitlabs/rapidkit-npm');
       const data = await response.json();
 
       expect(data.name).toBe('rapidkit-npm');

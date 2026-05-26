@@ -109,9 +109,9 @@ npx rapidkit my-workspace --demo --dry-run
 ## 🔗 Links
 
 - **NPM Package**: https://www.npmjs.com/package/rapidkit
-- **GitHub Repository**: https://github.com/getrapidkit/rapidkit-npm
+- **GitHub Repository**: https://github.com/rapidkitlabs/rapidkit-npm
 - **Documentation**: https://getrapidkit.com/docs
-- **Issue Tracker**: https://github.com/getrapidkit/rapidkit-npm/issues
+- **Issue Tracker**: https://github.com/rapidkitlabs/rapidkit-npm/issues
 
 ## 📋 Full Changelog
 

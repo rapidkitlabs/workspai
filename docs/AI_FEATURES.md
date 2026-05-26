@@ -391,7 +391,7 @@ npx rapidkit config show
    ```
 
 3. **Report issue:**
-   - GitHub: https://github.com/getrapidkit/rapidkit-npm/issues
+   - GitHub: https://github.com/rapidkitlabs/rapidkit-npm/issues
    - Include: error message, OS, Node version, command used
 
 ## 📚 Commands Reference
@@ -457,4 +457,4 @@ MIT - See [LICENSE](../LICENSE)
 
 ---
 
-**Questions?** Open an issue on [GitHub](https://github.com/getrapidkit/rapidkit-npm/issues)
+**Questions?** Open an issue on [GitHub](https://github.com/rapidkitlabs/rapidkit-npm/issues)

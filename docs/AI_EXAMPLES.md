@@ -416,4 +416,4 @@ npx rapidkit dev
 
 ---
 
-**Need help?** Open an issue: https://github.com/getrapidkit/rapidkit-npm/issues
+**Need help?** Open an issue: https://github.com/rapidkitlabs/rapidkit-npm/issues
