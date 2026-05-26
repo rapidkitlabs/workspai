@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-05-26
+
+### Added
+
+- Added workspace snapshot support with manifest-based workspace and project snapshot schema.
+- Added workspace snapshot regression coverage and integration tests.
+
+### Changed
+
+- Updated repository metadata and documentation references from `getrapidkit` to `rapidkitlabs`.
+
+### Fixed
+
+- Fixed release note and docs references following the workspace snapshot support update.
+
 ## [0.28.0] - 2026-05-22
 
 ### Added

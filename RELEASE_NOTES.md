@@ -1,6 +1,41 @@
 # Release Notes
 
-## Latest Release: v0.28.0 (May 22, 2026)
+## Latest Release: v0.29.0 (May 26, 2026)
+
+### 🧪 Workspace Snapshot Support and Docs Cleanup
+
+This release adds workspace snapshot support and updates repository metadata/documentation references to the new `rapidkitlabs` organization.
+
+**What's New:**
+
+- 🗂️ **Workspace snapshot support**
+  - Added snapshot commands for capturing, inspecting, listing, and restoring workspace state.
+  - Supports both metadata-only and full snapshot modes, plus optional project inclusion.
+
+- 🧾 **Snapshot commands:**
+  - `npx rapidkit snapshot create <name> [--include-projects] [--reason <text>] [--json]`
+  - `npx rapidkit snapshot list [--json]`
+  - `npx rapidkit snapshot inspect <name> [--json]`
+  - `npx rapidkit snapshot restore <name> [--dry-run] [--force] [--json]`
+
+- 🧾 **Docs and release metadata cleanup**
+  - Updated GitHub repository links and references from `getrapidkit` to `rapidkitlabs` across README and docs.
+  - Synced release note references and docs links in package metadata.
+
+- ✅ **Maintenance and stability**
+  - Added regression coverage for workspace snapshot behavior.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.29.0
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.29.0.md)
+
+---
+
+## Previous Release: v0.28.0 (May 22, 2026)
 
 ### 🤖 Autopilot Release Commander — Enterprise Orchestration and Stable Gate Verdicts
 
