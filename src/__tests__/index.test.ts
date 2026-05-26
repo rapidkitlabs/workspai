@@ -4,12 +4,61 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { execa } from 'execa';
 import * as path from 'path';
 import * as fs from 'fs-extra';
+import os from 'os';
 import { spawnSync } from 'child_process';
 
 import { handleImportCommand } from '../index';
+
+interface CliExecOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  reject?: boolean;
+}
+
+interface CliExecResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+async function execa(
+  command: string,
+  args: string[] = [],
+  options: CliExecOptions = {}
+): Promise<CliExecResult> {
+  const captureDir = await fs.mkdtemp(path.join(os.tmpdir(), 'rapidkit-cli-test-'));
+  const stdoutPath = path.join(captureDir, 'stdout.log');
+  const stderrPath = path.join(captureDir, 'stderr.log');
+  const stdoutFd = fs.openSync(stdoutPath, 'w');
+  const stderrFd = fs.openSync(stderrPath, 'w');
+
+  try {
+    const child = spawnSync(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ['ignore', stdoutFd, stderrFd],
+      windowsHide: true,
+    });
+
+    const result = {
+      stdout: await fs.readFile(stdoutPath, 'utf-8'),
+      stderr: await fs.readFile(stderrPath, 'utf-8'),
+      exitCode: child.status ?? (child.error ? 1 : 0),
+    };
+
+    if ((child.error || result.exitCode !== 0) && options.reject !== false) {
+      throw Object.assign(child.error ?? new Error(`Command failed: ${command}`), result);
+    }
+
+    return result;
+  } finally {
+    fs.closeSync(stdoutFd);
+    fs.closeSync(stderrFd);
+    await fs.remove(captureDir);
+  }
+}
 
 function ensureDistBuilt(): string {
   const repoRoot = process.cwd();
@@ -18,6 +67,7 @@ function ensureDistBuilt(): string {
     path.join(repoRoot, 'src', 'index.ts'),
     path.join(repoRoot, 'src', 'import-project.ts'),
     path.join(repoRoot, 'src', 'imported-projects-registry.ts'),
+    path.join(repoRoot, 'src', 'workspace-snapshot.ts'),
   ];
 
   const shouldBuild = (() => {
@@ -152,6 +202,11 @@ describe('CLI Entry Point', () => {
           npx rapidkit bootstrap [--profile <p>]   Re-bootstrap toolchains
           npx rapidkit workspace list               List registered workspaces
           npx rapidkit import <path|git-url>        Copy or clone a backend project into this workspace
+          npx rapidkit snapshot create [name]      Create a recoverable workspace snapshot
+          npx rapidkit snapshot restore <name>     Restore snapshot metadata with safety guard
+          npx rapidkit snapshot inspect <name>     Inspect snapshot manifest and size
+          npx rapidkit project archive <name>      Archive a project with a safety snapshot
+          npx rapidkit project restore <archive>   Restore an archived project safely
           npx rapidkit workspace share [--output <file>] Export collaboration bundle
           npx rapidkit workspace policy show        Show effective workspace policies
           npx rapidkit workspace policy set <k> <v> Update workspace policy values

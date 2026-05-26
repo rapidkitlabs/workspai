@@ -9,6 +9,7 @@
     "ai",
     "cli",
     "create",
+    "workspace",
     "fastapi",
     "nestjs",
     "springboot",
@@ -17,6 +18,7 @@
     "gogin",
     "backend",
     "microservices",
+    "api",
     "generator",
     "scaffold"
   ],

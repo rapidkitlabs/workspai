@@ -51,6 +51,16 @@ import {
   shouldUseShellExecution,
 } from './utils/platform-capabilities.js';
 import { createNpmWorkspaceMarker, writeWorkspaceMarker } from './workspace-marker.js';
+import {
+  archiveWorkspaceProject,
+  createWorkspaceSnapshot,
+  deleteWorkspaceProject,
+  inspectWorkspaceSnapshot,
+  listArchivedProjects,
+  listWorkspaceSnapshots,
+  restoreArchivedProject,
+  restoreWorkspaceSnapshot,
+} from './workspace-snapshot.js';
 
 type BridgeFailureCode =
   | 'PYTHON_NOT_FOUND'
@@ -1130,6 +1140,8 @@ export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
   'doctor',
   'autopilot',
   'import',
+  'snapshot',
+  'project',
   'workspace',
   'bootstrap',
   'setup',
@@ -1145,6 +1157,8 @@ const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
   'doctor',
   'autopilot',
   'import',
+  'snapshot',
+  'project',
   'workspace',
   'ai',
   'config',
@@ -4101,6 +4115,10 @@ Workspace Setup Commands
   rapidkit readiness         Build release-readiness evidence (use --json for CI)
   rapidkit autopilot release Run end-to-end release gate orchestration (audit|safe-fix|enforce)
   rapidkit workspace list    List registered workspaces on this system
+  rapidkit snapshot create   Create a recoverable workspace snapshot
+  rapidkit snapshot inspect  Inspect snapshot payload and manifest details
+  rapidkit project archive   Safely archive a workspace project
+  rapidkit project restore   Restore an archived workspace project
   rapidkit mirror            Manage registry mirrors   (mirror status --json | sync | verify | rotate)
   rapidkit cache             Manage package cache      (cache status | clear | prune | repair)
 
@@ -4657,6 +4675,346 @@ program
     }
   );
 
+const snapshotCommand = program
+  .command('snapshot')
+  .description('Create, list, and restore RapidKit workspace snapshots');
+
+snapshotCommand
+  .command('create [name]')
+  .description('Create a recoverable workspace snapshot')
+  .option('--workspace <path>', 'Workspace root path (defaults to nearest RapidKit workspace)')
+  .option('--reason <text>', 'Reason recorded in the snapshot manifest')
+  .option('--include-projects', 'Include project source files in the snapshot')
+  .option('--json', 'Emit machine-readable JSON output')
+  .action(
+    async (
+      name: string | undefined,
+      options: { workspace?: string; reason?: string; includeProjects?: boolean; json?: boolean }
+    ) => {
+      try {
+        const result = await createWorkspaceSnapshot({
+          workspacePath: options.workspace,
+          name,
+          reason: options.reason,
+          includeProjects: options.includeProjects === true,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log(chalk.green(`✔ Workspace snapshot created: ${result.manifest.name}`));
+        console.log(chalk.gray(`   Mode: ${result.manifest.mode}`));
+        console.log(chalk.gray(`   Path: ${result.snapshotPath}`));
+      } catch (error) {
+        console.log(chalk.red(`❌ Snapshot create failed: ${(error as Error).message}`));
+        process.exit(1);
+      }
+    }
+  );
+
+snapshotCommand
+  .command('list')
+  .description('List workspace snapshots')
+  .option('--workspace <path>', 'Workspace root path (defaults to nearest RapidKit workspace)')
+  .option('--json', 'Emit machine-readable JSON output')
+  .action(async (options: { workspace?: string; json?: boolean }) => {
+    try {
+      const snapshots = await listWorkspaceSnapshots({ workspacePath: options.workspace });
+
+      if (options.json) {
+        console.log(JSON.stringify({ snapshots }, null, 2));
+        return;
+      }
+
+      if (snapshots.length === 0) {
+        console.log(chalk.yellow('No workspace snapshots found.'));
+        return;
+      }
+
+      for (const snapshot of snapshots) {
+        console.log(chalk.cyan(snapshot.name));
+        console.log(
+          chalk.gray(
+            `   ${snapshot.createdAt} | ${snapshot.mode} | ${snapshot.projects.length} project(s)`
+          )
+        );
+        console.log(chalk.gray(`   ${snapshot.snapshotPath}`));
+      }
+    } catch (error) {
+      console.log(chalk.red(`❌ Snapshot list failed: ${(error as Error).message}`));
+      process.exit(1);
+    }
+  });
+
+snapshotCommand
+  .command('inspect <name>')
+  .description('Inspect snapshot manifest and estimated payload size')
+  .option('--workspace <path>', 'Workspace root path (defaults to nearest RapidKit workspace)')
+  .option('--json', 'Emit machine-readable JSON output')
+  .action(async (name: string, options: { workspace?: string; json?: boolean }) => {
+    try {
+      const result = await inspectWorkspaceSnapshot({
+        workspacePath: options.workspace,
+        name,
+      });
+
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+
+      console.log(chalk.cyan(`Snapshot: ${result.manifest.name}`));
+      console.log(chalk.gray(`   Mode: ${result.manifest.mode}`));
+      console.log(chalk.gray(`   Created: ${result.manifest.createdAt}`));
+      console.log(chalk.gray(`   Projects: ${result.manifest.projects.length}`));
+      console.log(chalk.gray(`   Files: ${result.estimatedFileCount}`));
+      console.log(chalk.gray(`   Bytes: ${result.estimatedBytes}`));
+      console.log(chalk.gray(`   Path: ${result.snapshotPath}`));
+    } catch (error) {
+      console.log(chalk.red(`❌ Snapshot inspect failed: ${(error as Error).message}`));
+      process.exit(1);
+    }
+  });
+
+snapshotCommand
+  .command('restore <name>')
+  .description('Restore a workspace snapshot')
+  .option('--workspace <path>', 'Workspace root path (defaults to nearest RapidKit workspace)')
+  .option('--reason <text>', 'Reason recorded in the audit log')
+  .option('--dry-run', 'Show what would be restored without changing files')
+  .option('--force', 'Required to apply a restore')
+  .option('--no-safety-snapshot', 'Do not create a pre-restore metadata snapshot')
+  .option('--json', 'Emit machine-readable JSON output')
+  .action(
+    async (
+      name: string,
+      options: {
+        workspace?: string;
+        reason?: string;
+        dryRun?: boolean;
+        force?: boolean;
+        safetySnapshot?: boolean;
+        json?: boolean;
+      }
+    ) => {
+      try {
+        const result = await restoreWorkspaceSnapshot({
+          workspacePath: options.workspace,
+          name,
+          reason: options.reason,
+          dryRun: options.dryRun === true,
+          force: options.force === true,
+          safetySnapshot: options.safetySnapshot,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        if (result.dryRun) {
+          console.log(chalk.cyan(`Snapshot restore dry-run: ${name}`));
+        } else {
+          console.log(chalk.green(`✔ Workspace snapshot restored: ${name}`));
+        }
+        console.log(chalk.gray(`   Snapshot: ${result.snapshotPath}`));
+        console.log(chalk.gray(`   Restored paths: ${result.restoredPaths.join(', ')}`));
+        if (result.safetySnapshotPath) {
+          console.log(chalk.gray(`   Safety snapshot: ${result.safetySnapshotPath}`));
+        }
+      } catch (error) {
+        console.log(chalk.red(`❌ Snapshot restore failed: ${(error as Error).message}`));
+        process.exit(1);
+      }
+    }
+  );
+
+const projectCommand = program
+  .command('project')
+  .description('Safe workspace project lifecycle operations');
+
+projectCommand
+  .command('archives')
+  .description('List archived workspace projects')
+  .option('--workspace <path>', 'Workspace root path (defaults to nearest RapidKit workspace)')
+  .option('--json', 'Emit machine-readable JSON output')
+  .action(async (options: { workspace?: string; json?: boolean }) => {
+    try {
+      const archives = await listArchivedProjects({ workspacePath: options.workspace });
+
+      if (options.json) {
+        console.log(JSON.stringify({ archives }, null, 2));
+        return;
+      }
+
+      if (archives.length === 0) {
+        console.log(chalk.yellow('No archived projects found.'));
+        return;
+      }
+
+      for (const archive of archives) {
+        console.log(chalk.cyan(archive.projectName));
+        console.log(chalk.gray(`   Archived: ${archive.archivedAt}`));
+        console.log(chalk.gray(`   Path: ${archive.archivePath}`));
+        if (archive.reason) console.log(chalk.gray(`   Reason: ${archive.reason}`));
+      }
+    } catch (error) {
+      console.log(chalk.red(`❌ Project archive list failed: ${(error as Error).message}`));
+      process.exit(1);
+    }
+  });
+
+projectCommand
+  .command('archive <project>')
+  .description('Move a project into .rapidkit/archive with a safety snapshot')
+  .option('--workspace <path>', 'Workspace root path (defaults to nearest RapidKit workspace)')
+  .option('--reason <text>', 'Reason recorded in the archive manifest')
+  .option('--dry-run', 'Show what would be archived without changing files')
+  .option('--json', 'Emit machine-readable JSON output')
+  .action(
+    async (
+      project: string,
+      options: { workspace?: string; reason?: string; dryRun?: boolean; json?: boolean }
+    ) => {
+      try {
+        const result = await archiveWorkspaceProject({
+          workspacePath: options.workspace,
+          project,
+          reason: options.reason,
+          dryRun: options.dryRun === true,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log(
+          result.dryRun
+            ? chalk.cyan(`Project archive dry-run: ${result.projectName}`)
+            : chalk.green(`✔ Project archived: ${result.projectName}`)
+        );
+        console.log(chalk.gray(`   From: ${result.projectPath}`));
+        if (result.archivePath) console.log(chalk.gray(`   To: ${result.archivePath}`));
+        if (result.safetySnapshotPath) {
+          console.log(chalk.gray(`   Safety snapshot: ${result.safetySnapshotPath}`));
+        }
+      } catch (error) {
+        console.log(chalk.red(`❌ Project archive failed: ${(error as Error).message}`));
+        process.exit(1);
+      }
+    }
+  );
+
+projectCommand
+  .command('restore <archive>')
+  .description('Restore an archived project back into the workspace')
+  .option('--workspace <path>', 'Workspace root path (defaults to nearest RapidKit workspace)')
+  .option('--name <projectName>', 'Restore using a new project folder name')
+  .option('--reason <text>', 'Reason recorded in the audit log')
+  .option('--force', 'Overwrite an existing restore target')
+  .option('--dry-run', 'Show what would be restored without changing files')
+  .option('--json', 'Emit machine-readable JSON output')
+  .action(
+    async (
+      archive: string,
+      options: {
+        workspace?: string;
+        name?: string;
+        reason?: string;
+        force?: boolean;
+        dryRun?: boolean;
+        json?: boolean;
+      }
+    ) => {
+      try {
+        const result = await restoreArchivedProject({
+          workspacePath: options.workspace,
+          archive,
+          targetName: options.name,
+          reason: options.reason,
+          force: options.force === true,
+          dryRun: options.dryRun === true,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log(
+          result.dryRun
+            ? chalk.cyan(`Project restore dry-run: ${result.projectName}`)
+            : chalk.green(`✔ Project restored: ${result.projectName}`)
+        );
+        console.log(chalk.gray(`   From: ${result.archivePath}`));
+        console.log(chalk.gray(`   To: ${result.projectPath}`));
+        if (result.safetySnapshotPath) {
+          console.log(chalk.gray(`   Safety snapshot: ${result.safetySnapshotPath}`));
+        }
+      } catch (error) {
+        console.log(chalk.red(`❌ Project restore failed: ${(error as Error).message}`));
+        process.exit(1);
+      }
+    }
+  );
+
+projectCommand
+  .command('delete <project>')
+  .description('Archive by default; permanently delete only with --permanent and exact --confirm')
+  .option('--workspace <path>', 'Workspace root path (defaults to nearest RapidKit workspace)')
+  .option('--reason <text>', 'Reason recorded in the safety snapshot/archive manifest')
+  .option('--permanent', 'Permanently delete the project directory')
+  .option('--confirm <projectName>', 'Required exact project name for --permanent')
+  .option('--dry-run', 'Show what would be deleted without changing files')
+  .option('--json', 'Emit machine-readable JSON output')
+  .action(
+    async (
+      project: string,
+      options: {
+        workspace?: string;
+        reason?: string;
+        permanent?: boolean;
+        confirm?: string;
+        dryRun?: boolean;
+        json?: boolean;
+      }
+    ) => {
+      try {
+        const result = await deleteWorkspaceProject({
+          workspacePath: options.workspace,
+          project,
+          reason: options.reason,
+          permanent: options.permanent === true,
+          confirm: options.confirm,
+          dryRun: options.dryRun === true,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        const label = result.action === 'archive' ? 'archived' : 'deleted';
+        console.log(
+          result.dryRun
+            ? chalk.cyan(`Project ${label} dry-run: ${result.projectName}`)
+            : chalk.green(`✔ Project ${label}: ${result.projectName}`)
+        );
+        console.log(chalk.gray(`   Path: ${result.projectPath}`));
+        if (result.archivePath) console.log(chalk.gray(`   Archive: ${result.archivePath}`));
+        if (result.safetySnapshotPath) {
+          console.log(chalk.gray(`   Safety snapshot: ${result.safetySnapshotPath}`));
+        }
+      } catch (error) {
+        console.log(chalk.red(`❌ Project delete failed: ${(error as Error).message}`));
+        process.exit(1);
+      }
+    }
+  );
+
 program
   .command('doctor [scope]')
   .description(
@@ -4970,6 +5328,25 @@ function printHelp() {
     chalk.gray(
       '  npx rapidkit import <path|git-url>        Copy or clone a backend project into this workspace'
     )
+  );
+  console.log(
+    chalk.gray('  npx rapidkit snapshot create [name]      Create a recoverable workspace snapshot')
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit snapshot restore <name>     Restore snapshot metadata with safety guard'
+    )
+  );
+  console.log(
+    chalk.gray('  npx rapidkit snapshot inspect <name>     Inspect snapshot manifest and size')
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit project archive <name>      Archive a project with a safety snapshot'
+    )
+  );
+  console.log(
+    chalk.gray('  npx rapidkit project restore <archive>   Restore an archived project safely')
   );
   console.log(
     chalk.gray('  npx rapidkit workspace share [--output <file>] Export collaboration bundle')

@@ -146,6 +146,14 @@ npx rapidkit doctor project [--fix] [--plan] [--apply]
 npx rapidkit workspace list # Display all workspaces created on this system
 npx rapidkit workspace share [--output <file>] [--include-paths] [--no-doctor]
 npx rapidkit import <path|git-url> [--workspace <path>] [--name <project-name>] [--git] [--json]
+npx rapidkit snapshot create [name] [--include-projects] [--reason <text>] [--json]
+npx rapidkit snapshot list [--json]
+npx rapidkit snapshot inspect <name> [--json]
+npx rapidkit snapshot restore <name> [--dry-run] [--force] [--json]
+npx rapidkit project archive <name> [--reason <text>] [--dry-run] [--json]
+npx rapidkit project archives [--json]
+npx rapidkit project restore <archive> [--name <project-name>] [--force] [--dry-run] [--json]
+npx rapidkit project delete <name> [--permanent --confirm <name>] [--dry-run] [--json]
 npx rapidkit workspace init # Full-init alias (same behavior as root init/workspace run init at workspace root)
 npx rapidkit workspace run <init|test|build|start> [--affected] [--blast-radius] [--since <ref>] [--parallel] [--max-workers <n>] [--strict] [--json]
 ```
@@ -183,6 +191,39 @@ JSON output (`--json`) includes:
 - `suggestedCdCommand`
 - `importedProject` (`name`, `path`, `stack`, `confidence`, `source`)
 
+### Workspace snapshots and safe project operations
+
+Use `snapshot` before migrations, mass imports, dependency upgrades, or release preparation.
+By default snapshots preserve workspace metadata only (`.rapidkit`, workspace marker, and config files).
+Use `--include-projects` when you need a full recoverable copy of project source files too.
+
+```bash
+npx rapidkit snapshot create before-upgrade --reason "before dependency upgrade"
+npx rapidkit snapshot list
+npx rapidkit snapshot inspect before-upgrade
+npx rapidkit snapshot restore before-upgrade --dry-run
+npx rapidkit snapshot restore before-upgrade --force
+```
+
+Project delete is intentionally safe-by-default:
+
+```bash
+npx rapidkit project archive orders-api --reason "replaced by orders-v2"
+npx rapidkit project archives
+npx rapidkit project restore orders-api
+npx rapidkit project delete orders-api
+npx rapidkit project delete orders-api --permanent --confirm orders-api
+```
+
+Lifecycle safety rules:
+
+- `project delete` archives by default; permanent removal requires `--permanent --confirm <exact-project-name>`.
+- `snapshot restore` requires `--force` unless it is a dry-run.
+- Restore, archive, and permanent delete create a pre-operation metadata snapshot automatically.
+- Archive manifests are stored beside archived projects under `.rapidkit/archive/projects`.
+- Lifecycle operations append JSONL audit records to `.rapidkit/audit/events.jsonl`.
+- Workspace policy can require reasons, require safety snapshots, or block permanent delete via `.rapidkit/policies.yml`.
+
 ### Workspace collaboration bundle
 
 Use `workspace share` to export a portable JSON snapshot for team handoff,
@@ -210,18 +251,20 @@ Bundle content includes:
 
 RapidKit keeps the wrapper boundary explicit so users know which layer owns each action.
 
-| Command family                                     | Owner                  | Notes                                                                                                                       |
-| -------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `create workspace`, `workspace`, `cache`, `mirror` | RapidKit wrapper       | Platform-level orchestration                                                                                                |
-| `init`                                             | Wrapper orchestrated   | Project init in project dirs; full-init alias at workspace root                                                             |
-| `dev`, `test`, `build`, `start`                    | Runtime aware          | Delegates to the active project/runtime when available                                                                      |
-| `readiness`                                        | Wrapper release gate   | Generates release-readiness evidence (`--json` for CI, `--strict` for fail-fast)                                            |
-| `autopilot release`                                | Wrapper orchestrator   | Runs doctor/readiness/remediation/workspace-run gates and emits release verdict evidence                                    |
-| `import`                                           | Workspace ingestion    | Imports local folders or git backends with rollback-safe sync behavior                                                      |
-| `doctor`                                           | Wrapper system check   | Checks host prerequisites by default                                                                                        |
-| `doctor workspace`                                 | Workspace health       | Full workspace scan with project-level details and fixes                                                                    |
-| `doctor project`                                   | Project health         | Current project (or nearest parent) diagnostics with project evidence and scoped fixes                                      |
-| `workspace run`                                    | Workspace orchestrator | Stage execution across discovered projects with optional affected-only, blast-radius expansion, and policy-gated pre-checks |
+| Command family                                     | Owner                  | Notes                                                                                                                           |
+| -------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `create workspace`, `workspace`, `cache`, `mirror` | RapidKit wrapper       | Platform-level orchestration                                                                                                    |
+| `init`                                             | Wrapper orchestrated   | Project init in project dirs; full-init alias at workspace root                                                                 |
+| `dev`, `test`, `build`, `start`                    | Runtime aware          | Delegates to the active project/runtime when available                                                                          |
+| `readiness`                                        | Wrapper release gate   | Generates release-readiness evidence (`--json` for CI, `--strict` for fail-fast)                                                |
+| `autopilot release`                                | Wrapper orchestrator   | Runs doctor/readiness/remediation/workspace-run gates and emits release verdict evidence                                        |
+| `import`                                           | Workspace ingestion    | Imports local folders or git backends with rollback-safe sync behavior                                                          |
+| `snapshot`                                         | Workspace recovery     | Creates/list/restores metadata or full workspace snapshots with destructive-operation guards                                    |
+| `project archive/restore/delete`                   | Project lifecycle      | Archives by default, restores archived projects, requires exact confirmation for permanent delete, and creates safety snapshots |
+| `doctor`                                           | Wrapper system check   | Checks host prerequisites by default                                                                                            |
+| `doctor workspace`                                 | Workspace health       | Full workspace scan with project-level details and fixes                                                                        |
+| `doctor project`                                   | Project health         | Current project (or nearest parent) diagnostics with project evidence and scoped fixes                                          |
+| `workspace run`                                    | Workspace orchestrator | Stage execution across discovered projects with optional affected-only, blast-radius expansion, and policy-gated pre-checks     |
 
 Use `npx rapidkit doctor` for a quick host pre-flight, `npx rapidkit doctor project` for a service-level check, and `npx rapidkit doctor workspace` for the full workspace picture.
 Use `npx rapidkit doctor workspace --plan` or `npx rapidkit doctor project --plan` to preview remediation safely.

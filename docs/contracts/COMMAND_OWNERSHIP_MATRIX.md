@@ -18,6 +18,8 @@ These commands are implemented and orchestrated by `rapidkit-npm`:
 - `autopilot`
 - `doctor`
 - `import`
+- `snapshot`
+- `project`
 - `workspace`
 - `bootstrap`
 - `setup`
