@@ -131,6 +131,7 @@ npx rapidkit create # Prompts: workspace | project
 npx rapidkit create workspace <name> [--profile <profile>] [--author <name>] [--yes]
 npx rapidkit bootstrap [--profile <profile>] [--json]
 npx rapidkit setup <python|node|go|java> [--warm-deps]
+npx rapidkit analyze [--workspace <path>] [--json] [--strict] [--output <file>]
 npx rapidkit readiness [--json] [--strict]
 npx rapidkit autopilot release [--mode <audit|safe-fix|enforce>] [--json] [--output <file>] [--since <ref>] [--parallel] [--max-workers <n>]
 ```
@@ -267,6 +268,7 @@ RapidKit keeps the wrapper boundary explicit so users know which layer owns each
 | `workspace run`                                    | Workspace orchestrator | Stage execution across discovered projects with optional affected-only, blast-radius expansion, and policy-gated pre-checks     |
 
 Use `npx rapidkit doctor` for a quick host pre-flight, `npx rapidkit doctor project` for a service-level check, and `npx rapidkit doctor workspace` for the full workspace picture.
+Use `npx rapidkit analyze --json` to generate CI-friendly workspace health evidence and save it under `.rapidkit/reports/`.
 Use `npx rapidkit doctor workspace --plan` or `npx rapidkit doctor project --plan` to preview remediation safely.
 Use `npx rapidkit doctor workspace --apply` or `npx rapidkit doctor project --apply` for non-interactive remediation runs.
 Use `npx rapidkit readiness` when you need machine-readable release evidence or strict CI gating.
@@ -579,6 +581,14 @@ Link local CLI globally for manual testing:
 npm run install:local
 npx rapidkit --version
 ```
+
+> Packaging note: `npm run prepack` will regenerate `data/modules-embeddings.json` from the mock embeddings script before `npm pack` / `npm publish`.
+>
+> If you need to refresh the local test embeddings manually, run:
+>
+> ```bash
+> npm run test:prepare-embeddings
+> ```
 
 ## Troubleshooting
 

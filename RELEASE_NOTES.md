@@ -1,5 +1,34 @@
 # Release Notes
 
+## Latest Release: v0.30.0 (May 30, 2026)
+
+### 🔍 Workspace Analysis, AI Embeddings Packaging, and CI Evidence Readiness
+
+This release introduces a new wrapper-owned `rapidkit analyze` command, improved AI embeddings packaging for npm release artifacts, and better CLI/docs alignment for enterprise automation.
+
+**What's New:**
+
+- 🚀 **Workspace analysis command**
+  - Added `npx rapidkit analyze [--workspace <path>] [--json] [--strict] [--output <file>]` for workspace health findings and automated report generation.
+  - Supports strict CI gating and structured JSON evidence writing to `.rapidkit/reports/`.
+
+- 📦 **Embeddings packaging improvements**
+  - Added `prepack` hook to regenerate `data/modules-embeddings.json` before `npm pack` / `npm publish`.
+  - Added `npm run generate-embeddings` for real OpenAI module embedding generation and `npm run test:prepare-embeddings` for deterministic mock embeddings during local testing.
+
+- 🧠 **AI command and docs alignment**
+  - Updated CLI help, README docs, and command ownership matrix for the new `analyze` and AI embeddings workflows.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.30.0
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.30.0.md)
+
+---
+
 ## Latest Release: v0.29.1 (May 26, 2026)
 
 ### 🛡️ Backend Import Rollback and CLI Test Stability Patch

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-05-30
+
+### Added
+
+- Added `rapidkit analyze [--workspace <path>] [--json] [--strict] [--output <file>]` for workspace analysis and CI-ready evidence export.
+- Added `npm run generate-embeddings` for real OpenAI module embedding generation.
+- Added `npm run test:prepare-embeddings` for deterministic mock module embedding generation.
+
+### Changed
+
+- Added `prepack` hook to regenerate `data/modules-embeddings.json` before packaging.
+- Updated package content and docs to support embedding-based AI recommendation workflows.
+
+### Fixed
+
+- Fixed `rapidkit analyze` workspace path validation and strict mode CLI behavior.
+- Fixed deterministic AI module catalog tests and bridge mocking for stable CI coverage.
+
 ## [0.29.1] - 2026-05-26
 
 ### Changed

@@ -1,8 +1,5 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { isMockMode } from './openai-client.js';
-
-const execAsync = promisify(exec);
+import { runCoreRapidkitCapture } from '../core-bridge/pythonRapidkitExec.js';
 
 export interface ModuleMetadata {
   id: string;
@@ -376,38 +373,35 @@ function mapPythonFramework(framework: unknown): 'fastapi' | 'nestjs' | 'both' {
 async function fetchModulesFromPythonCore(): Promise<ModuleMetadata[]> {
   try {
     // Use the new JSON schema format (v1) introduced in newer Core versions
-    const { stdout } = await execAsync('rapidkit modules list --json-schema 1', {
-      timeout: 10000, // 10 seconds timeout
-      maxBuffer: 10 * 1024 * 1024, // 10MB
+    const result = await runCoreRapidkitCapture(['modules', 'list', '--json-schema', '1'], {
+      cwd: process.cwd(),
     });
 
-    // Python Core may output emojis/colors before JSON, extract only JSON part
-    const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : stdout;
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr.trim() || 'Python Core modules command failed');
+    }
 
-    const result = JSON.parse(jsonStr);
+    // Python Core may output emojis/colors before JSON, extract only JSON part
+    const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : result.stdout;
+
+    const payload = JSON.parse(jsonStr);
 
     // Handle different response formats
     let modules: unknown[] = [];
-    if (Array.isArray(result)) {
-      modules = result;
-    } else if (result.modules && Array.isArray(result.modules)) {
-      modules = result.modules;
-    } else if (result.data && Array.isArray(result.data)) {
-      modules = result.data;
+    if (Array.isArray(payload)) {
+      modules = payload;
+    } else if (payload.modules && Array.isArray(payload.modules)) {
+      modules = payload.modules;
+    } else if (payload.data && Array.isArray(payload.data)) {
+      modules = payload.data;
     }
 
     return modules.map(parsePythonModule).filter((m) => m.id && m.name);
   } catch (error: unknown) {
     // Python Core not available or command failed
-    const execError = error as { code?: string; killed?: boolean; message?: string };
-    if (execError.code === 'ENOENT') {
-      console.warn('⚠️  RapidKit Python Core not found in PATH');
-    } else if (execError.killed) {
-      console.warn('⚠️  Python Core command timed out');
-    } else {
-      console.warn('⚠️  Failed to fetch modules from Python Core:', execError.message);
-    }
+    const execError = error as { message?: string };
+    console.warn('⚠️  Failed to fetch modules from Python Core:', execError.message);
     console.warn('   Using fallback module catalog (11 modules)');
     return FALLBACK_MODULE_CATALOG;
   }

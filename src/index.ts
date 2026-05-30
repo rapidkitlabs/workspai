@@ -1136,6 +1136,7 @@ const LOCAL_COMMANDS = [
 // Single source of truth for commands owned by the npm wrapper.
 // Any new workspace-level command must be added here to prevent accidental core forwarding.
 export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
+  'analyze',
   'readiness',
   'doctor',
   'autopilot',
@@ -1153,6 +1154,7 @@ export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
 ] as const;
 
 const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
+  'analyze',
   'readiness',
   'doctor',
   'autopilot',
@@ -4111,6 +4113,7 @@ program.addHelpText(
   `
 Workspace Setup Commands
   rapidkit bootstrap         Bootstrap projects in workspace (--profile java-only|python-only|node-only|go-only|polyglot|enterprise)
+  rapidkit analyze           Analyze workspace/project health and generate enterprise evidence
   rapidkit setup <runtime>   Set up runtime toolchain  (runtime: python | node | go | java)
   rapidkit readiness         Build release-readiness evidence (use --json for CI)
   rapidkit autopilot release Run end-to-end release gate orchestration (audit|safe-fix|enforce)
@@ -4496,6 +4499,55 @@ program
 
 // Register AI commands
 registerAICommands(program);
+
+program
+  .command('analyze')
+  .description('Analyze workspace/project health and generate enterprise-ready evidence')
+  .option('--workspace <path>', 'Workspace/root path to analyze')
+  .option('--json', 'Output as JSON')
+  .option('--output <file>', 'Write JSON report to a file')
+  .option('--strict', 'Treat warnings as blocking in the verdict')
+  .action(
+    async (options: { workspace?: string; json?: boolean; output?: string; strict?: boolean }) => {
+      try {
+        const { runAnalyze, printAnalyzeReport } = await import('./analyze.js');
+        const report = await runAnalyze({
+          workspacePath: options.workspace,
+          json: options.json === true,
+          output: options.output,
+          strict: options.strict === true,
+        });
+
+        if (options.json) {
+          console.log(JSON.stringify(report, null, 2));
+        } else {
+          printAnalyzeReport(report);
+        }
+
+        if (report.summary.verdict === 'blocked') {
+          process.exit(2);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (options.json) {
+          console.log(
+            JSON.stringify(
+              {
+                schemaVersion: 'rapidkit-analyze-error-v1',
+                ok: false,
+                error: { message },
+              },
+              null,
+              2
+            )
+          );
+        } else {
+          console.error(chalk.red(`Analyze failed: ${message}`));
+        }
+        process.exit(1);
+      }
+    }
+  );
 
 // Register config commands
 registerConfigCommands(program);
@@ -5323,6 +5375,9 @@ function printHelp() {
 
   console.log(chalk.bold('Workspace commands (inside a workspace):'));
   console.log(chalk.gray('  npx rapidkit bootstrap [--profile <p>]   Re-bootstrap toolchains'));
+  console.log(
+    chalk.gray('  npx rapidkit analyze [--json --strict]   Analyze workspace health and gaps')
+  );
   console.log(chalk.gray('  npx rapidkit workspace list               List registered workspaces'));
   console.log(
     chalk.gray(

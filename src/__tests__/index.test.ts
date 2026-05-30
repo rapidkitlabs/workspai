@@ -163,6 +163,7 @@ describe('CLI Entry Point', () => {
       expect(block?.[0].replace(/\r/g, '')).toMatchInlineSnapshot(`
         "Workspace commands (inside a workspace):
           npx rapidkit bootstrap [--profile <p>]   Re-bootstrap toolchains
+          npx rapidkit analyze [--json --strict]   Analyze workspace health and gaps
           npx rapidkit workspace list               List registered workspaces
           npx rapidkit import <path|git-url>        Copy or clone a backend project into this workspace
           npx rapidkit snapshot create [name]      Create a recoverable workspace snapshot

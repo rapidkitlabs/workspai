@@ -7,16 +7,19 @@ import {
   getAllModuleIds,
 } from '../../ai/module-catalog.js';
 
-// Mock child_process exec
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
+vi.mock('../../core-bridge/pythonRapidkitExec.js', () => ({
+  runCoreRapidkitCapture: vi.fn(async () => ({ exitCode: 1, stdout: '', stderr: '' })),
 }));
 
-vi.mock('util', () => ({
-  promisify: vi.fn((fn) => fn),
-}));
+import { runCoreRapidkitCapture } from '../../core-bridge/pythonRapidkitExec.js';
+
+const mockedPythonCapture = vi.mocked(runCoreRapidkitCapture);
 
 describe('AI Module Catalog', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedPythonCapture.mockResolvedValue({ stdout: '', stderr: '', exitCode: 1 } as any);
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -258,25 +261,26 @@ describe('AI Module Catalog', () => {
   describe('Python contract parsing', () => {
     it('uses slug as canonical module id when provided', async () => {
       vi.resetModules();
-      const childProcess = await import('child_process');
-      const execMock = vi.mocked(childProcess.exec as any);
-
-      execMock.mockResolvedValue({
-        stdout: JSON.stringify({
-          schema_version: 1,
-          modules: [
-            {
-              slug: 'paid/auth/advanced_mfa',
-              name: 'advanced_mfa',
-              display_name: 'Advanced MFA',
-              category: 'auth',
-              description: 'Advanced authentication',
-              tags: ['Security', 'AUTH'],
-              status: 'active',
-              version: '1.0.0',
-            },
-          ],
-        }),
+      mockedPythonCapture.mockImplementation(async (_args: string[]) => {
+        return {
+          stdout: JSON.stringify({
+            schema_version: 1,
+            modules: [
+              {
+                slug: 'paid/auth/advanced_mfa',
+                name: 'advanced_mfa',
+                display_name: 'Advanced MFA',
+                category: 'auth',
+                description: 'Advanced authentication',
+                tags: ['Security', 'AUTH'],
+                status: 'active',
+                version: '1.0.0',
+              },
+            ],
+          }),
+          stderr: '',
+          exitCode: 0,
+        } as any;
       });
 
       const catalogModule = await import('../../ai/module-catalog.js');
@@ -286,25 +290,26 @@ describe('AI Module Catalog', () => {
 
     it('searches keywords case-insensitively for mixed-case tags', async () => {
       vi.resetModules();
-      const childProcess = await import('child_process');
-      const execMock = vi.mocked(childProcess.exec as any);
-
-      execMock.mockResolvedValue({
-        stdout: JSON.stringify({
-          schema_version: 1,
-          modules: [
-            {
-              slug: 'security/risk_guard',
-              name: 'risk_guard',
-              display_name: 'Risk Guard',
-              category: 'security',
-              description: 'Risk controls',
-              tags: ['RiSk', 'Guard'],
-              status: 'active',
-              version: '1.0.0',
-            },
-          ],
-        }),
+      mockedPythonCapture.mockImplementation(async (_args: string[]) => {
+        return {
+          stdout: JSON.stringify({
+            schema_version: 1,
+            modules: [
+              {
+                slug: 'security/risk_guard',
+                name: 'risk_guard',
+                display_name: 'Risk Guard',
+                category: 'security',
+                description: 'Risk controls',
+                tags: ['RiSk', 'Guard'],
+                status: 'active',
+                version: '1.0.0',
+              },
+            ],
+          }),
+          stderr: '',
+          exitCode: 0,
+        } as any;
       });
 
       const catalogModule = await import('../../ai/module-catalog.js');

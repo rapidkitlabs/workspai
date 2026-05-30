@@ -33,6 +33,13 @@ function normalizeError(error: unknown): { message: string; code?: string } {
   return { message: String(error) };
 }
 
+function writeJsonAndExit(payload: unknown, exitCode = 0): void {
+  console.log(JSON.stringify(payload, null, 2));
+  if (exitCode !== 0) {
+    process.exit(exitCode);
+  }
+}
+
 export function registerAICommands(program: Command): void {
   const ai = program.command('ai').description('AI-powered features');
 
@@ -46,6 +53,19 @@ export function registerAICommands(program: Command): void {
       try {
         // Check if AI is enabled
         if (!isAIEnabled()) {
+          if (options.json) {
+            writeJsonAndExit(
+              {
+                ok: false,
+                error: {
+                  code: 'AI_DISABLED',
+                  message: 'AI features are disabled',
+                  remediation: 'rapidkit config ai enable',
+                },
+              },
+              1
+            );
+          }
           console.log(chalk.yellow('\n⚠️  AI features are disabled'));
           console.log(chalk.gray('Enable with: rapidkit config ai enable\n'));
           process.exit(1);
@@ -54,16 +74,20 @@ export function registerAICommands(program: Command): void {
         // Get API key
         const apiKey = getOpenAIKey();
         if (!apiKey) {
-          console.log(
-            chalk.yellow('\n⚠️  OpenAI API key not configured - using MOCK MODE for testing\n')
-          );
-          console.log(
-            chalk.gray('📝 Note: Mock embeddings provide approximate results for testing.')
-          );
-          console.log(chalk.gray('   For production, configure your OpenAI API key:\n'));
-          console.log(chalk.white('   1. Get your key from: https://platform.openai.com/api-keys'));
-          console.log(chalk.white('   2. Configure it: rapidkit config set-api-key'));
-          console.log(chalk.gray('      OR set: export OPENAI_API_KEY="sk-proj-..."\n'));
+          if (!options.json) {
+            console.log(
+              chalk.yellow('\n⚠️  OpenAI API key not configured - using MOCK MODE for testing\n')
+            );
+            console.log(
+              chalk.gray('📝 Note: Mock embeddings provide approximate results for testing.')
+            );
+            console.log(chalk.gray('   For production, configure your OpenAI API key:\n'));
+            console.log(
+              chalk.white('   1. Get your key from: https://platform.openai.com/api-keys')
+            );
+            console.log(chalk.white('   2. Configure it: rapidkit config set-api-key'));
+            console.log(chalk.gray('      OR set: export OPENAI_API_KEY="sk-proj-..."\n'));
+          }
 
           // Enable mock mode to continue without API key
           enableMockMode();
@@ -100,8 +124,22 @@ export function registerAICommands(program: Command): void {
         }
 
         // Ensure embeddings exist
-        const hasEmbeddings = await ensureEmbeddings(!options.json);
+        const hasEmbeddings = apiKey ? await ensureEmbeddings(!options.json) : true;
         if (!hasEmbeddings) {
+          if (options.json) {
+            writeJsonAndExit(
+              {
+                ok: false,
+                query: userQuery,
+                error: {
+                  code: 'EMBEDDINGS_MISSING',
+                  message: 'Module embeddings are not available',
+                  remediation: 'rapidkit ai generate-embeddings',
+                },
+              },
+              1
+            );
+          }
           console.log(chalk.yellow('\n⚠️  Cannot proceed without embeddings\n'));
           process.exit(1);
         }

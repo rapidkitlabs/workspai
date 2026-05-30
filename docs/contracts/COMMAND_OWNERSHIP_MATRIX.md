@@ -26,6 +26,7 @@ These commands are implemented and orchestrated by `rapidkit-npm`:
 - `cache`
 - `mirror`
 - `ai`
+- `analyze`
 - `config`
 - `shell activate`
 
