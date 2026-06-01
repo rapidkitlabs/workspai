@@ -1,6 +1,6 @@
 {
   "name": "rapidkit",
-  "version": "0.30.0",
+  "version": "0.30.1",
   "type": "module",
   "description": "Official CLI for RapidKit, an open-source workspace platform that standardizes how teams build, scale, and deploy backend services.",
   "keywords": [
@@ -29,12 +29,14 @@
     "url": "git+https://github.com/rapidkitlabs/rapidkit-npm.git"
   },
   "bin": {
-    "rapidkit": "dist/index.js"
+    "rapidkit": "dist/index.js",
+    "rapidkit-npm": "dist/index.js"
   },
   "files": [
     "dist",
     "data/modules-embeddings.json",
-    "scripts/enforce-package-manager.cjs"
+    "scripts/enforce-package-manager.cjs",
+    "scripts/check-cli-resolution.cjs"
   ],
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
@@ -42,6 +44,7 @@
   },
   "scripts": {
     "preinstall": "node scripts/enforce-package-manager.cjs",
+    "postinstall": "node scripts/check-cli-resolution.cjs",
     "sync-kits": "bash scripts/sync-kits.sh",
     "build": "tsup",
     "build:watch": "tsup --watch",
@@ -61,7 +64,8 @@
     "test:coverage": "vitest run --coverage",
     "test:prepare-embeddings": "npx tsx scripts/generate-mock-embeddings.ts",
     "generate-embeddings": "npx tsx src/ai/generate-embeddings.ts",
-    "prepack": "npm run test:prepare-embeddings",
+    "verify:package-cli": "node scripts/verify-package-cli.mjs",
+    "prepack": "npm run build && npm run test:prepare-embeddings && npm run verify:package-cli",
     "test:e2e": "vitest run src/__tests__/e2e.test.ts",
     "test:scenarios": "bash scripts/scenario-matrix-local.sh",
     "test:scenarios:full": "RAPIDKIT_SCENARIO_FULL_BOOTSTRAP=1 bash scripts/scenario-matrix-local.sh",

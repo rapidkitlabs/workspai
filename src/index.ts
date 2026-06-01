@@ -1196,6 +1196,22 @@ function isNpmOnlyManualHandlerCommand(command: string | undefined): boolean {
   return !!command && (NPM_ONLY_MANUAL_HANDLER_COMMANDS as readonly string[]).includes(command);
 }
 
+export function isNpmExecInvocation(env: NodeJS.ProcessEnv = process.env): boolean {
+  const userAgent = env.npm_config_user_agent || '';
+  const execPath = env.npm_execpath || '';
+  const npmCommand = env.npm_command || '';
+
+  return (
+    userAgent.startsWith('npm/') ||
+    userAgent.includes(' npx/') ||
+    /(?:^|[/\\])npx(?:\.cmd)?$/i.test(execPath) ||
+    /(?:^|[/\\])npm(?:\.cmd)?$/i.test(execPath) ||
+    npmCommand === 'exec' ||
+    npmCommand === 'x' ||
+    npmCommand === 'run-script'
+  );
+}
+
 function hasWorkspaceRootMarkers(targetDir: string): boolean {
   return (
     fs.existsSync(path.join(targetDir, '.rapidkit-workspace')) ||
@@ -5570,8 +5586,11 @@ if (shouldBootstrapCli) {
   const preCwd = process.cwd();
   const preIsWorkspaceRoot = hasWorkspaceRootMarkers(preCwd);
   const preHasProjectJson = fs.existsSync(path.join(preCwd, '.rapidkit', 'project.json'));
+  const preIsNpmExecInvocation = isNpmExecInvocation();
 
   const shouldParseNpmOnlyDirectly = isNpmOnlyParseDirectCommand(preFirst);
+  const shouldKeepNpmOwnedCommandLocal =
+    preIsNpmExecInvocation && isNpmOnlyTopLevelCommand(preFirst);
   const shouldHandleWorkspaceInitDirectly =
     preFirst === 'init' && preIsWorkspaceRoot && !preHasProjectJson;
   const shouldRenderCustomRootHelp =
@@ -5584,7 +5603,25 @@ if (shouldBootstrapCli) {
     process.exit(0);
   }
 
-  if (shouldParseNpmOnlyDirectly) {
+  if (shouldKeepNpmOwnedCommandLocal && isNpmOnlyManualHandlerCommand(preFirst)) {
+    (async () => {
+      if (preFirst === 'bootstrap') {
+        process.exit(await handleBootstrapCommand(preArgs));
+      }
+      if (preFirst === 'setup') {
+        process.exit(await handleSetupCommand(preArgs));
+      }
+      if (preFirst === 'cache') {
+        process.exit(await handleCacheCommand(preArgs));
+      }
+      process.exit(await handleMirrorCommand(preArgs));
+    })().catch((error) => {
+      process.stderr.write(
+        `RapidKit (npm) failed to run ${preFirst}: ${(error as Error)?.message ?? error}\n`
+      );
+      process.exit(1);
+    });
+  } else if (shouldParseNpmOnlyDirectly || shouldKeepNpmOwnedCommandLocal) {
     program.parse();
   } else if (shouldHandleWorkspaceInitDirectly) {
     // Keep workspace-root init on npm wrapper path before any delegation attempt.

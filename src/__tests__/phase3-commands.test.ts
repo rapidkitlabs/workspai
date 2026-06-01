@@ -1622,6 +1622,26 @@ describe('Phase 3 command contract handlers', () => {
       await expect(index.shouldForwardToCore(['format'])).resolves.toBe(true);
       await expect(index.shouldForwardToCore(['docs'])).resolves.toBe(true);
     });
+
+    it('detects npm/npx execution context so npm-owned commands stay local', async () => {
+      const index = await import('../index.js');
+
+      expect(
+        index.isNpmExecInvocation({
+          npm_config_user_agent: 'npm/10.8.2 node/v20.19.6 win32 x64 workspaces/false',
+          npm_command: 'exec',
+        })
+      ).toBe(true);
+
+      expect(
+        index.isNpmExecInvocation({
+          npm_execpath: 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npx-cli.js',
+          npm_command: 'x',
+        })
+      ).toBe(true);
+
+      expect(index.isNpmExecInvocation({})).toBe(false);
+    });
   });
 
   describe('cross-platform doctor workspace shadow hardening', () => {
