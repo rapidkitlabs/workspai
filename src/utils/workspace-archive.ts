@@ -172,6 +172,14 @@ function assertSafeEntryName(entryName: string): void {
   }
 }
 
+function isPathInsideDirectory(candidatePath: string, directoryPath: string): boolean {
+  const relativePath = path.relative(directoryPath, candidatePath);
+  return (
+    relativePath === '' ||
+    (Boolean(relativePath) && !relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+  );
+}
+
 export function shouldExcludeWorkspaceArchivePath(
   relativePath: string,
   options?: { includeEnv?: boolean }
@@ -795,7 +803,7 @@ export async function hydrateWorkspaceArchive(
         continue;
       }
       const targetPath = path.resolve(outputPath, entry.name);
-      if (!targetPath.startsWith(`${outputPath}${path.sep}`) && targetPath !== outputPath) {
+      if (!isPathInsideDirectory(targetPath, outputPath)) {
         throw new Error(`Archive entry escapes output directory: ${entry.name}`);
       }
       if (!options.dryRun) {
