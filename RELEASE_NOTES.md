@@ -1,5 +1,38 @@
 # Release Notes
 
+## Latest Release: v0.31.0 (June 2, 2026)
+
+### 🧭 Workspace Contract Registry, Portable Archives, and CLI Ownership Hardening
+
+This release turns the npm CLI into a stronger workspace handoff and governance surface. It adds portable archive flows, a canonical workspace contract registry, and safer command ownership so npm-owned commands stay in the wrapper across global, npx, and Windows resolution scenarios.
+
+**What's New:**
+
+- 🗂️ **Portable workspace archive flow**
+  - Added deterministic workspace archive export, inspect, verify, doctor, and hydrate support.
+  - Archive hydration is path-contained and hardened against unsafe destination writes.
+  - Archive metadata is aligned with Workspai extension import/export and remote import workflows.
+
+- 🧩 **Workspace Contract Registry**
+  - Added a contract-backed model for workspace services, ports, dependencies, events, and ownership metadata.
+  - Added graph and verification utilities for inspecting topology before sharing, packaging, or release.
+  - Contract validation now helps catch port conflicts and malformed service metadata earlier.
+
+- 🪟 **CLI ownership and Windows/global install hardening**
+  - npm-owned commands now remain in the npm wrapper instead of falling through to the Python Core bridge.
+  - Added package resolution checks for install/publish confidence, including Windows `rapidkit.exe` collision scenarios.
+  - Strengthened package publish contract coverage for CLI entrypoints and wrapper-owned commands.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.31.0
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.31.0.md)
+
+---
+
 ## Latest Release: v0.30.0 (May 30, 2026)
 
 ### 🔍 Workspace Analysis, AI Embeddings Packaging, and CI Evidence Readiness

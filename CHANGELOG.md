@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-06-02
+
+### Added
+
+- Added portable workspace archive handoff flows for exporting, inspecting, verifying, doctoring, and hydrating workspace archives.
+- Added Workspace Contract Registry support for canonical workspace topology, services, ports, dependencies, events, and ownership metadata.
+- Added deterministic contract graph and verification utilities so workspace topology can be inspected before sharing or release.
+- Added package CLI resolution checks to catch Windows/global install collisions where the Python Core executable could be resolved before the npm wrapper.
+
+### Changed
+
+- Hardened npm-owned command routing so wrapper-level commands stay inside the npm CLI instead of falling through to the Python bridge.
+- Updated workspace archive behavior for stronger multi-OS path handling and safer archive portability.
+- Improved workspace handoff alignment with Workspai extension import/export and remote import workflows.
+- Strengthened package publish contract coverage around CLI entrypoints and wrapper ownership.
+
+### Fixed
+
+- Fixed archive hydrate path containment so archives cannot write outside the requested destination.
+- Fixed workspace archive and contract validation edge cases that could accept malformed or unsafe paths.
+- Fixed npm command ownership regressions affecting users who run `npx rapidkit ...` or globally installed `rapidkit` on Windows.
+
+### Verification
+
+- Recommended release checks: `npm run typecheck`, `npm run test`, `npm run build`, `npm run verify:package-cli`, and `npm audit --audit-level=moderate`.
+
 ## [0.30.0] - 2026-05-30
 
 ### Added
