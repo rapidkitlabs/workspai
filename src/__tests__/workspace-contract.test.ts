@@ -166,6 +166,40 @@ describe('workspace contract registry', () => {
     expect(result.violations.join('\n')).toContain('depends on unknown project');
   });
 
+  it('fails verification for unsafe paths and invalid service contracts', async () => {
+    const workspacePath = await makeTempDir('rk-contract-invalid-contracts-');
+    await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_CONTRACT_PATH), {
+      schemaVersion: 1,
+      kind: 'rapidkit.workspace.contract',
+      generatedAt: '2026-06-02T00:00:00.000Z',
+      workspace: { name: 'invalid-contracts-ws' },
+      projects: [
+        {
+          slug: 'orders',
+          relativePath: '../orders',
+          modules: [],
+          ports: [],
+          contracts: {
+            owns: [],
+            apis: [{ name: '', basePath: 'api/orders' }],
+            publishes: [''],
+            consumes: [],
+            dependsOn: [],
+            env: ['database-url'],
+          },
+        },
+      ],
+    });
+
+    const result = await verifyWorkspaceContract({ workspacePath });
+    expect(result.status).toBe('failed');
+    expect(result.checks.find((check) => check.id === 'contracts')?.status).toBe('failed');
+    expect(result.violations.join('\n')).toContain('unsafe relativePath');
+    expect(result.violations.join('\n')).toContain('invalid API contract');
+    expect(result.violations.join('\n')).toContain('empty event contract');
+    expect(result.violations.join('\n')).toContain('invalid env contract');
+  });
+
   it('builds service graph nodes and dependency/event edges', async () => {
     const workspacePath = await makeTempDir('rk-contract-graph-');
     await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_CONTRACT_PATH), {

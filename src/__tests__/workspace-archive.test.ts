@@ -1,6 +1,8 @@
 import fsExtra from 'fs-extra';
+import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
+import zlib from 'zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
@@ -14,6 +16,109 @@ import {
   verifyWorkspaceArchive,
   WORKSPACE_ARCHIVE_MANIFEST_PATH,
 } from '../utils/workspace-archive.js';
+
+function uint16(value: number): Buffer {
+  const buffer = Buffer.allocUnsafe(2);
+  buffer.writeUInt16LE(value, 0);
+  return buffer;
+}
+
+function uint32(value: number): Buffer {
+  const buffer = Buffer.allocUnsafe(4);
+  buffer.writeUInt32LE(value >>> 0, 0);
+  return buffer;
+}
+
+const CRC_TABLE = new Uint32Array(256).map((_, index) => {
+  let c = index;
+  for (let k = 0; k < 8; k += 1) {
+    c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  }
+  return c >>> 0;
+});
+
+function crc32(data: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function sha256(data: Buffer): string {
+  return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+function buildDeflatedZipWithDirectory(entries: Array<{ name: string; data: Buffer }>): Buffer {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+  const zipEntries = [
+    { name: 'api/', data: Buffer.alloc(0), method: 0, compressed: Buffer.alloc(0) },
+    ...entries.map((entry) => ({
+      ...entry,
+      method: 8,
+      compressed: zlib.deflateRawSync(entry.data),
+    })),
+  ];
+
+  for (const entry of zipEntries) {
+    const name = Buffer.from(entry.name, 'utf-8');
+    const checksum = crc32(entry.data);
+    const localHeader = Buffer.concat([
+      uint32(0x04034b50),
+      uint16(20),
+      uint16(0x0800),
+      uint16(entry.method),
+      uint16(0),
+      uint16(0),
+      uint32(checksum),
+      uint32(entry.compressed.length),
+      uint32(entry.data.length),
+      uint16(name.length),
+      uint16(0),
+      name,
+    ]);
+    centralParts.push(
+      Buffer.concat([
+        uint32(0x02014b50),
+        uint16(20),
+        uint16(20),
+        uint16(0x0800),
+        uint16(entry.method),
+        uint16(0),
+        uint16(0),
+        uint32(checksum),
+        uint32(entry.compressed.length),
+        uint32(entry.data.length),
+        uint16(name.length),
+        uint16(0),
+        uint16(0),
+        uint16(0),
+        uint16(0),
+        uint32(0),
+        uint32(offset),
+        name,
+      ])
+    );
+    localParts.push(localHeader, entry.compressed);
+    offset += localHeader.length + entry.compressed.length;
+  }
+
+  const centralOffset = offset;
+  const central = Buffer.concat(centralParts);
+  const end = Buffer.concat([
+    uint32(0x06054b50),
+    uint16(0),
+    uint16(0),
+    uint16(zipEntries.length),
+    uint16(zipEntries.length),
+    uint32(central.length),
+    uint32(centralOffset),
+    uint16(0),
+  ]);
+  return Buffer.concat([...localParts, central, end]);
+}
 
 describe('workspace archive export/hydrate', () => {
   const tempDirs: string[] = [];
@@ -194,5 +299,60 @@ describe('workspace archive export/hydrate', () => {
 
     expect(preview.files.some((file) => file.path === WORKSPACE_ARCHIVE_MANIFEST_PATH)).toBe(false);
     expect(preview.manifest?.kind).toBe('workspai.workspace.archive');
+  });
+
+  it('hydrates deflated archives that contain directory entries from external ZIP tools', async () => {
+    const outputRoot = await makeTempDir('rk-workspace-deflated-out-');
+    const archivePath = path.join(outputRoot, 'external.rapidkit-archive.zip');
+    const hydratePath = path.join(outputRoot, 'hydrated');
+    const marker = Buffer.from('{"signature":"RAPIDKIT_WORKSPACE"}', 'utf-8');
+    const main = Buffer.from('export {};', 'utf-8');
+    const manifest = Buffer.from(
+      `${JSON.stringify({
+        version: 1,
+        kind: 'workspai.workspace.archive',
+        workspaceName: 'external-ws',
+        exportedAt: '2026-06-02T00:00:00.000Z',
+        exportedBy: 'workspai-vscode',
+        archiveFormat: 'zip-deflate',
+        security: {
+          envFilesIncluded: false,
+          excludedByDefault: ['.env'],
+        },
+        files: [
+          { path: '.rapidkit-workspace', size: marker.length, sha256: sha256(marker) },
+          { path: 'api/src/main.ts', size: main.length, sha256: sha256(main) },
+        ],
+      })}\n`,
+      'utf-8'
+    );
+
+    await fsExtra.writeFile(
+      archivePath,
+      buildDeflatedZipWithDirectory([
+        { name: '.rapidkit-workspace', data: marker },
+        { name: 'api/src/main.ts', data: main },
+        { name: WORKSPACE_ARCHIVE_MANIFEST_PATH, data: manifest },
+      ])
+    );
+
+    const verified = await verifyWorkspaceArchive({
+      archivePathOrUrl: archivePath,
+      requireChecksums: true,
+    });
+    expect(verified.status).toBe('passed');
+
+    const hydrated = await hydrateWorkspaceArchive({
+      archivePathOrUrl: archivePath,
+      outputPath: hydratePath,
+      strict: true,
+    });
+    expect(hydrated.files.map((file) => file.path)).toEqual([
+      '.rapidkit-workspace',
+      'api/src/main.ts',
+    ]);
+    expect(await fsExtra.readFile(path.join(hydratePath, 'api', 'src', 'main.ts'), 'utf-8')).toBe(
+      'export {};'
+    );
   });
 });

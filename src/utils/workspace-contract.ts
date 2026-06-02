@@ -101,6 +101,20 @@ function toPosixPath(input: string): string {
   return input.replace(/\\/g, '/');
 }
 
+function isSafeContractRelativePath(inputPath: string): boolean {
+  const normalized = toPosixPath(inputPath).trim();
+  if (!normalized || normalized.startsWith('/') || normalized.startsWith('~')) {
+    return false;
+  }
+  if (/^[a-zA-Z]:\//.test(normalized) || normalized.includes('\0')) {
+    return false;
+  }
+  return !normalized
+    .split('/')
+    .filter(Boolean)
+    .some((segment) => segment === '..' || segment === '.');
+}
+
 function normalizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
@@ -504,6 +518,10 @@ export async function verifyWorkspaceContract(input: {
     projectSlugs.add(project.slug);
     if (!project.relativePath) {
       violations.push(`Project ${project.slug} must declare relativePath.`);
+    } else if (!isSafeContractRelativePath(project.relativePath)) {
+      violations.push(
+        `Project ${project.slug} declares unsafe relativePath: ${project.relativePath}.`
+      );
     }
     for (const port of project.ports || []) {
       if (!Number.isInteger(port.port) || port.port < 1 || port.port > 65535) {
@@ -514,6 +532,24 @@ export async function verifyWorkspaceContract(input: {
         violations.push(`Port ${port.port} is claimed by both ${owner} and ${project.slug}.`);
       }
       claimedPorts.set(port.port, project.slug);
+    }
+    for (const api of project.contracts?.apis || []) {
+      if (!api.name?.trim() || !api.basePath?.startsWith('/')) {
+        violations.push(`Project ${project.slug} declares invalid API contract.`);
+      }
+    }
+    for (const eventName of [
+      ...(project.contracts?.publishes || []),
+      ...(project.contracts?.consumes || []),
+    ]) {
+      if (!eventName.trim()) {
+        violations.push(`Project ${project.slug} declares an empty event contract.`);
+      }
+    }
+    for (const envName of project.contracts?.env || []) {
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(envName)) {
+        violations.push(`Project ${project.slug} declares invalid env contract: ${envName}.`);
+      }
     }
     for (const dependency of project.contracts?.dependsOn || []) {
       if (!projectSlugs.has(dependency)) {
@@ -555,6 +591,19 @@ export async function verifyWorkspaceContract(input: {
       ? 'failed'
       : 'passed',
     message: 'Project dependencies point to known project slugs.',
+  });
+  checks.push({
+    id: 'contracts',
+    status: violations.some(
+      (item) =>
+        item.includes('unsafe relativePath') ||
+        item.includes('invalid API contract') ||
+        item.includes('event contract') ||
+        item.includes('env contract')
+    )
+      ? 'failed'
+      : 'passed',
+    message: 'Project path, API, event, and env contracts are valid.',
   });
 
   return {

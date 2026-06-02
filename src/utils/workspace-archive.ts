@@ -465,6 +465,7 @@ function parseZipEntries(buffer: Buffer): Array<{ name: string; data: Buffer; si
     const localOffset = buffer.readUInt32LE(cursor + 42);
     const name = buffer.subarray(cursor + 46, cursor + 46 + nameLength).toString('utf-8');
     assertSafeEntryName(name);
+    const isDirectoryEntry = name.endsWith('/');
 
     if (buffer.readUInt32LE(localOffset) !== 0x04034b50) {
       throw new Error(`Invalid ZIP archive: local header missing for ${name}.`);
@@ -475,6 +476,13 @@ function parseZipEntries(buffer: Buffer): Array<{ name: string; data: Buffer; si
     const compressedData = buffer.subarray(dataOffset, dataOffset + compressedSize);
     if (compressedData.length !== compressedSize) {
       throw new Error(`Invalid ZIP archive: size mismatch for ${name}.`);
+    }
+    if (isDirectoryEntry) {
+      if (compressedSize !== 0 || uncompressedSize !== 0) {
+        throw new Error(`Invalid ZIP archive: directory entry contains data for ${name}.`);
+      }
+      cursor += 46 + nameLength + extraLength + commentLength;
+      continue;
     }
     const data = method === 8 ? zlib.inflateRawSync(compressedData) : compressedData;
     if (data.length !== uncompressedSize) {
