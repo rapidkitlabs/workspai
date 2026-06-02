@@ -147,6 +147,8 @@ npx rapidkit doctor project [--fix] [--plan] [--apply]
 npx rapidkit workspace list # Display all workspaces created on this system
 npx rapidkit workspace share [--output <file>] [--include-paths] [--no-doctor]
 npx rapidkit workspace export --output team-workspace.rapidkit-archive.zip
+npx rapidkit workspace archive inspect team-workspace.rapidkit-archive.zip [--json]
+npx rapidkit workspace archive verify team-workspace.rapidkit-archive.zip [--strict] [--json]
 npx rapidkit workspace hydrate team-workspace.rapidkit-archive.zip --output ./team-workspace
 npx rapidkit import <path|git-url> [--workspace <path>] [--name <project-name>] [--git] [--json]
 npx rapidkit snapshot create [name] [--include-projects] [--reason <text>] [--json]
@@ -257,13 +259,18 @@ Export excludes dependency folders, build output, git history, logs, `.env` file
 
 ```bash
 npx rapidkit workspace export --output team-workspace.rapidkit-archive.zip
+npx rapidkit workspace archive inspect team-workspace.rapidkit-archive.zip
+npx rapidkit workspace archive verify team-workspace.rapidkit-archive.zip --strict
 npx rapidkit workspace hydrate team-workspace.rapidkit-archive.zip --output ./team-workspace
 
 # Preview a hydrate without writing files
 npx rapidkit workspace hydrate team-workspace.rapidkit-archive.zip --output ./team-workspace --dry-run
 ```
 
-Use `--include-env` only for trusted internal handoffs when you intentionally need environment files inside the archive.
+Archives include a RapidKit/Workspai manifest with file sizes and SHA-256 checksums. `workspace hydrate`
+verifies the archive before writing files, and `workspace archive verify --strict` can be used as a handoff
+or CI gate before teammates import the workspace. Use `--include-env` only for trusted internal handoffs when
+you intentionally need environment files inside the archive.
 
 ### Command ownership
 

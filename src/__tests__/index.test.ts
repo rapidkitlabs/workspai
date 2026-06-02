@@ -173,6 +173,7 @@ describe('CLI Entry Point', () => {
           npx rapidkit project restore <archive>   Restore an archived project safely
           npx rapidkit workspace share [--output <file>] Export collaboration bundle
           npx rapidkit workspace export --output <file> Export portable workspace archive
+          npx rapidkit workspace archive verify <file> Verify archive integrity
           npx rapidkit workspace hydrate <archive> --output <dir> Hydrate workspace archive
           npx rapidkit workspace policy show        Show effective workspace policies
           npx rapidkit workspace policy set <k> <v> Update workspace policy values

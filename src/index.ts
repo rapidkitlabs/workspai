@@ -5292,6 +5292,85 @@ program
           chalk.gray('   Secrets: excluded (.env, private keys, logs, dependency caches)')
         );
       }
+    } else if (action === 'archive' && (subaction === 'inspect' || subaction === 'verify')) {
+      const archivePathOrUrl = key;
+      if (!archivePathOrUrl) {
+        console.log(
+          chalk.red(`❌ workspace archive ${subaction} requires an archive path or URL.`)
+        );
+        console.log(
+          chalk.white(`   npx rapidkit workspace archive ${subaction} team.rapidkit-archive.zip`)
+        );
+        process.exit(1);
+      }
+
+      const { inspectWorkspaceArchive, verifyWorkspaceArchive } = await import(
+        './utils/workspace-archive.js'
+      );
+      try {
+        if (subaction === 'inspect') {
+          const result = await inspectWorkspaceArchive({ archivePathOrUrl });
+          if (actionOptions.json) {
+            console.log(JSON.stringify(result, null, 2));
+            return;
+          }
+          const sizeMb = (result.totalBytes / (1024 * 1024)).toFixed(2);
+          console.log(chalk.green(`✔ Workspace archive: ${result.archivePath}`));
+          console.log(chalk.gray(`   Workspace: ${result.manifest.workspaceName}`));
+          console.log(chalk.gray(`   Exported: ${result.manifest.exportedAt}`));
+          console.log(chalk.gray(`   Exporter: ${result.manifest.exportedBy || 'unknown'}`));
+          console.log(chalk.gray(`   Files: ${result.fileCount}`));
+          console.log(chalk.gray(`   Payload: ${sizeMb} MB`));
+          return;
+        }
+
+        const result = await verifyWorkspaceArchive({
+          archivePathOrUrl,
+          requireChecksums: actionOptions.strict === true || hasRawFlag('--strict'),
+        });
+        if (actionOptions.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else if (result.status === 'passed') {
+          console.log(chalk.green(`✔ Workspace archive verified: ${result.archivePath}`));
+          console.log(chalk.gray(`   Files: ${result.verifiedFiles}/${result.fileCount}`));
+        } else {
+          const color = result.status === 'failed' ? chalk.red : chalk.yellow;
+          console.log(
+            color(`❌ Workspace archive verification ${result.status}: ${result.archivePath}`)
+          );
+          if (result.missingArchiveEntries.length) {
+            console.log(
+              chalk.gray(`   Missing entries: ${result.missingArchiveEntries.join(', ')}`)
+            );
+          }
+          if (result.extraArchiveEntries.length) {
+            console.log(
+              chalk.gray(`   Unexpected entries: ${result.extraArchiveEntries.join(', ')}`)
+            );
+          }
+          if (result.mismatches.length) {
+            console.log(
+              chalk.gray(
+                `   Mismatches: ${result.mismatches.map((mismatch) => mismatch.path).join(', ')}`
+              )
+            );
+          }
+          if (result.missingChecksumFiles.length) {
+            console.log(
+              chalk.gray(`   Missing checksums: ${result.missingChecksumFiles.join(', ')}`)
+            );
+          }
+        }
+
+        if (result.status === 'failed' || (result.status === 'warning' && actionOptions.strict)) {
+          process.exit(1);
+        }
+      } catch (error) {
+        console.log(
+          chalk.red(`❌ Workspace archive ${subaction} failed: ${(error as Error).message}`)
+        );
+        process.exit(1);
+      }
     } else if (action === 'hydrate' || action === 'import') {
       const archivePathOrUrl = subaction;
       if (!archivePathOrUrl) {
@@ -5311,6 +5390,7 @@ program
           outputPath: actionOptions.output,
           force: actionOptions.force === true || hasRawFlag('--force'),
           dryRun: actionOptions.dryRun === true || hasRawFlag('--dry-run'),
+          strict: actionOptions.strict === true || hasRawFlag('--strict'),
         });
 
         if (actionOptions.json) {
@@ -5504,6 +5584,9 @@ function printHelp() {
   );
   console.log(
     chalk.gray('  npx rapidkit workspace export --output <file> Export portable workspace archive')
+  );
+  console.log(
+    chalk.gray('  npx rapidkit workspace archive verify <file> Verify archive integrity')
   );
   console.log(
     chalk.gray(

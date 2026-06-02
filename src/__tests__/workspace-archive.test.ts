@@ -6,9 +6,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   exportWorkspaceArchive,
   hydrateWorkspaceArchive,
+  inspectWorkspaceArchive,
   isSafeArchiveEntryName,
   sanitizeWorkspaceArchiveName,
   shouldExcludeWorkspaceArchivePath,
+  verifyWorkspaceArchive,
   WORKSPACE_ARCHIVE_MANIFEST_PATH,
 } from '../utils/workspace-archive.js';
 
@@ -99,6 +101,69 @@ describe('workspace archive export/hydrate', () => {
     expect(await fsExtra.pathExists(path.join(hydratePath, '.rapidkit-workspace'))).toBe(true);
     expect(await fsExtra.pathExists(path.join(hydratePath, 'api', 'src', 'main.ts'))).toBe(true);
     expect(await fsExtra.pathExists(path.join(hydratePath, 'api', '.env'))).toBe(false);
+  });
+
+  it('inspects and verifies archive manifests with file checksums', async () => {
+    const workspacePath = await makeTempDir('rk-workspace-verify-src-');
+    const outputRoot = await makeTempDir('rk-workspace-verify-out-');
+    const archivePath = path.join(outputRoot, 'team.rapidkit-archive.zip');
+
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit-workspace'), {
+      signature: 'RAPIDKIT_WORKSPACE',
+      name: 'verify-ws',
+    });
+    await fsExtra.outputJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'verify-ws',
+    });
+    await fsExtra.outputFile(path.join(workspacePath, 'api', 'src', 'main.ts'), 'export {};');
+
+    await exportWorkspaceArchive({
+      workspacePath,
+      outputPath: archivePath,
+      now: new Date('2026-06-02T12:00:00.000Z'),
+    });
+
+    const inspected = await inspectWorkspaceArchive({ archivePathOrUrl: archivePath });
+    expect(inspected.manifest.workspaceName).toBe('verify-ws');
+    expect(inspected.entries.every((entry) => entry.hasChecksum)).toBe(true);
+
+    const verified = await verifyWorkspaceArchive({
+      archivePathOrUrl: archivePath,
+      requireChecksums: true,
+    });
+    expect(verified.status).toBe('passed');
+    expect(verified.verifiedFiles).toBe(verified.fileCount);
+  });
+
+  it('rejects tampered archive payloads before hydrate writes files', async () => {
+    const workspacePath = await makeTempDir('rk-workspace-tamper-src-');
+    const outputRoot = await makeTempDir('rk-workspace-tamper-out-');
+    const archivePath = path.join(outputRoot, 'team.rapidkit-archive.zip');
+    const hydratePath = path.join(outputRoot, 'hydrated');
+
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit-workspace'), {
+      signature: 'RAPIDKIT_WORKSPACE',
+      name: 'tamper-ws',
+    });
+    await fsExtra.outputFile(path.join(workspacePath, 'api', 'src', 'main.ts'), 'export {};');
+
+    await exportWorkspaceArchive({ workspacePath, outputPath: archivePath });
+    const archiveBuffer = await fsExtra.readFile(archivePath);
+    const original = Buffer.from('export {};', 'utf-8');
+    const replacement = Buffer.from('import {};', 'utf-8');
+    const offset = archiveBuffer.indexOf(original);
+    expect(offset).toBeGreaterThan(-1);
+    replacement.copy(archiveBuffer, offset);
+    await fsExtra.writeFile(archivePath, archiveBuffer);
+
+    const verified = await verifyWorkspaceArchive({ archivePathOrUrl: archivePath });
+    expect(verified.status).toBe('failed');
+    expect(verified.mismatches.map((mismatch) => mismatch.path)).toContain('api/src/main.ts');
+
+    await expect(
+      hydrateWorkspaceArchive({ archivePathOrUrl: archivePath, outputPath: hydratePath })
+    ).rejects.toThrow('verification failed');
+    expect(await fsExtra.pathExists(hydratePath)).toBe(false);
   });
 
   it('keeps the archive manifest at the Workspai-compatible path', async () => {

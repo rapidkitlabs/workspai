@@ -13,8 +13,8 @@ export interface WorkspaceArchiveManifest {
   kind: typeof WORKSPACE_ARCHIVE_KIND;
   workspaceName: string;
   exportedAt: string;
-  exportedBy: 'rapidkit-npm';
-  archiveFormat: 'zip-store';
+  exportedBy?: 'rapidkit-npm' | 'workspai-vscode';
+  archiveFormat?: 'zip-store' | 'zip-deflate';
   security: {
     envFilesIncluded: boolean;
     excludedByDefault: string[];
@@ -39,11 +39,39 @@ export interface WorkspaceArchiveExportResult {
   bytesWritten: number;
 }
 
+export type WorkspaceArchiveVerificationStatus = 'passed' | 'warning' | 'failed';
+
+export interface WorkspaceArchiveVerificationResult {
+  archivePath: string;
+  manifest: WorkspaceArchiveManifest;
+  status: WorkspaceArchiveVerificationStatus;
+  fileCount: number;
+  totalBytes: number;
+  verifiedFiles: number;
+  missingChecksumFiles: string[];
+  missingArchiveEntries: string[];
+  extraArchiveEntries: string[];
+  mismatches: Array<{
+    path: string;
+    expected: { size?: number; sha256?: string };
+    actual: { size: number; sha256: string };
+  }>;
+}
+
+export interface WorkspaceArchiveInspectResult {
+  archivePath: string;
+  manifest: WorkspaceArchiveManifest;
+  fileCount: number;
+  totalBytes: number;
+  entries: Array<{ path: string; size: number; hasChecksum: boolean }>;
+}
+
 export interface WorkspaceArchiveHydrateOptions {
   archivePathOrUrl: string;
   outputPath?: string;
   force?: boolean;
   dryRun?: boolean;
+  strict?: boolean;
 }
 
 export interface WorkspaceArchiveHydrateResult {
@@ -478,6 +506,141 @@ function parseManifest(
   return parsed;
 }
 
+async function loadWorkspaceArchive(input: string): Promise<{
+  archivePath: string;
+  entries: Array<{ name: string; data: Buffer; size: number }>;
+  manifest: WorkspaceArchiveManifest;
+  cleanup?: string;
+}> {
+  const resolved = await resolveArchivePath(input);
+  try {
+    const archiveBuffer = await fsExtra.readFile(resolved.archivePath);
+    const entries = parseZipEntries(archiveBuffer);
+    const manifest = parseManifest(entries);
+    if (!manifest) {
+      throw new Error('Workspace archive is missing .rapidkit/archive-manifest.json.');
+    }
+    return { archivePath: resolved.archivePath, entries, manifest, cleanup: resolved.cleanup };
+  } catch (error) {
+    if (resolved.cleanup) {
+      await fsExtra.remove(resolved.cleanup).catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
+async function cleanupLoadedArchive(loaded: { cleanup?: string }): Promise<void> {
+  if (loaded.cleanup) {
+    await fsExtra.remove(loaded.cleanup).catch(() => undefined);
+  }
+}
+
+export async function inspectWorkspaceArchive(options: {
+  archivePathOrUrl: string;
+}): Promise<WorkspaceArchiveInspectResult> {
+  const loaded = await loadWorkspaceArchive(options.archivePathOrUrl);
+  try {
+    const entriesByName = new Map(
+      loaded.entries
+        .filter((entry) => entry.name !== WORKSPACE_ARCHIVE_MANIFEST_PATH)
+        .map((entry) => [entry.name, entry])
+    );
+    const entries = loaded.manifest.files.map((file) => ({
+      path: file.path,
+      size: entriesByName.get(file.path)?.size ?? file.size,
+      hasChecksum: typeof file.sha256 === 'string' && file.sha256.length > 0,
+    }));
+
+    return {
+      archivePath: loaded.archivePath,
+      manifest: loaded.manifest,
+      fileCount: entries.length,
+      totalBytes: entries.reduce((total, entry) => total + entry.size, 0),
+      entries,
+    };
+  } finally {
+    await cleanupLoadedArchive(loaded);
+  }
+}
+
+export async function verifyWorkspaceArchive(options: {
+  archivePathOrUrl: string;
+  requireChecksums?: boolean;
+}): Promise<WorkspaceArchiveVerificationResult> {
+  const loaded = await loadWorkspaceArchive(options.archivePathOrUrl);
+  try {
+    const entriesByName = new Map(
+      loaded.entries
+        .filter((entry) => entry.name !== WORKSPACE_ARCHIVE_MANIFEST_PATH)
+        .map((entry) => [entry.name, entry])
+    );
+    const manifestPaths = new Set(loaded.manifest.files.map((file) => file.path));
+    const extraArchiveEntries = [...entriesByName.keys()]
+      .filter((entryName) => !manifestPaths.has(entryName))
+      .sort();
+    const missingArchiveEntries: string[] = [];
+    const missingChecksumFiles: string[] = [];
+    const mismatches: WorkspaceArchiveVerificationResult['mismatches'] = [];
+    let verifiedFiles = 0;
+
+    for (const file of loaded.manifest.files) {
+      assertSafeEntryName(file.path);
+      const entry = entriesByName.get(file.path);
+      if (!entry) {
+        missingArchiveEntries.push(file.path);
+        continue;
+      }
+
+      const actual = { size: entry.size, sha256: sha256(entry.data) };
+      if (entry.size !== file.size) {
+        mismatches.push({
+          path: file.path,
+          expected: { size: file.size, sha256: file.sha256 },
+          actual,
+        });
+        continue;
+      }
+      if (!file.sha256) {
+        missingChecksumFiles.push(file.path);
+        continue;
+      }
+      if (actual.sha256 !== file.sha256) {
+        mismatches.push({
+          path: file.path,
+          expected: { size: file.size, sha256: file.sha256 },
+          actual,
+        });
+        continue;
+      }
+      verifiedFiles += 1;
+    }
+
+    const checksumRequiredFailure =
+      options.requireChecksums === true && missingChecksumFiles.length > 0;
+    const failed =
+      missingArchiveEntries.length > 0 ||
+      mismatches.length > 0 ||
+      checksumRequiredFailure ||
+      extraArchiveEntries.length > 0;
+    const warning = missingChecksumFiles.length > 0;
+
+    return {
+      archivePath: loaded.archivePath,
+      manifest: loaded.manifest,
+      status: failed ? 'failed' : warning ? 'warning' : 'passed',
+      fileCount: loaded.manifest.files.length,
+      totalBytes: loaded.manifest.files.reduce((total, file) => total + file.size, 0),
+      verifiedFiles,
+      missingChecksumFiles,
+      missingArchiveEntries,
+      extraArchiveEntries,
+      mismatches,
+    };
+  } finally {
+    await cleanupLoadedArchive(loaded);
+  }
+}
+
 async function ensureOutputPath(
   outputPath: string,
   force: boolean,
@@ -499,14 +662,46 @@ async function ensureOutputPath(
 export async function hydrateWorkspaceArchive(
   options: WorkspaceArchiveHydrateOptions
 ): Promise<WorkspaceArchiveHydrateResult> {
-  const resolved = await resolveArchivePath(options.archivePathOrUrl);
+  const loaded = await loadWorkspaceArchive(options.archivePathOrUrl);
   try {
-    const archiveBuffer = await fsExtra.readFile(resolved.archivePath);
-    const entries = parseZipEntries(archiveBuffer);
-    const manifest = parseManifest(entries);
+    const verification = await verifyWorkspaceArchive({
+      archivePathOrUrl: loaded.archivePath,
+      requireChecksums: options.strict === true,
+    });
+    if (verification.status === 'failed') {
+      const details = [
+        verification.missingArchiveEntries.length
+          ? `missing entries: ${verification.missingArchiveEntries.join(', ')}`
+          : '',
+        verification.extraArchiveEntries.length
+          ? `unexpected entries: ${verification.extraArchiveEntries.join(', ')}`
+          : '',
+        verification.mismatches.length
+          ? `checksum/size mismatches: ${verification.mismatches
+              .map((mismatch) => mismatch.path)
+              .join(', ')}`
+          : '',
+        verification.missingChecksumFiles.length && options.strict === true
+          ? `missing checksums: ${verification.missingChecksumFiles.join(', ')}`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('; ');
+      throw new Error(`Workspace archive verification failed${details ? ` (${details})` : ''}.`);
+    }
+    if (verification.status === 'warning' && options.strict === true) {
+      throw new Error(
+        `Workspace archive verification requires checksums for every file: ${verification.missingChecksumFiles.join(
+          ', '
+        )}`
+      );
+    }
+
+    const entries = loaded.entries;
+    const manifest = loaded.manifest;
     const outputPath = path.resolve(
       options.outputPath ||
-        sanitizeWorkspaceArchiveName(manifest?.workspaceName || 'imported-workspace')
+        sanitizeWorkspaceArchiveName(manifest.workspaceName || 'imported-workspace')
     );
     await ensureOutputPath(outputPath, options.force === true, options.dryRun === true);
 
@@ -525,7 +720,7 @@ export async function hydrateWorkspaceArchive(
     }
 
     return {
-      archivePath: resolved.archivePath,
+      archivePath: loaded.archivePath,
       outputPath,
       dryRun: options.dryRun === true,
       manifest,
@@ -534,8 +729,6 @@ export async function hydrateWorkspaceArchive(
         .map((entry) => ({ path: entry.name, size: entry.size })),
     };
   } finally {
-    if (resolved.cleanup) {
-      await fsExtra.remove(resolved.cleanup).catch(() => undefined);
-    }
+    await cleanupLoadedArchive(loaded);
   }
 }
