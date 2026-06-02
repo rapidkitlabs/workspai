@@ -149,6 +149,7 @@ npx rapidkit workspace share [--output <file>] [--include-paths] [--no-doctor]
 npx rapidkit workspace contract init [--force] [--json]
 npx rapidkit workspace contract inspect [--json]
 npx rapidkit workspace contract verify [--strict] [--json]
+npx rapidkit workspace contract graph [--json]
 npx rapidkit workspace export --output team-workspace.rapidkit-archive.zip
 npx rapidkit workspace archive inspect team-workspace.rapidkit-archive.zip [--json]
 npx rapidkit workspace archive verify team-workspace.rapidkit-archive.zip [--strict] [--json]
@@ -265,12 +266,21 @@ services, ports, APIs, events, owners, dependencies, and required environment va
 npx rapidkit workspace contract init
 npx rapidkit workspace contract inspect
 npx rapidkit workspace contract verify --strict
+npx rapidkit workspace contract graph
 ```
 
 The contract is written to `.rapidkit/workspace.contract.json`. It starts from discovered RapidKit
 projects and gives teams a stable place to declare cross-project service contracts. Verification
 checks schema validity, duplicate project slugs, invalid or colliding ports, and dependencies that
 point to unknown projects.
+
+RapidKit keeps this contract alive during normal workspace work:
+
+- `create project` syncs the contract after successful project creation inside a workspace.
+- `workspace sync` reconciles discovered projects into the contract without overwriting manually declared APIs, events, owners, dependencies, env vars, or custom ports.
+- New projects receive a framework-aware default HTTP port when possible, and the next free port is selected if the default is already claimed.
+- `workspace share` includes the contract snapshot so teammates can inspect service topology before reproducing or importing the workspace.
+- `workspace contract graph` renders the service/dependency/event topology for humans or returns a JSON graph for tools and UI surfaces.
 
 ### Portable workspace archives
 
@@ -522,12 +532,16 @@ npx rapidkit workspace run test --parallel
 # Test only affected projects since last commit
 npx rapidkit workspace run test --affected --since HEAD~1
 
-# Test affected + their dependents (requires dependency graph)
+# Test affected + downstream dependents from workspace.contract.json
 npx rapidkit workspace run test --affected --blast-radius
 
 # Build specific projects with custom stages (if defined in .rapidkit/context.json)
 npx rapidkit workspace run build --json --max-workers 8
 ```
+
+`--blast-radius` uses `.rapidkit/workspace.contract.json` when available. It expands direct
+`dependsOn` relationships and event relationships where one project `publishes` an event and another
+project `consumes` it. Legacy `.rapidkit/workspace-dependency-graph.json` remains supported as a fallback.
 
 ### Supported Runtimes & Frameworks
 

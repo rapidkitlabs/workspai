@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   buildWorkspaceContract,
+  buildWorkspaceContractGraph,
+  syncWorkspaceContract,
   verifyWorkspaceContract,
   writeWorkspaceContract,
   WORKSPACE_CONTRACT_PATH,
@@ -69,6 +71,54 @@ describe('workspace contract registry', () => {
     const result = await verifyWorkspaceContract({ workspacePath });
     expect(result.status).toBe('passed');
     expect(result.projectCount).toBe(1);
+    const contract = await fsExtra.readJson(contractPath);
+    expect(contract.projects[0].ports).toEqual([{ name: 'http', port: 3000, protocol: 'http' }]);
+  });
+
+  it('syncs discovered projects while preserving manually declared contracts', async () => {
+    const workspacePath = await makeTempDir('rk-contract-sync-');
+    await fsExtra.outputJson(path.join(workspacePath, 'orders', '.rapidkit', 'project.json'), {
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+    await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_CONTRACT_PATH), {
+      schemaVersion: 1,
+      kind: 'rapidkit.workspace.contract',
+      generatedAt: '2026-06-02T00:00:00.000Z',
+      workspace: { name: 'sync-ws' },
+      projects: [
+        {
+          slug: 'orders',
+          relativePath: 'orders',
+          runtime: 'python',
+          framework: 'fastapi',
+          kit: 'fastapi.standard',
+          modules: [],
+          ports: [{ name: 'http', port: 8100, protocol: 'http' }],
+          contracts: {
+            owns: ['Order'],
+            apis: [{ name: 'Orders API', basePath: '/api/orders' }],
+            publishes: ['OrderCreated'],
+            consumes: [],
+            dependsOn: [],
+            env: ['DATABASE_URL'],
+          },
+        },
+      ],
+    });
+    await fsExtra.outputJson(path.join(workspacePath, 'users', '.rapidkit', 'project.json'), {
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+
+    const result = await syncWorkspaceContract({ workspacePath });
+    expect(result.verification.status).toBe('passed');
+    expect(result.addedProjects).toEqual(['users']);
+    const orders = result.contract.projects.find((project) => project.slug === 'orders');
+    const users = result.contract.projects.find((project) => project.slug === 'users');
+    expect(orders?.ports[0].port).toBe(8100);
+    expect(orders?.contracts.owns).toEqual(['Order']);
+    expect(users?.ports[0].port).toBe(8000);
   });
 
   it('fails verification for colliding ports and unknown dependencies', async () => {
@@ -114,5 +164,65 @@ describe('workspace contract registry', () => {
     expect(result.status).toBe('failed');
     expect(result.violations.join('\n')).toContain('Port 8000');
     expect(result.violations.join('\n')).toContain('depends on unknown project');
+  });
+
+  it('builds service graph nodes and dependency/event edges', async () => {
+    const workspacePath = await makeTempDir('rk-contract-graph-');
+    await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_CONTRACT_PATH), {
+      schemaVersion: 1,
+      kind: 'rapidkit.workspace.contract',
+      generatedAt: '2026-06-02T00:00:00.000Z',
+      workspace: { name: 'graph-ws' },
+      projects: [
+        {
+          slug: 'orders',
+          relativePath: 'orders',
+          runtime: 'python',
+          framework: 'fastapi',
+          kit: 'fastapi.standard',
+          modules: [],
+          ports: [{ name: 'http', port: 8000, protocol: 'http' }],
+          contracts: {
+            owns: ['Order'],
+            apis: [{ name: 'Orders API', basePath: '/api/orders' }],
+            publishes: ['OrderCreated'],
+            consumes: [],
+            dependsOn: [],
+            env: ['DATABASE_URL'],
+          },
+        },
+        {
+          slug: 'billing',
+          relativePath: 'billing',
+          runtime: 'node',
+          framework: 'nestjs',
+          kit: 'nestjs.standard',
+          modules: [],
+          ports: [{ name: 'http', port: 3000, protocol: 'http' }],
+          contracts: {
+            owns: ['Invoice'],
+            apis: [],
+            publishes: [],
+            consumes: ['OrderCreated'],
+            dependsOn: ['orders'],
+            env: [],
+          },
+        },
+      ],
+    });
+
+    const { graph } = await buildWorkspaceContractGraph({ workspacePath });
+    expect(graph.kind).toBe('rapidkit.workspace.contract.graph');
+    expect(graph.summary).toMatchObject({
+      projectCount: 2,
+      dependencyEdges: 1,
+      eventEdges: 1,
+      portCount: 2,
+      apiCount: 1,
+    });
+    expect(graph.edges).toEqual([
+      { from: 'orders', to: 'billing', type: 'dependency', label: 'dependsOn' },
+      { from: 'orders', to: 'billing', type: 'event', label: 'OrderCreated' },
+    ]);
   });
 });

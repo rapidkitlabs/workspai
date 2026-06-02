@@ -619,6 +619,7 @@ async function runCreateFallback(args: string[], reasonCode: BridgeFailureCode):
     if (workspacePath) {
       const { syncWorkspaceProjects } = await import('./workspace.js');
       await syncWorkspaceProjects(workspacePath, true); // silent sync
+      await syncWorkspaceContractAfterProjectChange(workspacePath, { silent: true });
     }
 
     return 0;
@@ -822,8 +823,25 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
             } as Question<{ projectName: string }>,
           ])) as { projectName: string };
           const flags = args.slice(2).filter((a) => a.startsWith('-'));
+          let code: number;
           if (isGoGinKit(kitChoice)) {
-            return await runGoGinCreate([
+            code = await runGoGinCreate([
+              'create',
+              'project',
+              kitChoice,
+              projectName.trim(),
+              ...flags,
+            ]);
+          } else if (isSpringBootKit(kitChoice)) {
+            code = await runSpringBootCreate([
+              'create',
+              'project',
+              kitChoice,
+              projectName.trim(),
+              ...flags,
+            ]);
+          } else {
+            code = await runGoFiberCreate([
               'create',
               'project',
               kitChoice,
@@ -831,22 +849,11 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
               ...flags,
             ]);
           }
-          if (isSpringBootKit(kitChoice)) {
-            return await runSpringBootCreate([
-              'create',
-              'project',
-              kitChoice,
-              projectName.trim(),
-              ...flags,
-            ]);
+          const workspacePath = findWorkspaceUp(process.cwd());
+          if (code === 0 && workspacePath) {
+            await syncWorkspaceContractAfterProjectChange(workspacePath);
           }
-          return await runGoFiberCreate([
-            'create',
-            'project',
-            kitChoice,
-            projectName.trim(),
-            ...flags,
-          ]);
+          return code;
         }
 
         const { projectName } = (await inquirer.prompt([
@@ -941,17 +948,32 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
 
       // Go/Fiber: handle entirely at npm level, bypass Python engine
       if (isGoFiberKit(args[2] || '')) {
-        return await runGoFiberCreate(args);
+        const code = await runGoFiberCreate(args);
+        const workspacePath = findWorkspaceUp(process.cwd());
+        if (code === 0 && workspacePath) {
+          await syncWorkspaceContractAfterProjectChange(workspacePath);
+        }
+        return code;
       }
 
       // Go/Gin: handle entirely at npm level, bypass Python engine
       if (isGoGinKit(args[2] || '')) {
-        return await runGoGinCreate(args);
+        const code = await runGoGinCreate(args);
+        const workspacePath = findWorkspaceUp(process.cwd());
+        if (code === 0 && workspacePath) {
+          await syncWorkspaceContractAfterProjectChange(workspacePath);
+        }
+        return code;
       }
 
       // Spring Boot: handle entirely at npm level, bypass Python engine
       if (isSpringBootKit(args[2] || '')) {
-        return await runSpringBootCreate(args);
+        const code = await runSpringBootCreate(args);
+        const workspacePath = findWorkspaceUp(process.cwd());
+        if (code === 0 && workspacePath) {
+          await syncWorkspaceContractAfterProjectChange(workspacePath);
+        }
+        return code;
       }
 
       const hasCreateWorkspace = args.includes('--create-workspace');
@@ -1065,6 +1087,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
 
             const { syncWorkspaceProjects } = await import('./workspace.js');
             await syncWorkspaceProjects(workspacePath, true); // silent sync
+            await syncWorkspaceContractAfterProjectChange(workspacePath);
           }
         }
 
@@ -1272,6 +1295,35 @@ function findWorkspaceUp(start: string): string | null {
     p = parent;
   }
   return null;
+}
+
+async function syncWorkspaceContractAfterProjectChange(
+  workspacePath: string,
+  options?: { silent?: boolean }
+): Promise<void> {
+  try {
+    const { syncWorkspaceContract } = await import('./utils/workspace-contract.js');
+    const result = await syncWorkspaceContract({ workspacePath });
+    if (
+      !options?.silent &&
+      (result.addedProjects.length > 0 || result.updatedProjects.length > 0)
+    ) {
+      console.log(
+        chalk.gray(`ℹ️  Workspace contract synced (${result.contract.projects.length} project(s)).`)
+      );
+    }
+    if (result.verification.status !== 'passed') {
+      console.log(chalk.yellow('⚠️  Workspace contract verification failed after project sync.'));
+      for (const violation of result.verification.violations) {
+        console.log(chalk.gray(`   Violation: ${violation}`));
+      }
+      console.log(chalk.white('   Next: npx rapidkit workspace contract inspect'));
+    }
+  } catch (error) {
+    if (!options?.silent) {
+      console.log(chalk.yellow(`⚠️  Workspace contract sync skipped: ${(error as Error).message}`));
+    }
+  }
 }
 
 export interface DoctorWorkspaceShadowDiagnostic {
@@ -5249,6 +5301,7 @@ program
       const { syncWorkspaceProjects } = await import('./workspace.js');
       console.log(chalk.cyan(`📂 Scanning workspace: ${path.basename(workspacePath)}`));
       await syncWorkspaceProjects(workspacePath);
+      await syncWorkspaceContractAfterProjectChange(workspacePath);
     } else if (action === 'policy') {
       const workspacePath = requireWorkspaceRootForAction('policy');
       const code = await handleWorkspacePolicyCommand(workspacePath, subaction, key, value);
@@ -5256,6 +5309,7 @@ program
     } else if (action === 'contract') {
       const workspacePath = requireWorkspaceRootForAction('contract');
       const {
+        buildWorkspaceContractGraph,
         readWorkspaceContract,
         verifyWorkspaceContract,
         writeWorkspaceContract,
@@ -5317,10 +5371,38 @@ program
           return;
         }
 
+        if (contractAction === 'graph') {
+          const result = await buildWorkspaceContractGraph({ workspacePath, contractPath });
+          if (actionOptions.json) {
+            console.log(JSON.stringify(result, null, 2));
+            return;
+          }
+          console.log(chalk.green(`✔ Workspace contract graph: ${result.contractPath}`));
+          console.log(chalk.gray(`   Workspace: ${result.graph.workspace.name}`));
+          console.log(chalk.gray(`   Projects: ${result.graph.summary.projectCount}`));
+          console.log(chalk.gray(`   Dependencies: ${result.graph.summary.dependencyEdges}`));
+          console.log(chalk.gray(`   Event links: ${result.graph.summary.eventEdges}`));
+          console.log(chalk.gray(`   Ports: ${result.graph.summary.portCount}`));
+          for (const node of result.graph.nodes) {
+            const ports =
+              node.ports.map((port) => `${port.name}:${port.port}`).join(', ') || 'none';
+            console.log(
+              chalk.gray(
+                `   • ${node.id} (${node.runtime || 'unknown'}${node.framework ? `/${node.framework}` : ''}) ports=${ports}`
+              )
+            );
+          }
+          for (const edge of result.graph.edges) {
+            const label = edge.type === 'event' ? `event:${edge.label}` : edge.label;
+            console.log(chalk.gray(`     ${edge.from} -> ${edge.to} [${label}]`));
+          }
+          return;
+        }
+
         console.log(chalk.red(`❌ Unknown workspace contract action: ${contractAction}`));
         console.log(
           chalk.white(
-            `   npx rapidkit workspace contract init|inspect|verify [--output ${WORKSPACE_CONTRACT_PATH}]`
+            `   npx rapidkit workspace contract init|inspect|verify|graph [--output ${WORKSPACE_CONTRACT_PATH}]`
           )
         );
         process.exit(1);
@@ -5701,6 +5783,9 @@ function printHelp() {
   );
   console.log(
     chalk.gray('  npx rapidkit workspace contract verify   Verify service ports/dependencies')
+  );
+  console.log(
+    chalk.gray('  npx rapidkit workspace contract graph    Show service dependency graph')
   );
   console.log(
     chalk.gray('  npx rapidkit workspace export --output <file> Export portable workspace archive')

@@ -52,6 +52,51 @@ export interface WorkspaceContractVerificationResult {
   violations: string[];
 }
 
+export interface WorkspaceContractSyncResult {
+  contractPath: string;
+  contract: WorkspaceContract;
+  addedProjects: string[];
+  updatedProjects: string[];
+  verification: WorkspaceContractVerificationResult;
+}
+
+export interface WorkspaceContractGraphNode {
+  id: string;
+  label: string;
+  relativePath: string;
+  runtime?: string;
+  framework?: string;
+  kit?: string;
+  modules: string[];
+  ports: WorkspaceContractPort[];
+  apis: WorkspaceContractApi[];
+  owns: string[];
+  env: string[];
+}
+
+export interface WorkspaceContractGraphEdge {
+  from: string;
+  to: string;
+  type: 'dependency' | 'event';
+  label: string;
+}
+
+export interface WorkspaceContractGraph {
+  schemaVersion: 1;
+  kind: 'rapidkit.workspace.contract.graph';
+  workspace: WorkspaceContract['workspace'];
+  generatedAt: string;
+  nodes: WorkspaceContractGraphNode[];
+  edges: WorkspaceContractGraphEdge[];
+  summary: {
+    projectCount: number;
+    dependencyEdges: number;
+    eventEdges: number;
+    portCount: number;
+    apiCount: number;
+  };
+}
+
 function toPosixPath(input: string): string {
   return input.replace(/\\/g, '/');
 }
@@ -133,6 +178,77 @@ function projectKindFromKit(kit?: string): string | undefined {
   return undefined;
 }
 
+function defaultPortForKit(kit?: string, runtime?: string): number | null {
+  const value = (kit || '').toLowerCase();
+  const runtimeValue = (runtime || '').toLowerCase();
+  if (value.includes('fastapi')) return 8000;
+  if (value.includes('nestjs')) return 3000;
+  if (value.includes('springboot')) return 8080;
+  if (value.includes('gofiber')) return 3000;
+  if (value.includes('gogin')) return 8080;
+  if (runtimeValue === 'node') return 3000;
+  if (runtimeValue === 'python') return 8000;
+  if (runtimeValue === 'java') return 8080;
+  if (runtimeValue === 'go') return 8080;
+  return null;
+}
+
+function nextAvailablePort(preferred: number, usedPorts: Set<number>): number {
+  let port = preferred;
+  while (usedPorts.has(port) && port < 65535) {
+    port += 1;
+  }
+  return port;
+}
+
+function mergeProjectContract(
+  existing: WorkspaceContractProject | undefined,
+  discovered: WorkspaceContractProject,
+  usedPorts: Set<number>
+): { project: WorkspaceContractProject; changed: boolean } {
+  const preferredPort = defaultPortForKit(discovered.kit, discovered.runtime);
+  const existingPorts = existing?.ports || [];
+  const ports =
+    existingPorts.length > 0
+      ? existingPorts
+      : preferredPort
+        ? [
+            {
+              name: 'http',
+              port: nextAvailablePort(preferredPort, usedPorts),
+              protocol: 'http' as const,
+            },
+          ]
+        : [];
+
+  for (const port of ports) {
+    usedPorts.add(port.port);
+  }
+
+  const project: WorkspaceContractProject = {
+    ...discovered,
+    ...existing,
+    slug: existing?.slug || discovered.slug,
+    relativePath: existing?.relativePath || discovered.relativePath,
+    runtime: existing?.runtime || discovered.runtime,
+    framework: existing?.framework || discovered.framework,
+    kit: existing?.kit || discovered.kit,
+    modules: existing?.modules?.length ? existing.modules : discovered.modules,
+    ports,
+    contracts: {
+      owns: existing?.contracts?.owns || [],
+      apis: existing?.contracts?.apis || [],
+      publishes: existing?.contracts?.publishes || [],
+      consumes: existing?.contracts?.consumes || [],
+      dependsOn: existing?.contracts?.dependsOn || [],
+      env: existing?.contracts?.env || [],
+    },
+  };
+
+  const changed = JSON.stringify(existing || null) !== JSON.stringify(project);
+  return { project, changed };
+}
+
 export async function buildWorkspaceContract(input: {
   workspacePath: string;
   now?: Date;
@@ -195,13 +311,73 @@ export async function writeWorkspaceContract(input: {
       `Workspace contract already exists: ${contractPath}. Use --force to overwrite.`
     );
   }
-  const contract = await buildWorkspaceContract({
+  const discovered = await buildWorkspaceContract({
     workspacePath: input.workspacePath,
     now: input.now,
   });
+  const usedPorts = new Set<number>();
+  const contract: WorkspaceContract = {
+    ...discovered,
+    projects: discovered.projects.map(
+      (project) => mergeProjectContract(undefined, project, usedPorts).project
+    ),
+  };
   await fsExtra.ensureDir(path.dirname(contractPath));
   await fsExtra.writeJson(contractPath, contract, { spaces: 2 });
   return { contractPath, contract };
+}
+
+export async function syncWorkspaceContract(input: {
+  workspacePath: string;
+  now?: Date;
+}): Promise<WorkspaceContractSyncResult> {
+  const workspacePath = path.resolve(input.workspacePath);
+  const contractPath = path.join(workspacePath, WORKSPACE_CONTRACT_PATH);
+  const discovered = await buildWorkspaceContract({ workspacePath, now: input.now });
+  const existing = (await fsExtra.pathExists(contractPath))
+    ? ((await fsExtra.readJson(contractPath)) as WorkspaceContract)
+    : null;
+  const existingBySlug = new Map(
+    (existing?.projects || []).map((project) => [project.slug, project])
+  );
+  const usedPorts = new Set<number>();
+  const addedProjects: string[] = [];
+  const updatedProjects: string[] = [];
+  const projects: WorkspaceContractProject[] = [];
+
+  for (const project of discovered.projects) {
+    const existingProject = existingBySlug.get(project.slug);
+    const merged = mergeProjectContract(existingProject, project, usedPorts);
+    if (!existingProject) {
+      addedProjects.push(project.slug);
+    } else if (merged.changed) {
+      updatedProjects.push(project.slug);
+    }
+    projects.push(merged.project);
+    existingBySlug.delete(project.slug);
+  }
+
+  for (const project of existingBySlug.values()) {
+    const merged = mergeProjectContract(project, project, usedPorts);
+    projects.push(merged.project);
+  }
+
+  const contract: WorkspaceContract = {
+    schemaVersion: WORKSPACE_CONTRACT_SCHEMA_VERSION,
+    kind: 'rapidkit.workspace.contract',
+    generatedAt: (input.now ?? new Date()).toISOString(),
+    workspace: {
+      ...discovered.workspace,
+      ...(existing?.workspace || {}),
+      name: existing?.workspace?.name || discovered.workspace.name,
+    },
+    projects: projects.sort((a, b) => a.slug.localeCompare(b.slug)),
+  };
+
+  await fsExtra.ensureDir(path.dirname(contractPath));
+  await fsExtra.writeJson(contractPath, contract, { spaces: 2 });
+  const verification = await verifyWorkspaceContract({ workspacePath });
+  return { contractPath, contract, addedProjects, updatedProjects, verification };
 }
 
 export async function readWorkspaceContract(input: {
@@ -213,6 +389,85 @@ export async function readWorkspaceContract(input: {
   );
   const contract = (await fsExtra.readJson(contractPath)) as WorkspaceContract;
   return { contractPath, contract };
+}
+
+export async function buildWorkspaceContractGraph(input: {
+  workspacePath: string;
+  contractPath?: string;
+}): Promise<{ contractPath: string; graph: WorkspaceContractGraph }> {
+  const { contractPath, contract } = await readWorkspaceContract(input);
+  const nodes: WorkspaceContractGraphNode[] = contract.projects.map((project) => ({
+    id: project.slug,
+    label: project.slug,
+    relativePath: project.relativePath,
+    runtime: project.runtime,
+    framework: project.framework,
+    kit: project.kit,
+    modules: project.modules,
+    ports: project.ports,
+    apis: project.contracts.apis,
+    owns: project.contracts.owns,
+    env: project.contracts.env,
+  }));
+  const knownProjects = new Set(nodes.map((node) => node.id));
+  const publishersByEvent = new Map<string, Set<string>>();
+  const edges: WorkspaceContractGraphEdge[] = [];
+
+  for (const project of contract.projects) {
+    for (const dependency of project.contracts.dependsOn || []) {
+      if (!knownProjects.has(dependency)) continue;
+      edges.push({
+        from: dependency,
+        to: project.slug,
+        type: 'dependency',
+        label: 'dependsOn',
+      });
+    }
+    for (const eventName of project.contracts.publishes || []) {
+      if (!publishersByEvent.has(eventName)) {
+        publishersByEvent.set(eventName, new Set<string>());
+      }
+      publishersByEvent.get(eventName)?.add(project.slug);
+    }
+  }
+
+  for (const project of contract.projects) {
+    for (const eventName of project.contracts.consumes || []) {
+      const publishers = publishersByEvent.get(eventName);
+      if (!publishers) continue;
+      for (const publisher of publishers) {
+        if (publisher === project.slug) continue;
+        edges.push({
+          from: publisher,
+          to: project.slug,
+          type: 'event',
+          label: eventName,
+        });
+      }
+    }
+  }
+
+  const graph: WorkspaceContractGraph = {
+    schemaVersion: 1,
+    kind: 'rapidkit.workspace.contract.graph',
+    workspace: contract.workspace,
+    generatedAt: new Date().toISOString(),
+    nodes: nodes.sort((a, b) => a.id.localeCompare(b.id)),
+    edges: edges.sort((a, b) =>
+      `${a.from}:${a.to}:${a.type}:${a.label}`.localeCompare(
+        `${b.from}:${b.to}:${b.type}:${b.label}`
+      )
+    ),
+    summary: {
+      projectCount: nodes.length,
+      dependencyEdges: edges.filter((edge) => edge.type === 'dependency').length,
+      eventEdges: edges.filter((edge) => edge.type === 'event').length,
+      portCount: nodes.reduce((total, node) => total + node.ports.length, 0),
+      apiCount: nodes.reduce((total, node) => total + node.apis.length, 0),
+    },
+  };
+
+  return { contractPath, graph };
 }
 
 export async function verifyWorkspaceContract(input: {
@@ -255,7 +510,7 @@ export async function verifyWorkspaceContract(input: {
         violations.push(`Project ${project.slug} declares invalid port: ${port.port}.`);
       }
       const owner = claimedPorts.get(port.port);
-      if (owner && owner !== project.slug) {
+      if (owner) {
         violations.push(`Port ${port.port} is claimed by both ${owner} and ${project.slug}.`);
       }
       claimedPorts.set(port.port, project.slug);

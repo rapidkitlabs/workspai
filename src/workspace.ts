@@ -1329,11 +1329,13 @@ type WorkspaceShareBundle = {
   summary: {
     project_count: number;
     doctor_evidence_included: boolean;
+    contract_included?: boolean;
   };
   reports: {
     workspace: string[];
   };
   projects: WorkspaceShareProject[];
+  contract?: unknown;
   blueprint?: {
     schema_version: 'rapidkit.workspace-blueprint.v1';
     purpose: 'portable-reproducibility';
@@ -1463,6 +1465,9 @@ export async function createWorkspaceShareBundle(
 
   const workspaceReportsDir = path.join(normalizedWorkspacePath, '.rapidkit', 'reports');
   const workspaceReports = await listReportJsonFiles(workspaceReportsDir);
+  const workspaceContract = await readJsonIfExists(
+    path.join(normalizedWorkspacePath, '.rapidkit', 'workspace.contract.json')
+  );
 
   const bundle: WorkspaceShareBundle = {
     schema_version: '1.1',
@@ -1478,11 +1483,13 @@ export async function createWorkspaceShareBundle(
     summary: {
       project_count: projects.length,
       doctor_evidence_included: includeDoctorEvidence,
+      contract_included: !!workspaceContract,
     },
     reports: {
       workspace: workspaceReports,
     },
     projects,
+    ...(workspaceContract ? { contract: workspaceContract } : {}),
   };
 
   if (includeBlueprint) {
@@ -1511,6 +1518,7 @@ export async function createWorkspaceShareBundle(
         ],
       })),
       recommended_commands: [
+        'npx rapidkit workspace contract verify --strict',
         'npx rapidkit doctor workspace',
         'npx rapidkit workspace run init --json',
         'npx rapidkit workspace run test --strict --json',

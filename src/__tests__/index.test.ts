@@ -174,6 +174,7 @@ describe('CLI Entry Point', () => {
           npx rapidkit workspace share [--output <file>] Export collaboration bundle
           npx rapidkit workspace contract init     Create workspace service contract
           npx rapidkit workspace contract verify   Verify service ports/dependencies
+          npx rapidkit workspace contract graph    Show service dependency graph
           npx rapidkit workspace export --output <file> Export portable workspace archive
           npx rapidkit workspace archive verify <file> Verify archive integrity
           npx rapidkit workspace archive doctor <file> Diagnose archive readiness

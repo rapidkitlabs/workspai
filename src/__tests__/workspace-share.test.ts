@@ -29,6 +29,26 @@ describe('createWorkspaceShareBundle', () => {
     await fsExtra.outputJson(path.join(testDir, '.rapidkit', 'reports', 'doctor-last-run.json'), {
       status: 'pass',
     });
+    await fsExtra.outputJson(path.join(testDir, '.rapidkit', 'workspace.contract.json'), {
+      schemaVersion: 1,
+      kind: 'rapidkit.workspace.contract',
+      workspace: { name: 'team-ws' },
+      projects: [
+        {
+          slug: 'orders-service',
+          relativePath: 'orders-service',
+          ports: [{ name: 'http', port: 8080, protocol: 'http' }],
+          contracts: {
+            owns: ['Order'],
+            apis: [],
+            publishes: ['OrderCreated'],
+            consumes: [],
+            dependsOn: [],
+            env: [],
+          },
+        },
+      ],
+    });
 
     await fsExtra.outputJson(path.join(projectPath, '.rapidkit', 'project.json'), {
       runtime: 'java',
@@ -50,6 +70,8 @@ describe('createWorkspaceShareBundle', () => {
     expect(bundle.schema_version).toBe('1.1');
     expect(bundle.workspace.profile).toBe('polyglot');
     expect(bundle.summary.project_count).toBe(1);
+    expect(bundle.summary.contract_included).toBe(true);
+    expect(bundle.contract.projects[0].ports[0].port).toBe(8080);
     expect(bundle.projects[0].name).toBe('orders-service');
     expect(bundle.projects[0].relative_path).toBe('orders-service');
     expect(bundle.projects[0].runtime).toBe('java');
@@ -68,6 +90,9 @@ describe('createWorkspaceShareBundle', () => {
     });
     expect(bundle.blueprint.projects[0].recreate_commands).toContain(
       'npx rapidkit create project springboot.standard orders-service --yes --skip-install'
+    );
+    expect(bundle.blueprint.recommended_commands).toContain(
+      'npx rapidkit workspace contract verify --strict'
     );
     expect(bundle.blueprint.recommended_commands).toContain(
       'npx rapidkit readiness --strict --json'

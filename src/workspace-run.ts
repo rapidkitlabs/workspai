@@ -218,6 +218,23 @@ async function expandAffectedWithBlastRadius(
   projects: string[],
   initialAffected: Set<string>
 ): Promise<BlastRadiusResult> {
+  const contractPath = path.join(workspacePath, '.rapidkit', 'workspace.contract.json');
+  if (await pathExists(contractPath)) {
+    try {
+      const contractResult = await expandAffectedWithContract(
+        workspacePath,
+        projects,
+        initialAffected,
+        contractPath
+      );
+      if (contractResult.graphStatus !== 'missing') {
+        return contractResult;
+      }
+    } catch {
+      return { expanded: initialAffected, graphStatus: 'invalid', expansionDepth: 0 };
+    }
+  }
+
   const graphPath = path.join(workspacePath, '.rapidkit', 'workspace-dependency-graph.json');
   if (!(await pathExists(graphPath))) {
     return { expanded: initialAffected, graphStatus: 'missing', expansionDepth: 0 };
@@ -284,6 +301,125 @@ async function expandAffectedWithBlastRadius(
       continue;
     }
 
+    for (const dependent of dependents) {
+      if (!expanded.has(dependent)) {
+        expanded.add(dependent);
+        queue.push(dependent);
+        expansionDepth += 1;
+      }
+    }
+  }
+
+  return { expanded, graphStatus: 'loaded', expansionDepth };
+}
+
+async function expandAffectedWithContract(
+  workspacePath: string,
+  projects: string[],
+  initialAffected: Set<string>,
+  contractPath: string
+): Promise<BlastRadiusResult> {
+  const payload = await readJsonFile<unknown>(contractPath);
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { expanded: initialAffected, graphStatus: 'invalid', expansionDepth: 0 };
+  }
+
+  const contract = payload as Record<string, unknown>;
+  const projectEntries = Array.isArray(contract.projects) ? contract.projects : null;
+  if (!projectEntries) {
+    return { expanded: initialAffected, graphStatus: 'invalid', expansionDepth: 0 };
+  }
+
+  const projectBySlug = new Map<string, string>();
+  const projectByPath = new Map<string, string>();
+  for (const projectPath of projects) {
+    const relativePath = normalizePathForMatch(path.relative(workspacePath, projectPath));
+    projectByPath.set(relativePath, path.resolve(projectPath));
+  }
+
+  const publishes = new Map<string, Set<string>>();
+  const consumersByEvent = new Map<string, Set<string>>();
+  const reverseDeps = new Map<string, Set<string>>();
+
+  for (const entry of projectEntries) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const row = entry as Record<string, unknown>;
+    const slug = typeof row.slug === 'string' ? row.slug : '';
+    const relativePath =
+      typeof row.relativePath === 'string' ? normalizePathForMatch(row.relativePath) : slug;
+    const projectPath = projectByPath.get(relativePath);
+    if (!slug || !projectPath) continue;
+    projectBySlug.set(slug, projectPath);
+  }
+
+  for (const entry of projectEntries) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const row = entry as Record<string, unknown>;
+    const slug = typeof row.slug === 'string' ? row.slug : '';
+    const sourceProject = projectBySlug.get(slug);
+    if (!sourceProject) continue;
+
+    const contracts =
+      row.contracts && typeof row.contracts === 'object' && !Array.isArray(row.contracts)
+        ? (row.contracts as Record<string, unknown>)
+        : {};
+    const dependsOn = Array.isArray(contracts.dependsOn)
+      ? contracts.dependsOn.filter((item): item is string => typeof item === 'string')
+      : [];
+    const publishesEvents = Array.isArray(contracts.publishes)
+      ? contracts.publishes.filter((item): item is string => typeof item === 'string')
+      : [];
+    const consumesEvents = Array.isArray(contracts.consumes)
+      ? contracts.consumes.filter((item): item is string => typeof item === 'string')
+      : [];
+
+    for (const dependencySlug of dependsOn) {
+      const dependencyProject = projectBySlug.get(dependencySlug);
+      if (!dependencyProject) continue;
+      if (!reverseDeps.has(dependencyProject)) {
+        reverseDeps.set(dependencyProject, new Set<string>());
+      }
+      reverseDeps.get(dependencyProject)?.add(sourceProject);
+    }
+
+    for (const eventName of publishesEvents) {
+      if (!publishes.has(eventName)) {
+        publishes.set(eventName, new Set<string>());
+      }
+      publishes.get(eventName)?.add(sourceProject);
+    }
+    for (const eventName of consumesEvents) {
+      if (!consumersByEvent.has(eventName)) {
+        consumersByEvent.set(eventName, new Set<string>());
+      }
+      consumersByEvent.get(eventName)?.add(sourceProject);
+    }
+  }
+
+  for (const [eventName, publisherProjects] of publishes.entries()) {
+    const consumerProjects = consumersByEvent.get(eventName);
+    if (!consumerProjects) continue;
+    for (const publisherProject of publisherProjects) {
+      if (!reverseDeps.has(publisherProject)) {
+        reverseDeps.set(publisherProject, new Set<string>());
+      }
+      for (const consumerProject of consumerProjects) {
+        if (consumerProject !== publisherProject) {
+          reverseDeps.get(publisherProject)?.add(consumerProject);
+        }
+      }
+    }
+  }
+
+  const expanded = new Set(initialAffected);
+  const queue = [...expanded];
+  let expansionDepth = 0;
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    const dependents = reverseDeps.get(current);
+    if (!dependents) continue;
     for (const dependent of dependents) {
       if (!expanded.has(dependent)) {
         expanded.add(dependent);

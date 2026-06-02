@@ -237,6 +237,94 @@ describe('workspace-run', () => {
     await fsExtra.remove(workspacePath);
   });
 
+  it('expands affected set with workspace contract dependencies and events', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
+    await createProject(workspacePath, 'apps/orders');
+    await createProject(workspacePath, 'apps/billing');
+    await createProject(workspacePath, 'apps/notifications');
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit', 'workspace.contract.json'), {
+      schemaVersion: 1,
+      kind: 'rapidkit.workspace.contract',
+      workspace: { name: 'contract-ws' },
+      projects: [
+        {
+          slug: 'orders',
+          relativePath: 'apps/orders',
+          modules: [],
+          ports: [],
+          contracts: {
+            owns: ['Order'],
+            apis: [],
+            publishes: ['OrderCreated'],
+            consumes: [],
+            dependsOn: [],
+            env: [],
+          },
+        },
+        {
+          slug: 'billing',
+          relativePath: 'apps/billing',
+          modules: [],
+          ports: [],
+          contracts: {
+            owns: ['Invoice'],
+            apis: [],
+            publishes: [],
+            consumes: [],
+            dependsOn: ['orders'],
+            env: [],
+          },
+        },
+        {
+          slug: 'notifications',
+          relativePath: 'apps/notifications',
+          modules: [],
+          ports: [],
+          contracts: {
+            owns: [],
+            apis: [],
+            publishes: [],
+            consumes: ['OrderCreated'],
+            dependsOn: [],
+            env: [],
+          },
+        },
+      ],
+    });
+
+    const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
+    execaMock.mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args.includes('diff')) {
+        return { exitCode: 0, stdout: 'apps/orders/src/orders.ts\n', stderr: '' };
+      }
+      if (args.includes('test')) {
+        return { exitCode: 0, stdout: 'ok', stderr: '' };
+      }
+      return { exitCode: 0, stdout: '{}', stderr: '' };
+    });
+
+    const report = await runWorkspaceStage({
+      workspacePath,
+      stage: 'test',
+      affected: true,
+      blastRadius: true,
+      enforceGates: false,
+      json: true,
+    });
+
+    expect(report.selection.graphStatus).toBe('loaded');
+    expect(
+      report.projects
+        .filter((item) => item.selected)
+        .map((item) => item.relativePath)
+        .sort()
+    ).toEqual(['apps/billing', 'apps/notifications', 'apps/orders']);
+    expect(report.summary.selectedCount).toBe(3);
+
+    await fsExtra.remove(workspacePath);
+  });
+
   // ─── selection provenance tests ────────────────────────────────────────────
 
   it('selection provenance: mode=all when affected is not set', async () => {
