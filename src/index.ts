@@ -5253,6 +5253,83 @@ program
       const workspacePath = requireWorkspaceRootForAction('policy');
       const code = await handleWorkspacePolicyCommand(workspacePath, subaction, key, value);
       if (code !== 0) process.exit(code);
+    } else if (action === 'contract') {
+      const workspacePath = requireWorkspaceRootForAction('contract');
+      const {
+        readWorkspaceContract,
+        verifyWorkspaceContract,
+        writeWorkspaceContract,
+        WORKSPACE_CONTRACT_PATH,
+      } = await import('./utils/workspace-contract.js');
+      const contractAction = subaction || 'inspect';
+      const contractPath = actionOptions.output;
+
+      try {
+        if (contractAction === 'init') {
+          const result = await writeWorkspaceContract({
+            workspacePath,
+            outputPath: contractPath,
+            force: actionOptions.force === true || hasRawFlag('--force'),
+          });
+          if (actionOptions.json) {
+            console.log(JSON.stringify(result, null, 2));
+            return;
+          }
+          console.log(chalk.green(`✔ Workspace contract initialized: ${result.contractPath}`));
+          console.log(chalk.gray(`   Projects: ${result.contract.projects.length}`));
+          return;
+        }
+
+        if (contractAction === 'inspect') {
+          const result = await readWorkspaceContract({ workspacePath, contractPath });
+          if (actionOptions.json) {
+            console.log(JSON.stringify(result, null, 2));
+            return;
+          }
+          console.log(chalk.green(`✔ Workspace contract: ${result.contractPath}`));
+          console.log(chalk.gray(`   Workspace: ${result.contract.workspace.name}`));
+          console.log(chalk.gray(`   Projects: ${result.contract.projects.length}`));
+          console.log(chalk.gray(`   Schema: v${result.contract.schemaVersion}`));
+          return;
+        }
+
+        if (contractAction === 'verify') {
+          const result = await verifyWorkspaceContract({ workspacePath, contractPath });
+          if (actionOptions.json) {
+            console.log(JSON.stringify(result, null, 2));
+          } else {
+            const color = result.status === 'passed' ? chalk.green : chalk.red;
+            console.log(
+              color(`✔ Workspace contract verification ${result.status}: ${result.contractPath}`)
+            );
+            console.log(chalk.gray(`   Projects: ${result.projectCount}`));
+            for (const check of result.checks) {
+              const marker = check.status === 'passed' ? '✔' : '✘';
+              console.log(chalk.gray(`   ${marker} ${check.id}: ${check.message}`));
+            }
+            for (const violation of result.violations) {
+              console.log(chalk.gray(`   Violation: ${violation}`));
+            }
+          }
+          if (result.status === 'failed' || (result.status !== 'passed' && actionOptions.strict)) {
+            process.exit(1);
+          }
+          return;
+        }
+
+        console.log(chalk.red(`❌ Unknown workspace contract action: ${contractAction}`));
+        console.log(
+          chalk.white(
+            `   npx rapidkit workspace contract init|inspect|verify [--output ${WORKSPACE_CONTRACT_PATH}]`
+          )
+        );
+        process.exit(1);
+      } catch (error) {
+        console.log(
+          chalk.red(`❌ Workspace contract ${contractAction} failed: ${(error as Error).message}`)
+        );
+        process.exit(1);
+      }
     } else if (action === 'share') {
       const workspacePath = requireWorkspaceRootForAction('share');
 
@@ -5292,7 +5369,10 @@ program
           chalk.gray('   Secrets: excluded (.env, private keys, logs, dependency caches)')
         );
       }
-    } else if (action === 'archive' && (subaction === 'inspect' || subaction === 'verify')) {
+    } else if (
+      action === 'archive' &&
+      (subaction === 'inspect' || subaction === 'verify' || subaction === 'doctor')
+    ) {
       const archivePathOrUrl = key;
       if (!archivePathOrUrl) {
         console.log(
@@ -5304,9 +5384,8 @@ program
         process.exit(1);
       }
 
-      const { inspectWorkspaceArchive, verifyWorkspaceArchive } = await import(
-        './utils/workspace-archive.js'
-      );
+      const { doctorWorkspaceArchive, inspectWorkspaceArchive, verifyWorkspaceArchive } =
+        await import('./utils/workspace-archive.js');
       try {
         if (subaction === 'inspect') {
           const result = await inspectWorkspaceArchive({ archivePathOrUrl });
@@ -5321,6 +5400,41 @@ program
           console.log(chalk.gray(`   Exporter: ${result.manifest.exportedBy || 'unknown'}`));
           console.log(chalk.gray(`   Files: ${result.fileCount}`));
           console.log(chalk.gray(`   Payload: ${sizeMb} MB`));
+          return;
+        }
+
+        if (subaction === 'doctor') {
+          const result = await doctorWorkspaceArchive({
+            archivePathOrUrl,
+            strict: actionOptions.strict === true || hasRawFlag('--strict'),
+          });
+          if (actionOptions.json) {
+            console.log(JSON.stringify(result, null, 2));
+          } else {
+            const color =
+              result.status === 'passed'
+                ? chalk.green
+                : result.status === 'warning'
+                  ? chalk.yellow
+                  : chalk.red;
+            console.log(
+              color(`✔ Workspace archive doctor ${result.status}: ${result.archivePath}`)
+            );
+            console.log(chalk.gray(`   Workspace: ${result.workspaceName}`));
+            console.log(chalk.gray(`   Files: ${result.fileCount}`));
+            for (const check of result.checks) {
+              const marker =
+                check.status === 'passed' ? '✔' : check.status === 'warning' ? '⚠' : '✘';
+              console.log(chalk.gray(`   ${marker} ${check.id}: ${check.message}`));
+            }
+            for (const actionItem of result.recommendedActions) {
+              console.log(chalk.gray(`   Next: ${actionItem}`));
+            }
+          }
+
+          if (result.status === 'failed' || (result.status === 'warning' && actionOptions.strict)) {
+            process.exit(1);
+          }
           return;
         }
 
@@ -5583,10 +5697,19 @@ function printHelp() {
     chalk.gray('  npx rapidkit workspace share [--output <file>] Export collaboration bundle')
   );
   console.log(
+    chalk.gray('  npx rapidkit workspace contract init     Create workspace service contract')
+  );
+  console.log(
+    chalk.gray('  npx rapidkit workspace contract verify   Verify service ports/dependencies')
+  );
+  console.log(
     chalk.gray('  npx rapidkit workspace export --output <file> Export portable workspace archive')
   );
   console.log(
     chalk.gray('  npx rapidkit workspace archive verify <file> Verify archive integrity')
+  );
+  console.log(
+    chalk.gray('  npx rapidkit workspace archive doctor <file> Diagnose archive readiness')
   );
   console.log(
     chalk.gray(

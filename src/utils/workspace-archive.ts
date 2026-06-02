@@ -66,6 +66,16 @@ export interface WorkspaceArchiveInspectResult {
   entries: Array<{ path: string; size: number; hasChecksum: boolean }>;
 }
 
+export interface WorkspaceArchiveDoctorResult {
+  archivePath: string;
+  status: WorkspaceArchiveVerificationStatus;
+  workspaceName: string;
+  fileCount: number;
+  totalBytes: number;
+  checks: Array<{ id: string; status: WorkspaceArchiveVerificationStatus; message: string }>;
+  recommendedActions: string[];
+}
+
 export interface WorkspaceArchiveHydrateOptions {
   archivePathOrUrl: string;
   outputPath?: string;
@@ -639,6 +649,73 @@ export async function verifyWorkspaceArchive(options: {
   } finally {
     await cleanupLoadedArchive(loaded);
   }
+}
+
+export async function doctorWorkspaceArchive(options: {
+  archivePathOrUrl: string;
+  strict?: boolean;
+}): Promise<WorkspaceArchiveDoctorResult> {
+  const inspected = await inspectWorkspaceArchive({ archivePathOrUrl: options.archivePathOrUrl });
+  const verification = await verifyWorkspaceArchive({
+    archivePathOrUrl: options.archivePathOrUrl,
+    requireChecksums: options.strict === true,
+  });
+  const checks: WorkspaceArchiveDoctorResult['checks'] = [];
+  const recommendedActions: string[] = [];
+
+  checks.push({
+    id: 'manifest-present',
+    status: 'passed',
+    message: `Archive manifest found for workspace "${inspected.manifest.workspaceName}".`,
+  });
+  checks.push({
+    id: 'integrity',
+    status: verification.status,
+    message:
+      verification.status === 'passed'
+        ? `Verified ${verification.verifiedFiles}/${verification.fileCount} files.`
+        : 'Archive integrity verification did not fully pass.',
+  });
+
+  const envIncluded = inspected.manifest.security?.envFilesIncluded === true;
+  checks.push({
+    id: 'secrets-policy',
+    status: envIncluded ? 'warning' : 'passed',
+    message: envIncluded
+      ? 'Archive manifest says environment/private files were intentionally included.'
+      : 'Archive manifest excludes environment/private files by default.',
+  });
+  if (envIncluded) {
+    recommendedActions.push('Share this archive only through trusted internal channels.');
+  }
+
+  if (verification.missingChecksumFiles.length > 0) {
+    recommendedActions.push('Re-export the archive with the latest RapidKit/Workspai tooling.');
+  }
+  if (verification.mismatches.length > 0) {
+    recommendedActions.push('Reject this archive and request a fresh export from the owner.');
+  }
+  if (
+    verification.extraArchiveEntries.length > 0 ||
+    verification.missingArchiveEntries.length > 0
+  ) {
+    recommendedActions.push('Regenerate the archive so ZIP entries and manifest entries match.');
+  }
+  if (options.strict === true && verification.status !== 'passed') {
+    recommendedActions.push('Do not hydrate this archive in strict or production workflows.');
+  }
+
+  const failed = checks.some((check) => check.status === 'failed');
+  const warning = checks.some((check) => check.status === 'warning');
+  return {
+    archivePath: inspected.archivePath,
+    status: failed ? 'failed' : warning ? 'warning' : 'passed',
+    workspaceName: inspected.manifest.workspaceName,
+    fileCount: inspected.fileCount,
+    totalBytes: inspected.totalBytes,
+    checks,
+    recommendedActions,
+  };
 }
 
 async function ensureOutputPath(

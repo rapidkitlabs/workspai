@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   exportWorkspaceArchive,
+  doctorWorkspaceArchive,
   hydrateWorkspaceArchive,
   inspectWorkspaceArchive,
   isSafeArchiveEntryName,
@@ -133,6 +134,14 @@ describe('workspace archive export/hydrate', () => {
     });
     expect(verified.status).toBe('passed');
     expect(verified.verifiedFiles).toBe(verified.fileCount);
+
+    const doctor = await doctorWorkspaceArchive({ archivePathOrUrl: archivePath, strict: true });
+    expect(doctor.status).toBe('passed');
+    expect(doctor.checks.map((check) => check.id)).toEqual([
+      'manifest-present',
+      'integrity',
+      'secrets-policy',
+    ]);
   });
 
   it('rejects tampered archive payloads before hydrate writes files', async () => {
