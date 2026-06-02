@@ -33,6 +33,7 @@ describe('createWorkspaceShareBundle', () => {
     await fsExtra.outputJson(path.join(projectPath, '.rapidkit', 'project.json'), {
       runtime: 'java',
       kit_name: 'springboot.standard',
+      modules: ['settings', 'logging'],
     });
     await fsExtra.outputJson(
       path.join(projectPath, '.rapidkit', 'reports', 'doctor-last-run.json'),
@@ -46,15 +47,31 @@ describe('createWorkspaceShareBundle', () => {
 
     expect(outputPath).toContain(path.join('.rapidkit', 'reports', 'share-bundle.json'));
     expect(bundle.workspace.name).toBe('team-ws');
+    expect(bundle.schema_version).toBe('1.1');
     expect(bundle.workspace.profile).toBe('polyglot');
     expect(bundle.summary.project_count).toBe(1);
     expect(bundle.projects[0].name).toBe('orders-service');
     expect(bundle.projects[0].relative_path).toBe('orders-service');
     expect(bundle.projects[0].runtime).toBe('java');
     expect(bundle.projects[0].kit_name).toBe('springboot.standard');
+    expect(bundle.projects[0].modules).toEqual(['settings', 'logging']);
     expect(bundle.projects[0].doctor_report).toBeTruthy();
     expect(bundle.workspace.absolute_root).toBeUndefined();
     expect(bundle.projects[0].absolute_path).toBeUndefined();
+    expect(bundle.blueprint).toMatchObject({
+      schema_version: 'rapidkit.workspace-blueprint.v1',
+      purpose: 'portable-reproducibility',
+      workspace: {
+        name: 'team-ws',
+        profile: 'polyglot',
+      },
+    });
+    expect(bundle.blueprint.projects[0].recreate_commands).toContain(
+      'npx rapidkit create project springboot.standard orders-service --yes --skip-install'
+    );
+    expect(bundle.blueprint.recommended_commands).toContain(
+      'npx rapidkit readiness --strict --json'
+    );
   });
 
   it('supports includePaths and no-doctor modes', async () => {
@@ -78,6 +95,23 @@ describe('createWorkspaceShareBundle', () => {
     expect(bundle.projects[0].absolute_path).toBe(path.resolve(projectPath));
     expect(bundle.summary.doctor_evidence_included).toBe(false);
     expect(bundle.projects[0].doctor_report).toBeUndefined();
+  });
+
+  it('supports excluding the reproducibility blueprint', async () => {
+    const projectPath = path.join(testDir, 'worker-service');
+
+    await fsExtra.outputJson(path.join(projectPath, '.rapidkit', 'project.json'), {
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+
+    const outputPath = await createWorkspaceShareBundle(testDir, {
+      includeBlueprint: false,
+    });
+
+    const bundle = await fsExtra.readJson(outputPath);
+
+    expect(bundle.blueprint).toBeUndefined();
   });
 
   it('skips invalid doctor report schemas when building share bundle', async () => {

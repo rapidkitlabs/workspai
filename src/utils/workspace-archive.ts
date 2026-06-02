@@ -1,0 +1,541 @@
+import crypto from 'crypto';
+import os from 'os';
+import path from 'path';
+import zlib from 'zlib';
+
+import fsExtra from 'fs-extra';
+
+export const WORKSPACE_ARCHIVE_MANIFEST_PATH = '.rapidkit/archive-manifest.json';
+export const WORKSPACE_ARCHIVE_KIND = 'workspai.workspace.archive';
+
+export interface WorkspaceArchiveManifest {
+  version: 1;
+  kind: typeof WORKSPACE_ARCHIVE_KIND;
+  workspaceName: string;
+  exportedAt: string;
+  exportedBy: 'rapidkit-npm';
+  archiveFormat: 'zip-store';
+  security: {
+    envFilesIncluded: boolean;
+    excludedByDefault: string[];
+  };
+  files: Array<{
+    path: string;
+    size: number;
+    sha256: string;
+  }>;
+}
+
+export interface WorkspaceArchiveExportOptions {
+  workspacePath: string;
+  outputPath?: string;
+  includeEnv?: boolean;
+  now?: Date;
+}
+
+export interface WorkspaceArchiveExportResult {
+  archivePath: string;
+  manifest: WorkspaceArchiveManifest;
+  bytesWritten: number;
+}
+
+export interface WorkspaceArchiveHydrateOptions {
+  archivePathOrUrl: string;
+  outputPath?: string;
+  force?: boolean;
+  dryRun?: boolean;
+}
+
+export interface WorkspaceArchiveHydrateResult {
+  archivePath: string;
+  outputPath: string;
+  dryRun: boolean;
+  manifest: WorkspaceArchiveManifest | null;
+  files: Array<{ path: string; size: number }>;
+}
+
+type ZipEntry = {
+  name: string;
+  data: Buffer;
+  crc32: number;
+  size: number;
+  offset: number;
+};
+
+const EXCLUDED_SEGMENTS = new Set([
+  '__pycache__',
+  '.venv',
+  'venv',
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  'target',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.ruff_cache',
+  'htmlcov',
+  '.next',
+  '.turbo',
+  '.cache',
+]);
+
+const EXCLUDED_BASENAMES = new Set([
+  '.DS_Store',
+  'Thumbs.db',
+  '.coverage',
+  'npm-debug.log',
+  'yarn-error.log',
+  'pnpm-debug.log',
+]);
+
+const SECRET_BASENAME_PATTERNS = [
+  /^\.env$/i,
+  /^\.env\.(?!example$|sample$|template$).+/i,
+  /^.*\.pem$/i,
+  /^.*\.key$/i,
+  /^id_rsa$/i,
+  /^id_ed25519$/i,
+];
+
+function toArchivePath(inputPath: string): string {
+  return inputPath.replace(/\\/g, '/');
+}
+
+export function sanitizeWorkspaceArchiveName(rawName: string): string {
+  const stripped = rawName
+    .replace(/\.rapidkit-archive\.zip$/i, '')
+    .replace(/\.zip$/i, '')
+    .trim();
+  const normalized = stripped
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-_.]+|[-_.]+$/g, '')
+    .slice(0, 64);
+  return normalized || 'imported-workspace';
+}
+
+export function isSafeArchiveEntryName(entryName: string): boolean {
+  const normalized = toArchivePath(entryName).trim();
+  if (!normalized || normalized.startsWith('/') || normalized.startsWith('~')) {
+    return false;
+  }
+  if (/^[a-zA-Z]:\//.test(normalized) || normalized.includes('\0')) {
+    return false;
+  }
+  const segments = normalized.split('/').filter(Boolean);
+  return segments.length > 0 && !segments.some((segment) => segment === '..' || segment === '.');
+}
+
+function assertSafeEntryName(entryName: string): void {
+  if (!isSafeArchiveEntryName(entryName)) {
+    throw new Error(`Archive contains an unsafe path: ${entryName}`);
+  }
+}
+
+export function shouldExcludeWorkspaceArchivePath(
+  relativePath: string,
+  options?: { includeEnv?: boolean }
+): boolean {
+  const normalized = toArchivePath(relativePath);
+  const segments = normalized.split('/').filter(Boolean);
+  if (segments.some((segment) => EXCLUDED_SEGMENTS.has(segment))) {
+    return true;
+  }
+
+  const basename = segments[segments.length - 1] || '';
+  if (EXCLUDED_BASENAMES.has(basename)) {
+    return true;
+  }
+  if (!options?.includeEnv && SECRET_BASENAME_PATTERNS.some((pattern) => pattern.test(basename))) {
+    return true;
+  }
+
+  return basename.endsWith('.pyc') || basename.endsWith('.log');
+}
+
+function sha256(data: Buffer): string {
+  return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+const CRC_TABLE = new Uint32Array(256).map((_, index) => {
+  let c = index;
+  for (let k = 0; k < 8; k += 1) {
+    c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  }
+  return c >>> 0;
+});
+
+function crc32(data: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function uint16(value: number): Buffer {
+  const buffer = Buffer.allocUnsafe(2);
+  buffer.writeUInt16LE(value, 0);
+  return buffer;
+}
+
+function uint32(value: number): Buffer {
+  const buffer = Buffer.allocUnsafe(4);
+  buffer.writeUInt32LE(value >>> 0, 0);
+  return buffer;
+}
+
+function dosDateTime(date: Date): { time: number; date: number } {
+  const year = Math.max(date.getFullYear(), 1980);
+  const time =
+    (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  return { time, date: dosDate };
+}
+
+async function walkWorkspaceFiles(
+  workspacePath: string,
+  currentPath: string,
+  files: Array<{ relativePath: string; fullPath: string }>,
+  options?: { includeEnv?: boolean }
+): Promise<void> {
+  const entries = await fsExtra.readdir(currentPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(currentPath, entry.name);
+    const relativePath = toArchivePath(path.relative(workspacePath, fullPath));
+    if (!relativePath || shouldExcludeWorkspaceArchivePath(relativePath, options)) {
+      continue;
+    }
+    if (entry.isDirectory()) {
+      await walkWorkspaceFiles(workspacePath, fullPath, files, options);
+      continue;
+    }
+    if (entry.isFile()) {
+      files.push({ relativePath, fullPath });
+    }
+  }
+}
+
+async function readWorkspaceName(workspacePath: string): Promise<string> {
+  const workspaceJsonPath = path.join(workspacePath, '.rapidkit', 'workspace.json');
+  try {
+    const payload = (await fsExtra.readJson(workspaceJsonPath)) as Record<string, unknown>;
+    if (typeof payload.workspace_name === 'string' && payload.workspace_name.trim()) {
+      return payload.workspace_name.trim();
+    }
+    if (typeof payload.name === 'string' && payload.name.trim()) {
+      return payload.name.trim();
+    }
+  } catch {
+    // fall back to folder name
+  }
+  return path.basename(path.resolve(workspacePath));
+}
+
+async function buildArchiveEntries(
+  workspacePath: string,
+  manifest: WorkspaceArchiveManifest,
+  options?: { includeEnv?: boolean }
+): Promise<ZipEntry[]> {
+  const candidates: Array<{ relativePath: string; fullPath: string }> = [];
+  await walkWorkspaceFiles(workspacePath, workspacePath, candidates, options);
+
+  const entries: ZipEntry[] = [];
+  for (const candidate of candidates.sort((a, b) => a.relativePath.localeCompare(b.relativePath))) {
+    const data = await fsExtra.readFile(candidate.fullPath);
+    if (data.length >= 0xffffffff) {
+      throw new Error(
+        `File is too large for portable workspace archive: ${candidate.relativePath}`
+      );
+    }
+    manifest.files.push({
+      path: candidate.relativePath,
+      size: data.length,
+      sha256: sha256(data),
+    });
+    entries.push({
+      name: candidate.relativePath,
+      data,
+      crc32: crc32(data),
+      size: data.length,
+      offset: 0,
+    });
+  }
+
+  const manifestData = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
+  entries.push({
+    name: WORKSPACE_ARCHIVE_MANIFEST_PATH,
+    data: manifestData,
+    crc32: crc32(manifestData),
+    size: manifestData.length,
+    offset: 0,
+  });
+
+  return entries;
+}
+
+function buildZip(entries: ZipEntry[], date = new Date()): Buffer {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+  const stamp = dosDateTime(date);
+
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name, 'utf-8');
+    entry.offset = offset;
+    const localHeader = Buffer.concat([
+      uint32(0x04034b50),
+      uint16(20),
+      uint16(0x0800),
+      uint16(0),
+      uint16(stamp.time),
+      uint16(stamp.date),
+      uint32(entry.crc32),
+      uint32(entry.size),
+      uint32(entry.size),
+      uint16(name.length),
+      uint16(0),
+      name,
+    ]);
+    localParts.push(localHeader, entry.data);
+    offset += localHeader.length + entry.data.length;
+  }
+
+  const centralDirectoryOffset = offset;
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name, 'utf-8');
+    const centralHeader = Buffer.concat([
+      uint32(0x02014b50),
+      uint16(20),
+      uint16(20),
+      uint16(0x0800),
+      uint16(0),
+      uint16(stamp.time),
+      uint16(stamp.date),
+      uint32(entry.crc32),
+      uint32(entry.size),
+      uint32(entry.size),
+      uint16(name.length),
+      uint16(0),
+      uint16(0),
+      uint16(0),
+      uint16(0),
+      uint32(0),
+      uint32(entry.offset),
+      name,
+    ]);
+    centralParts.push(centralHeader);
+    offset += centralHeader.length;
+  }
+
+  const centralDirectorySize = offset - centralDirectoryOffset;
+  const endRecord = Buffer.concat([
+    uint32(0x06054b50),
+    uint16(0),
+    uint16(0),
+    uint16(entries.length),
+    uint16(entries.length),
+    uint32(centralDirectorySize),
+    uint32(centralDirectoryOffset),
+    uint16(0),
+  ]);
+
+  return Buffer.concat([...localParts, ...centralParts, endRecord]);
+}
+
+export async function exportWorkspaceArchive(
+  options: WorkspaceArchiveExportOptions
+): Promise<WorkspaceArchiveExportResult> {
+  const workspacePath = path.resolve(options.workspacePath);
+  if (!(await fsExtra.pathExists(path.join(workspacePath, '.rapidkit-workspace')))) {
+    throw new Error(
+      'Workspace export requires a RapidKit workspace root with .rapidkit-workspace.'
+    );
+  }
+
+  const workspaceName = await readWorkspaceName(workspacePath);
+  const archivePath = path.resolve(
+    options.outputPath || `${sanitizeWorkspaceArchiveName(workspaceName)}.rapidkit-archive.zip`
+  );
+  const manifest: WorkspaceArchiveManifest = {
+    version: 1,
+    kind: WORKSPACE_ARCHIVE_KIND,
+    workspaceName,
+    exportedAt: (options.now ?? new Date()).toISOString(),
+    exportedBy: 'rapidkit-npm',
+    archiveFormat: 'zip-store',
+    security: {
+      envFilesIncluded: options.includeEnv === true,
+      excludedByDefault: [
+        '.git',
+        'node_modules',
+        '.venv',
+        'dist',
+        'build',
+        'target',
+        '.env',
+        '*.pem',
+        '*.key',
+        '*.log',
+      ],
+    },
+    files: [],
+  };
+  const entries = await buildArchiveEntries(workspacePath, manifest, {
+    includeEnv: options.includeEnv === true,
+  });
+  const archive = buildZip(entries, options.now ?? new Date());
+  await fsExtra.ensureDir(path.dirname(archivePath));
+  await fsExtra.writeFile(archivePath, archive);
+  return { archivePath, manifest, bytesWritten: archive.length };
+}
+
+function findEndOfCentralDirectory(buffer: Buffer): number {
+  const minOffset = Math.max(0, buffer.length - 0xffff - 22);
+  for (let offset = buffer.length - 22; offset >= minOffset; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === 0x06054b50) {
+      return offset;
+    }
+  }
+  throw new Error('Invalid ZIP archive: end of central directory not found.');
+}
+
+function parseZipEntries(buffer: Buffer): Array<{ name: string; data: Buffer; size: number }> {
+  const eocd = findEndOfCentralDirectory(buffer);
+  const entryCount = buffer.readUInt16LE(eocd + 10);
+  const centralOffset = buffer.readUInt32LE(eocd + 16);
+  const entries: Array<{ name: string; data: Buffer; size: number }> = [];
+  let cursor = centralOffset;
+
+  for (let index = 0; index < entryCount; index += 1) {
+    if (buffer.readUInt32LE(cursor) !== 0x02014b50) {
+      throw new Error('Invalid ZIP archive: central directory is corrupted.');
+    }
+    const method = buffer.readUInt16LE(cursor + 10);
+    if (method !== 0 && method !== 8) {
+      throw new Error(
+        'Unsupported ZIP archive: only stored/deflated entries are supported by RapidKit npm.'
+      );
+    }
+    const compressedSize = buffer.readUInt32LE(cursor + 20);
+    const uncompressedSize = buffer.readUInt32LE(cursor + 24);
+    const nameLength = buffer.readUInt16LE(cursor + 28);
+    const extraLength = buffer.readUInt16LE(cursor + 30);
+    const commentLength = buffer.readUInt16LE(cursor + 32);
+    const localOffset = buffer.readUInt32LE(cursor + 42);
+    const name = buffer.subarray(cursor + 46, cursor + 46 + nameLength).toString('utf-8');
+    assertSafeEntryName(name);
+
+    if (buffer.readUInt32LE(localOffset) !== 0x04034b50) {
+      throw new Error(`Invalid ZIP archive: local header missing for ${name}.`);
+    }
+    const localNameLength = buffer.readUInt16LE(localOffset + 26);
+    const localExtraLength = buffer.readUInt16LE(localOffset + 28);
+    const dataOffset = localOffset + 30 + localNameLength + localExtraLength;
+    const compressedData = buffer.subarray(dataOffset, dataOffset + compressedSize);
+    if (compressedData.length !== compressedSize) {
+      throw new Error(`Invalid ZIP archive: size mismatch for ${name}.`);
+    }
+    const data = method === 8 ? zlib.inflateRawSync(compressedData) : compressedData;
+    if (data.length !== uncompressedSize) {
+      throw new Error(`Invalid ZIP archive: inflated size mismatch for ${name}.`);
+    }
+    entries.push({ name, data, size: uncompressedSize });
+    cursor += 46 + nameLength + extraLength + commentLength;
+  }
+
+  return entries;
+}
+
+async function resolveArchivePath(
+  input: string
+): Promise<{ archivePath: string; cleanup?: string }> {
+  if (/^https?:\/\//i.test(input)) {
+    const response = await fetch(input);
+    if (!response.ok) {
+      throw new Error(`Failed to download workspace archive: HTTP ${response.status}`);
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const tempDir = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rapidkit-workspace-archive-'));
+    const archivePath = path.join(tempDir, 'workspace.rapidkit-archive.zip');
+    await fsExtra.writeFile(archivePath, bytes);
+    return { archivePath, cleanup: tempDir };
+  }
+  return { archivePath: path.resolve(input) };
+}
+
+function parseManifest(
+  entries: Array<{ name: string; data: Buffer }>
+): WorkspaceArchiveManifest | null {
+  const manifestEntry = entries.find((entry) => entry.name === WORKSPACE_ARCHIVE_MANIFEST_PATH);
+  if (!manifestEntry) return null;
+  const parsed = JSON.parse(manifestEntry.data.toString('utf-8')) as WorkspaceArchiveManifest;
+  if (parsed.kind !== WORKSPACE_ARCHIVE_KIND) {
+    throw new Error('Archive manifest kind is not a RapidKit/Workspai workspace archive.');
+  }
+  return parsed;
+}
+
+async function ensureOutputPath(
+  outputPath: string,
+  force: boolean,
+  dryRun: boolean
+): Promise<void> {
+  if (!(await fsExtra.pathExists(outputPath))) {
+    if (!dryRun) await fsExtra.ensureDir(outputPath);
+    return;
+  }
+  const entries = await fsExtra.readdir(outputPath);
+  if (entries.length > 0 && !force) {
+    throw new Error(`Output directory is not empty: ${outputPath}. Use --force to overwrite.`);
+  }
+  if (!dryRun) {
+    await fsExtra.emptyDir(outputPath);
+  }
+}
+
+export async function hydrateWorkspaceArchive(
+  options: WorkspaceArchiveHydrateOptions
+): Promise<WorkspaceArchiveHydrateResult> {
+  const resolved = await resolveArchivePath(options.archivePathOrUrl);
+  try {
+    const archiveBuffer = await fsExtra.readFile(resolved.archivePath);
+    const entries = parseZipEntries(archiveBuffer);
+    const manifest = parseManifest(entries);
+    const outputPath = path.resolve(
+      options.outputPath ||
+        sanitizeWorkspaceArchiveName(manifest?.workspaceName || 'imported-workspace')
+    );
+    await ensureOutputPath(outputPath, options.force === true, options.dryRun === true);
+
+    for (const entry of entries) {
+      if (entry.name === WORKSPACE_ARCHIVE_MANIFEST_PATH) {
+        continue;
+      }
+      const targetPath = path.resolve(outputPath, entry.name);
+      if (!targetPath.startsWith(`${outputPath}${path.sep}`) && targetPath !== outputPath) {
+        throw new Error(`Archive entry escapes output directory: ${entry.name}`);
+      }
+      if (!options.dryRun) {
+        await fsExtra.ensureDir(path.dirname(targetPath));
+        await fsExtra.writeFile(targetPath, entry.data);
+      }
+    }
+
+    return {
+      archivePath: resolved.archivePath,
+      outputPath,
+      dryRun: options.dryRun === true,
+      manifest,
+      files: entries
+        .filter((entry) => entry.name !== WORKSPACE_ARCHIVE_MANIFEST_PATH)
+        .map((entry) => ({ path: entry.name, size: entry.size })),
+    };
+  } finally {
+    if (resolved.cleanup) {
+      await fsExtra.remove(resolved.cleanup).catch(() => undefined);
+    }
+  }
+}

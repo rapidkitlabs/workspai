@@ -146,6 +146,8 @@ npx rapidkit doctor workspace [--fix] [--plan] [--apply]
 npx rapidkit doctor project [--fix] [--plan] [--apply]
 npx rapidkit workspace list # Display all workspaces created on this system
 npx rapidkit workspace share [--output <file>] [--include-paths] [--no-doctor]
+npx rapidkit workspace export --output team-workspace.rapidkit-archive.zip
+npx rapidkit workspace hydrate team-workspace.rapidkit-archive.zip --output ./team-workspace
 npx rapidkit import <path|git-url> [--workspace <path>] [--name <project-name>] [--git] [--json]
 npx rapidkit snapshot create [name] [--include-projects] [--reason <text>] [--json]
 npx rapidkit snapshot list [--json]
@@ -247,6 +249,21 @@ Bundle content includes:
 - Latest doctor evidence per project (unless `--no-doctor` is used)
 
 `--include-paths` is intended for internal teams only because it includes absolute filesystem paths.
+
+### Portable workspace archives
+
+Use `workspace export` when you need to send a full workspace to a teammate or move it to another machine.
+Export excludes dependency folders, build output, git history, logs, `.env` files, and private keys by default.
+
+```bash
+npx rapidkit workspace export --output team-workspace.rapidkit-archive.zip
+npx rapidkit workspace hydrate team-workspace.rapidkit-archive.zip --output ./team-workspace
+
+# Preview a hydrate without writing files
+npx rapidkit workspace hydrate team-workspace.rapidkit-archive.zip --output ./team-workspace --dry-run
+```
+
+Use `--include-env` only for trusted internal handoffs when you intentionally need environment files inside the archive.
 
 ### Command ownership
 

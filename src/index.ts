@@ -24,6 +24,7 @@ import {
 import { BOOTSTRAP_CORE_COMMANDS_SET } from './core-bridge/bootstrapCoreCommands.js';
 import { registerConfigCommands } from './commands/config.js';
 import { registerAICommands } from './commands/ai.js';
+import { registerProductCommands } from './commands/product.js';
 import { getRuntimeAdapter } from './runtime-adapters/index.js';
 import type { CommandResult } from './runtime-adapters/types.js';
 import { Cache } from './utils/cache.js';
@@ -1150,6 +1151,7 @@ export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
   'mirror',
   'ai',
   'config',
+  'product',
   'shell',
 ] as const;
 
@@ -1164,6 +1166,7 @@ const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
   'workspace',
   'ai',
   'config',
+  'product',
   'shell',
 ] as const;
 
@@ -4516,6 +4519,9 @@ program
 // Register AI commands
 registerAICommands(program);
 
+// Register Product Factory commands
+registerProductCommands(program);
+
 program
   .command('analyze')
   .description('Analyze workspace/project health and generate enterprise-ready evidence')
@@ -5161,13 +5167,17 @@ program
 program
   .command('workspace <action> [subaction] [key] [value]')
   .description(
-    'Manage RapidKit workspaces (list, sync, policy, share, run)\n' +
+    'Manage RapidKit workspaces (list, sync, policy, share, export, hydrate, run)\n' +
       '  workspace run <stage>   \u2014 fleet stage execution across discovered projects\n' +
       '                            stages: init | test | build | start  (dev excluded by design)'
   )
   .option('--output <file>', 'Output file path for workspace share bundle')
   .option('--include-paths', 'Include absolute paths in workspace share bundle')
   .option('--no-doctor', 'Exclude doctor evidence in workspace share bundle')
+  .option('--no-blueprint', 'Exclude reproducibility blueprint from workspace share bundle')
+  .option('--include-env', 'Include .env/private key files in workspace export archive')
+  .option('--force', 'Overwrite an existing hydrate output directory')
+  .option('--dry-run', 'Preview hydrate without writing files')
   .option('--affected', 'Run only affected projects (requires git diff context)')
   .option('--blast-radius', 'Include downstream dependents from workspace dependency graph')
   .option('--since <ref>', 'Git ref for affected calculation (default: HEAD~1)')
@@ -5188,6 +5198,10 @@ program
       output?: string;
       includePaths?: boolean;
       doctor?: boolean;
+      blueprint?: boolean;
+      includeEnv?: boolean;
+      force?: boolean;
+      dryRun?: boolean;
       affected?: boolean;
       blastRadius?: boolean;
       since?: string;
@@ -5225,6 +5239,7 @@ program
 
       return workspacePath;
     };
+    const hasRawFlag = (flag: string): boolean => process.argv.includes(flag);
 
     if (action === 'list') {
       const { listWorkspaces } = await import('./workspace.js');
@@ -5247,12 +5262,77 @@ program
         outputPath,
         includePaths: actionOptions.includePaths === true,
         includeDoctorEvidence: actionOptions.doctor !== false,
+        includeBlueprint: actionOptions.blueprint !== false,
       });
 
       console.log(chalk.green(`✔ Workspace share bundle exported: ${bundlePath}`));
       console.log(
         chalk.gray('Share this JSON with your team for reproducible workspace/project diagnostics.')
       );
+    } else if (action === 'export') {
+      const workspacePath = requireWorkspaceRootForAction('export');
+      const { exportWorkspaceArchive } = await import('./utils/workspace-archive.js');
+      const result = await exportWorkspaceArchive({
+        workspacePath,
+        outputPath: actionOptions.output || subaction,
+        includeEnv: actionOptions.includeEnv === true || hasRawFlag('--include-env'),
+      });
+
+      if (actionOptions.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+
+      const sizeMb = (result.bytesWritten / (1024 * 1024)).toFixed(2);
+      console.log(chalk.green(`✔ Workspace archive exported: ${result.archivePath}`));
+      console.log(chalk.gray(`   Files: ${result.manifest.files.length}`));
+      console.log(chalk.gray(`   Size: ${sizeMb} MB`));
+      if (!result.manifest.security.envFilesIncluded) {
+        console.log(
+          chalk.gray('   Secrets: excluded (.env, private keys, logs, dependency caches)')
+        );
+      }
+    } else if (action === 'hydrate' || action === 'import') {
+      const archivePathOrUrl = subaction;
+      if (!archivePathOrUrl) {
+        console.log(chalk.red(`❌ workspace ${action} requires an archive path or URL.`));
+        console.log(
+          chalk.white(
+            `   npx rapidkit workspace ${action} team.rapidkit-archive.zip --output ./team`
+          )
+        );
+        process.exit(1);
+      }
+
+      const { hydrateWorkspaceArchive } = await import('./utils/workspace-archive.js');
+      try {
+        const result = await hydrateWorkspaceArchive({
+          archivePathOrUrl,
+          outputPath: actionOptions.output,
+          force: actionOptions.force === true || hasRawFlag('--force'),
+          dryRun: actionOptions.dryRun === true || hasRawFlag('--dry-run'),
+        });
+
+        if (actionOptions.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        console.log(
+          chalk.green(
+            result.dryRun
+              ? `✔ Workspace archive hydrate preview: ${result.outputPath}`
+              : `✔ Workspace archive hydrated: ${result.outputPath}`
+          )
+        );
+        console.log(chalk.gray(`   Files: ${result.files.length}`));
+        if (result.manifest?.workspaceName) {
+          console.log(chalk.gray(`   Workspace: ${result.manifest.workspaceName}`));
+        }
+      } catch (error) {
+        console.log(chalk.red(`❌ Workspace ${action} failed: ${(error as Error).message}`));
+        process.exit(1);
+      }
     } else if (action === 'run') {
       const workspacePath = requireWorkspaceRootForAction(`run ${subaction || ''}`.trim());
 
@@ -5350,7 +5430,7 @@ program
       }
     } else {
       console.log(chalk.red(`Unknown workspace action: ${action}`));
-      console.log(chalk.gray('Available: list, sync, policy, share, run'));
+      console.log(chalk.gray('Available: list, sync, policy, share, export, hydrate, import, run'));
       process.exit(1);
     }
   });
@@ -5421,6 +5501,14 @@ function printHelp() {
   );
   console.log(
     chalk.gray('  npx rapidkit workspace share [--output <file>] Export collaboration bundle')
+  );
+  console.log(
+    chalk.gray('  npx rapidkit workspace export --output <file> Export portable workspace archive')
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit workspace hydrate <archive> --output <dir> Hydrate workspace archive'
+    )
   );
   console.log(
     chalk.gray('  npx rapidkit workspace policy show        Show effective workspace policies')

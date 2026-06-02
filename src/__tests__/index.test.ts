@@ -172,6 +172,8 @@ describe('CLI Entry Point', () => {
           npx rapidkit project archive <name>      Archive a project with a safety snapshot
           npx rapidkit project restore <archive>   Restore an archived project safely
           npx rapidkit workspace share [--output <file>] Export collaboration bundle
+          npx rapidkit workspace export --output <file> Export portable workspace archive
+          npx rapidkit workspace hydrate <archive> --output <dir> Hydrate workspace archive
           npx rapidkit workspace policy show        Show effective workspace policies
           npx rapidkit workspace policy set <k> <v> Update workspace policy values
           npx rapidkit setup python|node|go|java [--warm-deps]  Set up runtime (+ optional deps warm-up)
@@ -850,7 +852,9 @@ describe('CLI Entry Point', () => {
         expect(error.exitCode).toBe(1);
         const output = `${error.stdout || ''}\n${error.stderr || ''}`;
         expect(output).toContain('Unknown workspace action: unknown-action');
-        expect(output).toContain('Available: list, sync, policy, share, run');
+        expect(output).toContain(
+          'Available: list, sync, policy, share, export, hydrate, import, run'
+        );
       }
     });
 

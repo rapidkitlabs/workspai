@@ -1309,13 +1309,14 @@ type WorkspaceShareProject = {
   relative_path: string;
   runtime?: string;
   kit_name?: string;
+  modules?: string[];
   doctor_report?: unknown;
   reports?: string[];
   absolute_path?: string;
 };
 
 type WorkspaceShareBundle = {
-  schema_version: '1.0';
+  schema_version: '1.1';
   generated_at: string;
   generated_by: 'rapidkit-npm';
   workspace: {
@@ -1333,12 +1334,30 @@ type WorkspaceShareBundle = {
     workspace: string[];
   };
   projects: WorkspaceShareProject[];
+  blueprint?: {
+    schema_version: 'rapidkit.workspace-blueprint.v1';
+    purpose: 'portable-reproducibility';
+    workspace: {
+      name: string;
+      profile?: string;
+    };
+    projects: Array<{
+      name: string;
+      relative_path: string;
+      runtime?: string;
+      kit_name?: string;
+      modules: string[];
+      recreate_commands: string[];
+    }>;
+    recommended_commands: string[];
+  };
 };
 
 export interface WorkspaceShareOptions {
   outputPath?: string;
   includePaths?: boolean;
   includeDoctorEvidence?: boolean;
+  includeBlueprint?: boolean;
 }
 
 async function readJsonIfExists(filePath: string): Promise<unknown | null> {
@@ -1384,6 +1403,7 @@ export async function createWorkspaceShareBundle(
 ): Promise<string> {
   const includePaths = options?.includePaths === true;
   const includeDoctorEvidence = options?.includeDoctorEvidence !== false;
+  const includeBlueprint = options?.includeBlueprint !== false;
   const normalizedWorkspacePath = path.resolve(workspacePath);
 
   const workspaceMeta = (await readJsonIfExists(
@@ -1415,6 +1435,9 @@ export async function createWorkspaceShareBundle(
       relative_path: projectRelativePath,
       runtime: typeof projectMeta?.runtime === 'string' ? projectMeta.runtime : undefined,
       kit_name: typeof projectMeta?.kit_name === 'string' ? projectMeta.kit_name : undefined,
+      modules: Array.isArray(projectMeta?.modules)
+        ? projectMeta.modules.filter((item): item is string => typeof item === 'string')
+        : undefined,
     };
 
     if (includePaths) {
@@ -1442,7 +1465,7 @@ export async function createWorkspaceShareBundle(
   const workspaceReports = await listReportJsonFiles(workspaceReportsDir);
 
   const bundle: WorkspaceShareBundle = {
-    schema_version: '1.0',
+    schema_version: '1.1',
     generated_at: new Date().toISOString(),
     generated_by: 'rapidkit-npm',
     workspace: {
@@ -1461,6 +1484,40 @@ export async function createWorkspaceShareBundle(
     },
     projects,
   };
+
+  if (includeBlueprint) {
+    bundle.blueprint = {
+      schema_version: 'rapidkit.workspace-blueprint.v1',
+      purpose: 'portable-reproducibility',
+      workspace: {
+        name: workspaceName,
+        profile: workspaceProfile,
+      },
+      projects: projects.map((project) => ({
+        name: project.name,
+        relative_path: project.relative_path,
+        runtime: project.runtime,
+        kit_name: project.kit_name,
+        modules: project.modules ?? [],
+        recreate_commands: [
+          ...(project.kit_name
+            ? [
+                `npx rapidkit create project ${project.kit_name} ${project.name} --yes --skip-install`,
+              ]
+            : []),
+          `cd ${project.relative_path}`,
+          'npx rapidkit init',
+          'npx rapidkit test',
+        ],
+      })),
+      recommended_commands: [
+        'npx rapidkit doctor workspace',
+        'npx rapidkit workspace run init --json',
+        'npx rapidkit workspace run test --strict --json',
+        'npx rapidkit readiness --strict --json',
+      ],
+    };
+  }
 
   const outputPath = options?.outputPath
     ? path.resolve(options.outputPath)
