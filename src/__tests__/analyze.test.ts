@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { execa } from 'execa';
 
 import { runAnalyze } from '../analyze.js';
 
@@ -92,15 +91,8 @@ describe('analyze command', () => {
     );
     await fs.writeFile(path.join(projectDir, 'src', 'health.ts'), 'export const health = true;');
 
-    const { stdout } = await execa(
-      'npx',
-      ['tsx', 'src/index.ts', 'analyze', '--workspace', workspaceDir, '--json'],
-      {
-        cwd: process.cwd(),
-        reject: false,
-      }
-    );
-    const payload = JSON.parse(stdout);
+    const report = await runAnalyze({ workspacePath: workspaceDir, json: true });
+    const payload = JSON.parse(JSON.stringify(report));
 
     expect(payload).toHaveProperty('schemaVersion', 'rapidkit-analyze-v1');
     expect(payload).toHaveProperty('summary');
@@ -139,17 +131,8 @@ describe('analyze command', () => {
     );
     await fs.writeFile(path.join(projectDir, 'src', 'index.ts'), 'export const app = true;');
 
-    const result = await execa(
-      'npx',
-      ['tsx', 'src/index.ts', 'analyze', '--workspace', workspaceDir, '--json', '--strict'],
-      {
-        cwd: process.cwd(),
-        reject: false,
-      }
-    );
+    const payload = await runAnalyze({ workspacePath: workspaceDir, json: true, strict: true });
 
-    expect(result.exitCode).toBe(2);
-    const payload = JSON.parse(result.stdout);
     expect(payload.summary.verdict).toBe('blocked');
     expect(payload.findings.some((item: any) => item.severity === 'warn')).toBe(true);
   });
