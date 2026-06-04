@@ -1,4 +1,5 @@
 import type { RuntimeAdapter, RuntimeName } from './types.js';
+import { DotnetRuntimeAdapter } from './dotnet.js';
 import { GoRuntimeAdapter } from './go.js';
 import { JavaRuntimeAdapter } from './java.js';
 import { NodeRuntimeAdapter } from './node.js';
@@ -55,6 +56,12 @@ export function getRuntimeAdapter(runtime: RuntimeName, deps: AdapterDeps): Runt
 
   if (runtime === 'java') {
     return new JavaRuntimeAdapter((command, args, cwd) => deps.runCommandInCwd(command, args, cwd));
+  }
+
+  if (runtime === 'dotnet') {
+    return new DotnetRuntimeAdapter((command, args, cwd) =>
+      deps.runCommandInCwd(command, args, cwd)
+    );
   }
 
   return new PythonRuntimeAdapter((args, cwd) =>

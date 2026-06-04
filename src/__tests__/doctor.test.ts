@@ -1054,6 +1054,89 @@ describe('Doctor Command', () => {
     }
   });
 
+  it('should report command capabilities for nested ASP.NET Core project files', async () => {
+    const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rapidkit-doctor-dotnet-'));
+    const workspacePath = path.join(tempRoot, 'workspace');
+    const projectPath = path.join(workspacePath, 'orders-api');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit-workspace'), {
+      name: 'workspace',
+      version: '1.0',
+    });
+
+    await fsExtra.ensureDir(path.join(projectPath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(projectPath, '.rapidkit', 'project.json'), {
+      name: 'orders-api',
+      kit_name: 'dotnet.webapi.clean',
+      runtime: 'dotnet',
+      module_support: false,
+    });
+    await fsExtra.writeJSON(path.join(projectPath, '.rapidkit', 'context.json'), {
+      engine: 'npm',
+      runtime: 'dotnet',
+    });
+    await fsExtra.outputFile(
+      path.join(projectPath, 'src', 'orders-api.csproj'),
+      '<Project Sdk="Microsoft.NET.Sdk.Web"></Project>'
+    );
+    await fsExtra.ensureDir(path.join(projectPath, 'src', 'obj'));
+    await fsExtra.outputFile(path.join(projectPath, 'tests', 'orders-api.Tests.csproj'), '');
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'python3' || cmd === 'python') {
+        if (args?.[0] === '--version') {
+          return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+        }
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx' && args?.[0] === '--version') {
+        return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(projectPath);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ project: true, json: true });
+
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string | undefined;
+
+      expect(jsonLine).toBeDefined();
+      const payload = JSON.parse(jsonLine as string);
+      expect(payload.project.frameworkKey).toBe('dotnet');
+      expect(payload.project.runtimeFamily).toBe('dotnet');
+      expect(payload.project.commandCapabilities.runtime).toBe('dotnet');
+      expect(payload.project.commandCapabilities.moduleSupport).toBe(false);
+      expect(payload.project.commandCapabilities.commandMap.build).toMatchObject({
+        status: 'supported',
+        owner: 'runtime',
+      });
+      expect(payload.project.commandCapabilities.commandMap.modules).toMatchObject({
+        status: 'unsupported',
+        owner: 'none',
+      });
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
   it('should detect Rust project in doctor project mode', async () => {
     const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rapidkit-doctor-rust-'));
     const projectPath = path.join(tempRoot, 'ledger-service');

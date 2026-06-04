@@ -29,6 +29,7 @@ export interface SpringBootVariables {
   app_version?: string;
   port?: string;
   skipGit?: boolean;
+  skipInstall?: boolean;
 }
 
 function sanitizePackageSegment(value: string): string {
@@ -999,6 +1000,7 @@ export async function generateSpringBootKit(
     app_version: variables.app_version || '0.1.0',
     port: variables.port || '8080',
     skipGit: variables.skipGit ?? false,
+    skipInstall: variables.skipInstall ?? false,
   };
 
   const rapidkitVersion = getVersion();
@@ -1079,38 +1081,44 @@ export async function generateSpringBootKit(
     await fs.chmod(rapidkitCmdPath, 0o755);
     await fs.chmod(path.join(projectPath, 'scripts', 'perf-smoke.sh'), 0o755);
 
-    const wrapperReady = await ensureMavenWrapper(projectPath);
-    if (!wrapperReady) {
-      console.log(
-        chalk.yellow(
-          '⚠  Maven Wrapper could not be generated automatically. Run `mvn -N wrapper:wrapper -Dmaven=3.9.9` inside the project.'
-        )
-      );
+    if (!v.skipInstall) {
+      const wrapperReady = await ensureMavenWrapper(projectPath);
+      if (!wrapperReady) {
+        console.log(
+          chalk.yellow(
+            '⚠  Maven Wrapper could not be generated automatically. Run `mvn -N wrapper:wrapper -Dmaven=3.9.9` inside the project.'
+          )
+        );
+      }
     }
 
     spinner.succeed(chalk.green(`Project created at ${projectPath}`));
 
-    try {
-      spinner.start('Resolving Maven dependencies...');
-      const wrapperPath = path.join(
-        projectPath,
-        process.platform === 'win32' ? 'mvnw.cmd' : 'mvnw'
-      );
-      const mavenCommand = await fs
-        .stat(wrapperPath)
-        .then(() => wrapperPath)
-        .catch(() => 'mvn');
-      await execa(mavenCommand, ['-B', '-q', '-DskipTests', 'dependency:go-offline'], {
-        cwd: projectPath,
-        timeout: 180_000,
-      });
-      spinner.succeed(chalk.gray('✓ maven dependency warm-up completed'));
-    } catch {
-      spinner.warn(
-        chalk.yellow(
-          '⚠  Maven dependency warm-up failed - run manually: mvn -B -DskipTests dependency:go-offline'
-        )
-      );
+    if (v.skipInstall) {
+      spinner.info(chalk.gray('Skipped Maven dependency warm-up (--skip-install).'));
+    } else {
+      try {
+        spinner.start('Resolving Maven dependencies...');
+        const wrapperPath = path.join(
+          projectPath,
+          process.platform === 'win32' ? 'mvnw.cmd' : 'mvnw'
+        );
+        const mavenCommand = await fs
+          .stat(wrapperPath)
+          .then(() => wrapperPath)
+          .catch(() => 'mvn');
+        await execa(mavenCommand, ['-B', '-q', '-DskipTests', 'dependency:go-offline'], {
+          cwd: projectPath,
+          timeout: 180_000,
+        });
+        spinner.succeed(chalk.gray('✓ maven dependency warm-up completed'));
+      } catch {
+        spinner.warn(
+          chalk.yellow(
+            '⚠  Maven dependency warm-up failed - run manually: mvn -B -DskipTests dependency:go-offline'
+          )
+        );
+      }
     }
 
     if (!v.skipGit) {

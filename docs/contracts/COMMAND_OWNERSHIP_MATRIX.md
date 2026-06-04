@@ -19,7 +19,6 @@ These commands are implemented and orchestrated by `rapidkit-npm`:
 - `doctor`
 - `import`
 - `snapshot`
-- `project`
 - `workspace`
 - `bootstrap`
 - `setup`
@@ -33,38 +32,103 @@ These commands are implemented and orchestrated by `rapidkit-npm`:
 
 Reason: workspace-level policy, registry, and platform orchestration live in npm wrapper.
 
+### 1.1) Wrapper-owned scoped commands
+
+These scoped commands are implemented and orchestrated by `rapidkit-npm`:
+
+- `project commands`
+- `project archives`
+- `project archive`
+- `project restore`
+- `project delete`
+
+Reason: these are workspace project lifecycle and capability operations with
+archive manifests, safety snapshots, workspace registry side effects, and
+runtime-aware command discovery.
+
+`project detect` remains Core-owned because it is the stable machine-readable
+contract used by wrappers to detect Python RapidKit projects.
+
+`commands --scope project` is also wrapper-owned. It reports the effective
+project command capability matrix for the currently selected project without
+delegating to Core.
+
 ### 2) Wrapper-orchestrated project commands
 
-These commands are handled by npm wrapper first (runtime-aware + fallback-aware):
+These commands are handled by npm wrapper first (runtime-aware + fallback-aware)
+when the project capability matrix marks them as runtime-supported:
 
 - `init`
+- `dev`
+- `start`
+- `build`
+- `test`
+- `lint`
+- `format`
+- `help`
 
-Reason: `init` must guarantee dependency installation regardless of runtime and available tools. The wrapper may still call core for Python path, but wrapper owns orchestration and fallbacks.
+Reason: generated projects can be Python, Node/NestJS, Go/Fiber, Go/Gin, or
+Spring Boot. Runtime commands must run through the selected project's adapter,
+not through a hard-coded global assumption.
 
-### 3) Runtime-owned execution (hybrid)
+### 3) Core module/template commands
 
-For project lifecycle commands:
+These commands are supported only when the selected project is Core-backed
+and has module/template support:
 
-- `dev`, `start`, `build`, `test`
+- `add`
+- `modules`
+- `upgrade`
+- `diff`
+- `merge`
+- `reconcile`
+- `rollback`
+- `uninstall`
+- `checkpoint`
+- `snapshot`
+- `optimize`
 
 Dispatch policy:
 
-- Python project → delegate to core runtime behavior.
-- Node project → npm runtime adapter behavior.
-- Go project → npm runtime adapter behavior.
+- FastAPI / NestJS Core-backed project → supported and delegated to Core.
+- Go / Spring Boot / ASP.NET Core npm-owned project → blocked with a capability explanation.
+- Unknown project → blocked until project metadata is present.
 
-### 4) Core fallback commands
+### 4) Global engine/catalog commands
 
-- `lint`, `format`, `docs`
+These commands are not project-specific even when run inside a project:
 
-Current policy: forwarded to core by default in generic forwarding decisions.
+- `create`
+- `list`
+- `info`
+- `frameworks`
+- `license`
 
-## Why this model
+`create` remains npm-owned so the wrapper can orchestrate multi-language
+workspace/project generation. The other commands may delegate to Core as engine
+catalog operations.
+
+## Dynamic Project Capability Model
 
 A pure-core or pure-wrapper model causes regressions in mixed-language workspaces. Hybrid ownership keeps Python compatibility while letting npm wrapper enforce workspace policy and resilient cross-platform fallback behavior.
+
+The npm wrapper resolves project capabilities from `.rapidkit/project.json`,
+`.rapidkit/context.json`, and framework/runtime markers. Users and tools can
+inspect the effective command surface with:
+
+- `rapidkit project commands`
+- `rapidkit project commands --json`
+- `rapidkit commands --scope project --json`
+
+This capability model is the canonical bridge between npm-owned kits and
+Core-backed kits. Adding a future language or framework should update the
+project metadata and runtime detector first, then the capability matrix follows
+without widening the Core/global command surface.
 
 ## Guard Rails
 
 - `shouldForwardToCore()` must return `false` for wrapper-owned and wrapper-orchestrated project commands.
+- `project commands` and `commands --scope project` must never forward to Core.
+- Core module/template commands must be blocked for npm-owned projects that set `module_support: false`.
 - Tests must assert forwarding boundary rules.
 - Changes to ownership should update this file and tests together.

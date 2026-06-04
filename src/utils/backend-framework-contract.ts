@@ -265,10 +265,11 @@ const BACKEND_CONTRACTS: Record<BackendPlatformKey, BackendContractDescriptor> =
   dotnet: {
     key: 'dotnet',
     runtime: 'dotnet',
-    displayName: 'ASP.NET',
+    displayName: 'ASP.NET Core',
     supportTier: 'extended',
     importStack: 'dotnet',
     aliases: ['dotnet', 'asp.net', 'aspnet', 'asp.net core', 'csharp', 'c#'],
+    kitPrefixes: ['dotnet', 'aspnet', 'aspnetcore'],
   },
   actix: {
     key: 'actix',
@@ -298,7 +299,7 @@ const BACKEND_CONTRACTS: Record<BackendPlatformKey, BackendContractDescriptor> =
     key: 'rust',
     runtime: 'rust',
     displayName: 'Rust',
-    supportTier: 'first-class',
+    supportTier: 'observed',
     importStack: 'unknown',
     aliases: ['rust'],
   },
@@ -306,7 +307,7 @@ const BACKEND_CONTRACTS: Record<BackendPlatformKey, BackendContractDescriptor> =
     key: 'phoenix',
     runtime: 'elixir',
     displayName: 'Phoenix',
-    supportTier: 'first-class',
+    supportTier: 'extended',
     importStack: 'unknown',
     aliases: ['phoenix'],
   },
@@ -314,7 +315,7 @@ const BACKEND_CONTRACTS: Record<BackendPlatformKey, BackendContractDescriptor> =
     key: 'elixir',
     runtime: 'elixir',
     displayName: 'Elixir',
-    supportTier: 'extended',
+    supportTier: 'observed',
     importStack: 'unknown',
     aliases: ['elixir'],
   },
@@ -448,6 +449,12 @@ function listFilesRecursive(dirPath: string, maxDepth: number): string[] {
 
 function hasFileWithSuffix(projectPath: string, suffix: string, maxDepth = 2): boolean {
   return listFilesRecursive(projectPath, maxDepth).some((candidatePath) =>
+    candidatePath.toLowerCase().endsWith(suffix.toLowerCase())
+  );
+}
+
+function findFilesWithSuffix(projectPath: string, suffix: string, maxDepth = 2): string[] {
+  return listFilesRecursive(projectPath, maxDepth).filter((candidatePath) =>
     candidatePath.toLowerCase().endsWith(suffix.toLowerCase())
   );
 }
@@ -651,6 +658,27 @@ function detectRubyBackendFromProject(projectPath: string): BackendFrameworkDete
   return buildDetection('unknown', 'low', 'unknown');
 }
 
+function detectDotnetBackendFromProject(projectPath: string): BackendFrameworkDetection {
+  const candidates = [
+    ...findFilesWithSuffix(projectPath, '.csproj', 3),
+    ...findFilesWithSuffix(projectPath, '.sln', 2),
+  ];
+  const merged = candidates.map((filePath) => readTextIfExists(filePath)).join('\n');
+
+  if (
+    merged.includes('microsoft.net.sdk.web') ||
+    merged.includes('microsoft.aspnetcore') ||
+    merged.includes('swashbuckle.aspnetcore')
+  ) {
+    return buildDetection('dotnet', 'high', 'manifest');
+  }
+  if (merged.trim()) {
+    return buildDetection('dotnet', 'medium', 'marker');
+  }
+
+  return buildDetection('unknown', 'low', 'unknown');
+}
+
 function detectRustBackendFromProject(projectPath: string): BackendFrameworkDetection {
   const cargoToml = readTextIfExists(path.join(projectPath, 'Cargo.toml'));
   if (cargoToml.includes('actix-web')) {
@@ -817,7 +845,10 @@ export function detectBackendFrameworkFromProject(
     }
   }
   if (runtimeCandidates.includes('dotnet')) {
-    return buildDetection('dotnet', 'medium', 'marker');
+    const detection = detectDotnetBackendFromProject(projectPath);
+    if (detection.key !== 'unknown') {
+      return detection;
+    }
   }
   if (runtimeCandidates.includes('clojure')) {
     return buildDetection('clojure', 'medium', 'marker');

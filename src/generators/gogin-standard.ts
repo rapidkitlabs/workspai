@@ -37,6 +37,7 @@ export interface GoGinVariables {
   app_version?: string;
   port?: string;
   skipGit?: boolean;
+  skipInstall?: boolean;
 }
 
 // ─── file templates ───────────────────────────────────────────────────────────
@@ -1703,6 +1704,7 @@ export async function generateGoGinKit(
     app_version: variables.app_version || '0.1.0',
     port: variables.port || '8080',
     skipGit: variables.skipGit ?? false,
+    skipInstall: variables.skipInstall ?? false,
   };
 
   const rapidkitVersion = getVersion();
@@ -1768,13 +1770,17 @@ export async function generateGoGinKit(
 
     spinner.succeed(chalk.green(`Project created at ${projectPath}`));
 
-    // Fetch Go dependencies automatically
-    try {
-      spinner.start('Fetching Go dependencies…');
-      await execa('go', ['mod', 'tidy'], { cwd: projectPath, timeout: 120_000 });
-      spinner.succeed(chalk.gray('✓ go mod tidy completed'));
-    } catch {
-      spinner.warn(chalk.yellow('⚠  go mod tidy failed — run manually: go mod tidy'));
+    if (v.skipInstall) {
+      spinner.info(chalk.gray('Skipped Go dependency warm-up (--skip-install).'));
+    } else {
+      // Fetch Go dependencies automatically
+      try {
+        spinner.start('Fetching Go dependencies…');
+        await execa('go', ['mod', 'tidy'], { cwd: projectPath, timeout: 120_000 });
+        spinner.succeed(chalk.gray('✓ go mod tidy completed'));
+      } catch {
+        spinner.warn(chalk.yellow('⚠  go mod tidy failed — run manually: go mod tidy'));
+      }
     }
 
     // git init

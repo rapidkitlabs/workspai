@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import fs from 'fs';
+import { DotnetRuntimeAdapter } from '../runtime-adapters/dotnet.js';
 import { GoRuntimeAdapter } from '../runtime-adapters/go.js';
 import { JavaRuntimeAdapter } from '../runtime-adapters/java.js';
 import { NodeRuntimeAdapter } from '../runtime-adapters/node.js';
@@ -61,7 +62,35 @@ describe('Runtime Adapters', () => {
       const result = await adapter.runDev('/tmp/project');
 
       expect(result.exitCode).toBe(0);
-      expect(run).toHaveBeenCalledWith('go', ['run', './main.go'], '/tmp/project');
+      expect(run).toHaveBeenCalledWith('go', ['run', './.'], '/tmp/project');
+    });
+
+    it('uses cmd/server as Go run target when present', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new GoRuntimeAdapter(run);
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+        const normalized = normalizePath(String(p));
+        return (
+          normalized.endsWith('/tmp/project/cmd') || normalized.endsWith('/cmd/server/main.go')
+        );
+      });
+      vi.spyOn(fs, 'readdirSync').mockImplementation((p: fs.PathLike, options?: unknown) => {
+        const normalized = normalizePath(String(p));
+        if (normalized.endsWith('/tmp/project/cmd') && options) {
+          return [
+            {
+              name: 'server',
+              isDirectory: () => true,
+            },
+          ] as unknown as fs.Dirent[];
+        }
+        return [] as unknown as fs.Dirent[];
+      });
+
+      const result = await adapter.runDev('/tmp/project');
+
+      expect(result.exitCode).toBe(0);
+      expect(run).toHaveBeenCalledWith('go', ['run', './cmd/server'], '/tmp/project');
     });
 
     it('uses project-isolated go caches in isolated mode', async () => {
@@ -113,7 +142,7 @@ describe('Runtime Adapters', () => {
 
       expect(run).toHaveBeenCalledWith('go', ['test', './...'], '/tmp/project');
       expect(run).toHaveBeenCalledWith('go', ['build', './...'], '/tmp/project');
-      expect(run).toHaveBeenCalledWith('go', ['run', './main.go'], '/tmp/project');
+      expect(run).toHaveBeenCalledWith('go', ['run', './.'], '/tmp/project');
     });
 
     it('runs binary directly for start when built binary exists', async () => {
@@ -1201,10 +1230,12 @@ describe('Runtime Adapters', () => {
   });
 
   describe('NodeRuntimeAdapter', () => {
-    it('uses npm install by default for initProject', async () => {
+    it('uses npm install when package-lock pins npm for initProject', async () => {
       const run = vi.fn().mockResolvedValue(0);
       const adapter = new NodeRuntimeAdapter(run);
-      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
+        normalizePath(String(p)).endsWith('/tmp/node-project/package-lock.json')
+      );
 
       const result = await adapter.initProject('/tmp/node-project');
 
@@ -1250,7 +1281,9 @@ describe('Runtime Adapters', () => {
         return 0;
       });
       const adapter = new NodeRuntimeAdapter(run);
-      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
+        normalizePath(String(p)).endsWith('/tmp/node-project/package-lock.json')
+      );
 
       const result = await adapter.initProject('/tmp/node-project');
 
@@ -1314,13 +1347,71 @@ describe('Runtime Adapters', () => {
     it('runs test/start scripts through npm adapter branches', async () => {
       const run = vi.fn().mockResolvedValue(0);
       const adapter = new NodeRuntimeAdapter(run);
-      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
+        normalizePath(String(p)).endsWith('/tmp/node-project/package-lock.json')
+      );
 
       await adapter.runTest('/tmp/node-project');
       await adapter.runStart('/tmp/node-project');
 
       expect(run).toHaveBeenCalledWith('npm', ['run', 'test'], '/tmp/node-project');
       expect(run).toHaveBeenCalledWith('npm', ['run', 'start'], '/tmp/node-project');
+    });
+  });
+
+  describe('DotnetRuntimeAdapter', () => {
+    it('discovers nested ASP.NET Core project files for lifecycle commands', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new DotnetRuntimeAdapter(run);
+      vi.spyOn(fs, 'readdirSync').mockImplementation((p: fs.PathLike, options?: unknown) => {
+        const normalized = normalizePath(String(p));
+        if (!options) {
+          return [] as unknown as string[];
+        }
+        if (options && normalized.endsWith('/tmp/dotnet-project')) {
+          return [
+            { name: 'src', isDirectory: () => true, isFile: () => false },
+          ] as unknown as fs.Dirent[];
+        }
+        if (options && normalized.endsWith('/tmp/dotnet-project/src')) {
+          return [
+            { name: 'Api', isDirectory: () => true, isFile: () => false },
+          ] as unknown as fs.Dirent[];
+        }
+        if (options && normalized.endsWith('/tmp/dotnet-project/src/Api')) {
+          return [
+            { name: 'Api.csproj', isDirectory: () => false, isFile: () => true },
+          ] as unknown as fs.Dirent[];
+        }
+        return [] as unknown as fs.Dirent[];
+      });
+
+      await adapter.runDev('/tmp/dotnet-project');
+      await adapter.runTest('/tmp/dotnet-project');
+      await adapter.runBuild('/tmp/dotnet-project');
+      await adapter.runStart('/tmp/dotnet-project');
+
+      expect(run).toHaveBeenCalledWith('dotnet', ['--version'], '/tmp/dotnet-project');
+      expect(run).toHaveBeenCalledWith(
+        'dotnet',
+        ['watch', '--project', '/tmp/dotnet-project/src/Api/Api.csproj', 'run'],
+        '/tmp/dotnet-project'
+      );
+      expect(run).toHaveBeenCalledWith(
+        'dotnet',
+        ['test', '/tmp/dotnet-project/src/Api/Api.csproj'],
+        '/tmp/dotnet-project'
+      );
+      expect(run).toHaveBeenCalledWith(
+        'dotnet',
+        ['build', '/tmp/dotnet-project/src/Api/Api.csproj', '-c', 'Release'],
+        '/tmp/dotnet-project'
+      );
+      expect(run).toHaveBeenCalledWith(
+        'dotnet',
+        ['run', '--project', '/tmp/dotnet-project/src/Api/Api.csproj'],
+        '/tmp/dotnet-project'
+      );
     });
   });
 
@@ -1365,7 +1456,9 @@ describe('Runtime Adapters', () => {
       delete process.env.RAPIDKIT_DEP_SHARING_MODE;
       delete process.env.RAPIDKIT_WORKSPACE_PATH;
       // Mock fs.existsSync so no .rapidkit-workspace marker is found on the local filesystem
-      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
+        normalizePath(String(p)).endsWith('/tmp/project/package-lock.json')
+      );
       const runCommandInCwd = vi.fn().mockResolvedValue(0);
       const adapter = getRuntimeAdapter('node', {
         runCommandInCwd,
@@ -1393,6 +1486,19 @@ describe('Runtime Adapters', () => {
         ['-B', '-q', '-DskipTests', 'dependency:go-offline'],
         '/tmp/project'
       );
+    });
+
+    it('returns dotnet adapter from factory', async () => {
+      const runCommandInCwd = vi.fn().mockResolvedValue(0);
+      const adapter = getRuntimeAdapter('dotnet', {
+        runCommandInCwd,
+        runCoreRapidkit: vi.fn().mockResolvedValue(0),
+      });
+
+      expect(adapter.runtime).toBe('dotnet');
+      const result = await adapter.initProject('/tmp/project');
+      expect(result.exitCode).toBe(0);
+      expect(runCommandInCwd).toHaveBeenCalledWith('dotnet', ['restore'], '/tmp/project');
     });
   });
 });

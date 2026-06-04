@@ -1,12 +1,23 @@
 import fsExtra from 'fs-extra';
 import * as path from 'path';
 
-import type { BackendConfidence, BackendImportStack } from './utils/backend-framework-contract.js';
+import type {
+  BackendConfidence,
+  BackendImportStack,
+  BackendRuntimeFamily,
+  BackendSupportTier,
+} from './utils/backend-framework-contract.js';
 
 export interface ImportedProjectRegistryEntry {
   name: string;
   path: string;
+  relativePath?: string;
   stack: BackendImportStack;
+  runtime?: BackendRuntimeFamily;
+  framework?: string;
+  frameworkDisplayName?: string;
+  supportTier?: BackendSupportTier;
+  moduleSupport?: boolean;
   confidence: BackendConfidence;
   source?: 'local-folder' | 'git-url';
   importedAt: string;

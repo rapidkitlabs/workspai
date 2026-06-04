@@ -92,6 +92,12 @@ describe('backend-framework-contract', () => {
     const railsProject = await createTempProject('rails');
     await fs.writeFile(path.join(railsProject, 'Gemfile'), 'gem "rails", "~> 7.1.0"\n');
 
+    const dotnetProject = await createTempProject('dotnet');
+    await fs.writeFile(
+      path.join(dotnetProject, 'Api.csproj'),
+      '<Project Sdk="Microsoft.NET.Sdk.Web"><ItemGroup><PackageReference Include="Microsoft.AspNetCore.OpenApi" /></ItemGroup></Project>'
+    );
+
     expect(detectBackendFrameworkFromProject(gofiberProject)).toMatchObject({
       key: 'gofiber',
       runtime: 'go',
@@ -108,6 +114,12 @@ describe('backend-framework-contract', () => {
       key: 'rails',
       runtime: 'ruby',
       importStack: 'rails',
+      confidence: 'high',
+    });
+    expect(detectBackendFrameworkFromProject(dotnetProject)).toMatchObject({
+      key: 'dotnet',
+      runtime: 'dotnet',
+      importStack: 'dotnet',
       confidence: 'high',
     });
   });

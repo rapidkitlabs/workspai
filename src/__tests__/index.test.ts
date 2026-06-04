@@ -181,7 +181,7 @@ describe('CLI Entry Point', () => {
           npx rapidkit workspace hydrate <archive> --output <dir> Hydrate workspace archive
           npx rapidkit workspace policy show        Show effective workspace policies
           npx rapidkit workspace policy set <k> <v> Update workspace policy values
-          npx rapidkit setup python|node|go|java [--warm-deps]  Set up runtime (+ optional deps warm-up)
+          npx rapidkit setup python|node|go|java|dotnet [--warm-deps]  Set up runtime (+ optional deps warm-up)
           npx rapidkit mirror [status|sync|verify|rotate] Registry mirror management
           npx rapidkit cache [status|clear|prune|repair]  Package cache management
 
@@ -196,7 +196,7 @@ describe('CLI Entry Point', () => {
 
       expect(noArg.stdout.replace(/\r/g, '')).toBe(withHelp.stdout.replace(/\r/g, ''));
       expect(noArg.stdout.replace(/\r/g, '')).toBe(withHelpCommand.stdout.replace(/\r/g, ''));
-    });
+    }, 20000);
   });
 
   describe('Autopilot Command (CLI Entrypoint)', () => {

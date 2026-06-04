@@ -28,6 +28,32 @@ export class GoRuntimeAdapter implements RuntimeAdapter {
     };
   }
 
+  private findGoRunTarget(projectPath: string): string {
+    const directMain = path.join(projectPath, 'main.go');
+    if (fs.existsSync(directMain)) {
+      return './main.go';
+    }
+
+    const cmdPath = path.join(projectPath, 'cmd');
+    try {
+      const cmdEntries = fs
+        .readdirSync(cmdPath, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .sort();
+
+      for (const entryName of cmdEntries) {
+        if (fs.existsSync(path.join(cmdPath, entryName, 'main.go'))) {
+          return `./cmd/${entryName}`;
+        }
+      }
+    } catch {
+      // Fall back below.
+    }
+
+    return './.';
+  }
+
   private findWorkspaceRoot(startPath: string): string | null {
     let current = startPath;
     while (true) {
@@ -132,7 +158,7 @@ export class GoRuntimeAdapter implements RuntimeAdapter {
         if (fs.existsSync(makefilePath)) {
           return this.run('make', ['run'], projectPath);
         }
-        return this.run('go', ['run', './main.go'], projectPath);
+        return this.run('go', ['run', this.findGoRunTarget(projectPath)], projectPath);
       })();
     });
   }
@@ -167,7 +193,7 @@ export class GoRuntimeAdapter implements RuntimeAdapter {
       const prereq = await this.ensureGoInstalled(projectPath);
       if (prereq) return prereq;
 
-      return this.run('go', ['run', './main.go'], projectPath);
+      return this.run('go', ['run', this.findGoRunTarget(projectPath)], projectPath);
     });
   }
 

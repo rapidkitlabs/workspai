@@ -21,6 +21,10 @@ import {
   type BackendRuntimeFamily,
 } from './utils/backend-framework-contract.js';
 import {
+  resolveProjectCommandCapabilities,
+  type ProjectCommandCapabilities,
+} from './utils/project-command-capabilities.js';
+import {
   DOCTOR_PROJECT_EVIDENCE_SCHEMA,
   DOCTOR_WORKSPACE_EVIDENCE_SCHEMA,
   isDoctorEvidencePayloadCompatible,
@@ -205,6 +209,7 @@ interface ProjectHealth {
   hasCodeQuality?: boolean;
   vulnerabilities?: number;
   probes?: ProjectProbeResult[];
+  commandCapabilities?: ProjectCommandCapabilities;
 }
 
 type DoctorScopeLabel = 'host-system' | 'workspace-aggregate' | 'project-scoped';
@@ -2150,14 +2155,14 @@ async function checkProject(
   const isScalaProject = await fsExtra.pathExists(buildSbtPath);
   const isDenoProject =
     (await fsExtra.pathExists(denoJsonPath)) || (await fsExtra.pathExists(denoJsoncPath));
-  let isDotnetProject = false;
+  let isDotnetProject = projectJsonData?.runtime === 'dotnet';
   try {
-    const projectEntries = await fsExtra.readdir(projectPath);
-    isDotnetProject = projectEntries.some(
-      (entry) => entry.endsWith('.csproj') || entry.endsWith('.sln')
-    );
+    isDotnetProject =
+      isDotnetProject ||
+      (await hasFileWithSuffixWithinDepth(projectPath, '.csproj', 3)) ||
+      (await hasFileWithSuffixWithinDepth(projectPath, '.sln', 2));
   } catch {
-    isDotnetProject = false;
+    isDotnetProject = projectJsonData?.runtime === 'dotnet';
   }
 
   const isGoProject =
@@ -2818,9 +2823,12 @@ async function checkProject(
     health.coreInstalled = false;
 
     const objPath = path.join(projectPath, 'obj');
+    const srcObjPath = path.join(projectPath, 'src', 'obj');
     const packagesLockPath = path.join(projectPath, 'packages.lock.json');
     health.depsInstalled =
-      (await fsExtra.pathExists(objPath)) || (await fsExtra.pathExists(packagesLockPath));
+      (await fsExtra.pathExists(objPath)) ||
+      (await fsExtra.pathExists(srcObjPath)) ||
+      (await fsExtra.pathExists(packagesLockPath));
     if (!health.depsInstalled) {
       health.issues.push('.NET restore/build artifacts not found');
       health.fixCommands?.push(buildProjectFixCommand(projectPath, 'dotnet restore'));
@@ -2830,6 +2838,8 @@ async function checkProject(
     health.hasEnvFile = await fsExtra.pathExists(envPath);
 
     await performCommonChecks(projectPath, health);
+    await appendBuiltInBackendProbes(projectPath, health);
+    await appendCustomConfiguredProbes(projectPath, health);
     return health;
   }
 
@@ -2866,6 +2876,41 @@ async function listDirectories(basePath: string): Promise<string[]> {
       return [];
     }
   }
+}
+
+async function hasFileWithSuffixWithinDepth(
+  basePath: string,
+  suffix: string,
+  maxDepth: number
+): Promise<boolean> {
+  const queue: Array<{ dir: string; depth: number }> = [{ dir: basePath, depth: 0 }];
+  const ignoredDirs = new Set(['.git', '.rapidkit', 'node_modules', 'bin', 'obj', 'target']);
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || current.depth > maxDepth) {
+      continue;
+    }
+
+    let entries;
+    try {
+      entries = await fsExtra.readdir(current.dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.toLowerCase().endsWith(suffix.toLowerCase())) {
+        return true;
+      }
+
+      if (entry.isDirectory() && !ignoredDirs.has(entry.name)) {
+        queue.push({ dir: path.join(current.dir, entry.name), depth: current.depth + 1 });
+      }
+    }
+  }
+
+  return false;
 }
 
 async function hasRapidkitProjectMarkers(projectPath: string): Promise<boolean> {
@@ -3233,6 +3278,9 @@ async function getWorkspaceHealth(
 
   if (cached) {
     health.projects = cached.projects;
+    for (const projectHealth of health.projects) {
+      projectHealth.commandCapabilities = resolveProjectCommandCapabilities(projectHealth.path);
+    }
     health.projectScanCached = true;
     logger.debug(`Workspace project health cache hit: ${cachePath}`);
   } else {
@@ -3240,6 +3288,9 @@ async function getWorkspaceHealth(
       const projectHealthResults = await Promise.all(
         projectPaths.map((projectPath) => checkProject(projectPath))
       );
+      for (const projectHealth of projectHealthResults) {
+        projectHealth.commandCapabilities = resolveProjectCommandCapabilities(projectHealth.path);
+      }
       health.projects = projectHealthResults;
       health.projectScanCached = false;
       await saveWorkspaceProjectCache(cachePath, {
@@ -3346,6 +3397,7 @@ async function getProjectHealthEnvelope(projectPath: string): Promise<ProjectHea
   const workspacePath = await findWorkspace(projectPath);
   const systemHealth = await collectSystemChecks();
   const projectHealth = await checkProject(projectPath, { allowNonRapidkit: true });
+  projectHealth.commandCapabilities = resolveProjectCommandCapabilities(projectPath);
   const healthScore = calculateHealthScore(
     [
       systemHealth.python,
@@ -3627,6 +3679,19 @@ function renderProjectHealth(project: ProjectHealth): void {
       if (probe.recommendation) {
         console.log(`       ${chalk.dim('↳')} ${chalk.gray(probe.recommendation)}`);
       }
+    }
+  }
+
+  if (project.commandCapabilities) {
+    const caps = project.commandCapabilities;
+    console.log(`   ${chalk.bold('Command support:')}`);
+    console.log(
+      `     ${chalk.green('supported')} ${caps.supportedCommands.length} • ${chalk.yellow('unsupported')} ${caps.unsupportedCommands.length} • ${chalk.gray('global')} ${caps.globalCommands.length}`
+    );
+    if (caps.unsupportedCommands.length > 0) {
+      const preview = caps.unsupportedCommands.slice(0, 8).join(', ');
+      const suffix = caps.unsupportedCommands.length > 8 ? ', ...' : '';
+      console.log(`     ${chalk.dim('↳')} ${chalk.gray(`Unsupported here: ${preview}${suffix}`)}`);
     }
   }
 }
@@ -4372,6 +4437,7 @@ export async function runDoctor(
           issues: p.issues,
           fixCommands: p.fixCommands,
           probes: p.probes,
+          commandCapabilities: p.commandCapabilities,
         })),
         summary: {
           totalProjects: health.projects.length,
@@ -4563,6 +4629,7 @@ export async function runDoctor(
           issues: envelope.project.issues,
           fixCommands: envelope.project.fixCommands,
           probes: envelope.project.probes,
+          commandCapabilities: envelope.project.commandCapabilities,
         },
         evidencePath: envelope.evidencePath,
         healthScore: envelope.healthScore,

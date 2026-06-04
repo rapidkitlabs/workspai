@@ -127,7 +127,8 @@ function buildToolchainLock(
   installMethod: InstallMethod,
   pythonVersion?: string,
   nodeVersion?: string,
-  goVersion?: string
+  goVersion?: string,
+  dotnetVersion?: string
 ): string {
   return JSON.stringify(
     {
@@ -149,6 +150,10 @@ function buildToolchainLock(
           version: null,
           build_tool: null,
           build_tool_version: null,
+        },
+        dotnet: {
+          version: dotnetVersion || null,
+          sdk: dotnetVersion || null,
         },
       },
     },
@@ -180,6 +185,29 @@ cache:
 `;
 }
 
+async function detectGoVersion(): Promise<string | undefined> {
+  try {
+    const { stdout: goOut } = await execa('go', ['version'], { timeout: 3000, stdio: 'pipe' });
+    const gm = goOut.match(/go(\d+\.\d+(?:\.\d+)?)/i);
+    return gm ? gm[1] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function detectDotnetVersion(): Promise<string | undefined> {
+  try {
+    const { stdout } = await execa('dotnet', ['--version'], {
+      timeout: 3000,
+      stdio: 'pipe',
+    });
+    const version = stdout.trim();
+    return version.length > 0 ? version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function writeWorkspaceFoundationFiles(
   workspacePath: string,
   workspaceName: string,
@@ -187,15 +215,8 @@ async function writeWorkspaceFoundationFiles(
   pythonVersion?: string,
   profile?: string
 ): Promise<void> {
-  // Detect Go version silently at creation time so toolchain.lock is accurate
-  let goVersion: string | undefined;
-  try {
-    const { stdout: goOut } = await execa('go', ['version'], { timeout: 3000, stdio: 'pipe' });
-    const gm = goOut.match(/go(\d+\.\d+(?:\.\d+)?)/i);
-    goVersion = gm ? gm[1] : undefined;
-  } catch {
-    /* Go not installed — leave null */
-  }
+  // Detect optional runtimes silently so toolchain.lock is accurate without blocking creation.
+  const [goVersion, dotnetVersion] = await Promise.all([detectGoVersion(), detectDotnetVersion()]);
 
   await fsExtra.outputFile(
     path.join(workspacePath, '.rapidkit', 'workspace.json'),
@@ -204,7 +225,7 @@ async function writeWorkspaceFoundationFiles(
   );
   await fsExtra.outputFile(
     path.join(workspacePath, '.rapidkit', 'toolchain.lock'),
-    buildToolchainLock(installMethod, pythonVersion, process.version, goVersion),
+    buildToolchainLock(installMethod, pythonVersion, process.version, goVersion, dotnetVersion),
     'utf-8'
   );
   await fsExtra.outputFile(
@@ -250,14 +271,7 @@ export async function syncWorkspaceFoundationFiles(
 
   const created: string[] = [];
 
-  let goVersion: string | undefined;
-  try {
-    const { stdout: goOut } = await execa('go', ['version'], { timeout: 3000, stdio: 'pipe' });
-    const gm = goOut.match(/go(\d+\.\d+(?:\.\d+)?)/i);
-    goVersion = gm ? gm[1] : undefined;
-  } catch {
-    /* Go not installed — leave null in toolchain lock */
-  }
+  const [goVersion, dotnetVersion] = await Promise.all([detectGoVersion(), detectDotnetVersion()]);
 
   const foundationFiles: Array<{ relPath: string; content: string }> = [
     {
@@ -266,7 +280,13 @@ export async function syncWorkspaceFoundationFiles(
     },
     {
       relPath: path.join('.rapidkit', 'toolchain.lock'),
-      content: buildToolchainLock(installMethod, pythonVersion, process.version, goVersion),
+      content: buildToolchainLock(
+        installMethod,
+        pythonVersion,
+        process.version,
+        goVersion,
+        dotnetVersion
+      ),
     },
     {
       relPath: path.join('.rapidkit', 'policies.yml'),
@@ -842,7 +862,11 @@ export async function createProject(
             value: 'go-only',
           },
           {
-            name: 'polyglot    — Python + Node.js + Go + Java multi-runtime workspace',
+            name: 'dotnet-only — .NET runtime (ASP.NET Core services)',
+            value: 'dotnet-only',
+          },
+          {
+            name: 'polyglot    — Python + Node.js + Go + Java + .NET multi-runtime workspace',
             value: 'polyglot',
           },
           {
@@ -975,7 +999,13 @@ export async function createProject(
   // node-only / minimal use
   // nestjs.standard which depends on rapidkit-core (Python), so they follow
   // the full Python install path.
-  const PYTHON_FREE_PROFILES = new Set(['go-only', 'java-only', 'node-only', 'minimal']);
+  const PYTHON_FREE_PROFILES = new Set([
+    'go-only',
+    'java-only',
+    'dotnet-only',
+    'node-only',
+    'minimal',
+  ]);
 
   if (PYTHON_FREE_PROFILES.has(resolvedProfile)) {
     const spinner2 = ora('Creating workspace').start();
@@ -999,6 +1029,7 @@ export async function createProject(
       const profileLabel: Record<string, string> = {
         'go-only': 'Go-only',
         'java-only': 'Java-only',
+        'dotnet-only': '.NET-only',
         'node-only': 'Node.js-only',
         minimal: 'Minimal',
       };
@@ -1017,12 +1048,17 @@ export async function createProject(
                 `cd my-service\n` +
                 `npx rapidkit init\n` +
                 `npx rapidkit dev\n`
-              : resolvedProfile === 'node-only'
-                ? `npx rapidkit create project nestjs.standard my-app\n` +
-                  `cd my-app\n` +
+              : resolvedProfile === 'dotnet-only'
+                ? `npx rapidkit create project dotnet.webapi.clean my-api\n` +
+                  `cd my-api\n` +
                   `npx rapidkit init\n` +
                   `npx rapidkit dev\n`
-                : `npx rapidkit create project\ncd <project-name>\nnpx rapidkit init\nnpx rapidkit dev\n`) +
+                : resolvedProfile === 'node-only'
+                  ? `npx rapidkit create project nestjs.standard my-app\n` +
+                    `cd my-app\n` +
+                    `npx rapidkit init\n` +
+                    `npx rapidkit dev\n`
+                  : `npx rapidkit create project\ncd <project-name>\nnpx rapidkit init\nnpx rapidkit dev\n`) +
           `\`\`\`\n`,
         'utf-8'
       );
@@ -1088,6 +1124,28 @@ export async function createProject(
             '💡 No Python required — Spring Boot kit runs through the npm package with Java tooling.'
           )
         );
+      } else if (resolvedProfile === 'dotnet-only') {
+        console.log(chalk.white('   npx rapidkit create project dotnet.webapi.clean my-api'));
+        console.log(chalk.white('   cd my-api'));
+        console.log(chalk.white('   npx rapidkit init'));
+        console.log(chalk.white('   npx rapidkit dev\n'));
+        console.log(
+          chalk.gray(
+            '💡 No Python required — ASP.NET Core kit runs through the npm package with .NET tooling.'
+          )
+        );
+        try {
+          const { stdout } = await execa('dotnet', ['--version'], { timeout: 3000 });
+          console.log(
+            chalk.gray(`⚙️  .NET SDK ${stdout.trim()} detected — ready for ASP.NET Core projects`)
+          );
+        } catch {
+          console.log(
+            chalk.yellow(
+              '\n⚠️  .NET SDK is not installed — install it from https://dotnet.microsoft.com/download'
+            )
+          );
+        }
       } else if (resolvedProfile === 'node-only') {
         console.log(chalk.white('   npx rapidkit create project nestjs.standard my-app'));
         console.log(chalk.white('   cd my-app'));
@@ -1106,7 +1164,7 @@ export async function createProject(
         console.log(chalk.white('   npx rapidkit dev\n'));
         console.log(
           chalk.gray(
-            '💡 Bootstrap a specific runtime: rapidkit bootstrap --profile java-only|python-only|node-only|go-only|polyglot|enterprise'
+            '💡 Bootstrap a specific runtime: rapidkit bootstrap --profile java-only|python-only|node-only|go-only|dotnet-only|polyglot|enterprise'
           )
         );
       }
@@ -1125,7 +1183,7 @@ export async function createProject(
   }
 
   // ── Python pre-check (only for python-required profiles) ───────────────────
-  // go-only / java-only / node-only / minimal users have already returned above without
+  // go-only / java-only / dotnet-only / node-only / minimal users have already returned above without
   // needing Python at all. Only python-only / polyglot / enterprise reach here.
   // Smart fallback: if Python is not found, offer options instead of hard failure.
   {
@@ -1214,7 +1272,13 @@ export async function createProject(
           resolvedProfile = fallback;
           // Restart with fallback profile in PYTHON_FREE_PROFILES path
           // We'll return early and restart the creation with the fallback profile
-          const PYTHON_FREE_PROFILES = new Set(['go-only', 'java-only', 'node-only', 'minimal']);
+          const PYTHON_FREE_PROFILES = new Set([
+            'go-only',
+            'java-only',
+            'dotnet-only',
+            'node-only',
+            'minimal',
+          ]);
           if (PYTHON_FREE_PROFILES.has(fallback)) {
             const spinner2 = ora('Creating workspace').start();
             try {
@@ -1229,6 +1293,7 @@ export async function createProject(
               const profileLabel: Record<string, string> = {
                 'go-only': 'Go-only',
                 'java-only': 'Java-only',
+                'dotnet-only': '.NET-only',
                 'node-only': 'Node.js-only',
                 minimal: 'Minimal',
               };
@@ -1247,12 +1312,17 @@ export async function createProject(
                         `cd my-service\n` +
                         `npx rapidkit init\n` +
                         `npx rapidkit dev\n`
-                      : fallback === 'node-only'
-                        ? `npx rapidkit create project nestjs.standard my-app\n` +
-                          `cd my-app\n` +
+                      : fallback === 'dotnet-only'
+                        ? `npx rapidkit create project dotnet.webapi.clean my-api\n` +
+                          `cd my-api\n` +
                           `npx rapidkit init\n` +
                           `npx rapidkit dev\n`
-                        : `npx rapidkit create project\ncd <project-name>\nnpx rapidkit init\nnpx rapidkit dev\n`) +
+                        : fallback === 'node-only'
+                          ? `npx rapidkit create project nestjs.standard my-app\n` +
+                            `cd my-app\n` +
+                            `npx rapidkit init\n` +
+                            `npx rapidkit dev\n`
+                          : `npx rapidkit create project\ncd <project-name>\nnpx rapidkit init\nnpx rapidkit dev\n`) +
                   `\`\`\`\n`,
                 'utf-8'
               );
@@ -1314,7 +1384,13 @@ export async function createProject(
         resolvedProfile = fallback;
 
         // Immediately restart with fallback profile
-        const PYTHON_FREE_PROFILES = new Set(['go-only', 'java-only', 'node-only', 'minimal']);
+        const PYTHON_FREE_PROFILES = new Set([
+          'go-only',
+          'java-only',
+          'dotnet-only',
+          'node-only',
+          'minimal',
+        ]);
         if (PYTHON_FREE_PROFILES.has(fallback)) {
           const spinner2 = ora('Creating workspace').start();
           try {
@@ -1599,7 +1675,7 @@ export async function createProject(
     console.log(chalk.gray('  2. Create your first project: rapidkit create project'));
     console.log(
       chalk.gray(
-        `  3. See all runtimes: rapidkit list  # Shows: fastapi, nestjs, springboot, gofiber, gogin`
+        `  3. See all runtimes: rapidkit list  # Shows: fastapi, nestjs, springboot, gofiber, gogin, dotnet`
       )
     );
 
@@ -1607,6 +1683,7 @@ export async function createProject(
     console.log(chalk.gray(`  • Add Python? → rapidkit bootstrap --profile python-only|polyglot`));
     console.log(chalk.gray(`  • Add Node.js? → rapidkit bootstrap --profile node-only|polyglot`));
     console.log(chalk.gray(`  • Add Go? → rapidkit bootstrap --profile go-only|polyglot`));
+    console.log(chalk.gray(`  • Add .NET? → rapidkit bootstrap --profile dotnet-only|polyglot`));
     console.log(chalk.gray(`  • Full setup? → rapidkit bootstrap --profile enterprise`));
 
     console.log(chalk.cyan('\n📖 Common commands:'));
@@ -3137,7 +3214,7 @@ async function showDryRun(
     console.log(chalk.gray('  • Change profile later: rapidkit bootstrap --profile <profile>'));
     console.log(
       chalk.gray(
-        '  • Profile options: minimal|java-only|python-only|node-only|go-only|polyglot|enterprise'
+        '  • Profile options: minimal|java-only|python-only|node-only|go-only|dotnet-only|polyglot|enterprise'
       )
     );
     console.log(chalk.gray('  • Help: npx rapidkit --help'));

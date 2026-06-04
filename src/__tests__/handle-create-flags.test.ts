@@ -120,6 +120,111 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
     }
   });
 
+  it('prompts for target on `create` and supports choosing workspace', async () => {
+    vi.spyOn(inquirer, 'prompt')
+      .mockResolvedValueOnce({ createTarget: 'workspace' })
+      .mockResolvedValueOnce({ workspaceName: 'my-workspace' })
+      .mockResolvedValueOnce({ author: 'RapidKit User' });
+
+    const createWsSpy = vi.spyOn(create, 'createProject').mockResolvedValue(undefined as never);
+    const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
+
+    const stdinIsTty = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+    Object.defineProperty(process.stdin, 'isTTY', {
+      configurable: true,
+      get: () => true,
+    });
+
+    try {
+      const code = await index.handleCreateOrFallback(['create']);
+      expect(code).toBe(0);
+      expect(createWsSpy).toHaveBeenCalledWith(
+        'my-workspace',
+        expect.objectContaining({
+          dryRun: false,
+          profile: undefined,
+          yes: false,
+        })
+      );
+      expect(runSpy).not.toHaveBeenCalled();
+    } finally {
+      if (stdinIsTty) {
+        Object.defineProperty(process.stdin, 'isTTY', stdinIsTty);
+      }
+    }
+  });
+
+  it.each([
+    ['gofiber.standard', 'fiber-api', 'go'],
+    ['gogin.standard', 'gin-api', 'go'],
+    ['springboot.standard', 'spring-api', 'java'],
+    ['dotnet.webapi.clean', 'dotnet-api', 'dotnet'],
+  ])(
+    'creates npm-owned %s projects without invoking Python core',
+    async (kit, projectName, expectedRuntime) => {
+      const resolveSpy = vi.spyOn(coreExec, 'resolveRapidkitPython').mockResolvedValue();
+      const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
+
+      const code = await index.handleCreateOrFallback([
+        'create',
+        'project',
+        kit,
+        projectName,
+        '--skip-git',
+        '--skip-install',
+      ]);
+
+      expect(code).toBe(0);
+      expect(resolveSpy).not.toHaveBeenCalled();
+      expect(runSpy).not.toHaveBeenCalled();
+
+      const projectRoot = path.join(tmpDir, projectName);
+      expect(await fsExtra.pathExists(projectRoot)).toBe(true);
+      const projectJson = await fsExtra.readJson(
+        path.join(projectRoot, '.rapidkit', 'project.json')
+      );
+      expect(projectJson.kit_name).toBe(kit);
+      expect(projectJson.runtime).toBe(expectedRuntime);
+    }
+  );
+
+  it('uses npm-owned generators when interactive project selection chooses Go or Java kits', async () => {
+    vi.spyOn(inquirer, 'prompt')
+      .mockResolvedValueOnce({ createTarget: 'project' })
+      .mockResolvedValueOnce({ kitChoice: 'gogin.standard' })
+      .mockResolvedValueOnce({ projectName: 'interactive-gin-api' });
+
+    const resolveSpy = vi.spyOn(coreExec, 'resolveRapidkitPython').mockResolvedValue();
+    const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
+
+    const stdinIsTty = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+    Object.defineProperty(process.stdin, 'isTTY', {
+      configurable: true,
+      get: () => true,
+    });
+
+    try {
+      const code = await index.handleCreateOrFallback([
+        'create',
+        '--no-workspace',
+        '--skip-install',
+      ]);
+      expect(code).toBe(0);
+      expect(resolveSpy).not.toHaveBeenCalled();
+      expect(runSpy).not.toHaveBeenCalled();
+
+      const projectJson = await fsExtra.readJson(
+        path.join(tmpDir, 'interactive-gin-api', '.rapidkit', 'project.json')
+      );
+      expect(projectJson.kit_name).toBe('gogin.standard');
+      expect(projectJson.runtime).toBe('go');
+    } finally {
+      if (stdinIsTty) {
+        Object.defineProperty(process.stdin, 'isTTY', stdinIsTty);
+      }
+    }
+  });
+
   it('rejects invalid project names for npm-level generators before filesystem writes', async () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);

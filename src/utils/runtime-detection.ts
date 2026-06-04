@@ -61,6 +61,10 @@ export function isJavaProject(projectJson: RapidkitProjectJson, projectPath: str
   return detectBackendRuntime(projectJson, projectPath) === 'java';
 }
 
+export function isDotnetProject(projectJson: RapidkitProjectJson, projectPath: string): boolean {
+  return detectBackendRuntime(projectJson, projectPath) === 'dotnet';
+}
+
 export function isPythonProject(projectJson: RapidkitProjectJson, projectPath: string): boolean {
   return detectBackendRuntime(projectJson, projectPath) === 'python';
 }

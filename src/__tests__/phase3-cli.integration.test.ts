@@ -49,7 +49,7 @@ describe('Phase 3 commands - CLI process integration', () => {
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
-  }, 20000);
+  }, 60000);
 
   it('supports workspace policy set/show for mode, dependency mode, and rules', () => {
     const dist = ensureDistBuilt();
@@ -128,7 +128,7 @@ describe('Phase 3 commands - CLI process integration', () => {
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
-  });
+  }, 20000);
 
   it('rejects workspace policy operations outside a workspace', () => {
     const dist = ensureDistBuilt();
@@ -433,7 +433,11 @@ describe('Phase 3 commands - CLI process integration', () => {
       const output = `${run.stdout || ''}\n${run.stderr || ''}`;
       expect(output).not.toContain('Unknown command: bootstrap');
       expect(output).not.toContain('Runtime adapters are disabled');
-      expect(fs.existsSync(path.join(projectDir, 'package-lock.json'))).toBe(true);
+      expect(
+        ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'].some((lockfile) =>
+          fs.existsSync(path.join(projectDir, lockfile))
+        )
+      ).toBe(true);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }

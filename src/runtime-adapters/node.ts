@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import type { CommandResult, RuntimeAdapter } from './types.js';
 
 export type NodeCommandRunner = (command: string, args: string[], cwd: string) => Promise<number>;
@@ -74,6 +75,13 @@ export class NodeRuntimeAdapter implements RuntimeAdapter {
 
     const originalNpmCache = process.env.npm_config_cache;
     const originalStoreDir = process.env.npm_config_store_dir;
+    const originalDependencyMode = process.env.RAPIDKIT_DEP_SHARING_MODE;
+    const originalWorkspacePath = process.env.RAPIDKIT_WORKSPACE_PATH;
+
+    process.env.RAPIDKIT_DEP_SHARING_MODE = mode;
+    if (workspace) {
+      process.env.RAPIDKIT_WORKSPACE_PATH = workspace;
+    }
 
     if (runtime === 'pnpm') {
       process.env.npm_config_store_dir = path.join(basePath, 'pnpm-store');
@@ -90,13 +98,56 @@ export class NodeRuntimeAdapter implements RuntimeAdapter {
 
       if (typeof originalStoreDir === 'undefined') delete process.env.npm_config_store_dir;
       else process.env.npm_config_store_dir = originalStoreDir;
+
+      if (typeof originalDependencyMode === 'undefined')
+        delete process.env.RAPIDKIT_DEP_SHARING_MODE;
+      else process.env.RAPIDKIT_DEP_SHARING_MODE = originalDependencyMode;
+
+      if (typeof originalWorkspacePath === 'undefined') delete process.env.RAPIDKIT_WORKSPACE_PATH;
+      else process.env.RAPIDKIT_WORKSPACE_PATH = originalWorkspacePath;
     });
   }
 
   private detectPackageManager(projectPath: string): PackageManager {
+    if (fs.existsSync(path.join(projectPath, 'package-lock.json'))) return 'npm';
     if (fs.existsSync(path.join(projectPath, 'pnpm-lock.yaml'))) return 'pnpm';
     if (fs.existsSync(path.join(projectPath, 'yarn.lock'))) return 'yarn';
+    if (!this.commandAvailable('npm')) {
+      if (this.commandAvailable('pnpm')) return 'pnpm';
+      if (this.commandAvailable('yarn')) return 'yarn';
+    }
     return 'npm';
+  }
+
+  private hasPinnedPackageManager(projectPath: string): boolean {
+    return (
+      fs.existsSync(path.join(projectPath, 'package-lock.json')) ||
+      fs.existsSync(path.join(projectPath, 'pnpm-lock.yaml')) ||
+      fs.existsSync(path.join(projectPath, 'yarn.lock'))
+    );
+  }
+
+  private availablePackageManagers(projectPath: string): PackageManager[] {
+    const preferred = this.detectPackageManager(projectPath);
+    if (this.hasPinnedPackageManager(projectPath)) {
+      return [preferred];
+    }
+
+    const candidates: PackageManager[] = ['npm', 'pnpm', 'yarn'];
+    return [
+      preferred,
+      ...candidates.filter(
+        (candidate) => candidate !== preferred && this.commandAvailable(candidate)
+      ),
+    ];
+  }
+
+  private commandAvailable(command: string): boolean {
+    const result = spawnSync(command, ['--version'], {
+      stdio: 'ignore',
+      shell: process.platform === 'win32',
+    });
+    return result.status === 0;
   }
 
   private scriptArgs(pm: PackageManager, scriptName: string): string[] {
@@ -106,6 +157,22 @@ export class NodeRuntimeAdapter implements RuntimeAdapter {
 
     // pnpm/yarn support `run` consistently across versions.
     return ['run', scriptName];
+  }
+
+  private async runScriptWithFallback(
+    projectPath: string,
+    scriptName: string
+  ): Promise<CommandResult> {
+    let lastResult: CommandResult = { exitCode: 1 };
+    for (const pm of this.availablePackageManagers(projectPath)) {
+      lastResult = await this.withDependencyEnv(projectPath, pm, () =>
+        this.run(pm, this.scriptArgs(pm, scriptName), projectPath)
+      );
+      if (lastResult.exitCode === 0) {
+        return lastResult;
+      }
+    }
+    return lastResult;
   }
 
   async checkPrereqs(): Promise<CommandResult> {
@@ -140,31 +207,19 @@ export class NodeRuntimeAdapter implements RuntimeAdapter {
   }
 
   async runDev(projectPath: string): Promise<CommandResult> {
-    const pm = this.detectPackageManager(projectPath);
-    return this.withDependencyEnv(projectPath, pm, () =>
-      this.run(pm, this.scriptArgs(pm, 'dev'), projectPath)
-    );
+    return this.runScriptWithFallback(projectPath, 'dev');
   }
 
   async runTest(projectPath: string): Promise<CommandResult> {
-    const pm = this.detectPackageManager(projectPath);
-    return this.withDependencyEnv(projectPath, pm, () =>
-      this.run(pm, this.scriptArgs(pm, 'test'), projectPath)
-    );
+    return this.runScriptWithFallback(projectPath, 'test');
   }
 
   async runBuild(projectPath: string): Promise<CommandResult> {
-    const pm = this.detectPackageManager(projectPath);
-    return this.withDependencyEnv(projectPath, pm, () =>
-      this.run(pm, this.scriptArgs(pm, 'build'), projectPath)
-    );
+    return this.runScriptWithFallback(projectPath, 'build');
   }
 
   async runStart(projectPath: string): Promise<CommandResult> {
-    const pm = this.detectPackageManager(projectPath);
-    return this.withDependencyEnv(projectPath, pm, () =>
-      this.run(pm, this.scriptArgs(pm, 'start'), projectPath)
-    );
+    return this.runScriptWithFallback(projectPath, 'start');
   }
 
   async doctorHints(_projectPath: string): Promise<string[]> {

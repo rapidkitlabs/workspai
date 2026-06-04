@@ -29,12 +29,26 @@ import { getRuntimeAdapter } from './runtime-adapters/index.js';
 import type { CommandResult } from './runtime-adapters/types.js';
 import { Cache } from './utils/cache.js';
 import {
+  isDotnetProject,
   isGoProject,
   isJavaProject,
   isNodeProject,
   isPythonProject,
   readRapidkitProjectJson,
 } from './utils/runtime-detection.js';
+import {
+  formatUnsupportedProjectCommand,
+  getProjectCommandCapability,
+  isProjectCapabilityRequest,
+  resolveProjectCommandCapabilities,
+} from './utils/project-command-capabilities.js';
+import {
+  isNpmBackedKit,
+  listInteractiveKits,
+  normalizeKitId,
+  resolveKitDefinition,
+  runNpmKitGenerator,
+} from './utils/kit-registry.js';
 import { evaluateReleaseReadiness, runReleaseReadinessCommand } from './readiness.js';
 import { runMirrorLifecycle } from './utils/mirror.js';
 import {
@@ -90,24 +104,6 @@ function normalizeFallbackTemplate(kit: string): 'fastapi' | 'nestjs' | null {
   return null;
 }
 
-/** Returns true when the kit slug targets the Go/Fiber generator (no Python needed). */
-function isGoFiberKit(kit: string): boolean {
-  const k = kit.trim().toLowerCase();
-  return k.startsWith('gofiber') || k === 'go' || k === 'go.standard' || k === 'fiber';
-}
-
-/** Returns true when the kit slug targets the Go/Gin generator (no Python needed). */
-function isGoGinKit(kit: string): boolean {
-  const k = kit.trim().toLowerCase();
-  return k.startsWith('gogin') || k === 'gin';
-}
-
-/** Returns true when the kit slug targets the Spring Boot generator (no Python needed). */
-function isSpringBootKit(kit: string): boolean {
-  const k = kit.trim().toLowerCase();
-  return k.startsWith('springboot') || k === 'spring' || k === 'springboot' || k === 'java';
-}
-
 function readFlagValue(argv: string[], flag: string): string | undefined {
   const idx = argv.indexOf(flag);
   if (idx >= 0 && idx + 1 < argv.length) return argv[idx + 1];
@@ -157,7 +153,7 @@ async function commandAvailable(command: string, cwd: string): Promise<boolean> 
   return code === 0;
 }
 
-type InferredRuntime = 'python' | 'node' | 'go' | 'java' | null;
+type InferredRuntime = 'python' | 'node' | 'go' | 'java' | 'dotnet' | null;
 
 async function inferRuntimeByFiles(targetPath: string): Promise<InferredRuntime> {
   const goMod = path.join(targetPath, 'go.mod');
@@ -172,6 +168,22 @@ async function inferRuntimeByFiles(targetPath: string): Promise<InferredRuntime>
     (await fsExtra.pathExists(buildGradleKts))
   ) {
     return 'java';
+  }
+
+  const entries = (await fsExtra.pathExists(targetPath))
+    ? await fs.promises.readdir(targetPath, { withFileTypes: true })
+    : [];
+  if (entries.some((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.sln'))) {
+    return 'dotnet';
+  }
+  const srcPath = path.join(targetPath, 'src');
+  if (await fsExtra.pathExists(srcPath)) {
+    const srcEntries = await fs.promises.readdir(srcPath, { withFileTypes: true });
+    if (
+      srcEntries.some((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.csproj'))
+    ) {
+      return 'dotnet';
+    }
   }
 
   const packageJson = path.join(targetPath, 'package.json');
@@ -318,175 +330,86 @@ async function handleNodeInitSmart(projectPath: string): Promise<number> {
   return primary;
 }
 
-async function runGoFiberCreate(args: string[]): Promise<number> {
-  if (args[0] !== 'create' || args[1] !== 'project') return 1;
-
-  const kit = args[2];
-  const name = args[3];
-  if (!kit || !name) {
-    process.stderr.write(
-      'Usage: rapidkit create project gofiber.standard <name> [--output <dir>]\n'
-    );
-    return 1;
-  }
-
-  try {
-    validateProjectName(name);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`${message}\n`);
-    return 1;
-  }
-
-  const outputDir = readFlagValue(args, '--output') || process.cwd();
-  const projectPath = path.resolve(outputDir, name);
-  const skipGit = args.includes('--skip-git') || args.includes('--no-git');
-
-  try {
-    const { default: fsExtra } = await import('fs-extra');
-    await fsExtra.ensureDir(path.dirname(projectPath));
-    if (await fsExtra.pathExists(projectPath)) {
-      process.stderr.write(`❌ Directory "${projectPath}" already exists\n`);
-      return 1;
-    }
-    await fsExtra.ensureDir(projectPath);
-
-    const { generateGoFiberKit } = await import('./generators/gofiber-standard.js');
-    await generateGoFiberKit(projectPath, {
-      project_name: name,
-      module_path: name,
-      skipGit,
-    });
-
-    const workspacePath = findWorkspaceUp(process.cwd());
-    if (workspacePath) {
-      const { syncWorkspaceProjects } = await import('./workspace.js');
-      await syncWorkspaceProjects(workspacePath, true);
-    }
-
-    return 0;
-  } catch (e) {
-    process.stderr.write(`RapidKit Go/Fiber generator failed: ${(e as Error)?.message ?? e}\n`);
-    return 1;
-  }
-}
-
-async function runGoGinCreate(args: string[]): Promise<number> {
-  if (args[0] !== 'create' || args[1] !== 'project') return 1;
-
-  const kit = args[2];
-  const name = args[3];
-  if (!kit || !name) {
-    process.stderr.write('Usage: rapidkit create project gogin.standard <name> [--output <dir>]\n');
-    return 1;
-  }
-
-  try {
-    validateProjectName(name);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`${message}\n`);
-    return 1;
-  }
-
-  const outputDir = readFlagValue(args, '--output') || process.cwd();
-  const projectPath = path.resolve(outputDir, name);
-  const skipGit = args.includes('--skip-git') || args.includes('--no-git');
-
-  try {
-    const { default: fsExtra } = await import('fs-extra');
-    await fsExtra.ensureDir(path.dirname(projectPath));
-    if (await fsExtra.pathExists(projectPath)) {
-      process.stderr.write(`❌ Directory "${projectPath}" already exists\n`);
-      return 1;
-    }
-    await fsExtra.ensureDir(projectPath);
-
-    const { generateGoGinKit } = await import('./generators/gogin-standard.js');
-    await generateGoGinKit(projectPath, {
-      project_name: name,
-      module_path: name,
-      skipGit,
-    });
-
-    const workspacePath = findWorkspaceUp(process.cwd());
-    if (workspacePath) {
-      const { syncWorkspaceProjects } = await import('./workspace.js');
-      await syncWorkspaceProjects(workspacePath, true);
-    }
-
-    return 0;
-  } catch (e) {
-    process.stderr.write(`RapidKit Go/Gin generator failed: ${(e as Error)?.message ?? e}\n`);
-    return 1;
-  }
-}
-
-async function runSpringBootCreate(args: string[]): Promise<number> {
-  if (args[0] !== 'create' || args[1] !== 'project') return 1;
-
-  const kit = args[2];
-  const name = args[3];
-  if (!kit || !name) {
-    process.stderr.write(
-      'Usage: rapidkit create project springboot.standard <name> [--output <dir>] [--java-version <major>] [--spring-boot-version <semver>] [--springdoc-version <semver>] [--group-id <com.example>] [--package-name <com.example.app>] [--port <number>]\n'
-    );
-    return 1;
-  }
-
-  try {
-    validateProjectName(name);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`${message}\n`);
-    return 1;
-  }
-
-  const outputDir = readFlagValue(args, '--output') || process.cwd();
-  const projectPath = path.resolve(outputDir, name);
-  const skipGit = args.includes('--skip-git') || args.includes('--no-git');
-  const javaVersion = readFlagValue(args, '--java-version');
-  const springBootVersion = readFlagValue(args, '--spring-boot-version');
-  const springdocVersion = readFlagValue(args, '--springdoc-version');
-  const groupId = readFlagValue(args, '--group-id');
-  const packageName = readFlagValue(args, '--package-name');
-  const description = readFlagValue(args, '--description');
-  const port = readFlagValue(args, '--port');
-
+function validateNpmKitFlags(kitId: string, args: readonly string[]): string | null {
   const isSemverLike = (value: string): boolean =>
     /^\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?$/.test(value);
 
-  if (javaVersion && !/^\d+$/.test(javaVersion.trim())) {
-    process.stderr.write('Invalid --java-version. Expected major version number, e.g. 21\n');
-    return 1;
+  const port = readFlagValue([...args], '--port');
+  if (port && !/^\d+$/.test(port.trim())) {
+    return 'Invalid --port. Expected numeric TCP port, e.g. 8080';
   }
 
-  if (springBootVersion && !isSemverLike(springBootVersion.trim())) {
-    process.stderr.write('Invalid --spring-boot-version. Expected semantic version, e.g. 3.5.0\n');
-    return 1;
+  if (kitId === 'springboot.standard') {
+    const javaVersion = readFlagValue([...args], '--java-version');
+    const springBootVersion = readFlagValue([...args], '--spring-boot-version');
+    const springdocVersion = readFlagValue([...args], '--springdoc-version');
+    const groupId = readFlagValue([...args], '--group-id');
+    const packageName = readFlagValue([...args], '--package-name');
+
+    if (javaVersion && !/^\d+$/.test(javaVersion.trim())) {
+      return 'Invalid --java-version. Expected major version number, e.g. 21';
+    }
+    if (springBootVersion && !isSemverLike(springBootVersion.trim())) {
+      return 'Invalid --spring-boot-version. Expected semantic version, e.g. 3.5.0';
+    }
+    if (springdocVersion && !isSemverLike(springdocVersion.trim())) {
+      return 'Invalid --springdoc-version. Expected semantic version, e.g. 2.8.9';
+    }
+    if (groupId && !/^[A-Za-z0-9_.-]+$/.test(groupId.trim())) {
+      return 'Invalid --group-id. Use dot-separated Java package identifiers only.';
+    }
+    if (packageName && !/^[A-Za-z0-9_.-]+$/.test(packageName.trim())) {
+      return 'Invalid --package-name. Use dot-separated Java package identifiers only.';
+    }
   }
 
-  if (springdocVersion && !isSemverLike(springdocVersion.trim())) {
-    process.stderr.write('Invalid --springdoc-version. Expected semantic version, e.g. 2.8.9\n');
-    return 1;
+  if (kitId === 'dotnet.webapi.clean') {
+    const targetFramework = readFlagValue([...args], '--target-framework');
+    const rootNamespace = readFlagValue([...args], '--root-namespace');
+    if (targetFramework && !/^net\d+\.\d+$/.test(targetFramework.trim())) {
+      return 'Invalid --target-framework. Expected .NET target framework, e.g. net8.0';
+    }
+    if (rootNamespace && !/^[A-Za-z0-9_.]+$/.test(rootNamespace.trim())) {
+      return 'Invalid --root-namespace. Use dot-separated .NET namespace identifiers only.';
+    }
   }
 
-  if (groupId && !/^[A-Za-z0-9_.-]+$/.test(groupId.trim())) {
-    process.stderr.write('Invalid --group-id. Use dot-separated Java package identifiers only.\n');
-    return 1;
-  }
+  return null;
+}
 
-  if (packageName && !/^[A-Za-z0-9_.-]+$/.test(packageName.trim())) {
+async function runNpmBackedKitCreate(args: string[]): Promise<number> {
+  if (args[0] !== 'create' || args[1] !== 'project') return 1;
+
+  const requestedKit = args[2];
+  const definition = resolveKitDefinition(requestedKit);
+  const name = args[3];
+
+  if (!definition || definition.owner !== 'npm') return 1;
+  if (!name) {
     process.stderr.write(
-      'Invalid --package-name. Use dot-separated Java package identifiers only.\n'
+      `Usage: ${definition.createUsage ?? 'rapidkit create project <kit> <name> [--output <dir>]'}\n`
     );
     return 1;
   }
 
-  if (port && !/^\d+$/.test(port.trim())) {
-    process.stderr.write('Invalid --port. Expected numeric TCP port, e.g. 8080\n');
+  try {
+    validateProjectName(name);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`${message}\n`);
     return 1;
   }
+
+  const flagError = validateNpmKitFlags(definition.id, args);
+  if (flagError) {
+    process.stderr.write(`${flagError}\n`);
+    return 1;
+  }
+
+  const outputDir = readFlagValue(args, '--output') || process.cwd();
+  const projectPath = path.resolve(outputDir, name);
+  const skipGit = args.includes('--skip-git') || args.includes('--no-git');
+  const skipInstall = args.includes('--skip-install');
 
   try {
     const { default: fsExtra } = await import('fs-extra');
@@ -497,18 +420,12 @@ async function runSpringBootCreate(args: string[]): Promise<number> {
     }
     await fsExtra.ensureDir(projectPath);
 
-    const { generateSpringBootKit } = await import('./generators/springboot-standard.js');
-    await generateSpringBootKit(projectPath, {
-      project_name: name,
-      artifact_id: name,
-      java_version: javaVersion?.trim(),
-      spring_boot_version: springBootVersion?.trim(),
-      springdoc_version: springdocVersion?.trim(),
-      group_id: groupId?.trim(),
-      package_name: packageName?.trim(),
-      description: description?.trim(),
-      port: port?.trim(),
+    await runNpmKitGenerator(definition, {
+      projectName: name,
+      projectPath,
+      args,
       skipGit,
+      skipInstall,
     });
 
     const workspacePath = findWorkspaceUp(process.cwd());
@@ -519,7 +436,9 @@ async function runSpringBootCreate(args: string[]): Promise<number> {
 
     return 0;
   } catch (e) {
-    process.stderr.write(`RapidKit Spring Boot generator failed: ${(e as Error)?.message ?? e}\n`);
+    process.stderr.write(
+      `RapidKit ${definition.id} generator failed: ${(e as Error)?.message ?? e}\n`
+    );
     return 1;
   }
 }
@@ -696,6 +615,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
         profileRaw === 'minimal' ||
         profileRaw === 'java-only' ||
         profileRaw === 'go-only' ||
+        profileRaw === 'dotnet-only' ||
         profileRaw === 'python-only' ||
         profileRaw === 'node-only' ||
         profileRaw === 'polyglot' ||
@@ -802,18 +722,14 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
             type: 'rawlist',
             name: 'kitChoice',
             message: 'Select a kit to scaffold:',
-            choices: [
-              { name: 'fastapi  — FastAPI Standard Kit', value: 'fastapi.standard' },
-              { name: 'fastapi  — FastAPI DDD Kit', value: 'fastapi.ddd' },
-              { name: 'nestjs   — NestJS Standard Kit', value: 'nestjs.standard' },
-              { name: 'spring   — Spring Boot Standard Kit', value: 'springboot.standard' },
-              { name: 'go/fiber — Go Fiber Standard Kit', value: 'gofiber.standard' },
-              { name: 'go/gin   — Go Gin Standard Kit', value: 'gogin.standard' },
-            ],
+            choices: listInteractiveKits().map((kit) => ({
+              name: kit.label,
+              value: kit.id,
+            })),
           } as Question<{ kitChoice: string }>,
         ])) as { kitChoice: string };
 
-        if (isGoFiberKit(kitChoice) || isGoGinKit(kitChoice) || isSpringBootKit(kitChoice)) {
+        if (isNpmBackedKit(kitChoice)) {
           const { projectName } = (await inquirer.prompt([
             {
               type: 'input',
@@ -823,32 +739,13 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
             } as Question<{ projectName: string }>,
           ])) as { projectName: string };
           const flags = args.slice(2).filter((a) => a.startsWith('-'));
-          let code: number;
-          if (isGoGinKit(kitChoice)) {
-            code = await runGoGinCreate([
-              'create',
-              'project',
-              kitChoice,
-              projectName.trim(),
-              ...flags,
-            ]);
-          } else if (isSpringBootKit(kitChoice)) {
-            code = await runSpringBootCreate([
-              'create',
-              'project',
-              kitChoice,
-              projectName.trim(),
-              ...flags,
-            ]);
-          } else {
-            code = await runGoFiberCreate([
-              'create',
-              'project',
-              kitChoice,
-              projectName.trim(),
-              ...flags,
-            ]);
-          }
+          const code = await runNpmBackedKitCreate([
+            'create',
+            'project',
+            kitChoice,
+            projectName.trim(),
+            ...flags,
+          ]);
           const workspacePath = findWorkspaceUp(process.cwd());
           if (code === 0 && workspacePath) {
             await syncWorkspaceContractAfterProjectChange(workspacePath);
@@ -892,24 +789,13 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
             const modeMatch = policyRaw.match(/^\s*mode:\s*(warn|strict)\s*(?:#.*)?$/m);
             const mode = modeMatch?.[1] ?? 'warn';
 
-            // Classify kit by type
-            const isGoKit =
-              isGoFiberKit(kitName) || isGoGinKit(kitName) || kitName.startsWith('go');
-            const isJavaKit = isSpringBootKit(kitName) || kitName.includes('spring');
-            const isNodeKit = [
-              'nestjs',
-              'react',
-              'vue',
-              'nextjs',
-              'next',
-              'vite',
-              'angular',
-              'svelte',
-              'express',
-              'koa',
-              'fastify',
-            ].some((n) => kitName.includes(n));
-            const isPyKit = !isGoKit && !isNodeKit && !isJavaKit;
+            const kitDefinition = resolveKitDefinition(kitName);
+            const runtime = kitDefinition?.runtime;
+            const isGoKit = runtime === 'go';
+            const isJavaKit = runtime === 'java';
+            const isDotnetKit = runtime === 'dotnet';
+            const isNodeKit = runtime === 'node';
+            const isPyKit = runtime === 'python' || !runtime;
 
             let mismatch: string | null = null;
             if (wsProfile === 'python-only' && !isPyKit) {
@@ -920,6 +806,8 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
               mismatch = `Kit "${kitName}" is not a Go kit, but workspace profile is "go-only".`;
             } else if (wsProfile === 'java-only' && !isJavaKit) {
               mismatch = `Kit "${kitName}" is not a Java kit, but workspace profile is "java-only".`;
+            } else if (wsProfile === 'dotnet-only' && !isDotnetKit) {
+              mismatch = `Kit "${kitName}" is not a .NET kit, but workspace profile is "dotnet-only".`;
             }
 
             if (mismatch) {
@@ -946,29 +834,9 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
         }
       }
 
-      // Go/Fiber: handle entirely at npm level, bypass Python engine
-      if (isGoFiberKit(args[2] || '')) {
-        const code = await runGoFiberCreate(args);
-        const workspacePath = findWorkspaceUp(process.cwd());
-        if (code === 0 && workspacePath) {
-          await syncWorkspaceContractAfterProjectChange(workspacePath);
-        }
-        return code;
-      }
-
-      // Go/Gin: handle entirely at npm level, bypass Python engine
-      if (isGoGinKit(args[2] || '')) {
-        const code = await runGoGinCreate(args);
-        const workspacePath = findWorkspaceUp(process.cwd());
-        if (code === 0 && workspacePath) {
-          await syncWorkspaceContractAfterProjectChange(workspacePath);
-        }
-        return code;
-      }
-
-      // Spring Boot: handle entirely at npm level, bypass Python engine
-      if (isSpringBootKit(args[2] || '')) {
-        const code = await runSpringBootCreate(args);
+      // npm-backed kits run entirely at wrapper level, bypassing the Python engine.
+      if (isNpmBackedKit(args[2])) {
+        const code = await runNpmBackedKitCreate(args);
         const workspacePath = findWorkspaceUp(process.cwd());
         if (code === 0 && workspacePath) {
           await syncWorkspaceContractAfterProjectChange(workspacePath);
@@ -1021,6 +889,15 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
             }
           }
         }
+      }
+
+      if (isNpmBackedKit(args[2])) {
+        const code = await runNpmBackedKitCreate(args);
+        const workspacePath = findWorkspaceUp(process.cwd());
+        if (code === 0 && workspacePath) {
+          await syncWorkspaceContractAfterProjectChange(workspacePath, { silent: true });
+        }
+        return code;
       }
 
       // Filter wrapper-only flags from args forwarded to the Python core engine
@@ -1166,7 +1043,6 @@ export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
   'autopilot',
   'import',
   'snapshot',
-  'project',
   'workspace',
   'bootstrap',
   'setup',
@@ -1185,7 +1061,6 @@ const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
   'autopilot',
   'import',
   'snapshot',
-  'project',
   'workspace',
   'ai',
   'config',
@@ -1194,6 +1069,14 @@ const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
 ] as const;
 
 const NPM_ONLY_MANUAL_HANDLER_COMMANDS = ['bootstrap', 'setup', 'cache', 'mirror'] as const;
+
+export const NPM_ONLY_SCOPED_COMMANDS = [
+  ['project', 'commands'],
+  ['project', 'archives'],
+  ['project', 'archive'],
+  ['project', 'restore'],
+  ['project', 'delete'],
+] as const;
 
 // Project-scoped commands that should never fall through to the workspace
 // creation parser when local delegation is unavailable.
@@ -1214,8 +1097,26 @@ function isNpmOnlyTopLevelCommand(command: string | undefined): boolean {
   return !!command && (NPM_ONLY_TOP_LEVEL_COMMANDS as readonly string[]).includes(command);
 }
 
+function isNpmOnlyScopedCommand(args: readonly string[]): boolean {
+  const first = args[0];
+  const second = args[1];
+  return NPM_ONLY_SCOPED_COMMANDS.some(([command, subcommand]) => {
+    if (first !== command) return false;
+    if (!second) return true;
+    return second === subcommand;
+  });
+}
+
+function isNpmOnlyInvocation(args: readonly string[]): boolean {
+  return isNpmOnlyTopLevelCommand(args[0]) || isNpmOnlyScopedCommand(args);
+}
+
 function isNpmOnlyParseDirectCommand(command: string | undefined): boolean {
   return !!command && (NPM_ONLY_PARSE_DIRECT_COMMANDS as readonly string[]).includes(command);
+}
+
+function isNpmOnlyParseDirectInvocation(args: readonly string[]): boolean {
+  return isNpmOnlyParseDirectCommand(args[0]) || isNpmOnlyScopedCommand(args);
 }
 
 function isNpmOnlyManualHandlerCommand(command: string | undefined): boolean {
@@ -1236,6 +1137,45 @@ export function isNpmExecInvocation(env: NodeJS.ProcessEnv = process.env): boole
     npmCommand === 'x' ||
     npmCommand === 'run-script'
   );
+}
+
+function printProjectCommandCapabilities(options: { json?: boolean } = {}): void {
+  const capabilities = resolveProjectCommandCapabilities(process.cwd());
+
+  if (options.json) {
+    console.log(JSON.stringify(capabilities, null, 2));
+    return;
+  }
+
+  console.log(chalk.bold('RapidKit project command capabilities'));
+  console.log(chalk.gray(`Project: ${capabilities.projectRoot ?? 'not detected'}`));
+  console.log(
+    chalk.gray(
+      `Runtime: ${capabilities.runtime} (${capabilities.runtimeSupportTier}) | Framework: ${capabilities.frameworkDisplayName} (${capabilities.frameworkSupportTier}) | Module support: ${capabilities.moduleSupport ? 'yes' : 'no'}`
+    )
+  );
+  console.log(chalk.gray(`Doctor support: ${capabilities.runtimeDoctorSupport}`));
+  console.log('');
+  console.log(chalk.green(`Supported: ${capabilities.supportedCommands.join(', ') || 'none'}`));
+  console.log(chalk.yellow(`Global: ${capabilities.globalCommands.join(', ') || 'none'}`));
+  console.log(chalk.red(`Unsupported: ${capabilities.unsupportedCommands.join(', ') || 'none'}`));
+}
+
+function handleProjectCapabilityRequest(args: readonly string[]): boolean {
+  if (!isProjectCapabilityRequest(args)) return false;
+  printProjectCommandCapabilities({ json: args.includes('--json') || args.includes('--ci') });
+  return true;
+}
+
+function blockUnsupportedProjectCommandIfNeeded(args: readonly string[]): boolean {
+  const capabilities = resolveProjectCommandCapabilities(process.cwd());
+  if (!capabilities.projectRoot) return false;
+
+  const capability = getProjectCommandCapability(args, process.cwd());
+  if (!capability || capability.status !== 'unsupported') return false;
+
+  console.error(chalk.red(formatUnsupportedProjectCommand(capability, capabilities)));
+  process.exit(1);
 }
 
 function hasWorkspaceRootMarkers(targetDir: string): boolean {
@@ -1801,7 +1741,11 @@ export async function installWorkspaceDependencies(workspacePath: string): Promi
       const projectJson = readRapidkitProjectJson(projectPath);
       const moduleSupport = projectJson?.module_support;
 
-      if (isGoProject(projectJson, projectPath) || isJavaProject(projectJson, projectPath)) {
+      if (
+        isGoProject(projectJson, projectPath) ||
+        isJavaProject(projectJson, projectPath) ||
+        isDotnetProject(projectJson, projectPath)
+      ) {
         continue;
       }
 
@@ -2069,6 +2013,7 @@ export async function handleBootstrapCommand(
       | 'minimal'
       | 'java-only'
       | 'go-only'
+      | 'dotnet-only'
       | 'python-only'
       | 'node-only'
       | 'polyglot'
@@ -2104,6 +2049,7 @@ export async function handleBootstrapCommand(
         normalized === 'minimal' ||
         normalized === 'java-only' ||
         normalized === 'go-only' ||
+        normalized === 'dotnet-only' ||
         normalized === 'python-only' ||
         normalized === 'node-only' ||
         normalized === 'polyglot' ||
@@ -2163,7 +2109,7 @@ export async function handleBootstrapCommand(
         if (!next || next.startsWith('-')) {
           console.log(
             chalk.yellow(
-              'Usage: rapidkit bootstrap [path] [--profile <minimal|java-only|go-only|python-only|node-only|polyglot|enterprise>] [--ci] [--offline] [--json]'
+              'Usage: rapidkit bootstrap [path] [--profile <minimal|java-only|go-only|dotnet-only|python-only|node-only|polyglot|enterprise>] [--ci] [--offline] [--json]'
             )
           );
           return 1;
@@ -2183,13 +2129,34 @@ export async function handleBootstrapCommand(
     if (profileArg && !explicitProfile) {
       console.log(
         chalk.red(
-          `Invalid profile: ${profileArg}. Use one of: minimal, java-only, go-only, python-only, node-only, polyglot, enterprise.`
+          `Invalid profile: ${profileArg}. Use one of: minimal, java-only, go-only, dotnet-only, python-only, node-only, polyglot, enterprise.`
         )
       );
       return 1;
     }
 
     const cwd = process.cwd();
+    const explicitTargetArgs = initArgs.slice(1).filter((arg) => !arg.startsWith('-'));
+    if (explicitTargetArgs.length > 0) {
+      const targetPath = path.resolve(cwd, explicitTargetArgs[0]);
+      const targetJson = readRapidkitProjectJson(targetPath);
+      const inferredRuntime = fs.existsSync(targetPath)
+        ? await inferRuntimeByFiles(targetPath)
+        : 'unknown';
+      const targetIsProject =
+        !hasWorkspaceRootMarkers(targetPath) &&
+        (isGoProject(targetJson, targetPath) ||
+          isJavaProject(targetJson, targetPath) ||
+          isDotnetProject(targetJson, targetPath) ||
+          isNodeProject(targetJson, targetPath) ||
+          isPythonProject(targetJson, targetPath) ||
+          inferredRuntime !== 'unknown');
+
+      if (targetIsProject) {
+        return await initRunner(initArgs);
+      }
+    }
+
     const cwdMarker = path.join(cwd, '.rapidkit-workspace');
     const cwdLegacyManifest = path.join(cwd, '.rapidkit', 'workspace.json');
     let workspacePath: string | null;
@@ -2228,6 +2195,7 @@ export async function handleBootstrapCommand(
       'python-only',
       'node-only',
       'go-only',
+      'dotnet-only',
       'polyglot',
       'enterprise',
     ];
@@ -2238,7 +2206,8 @@ export async function handleBootstrapCommand(
       'python-only': 'python-only — Python + Poetry (FastAPI, Django, ML pipelines)',
       'node-only': 'node-only   — Node.js runtime (NestJS, Express, Next.js)',
       'go-only': 'go-only     — Go runtime (Fiber, Gin, gRPC, microservices)',
-      polyglot: 'polyglot    — Python + Node.js + Go + Java multi-runtime workspace',
+      'dotnet-only': 'dotnet-only — .NET runtime (ASP.NET Core services)',
+      polyglot: 'polyglot    — Python + Node.js + Go + Java + .NET multi-runtime workspace',
       enterprise: 'enterprise  — Polyglot + governance + Sigstore verification',
     };
 
@@ -2541,7 +2510,7 @@ export async function handleBootstrapCommand(
       }
 
       const projectPaths = await collectWorkspaceProjects(workspacePath);
-      const runtimes = new Set<'python' | 'node' | 'go' | 'java' | 'unknown'>();
+      const runtimes = new Set<'python' | 'node' | 'go' | 'java' | 'dotnet' | 'unknown'>();
 
       for (const projectPath of projectPaths) {
         const projectJson = readRapidkitProjectJson(projectPath);
@@ -2551,6 +2520,10 @@ export async function handleBootstrapCommand(
         }
         if (isJavaProject(projectJson, projectPath)) {
           runtimes.add('java');
+          continue;
+        }
+        if (isDotnetProject(projectJson, projectPath)) {
+          runtimes.add('dotnet');
           continue;
         }
         if (isNodeProject(projectJson, projectPath)) {
@@ -2582,6 +2555,16 @@ export async function handleBootstrapCommand(
           message: onlyJava
             ? 'java-only profile validated for discovered projects.'
             : `java-only profile mismatch: detected runtimes [${[...runtimes].join(', ')}].`,
+        });
+      } else if (profile === 'dotnet-only') {
+        const onlyDotnet =
+          runtimes.size === 0 || [...runtimes].every((runtime) => runtime === 'dotnet');
+        checks.push({
+          id: 'profile.dotnet-only',
+          status: onlyDotnet ? 'passed' : 'failed',
+          message: onlyDotnet
+            ? 'dotnet-only profile validated for discovered projects.'
+            : `dotnet-only profile mismatch: detected runtimes [${[...runtimes].join(', ')}].`,
         });
       } else if (profile === 'python-only') {
         const onlyPython =
@@ -2735,15 +2718,20 @@ export async function handleBootstrapCommand(
 }
 
 export async function handleSetupCommand(args: string[]): Promise<number> {
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(chalk.yellow('Usage: rapidkit setup <python|node|go|java|dotnet> [--warm-deps]'));
+    return 0;
+  }
+
   const runtime = (args[1] || '').toLowerCase();
   const warmDeps = args.includes('--warm-deps') || args.includes('--warm-dependencies');
-  if (!runtime || !['python', 'node', 'go', 'java'].includes(runtime)) {
-    console.log(chalk.yellow('Usage: rapidkit setup <python|node|go|java> [--warm-deps]'));
+  if (!runtime || !['python', 'node', 'go', 'java', 'dotnet'].includes(runtime)) {
+    console.log(chalk.yellow('Usage: rapidkit setup <python|node|go|java|dotnet> [--warm-deps]'));
     return 1;
   }
 
   const warmRuntimeDependencies = async (
-    targetRuntime: 'python' | 'node' | 'go' | 'java',
+    targetRuntime: 'python' | 'node' | 'go' | 'java' | 'dotnet',
     targetPath: string
   ): Promise<CommandResult> => {
     if (targetRuntime === 'node') {
@@ -2829,16 +2817,55 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
       };
     }
 
+    if (targetRuntime === 'dotnet') {
+      const hasDotnetManifest = (() => {
+        const queue: Array<{ dir: string; depth: number }> = [{ dir: targetPath, depth: 0 }];
+        const ignored = new Set(['bin', 'obj', '.git', 'node_modules', '.rapidkit']);
+        while (queue.length > 0) {
+          const current = queue.shift();
+          if (!current || current.depth > 3) continue;
+
+          let entries: fs.Dirent[] = [];
+          try {
+            entries = fs.readdirSync(current.dir, { withFileTypes: true });
+          } catch {
+            continue;
+          }
+
+          for (const entry of entries) {
+            if (entry.isFile()) {
+              const name = entry.name.toLowerCase();
+              if (name.endsWith('.sln') || name.endsWith('.csproj')) return true;
+            } else if (entry.isDirectory() && !ignored.has(entry.name)) {
+              queue.push({ dir: path.join(current.dir, entry.name), depth: current.depth + 1 });
+            }
+          }
+        }
+        return false;
+      })();
+
+      if (!hasDotnetManifest) {
+        return {
+          exitCode: 0,
+          message: '.NET warm-up skipped: .sln or *.csproj not found in current project tree.',
+        };
+      }
+
+      return {
+        exitCode: await runCommandInCwd('dotnet', ['restore'], targetPath),
+      };
+    }
+
     return {
       exitCode: 0,
-      message: 'Dependency warm-up currently applies to node/go/java runtimes.',
+      message: 'Dependency warm-up currently applies to node/go/java/dotnet runtimes.',
     };
   };
 
   // Use system Python (no cwd) to bypass workspace-venv runner discovery.
   // Workspace-local venv rapidkit versions may have a double-print bug in doctor check;
   // system-level rapidkit is always preferred for host environment diagnostics.
-  const adapter = getRuntimeAdapter(runtime as 'python' | 'node' | 'go' | 'java', {
+  const adapter = getRuntimeAdapter(runtime as 'python' | 'node' | 'go' | 'java' | 'dotnet', {
     runCommandInCwd,
     runCoreRapidkit: (adapterArgs, opts) =>
       runCoreRapidkit(adapterArgs, { ...opts, cwd: undefined }),
@@ -2867,7 +2894,9 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
 
   if (prereq.exitCode === 0) {
     console.log(chalk.green(`\u2705 ${runtime} prerequisites look good.`));
-    const otherRuntimes = ['python', 'node', 'go', 'java'].filter((r) => r !== runtime).join('/');
+    const otherRuntimes = ['python', 'node', 'go', 'java', 'dotnet']
+      .filter((r) => r !== runtime)
+      .join('/');
     console.log(
       chalk.gray(
         `  Scope: validated ${runtime} runtime only. ${otherRuntimes} checks are optional unless your workspace profile uses them.`
@@ -2950,7 +2979,7 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
         }
       } else {
         const depsWarmResult = await warmRuntimeDependencies(
-          runtime as 'python' | 'node' | 'go' | 'java',
+          runtime as 'python' | 'node' | 'go' | 'java' | 'dotnet',
           runtimePath
         );
         const skipped = /skipped/i.test(depsWarmResult.message || '');
@@ -3110,6 +3139,28 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
             build_tool_version: buildToolVersion,
             last_setup: new Date().toISOString(),
           };
+        } else if (runtime === 'dotnet') {
+          let dotnetVersion: string | null = null;
+          try {
+            const { execa } = await import('execa');
+            const dotnetResult = await execa('dotnet', ['--version'], {
+              cwd: workspacePath,
+              stdio: 'pipe',
+              reject: false,
+              timeout: 3000,
+            });
+            const parsed = (dotnetResult.stdout || '').trim();
+            dotnetVersion = parsed.length > 0 ? parsed : null;
+          } catch {
+            /* non-fatal */
+          }
+
+          rt.dotnet = {
+            ...((rt.dotnet as object) || {}),
+            version: dotnetVersion,
+            sdk: dotnetVersion,
+            last_setup: new Date().toISOString(),
+          };
         }
 
         lock.updated_at = new Date().toISOString();
@@ -3158,6 +3209,11 @@ function parseCacheConfig(content: string): {
 }
 
 export async function handleCacheCommand(args: string[]): Promise<number> {
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(chalk.yellow('Usage: rapidkit cache <status|clear|prune|repair>'));
+    return 0;
+  }
+
   const action = (args[1] || 'status').toLowerCase();
   const cache = Cache.getInstance();
   const workspacePath = findWorkspaceUp(process.cwd());
@@ -3370,6 +3426,11 @@ async function handleWorkspacePolicyCommand(
 }
 
 export async function handleMirrorCommand(args: string[]): Promise<number> {
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(chalk.yellow('Usage: rapidkit mirror <status|sync|verify|rotate> [--json]'));
+    return 0;
+  }
+
   const action = (args[1] || 'status').toLowerCase();
   const jsonMode = args.includes('--json');
   const workspacePath = findWorkspaceUp(process.cwd());
@@ -3582,6 +3643,7 @@ export async function handleInitCommand(args: string[]): Promise<number> {
     const lifecycle = await withWorkspaceDependencyPolicyContext(cwd, async () => {
       const workspacePathForPolicy = findWorkspaceUp(cwd);
       const pythonAdapter = getRuntimeAdapter('python', { runCommandInCwd, runCoreRapidkit });
+      const dotnetAdapter = getRuntimeAdapter('dotnet', { runCommandInCwd, runCoreRapidkit });
       const explicitTargetArgs = args.slice(1).filter((arg) => !arg.startsWith('-'));
 
       if (explicitTargetArgs.length > 0) {
@@ -3595,6 +3657,9 @@ export async function handleInitCommand(args: string[]): Promise<number> {
         }
         if (isJavaProject(targetJson, targetPath) || inferredRuntime === 'java') {
           return await handleJavaCommand('init', targetPath);
+        }
+        if (isDotnetProject(targetJson, targetPath) || inferredRuntime === 'dotnet') {
+          return (await dotnetAdapter.initProject(targetPath)).exitCode;
         }
         if (isNodeProject(targetJson, targetPath) || inferredRuntime === 'node') {
           return await handleNodeInitSmart(targetPath);
@@ -3623,6 +3688,13 @@ export async function handleInitCommand(args: string[]): Promise<number> {
 
       if (
         !cwdIsWorkspaceRoot &&
+        (isDotnetProject(projectJsonNow, cwd) || inferredRuntimeNow === 'dotnet')
+      ) {
+        return (await dotnetAdapter.initProject(cwd)).exitCode;
+      }
+
+      if (
+        !cwdIsWorkspaceRoot &&
         (isNodeProject(projectJsonNow, cwd) || inferredRuntimeNow === 'node')
       ) {
         return await handleNodeInitSmart(cwd);
@@ -3647,6 +3719,9 @@ export async function handleInitCommand(args: string[]): Promise<number> {
         }
         if (isJavaProject(projectRootJson, projectRoot) || inferredRootRuntime === 'java') {
           return await handleJavaCommand('init', projectRoot);
+        }
+        if (isDotnetProject(projectRootJson, projectRoot) || inferredRootRuntime === 'dotnet') {
+          return (await dotnetAdapter.initProject(projectRoot)).exitCode;
         }
         if (isNodeProject(projectRootJson, projectRoot) || inferredRootRuntime === 'node') {
           return await handleNodeInitSmart(projectRoot);
@@ -3770,6 +3845,10 @@ async function checkStrictPolicyPreflightForDelegation(cwd: string): Promise<str
     violations.push(
       'java.version is not pinned in toolchain.lock — run `rapidkit setup java` first.'
     );
+  } else if (isDotnetProject(projectJson, cwd) && !rt.dotnet?.version) {
+    violations.push(
+      'dotnet.version is not pinned in toolchain.lock — run `rapidkit setup dotnet` first.'
+    );
   } else if (isPythonProject(projectJson, cwd) && !rt.python?.version) {
     violations.push(
       'python.version is not pinned in toolchain.lock — run `rapidkit setup python` first.'
@@ -3786,30 +3865,42 @@ async function checkStrictPolicyPreflightForDelegation(cwd: string): Promise<str
       wsProfile === 'python-only' &&
       (isGoProject(projectJson, cwd) ||
         isNodeProject(projectJson, cwd) ||
-        isJavaProject(projectJson, cwd))
+        isJavaProject(projectJson, cwd) ||
+        isDotnetProject(projectJson, cwd))
     ) {
       violations.push('Workspace profile is "python-only" but this project is not Python.');
     } else if (
       wsProfile === 'node-only' &&
       (isGoProject(projectJson, cwd) ||
         isPythonProject(projectJson, cwd) ||
-        isJavaProject(projectJson, cwd))
+        isJavaProject(projectJson, cwd) ||
+        isDotnetProject(projectJson, cwd))
     ) {
       violations.push('Workspace profile is "node-only" but this project is not Node.');
     } else if (
       wsProfile === 'go-only' &&
       (isNodeProject(projectJson, cwd) ||
         isPythonProject(projectJson, cwd) ||
-        isJavaProject(projectJson, cwd))
+        isJavaProject(projectJson, cwd) ||
+        isDotnetProject(projectJson, cwd))
     ) {
       violations.push('Workspace profile is "go-only" but this project is not Go.');
     } else if (
       wsProfile === 'java-only' &&
       (isPythonProject(projectJson, cwd) ||
         isNodeProject(projectJson, cwd) ||
-        isGoProject(projectJson, cwd))
+        isGoProject(projectJson, cwd) ||
+        isDotnetProject(projectJson, cwd))
     ) {
       violations.push('Workspace profile is "java-only" but this project is not Java.');
+    } else if (
+      wsProfile === 'dotnet-only' &&
+      (isPythonProject(projectJson, cwd) ||
+        isNodeProject(projectJson, cwd) ||
+        isGoProject(projectJson, cwd) ||
+        isJavaProject(projectJson, cwd))
+    ) {
+      violations.push('Workspace profile is "dotnet-only" but this project is not .NET.');
     }
   } catch {
     /* non-fatal */
@@ -3856,7 +3947,7 @@ async function delegateToLocalCLI(): Promise<boolean> {
 
   // CRITICAL: npm-only commands must NEVER be delegated to the Python core CLI.
   // These commands are implemented exclusively in the npm wrapper.
-  if (isNpmOnlyTopLevelCommand(args[0])) {
+  if (isNpmOnlyInvocation(args)) {
     return false;
   }
 
@@ -3865,10 +3956,18 @@ async function delegateToLocalCLI(): Promise<boolean> {
     return false;
   }
 
+  if (handleProjectCapabilityRequest(args)) {
+    return true;
+  }
+
   // Keep workspace-root `init` on npm wrapper orchestration.
   // This preserves expected behavior for workspace dependency init + child project init.
   if (args[0] === 'init' && isWorkspaceRoot && !hasProjectJsonInCwd) {
     return false;
+  }
+
+  if (blockUnsupportedProjectCommandIfNeeded(args)) {
+    return true;
   }
 
   // Prefer the official Core contract when possible (best-effort).
@@ -3883,7 +3982,7 @@ async function delegateToLocalCLI(): Promise<boolean> {
     if (detected.ok && detected.data?.isRapidkitProject && detected.data.engine === 'python') {
       // These commands are handled exclusively by the npm wrapper and must never be delegated
       // to the Python core CLI, even when inside a Python workspace.
-      const isNpmOnlyCommand = isCreateCommand || isNpmOnlyTopLevelCommand(firstArg);
+      const isNpmOnlyCommand = isCreateCommand || isNpmOnlyInvocation(args);
       if (
         !isHelpLike &&
         !allowShellActivate &&
@@ -4061,7 +4160,7 @@ async function delegateToLocalCLI(): Promise<boolean> {
         // But never delegate npm-only commands (bootstrap, cache, mirror, setup, workspace, doctor).
         if (
           !isHelpLike &&
-          !isNpmOnlyTopLevelCommand(firstArg) &&
+          !isNpmOnlyInvocation(args) &&
           firstArg !== 'init' &&
           !shouldKeepLifecycleOnWrapper
         ) {
@@ -4098,12 +4197,14 @@ export async function shouldForwardToCore(args: string[]): Promise<boolean> {
   const first = args[0];
   const second = args[1];
 
+  if (isProjectCapabilityRequest(args)) return false;
+
   if ((WRAPPER_ORCHESTRATED_PROJECT_COMMANDS as readonly string[]).includes(first)) return false;
 
   if ((PROJECT_COMMANDS_CORE_FALLBACK as readonly string[]).includes(first)) return true;
 
   // npm-only commands
-  if (isNpmOnlyTopLevelCommand(first)) return false;
+  if (isNpmOnlyInvocation(args)) return false;
   if (first === 'shell' && second === 'activate') return false;
 
   // core global flag
@@ -4183,7 +4284,7 @@ program.addHelpText(
   'afterAll',
   `
 Workspace Setup Commands
-  rapidkit bootstrap         Bootstrap projects in workspace (--profile java-only|python-only|node-only|go-only|polyglot|enterprise)
+  rapidkit bootstrap         Bootstrap projects in workspace (--profile java-only|python-only|node-only|go-only|dotnet-only|polyglot|enterprise)
   rapidkit analyze           Analyze workspace/project health and generate enterprise evidence
   rapidkit setup <runtime>   Set up runtime toolchain  (runtime: python | node | go | java)
   rapidkit readiness         Build release-readiness evidence (use --json for CI)
@@ -4223,7 +4324,7 @@ program
   .addOption(
     new Option(
       '-t, --template <template>',
-      'Legacy: create a project with template (fastapi, nestjs, springboot, gofiber, gogin) instead of a workspace'
+      'Legacy: create a project with template (fastapi, nestjs, springboot, gofiber, gogin, dotnet) instead of a workspace'
     ).hideHelp()
   )
   .option('-y, --yes', 'Skip prompts and use defaults')
@@ -4242,7 +4343,7 @@ program
   .addOption(
     new Option(
       '--profile <profile>',
-      'Workspace bootstrap profile: minimal, java-only, python-only, node-only, go-only, polyglot, enterprise'
+      'Workspace bootstrap profile: minimal, java-only, python-only, node-only, go-only, dotnet-only, polyglot, enterprise'
     )
       .choices([
         'minimal',
@@ -4250,6 +4351,7 @@ program
         'python-only',
         'node-only',
         'go-only',
+        'dotnet-only',
         'polyglot',
         'enterprise',
       ])
@@ -4365,53 +4467,19 @@ program
       // Create workspace or project
       if (isProjectMode) {
         const raw = String(options.template || '').trim();
-        const lowered = raw.toLowerCase();
-        const kit =
-          lowered === 'fastapi'
-            ? 'fastapi.standard'
-            : lowered === 'nestjs'
-              ? 'nestjs.standard'
-              : lowered === 'spring' || lowered === 'springboot' || lowered === 'java'
-                ? 'springboot.standard'
-                : lowered === 'go' || lowered === 'fiber'
-                  ? 'gofiber.standard'
-                  : lowered === 'gin'
-                    ? 'gogin.standard'
-                    : raw;
+        const kit = normalizeKitId(raw);
 
-        // Go/Fiber: handled entirely at npm level — bypass Python engine
-        if (isGoFiberKit(kit)) {
-          const projectPath = path.resolve(process.cwd(), name);
-          const { generateGoFiberKit } = await import('./generators/gofiber-standard.js');
-          await generateGoFiberKit(projectPath, {
-            project_name: name,
-            module_path: name,
-            skipGit: options.skipGit,
-          });
-          return;
-        }
-
-        // Go/Gin: handled entirely at npm level — bypass Python engine
-        if (isGoGinKit(kit)) {
-          const projectPath = path.resolve(process.cwd(), name);
-          const { generateGoGinKit } = await import('./generators/gogin-standard.js');
-          await generateGoGinKit(projectPath, {
-            project_name: name,
-            module_path: name,
-            skipGit: options.skipGit,
-          });
-          return;
-        }
-
-        // Spring Boot: handled entirely at npm level — bypass Python engine
-        if (isSpringBootKit(kit)) {
-          const projectPath = path.resolve(process.cwd(), name);
-          const { generateSpringBootKit } = await import('./generators/springboot-standard.js');
-          await generateSpringBootKit(projectPath, {
-            project_name: name,
-            artifact_id: name,
-            skipGit: options.skipGit,
-          });
+        if (isNpmBackedKit(kit)) {
+          const code = await runNpmBackedKitCreate([
+            'create',
+            'project',
+            kit,
+            name,
+            ...(options.skipGit ? ['--skip-git'] : []),
+          ]);
+          if (code !== 0) {
+            process.exit(code);
+          }
           return;
         }
 
@@ -4960,6 +5028,14 @@ snapshotCommand
 const projectCommand = program
   .command('project')
   .description('Safe workspace project lifecycle operations');
+
+projectCommand
+  .command('commands')
+  .description('Show effective commands supported by the current RapidKit project')
+  .option('--json', 'Emit machine-readable JSON output')
+  .action(async (options: { json?: boolean }) => {
+    printProjectCommandCapabilities({ json: options.json });
+  });
 
 projectCommand
   .command('archives')
@@ -5742,7 +5818,8 @@ function printHelp() {
   console.log(chalk.gray('  python-only   Python + Poetry  (FastAPI, Django, ML)'));
   console.log(chalk.gray('  node-only     Node.js runtime   (NestJS, Express, Next.js)'));
   console.log(chalk.gray('  go-only       Go runtime        (Fiber, Gin, gRPC)'));
-  console.log(chalk.gray('  polyglot      Python + Node.js + Go + Java multi-runtime'));
+  console.log(chalk.gray('  dotnet-only   .NET runtime      (ASP.NET Core services)'));
+  console.log(chalk.gray('  polyglot      Python + Node.js + Go + Java + .NET multi-runtime'));
   console.log(chalk.gray('  enterprise    Polyglot + governance + Sigstore\n'));
 
   console.log(chalk.bold('Workspace commands (inside a workspace):'));
@@ -5809,7 +5886,7 @@ function printHelp() {
   );
   console.log(
     chalk.gray(
-      '  npx rapidkit setup python|node|go|java [--warm-deps]  Set up runtime (+ optional deps warm-up)'
+      '  npx rapidkit setup python|node|go|java|dotnet [--warm-deps]  Set up runtime (+ optional deps warm-up)'
     )
   );
   console.log(
@@ -5860,6 +5937,7 @@ function printHelp() {
     console.log(chalk.gray('  npx rapidkit my-project --template springboot'));
     console.log(chalk.gray('  npx rapidkit my-project --template gofiber'));
     console.log(chalk.gray('  npx rapidkit my-project --template gogin'));
+    console.log(chalk.gray('  npx rapidkit my-project --template dotnet'));
     console.log(
       chalk.gray(
         '  --skip-install             Fast-path lock/deps (legacy template mode) — not same as --skip-essentials\n'
@@ -5967,9 +6045,8 @@ if (shouldBootstrapCli) {
   const preHasProjectJson = fs.existsSync(path.join(preCwd, '.rapidkit', 'project.json'));
   const preIsNpmExecInvocation = isNpmExecInvocation();
 
-  const shouldParseNpmOnlyDirectly = isNpmOnlyParseDirectCommand(preFirst);
-  const shouldKeepNpmOwnedCommandLocal =
-    preIsNpmExecInvocation && isNpmOnlyTopLevelCommand(preFirst);
+  const shouldParseNpmOnlyDirectly = isNpmOnlyParseDirectInvocation(preArgs);
+  const shouldKeepNpmOwnedCommandLocal = preIsNpmExecInvocation && isNpmOnlyInvocation(preArgs);
   const shouldHandleWorkspaceInitDirectly =
     preFirst === 'init' && preIsWorkspaceRoot && !preHasProjectJson;
   const shouldRenderCustomRootHelp =
@@ -5979,6 +6056,10 @@ if (shouldBootstrapCli) {
   if (shouldRenderCustomRootHelp) {
     console.log(chalk.blue.bold('\n🚀 Welcome to RapidKit NPM CLI!\n'));
     printHelp();
+    process.exit(0);
+  }
+
+  if (handleProjectCapabilityRequest(preArgs)) {
     process.exit(0);
   }
 
@@ -6022,10 +6103,14 @@ if (shouldBootstrapCli) {
           process.stderr.write(`[rapidkit-npm] argv=${JSON.stringify(args)}\n`);
         }
 
-        if (isNpmOnlyParseDirectCommand(args[0])) {
+        if (isNpmOnlyParseDirectInvocation(args)) {
           // Commander-native npm-only commands.
           program.parse();
           return;
+        }
+
+        if (handleProjectCapabilityRequest(args)) {
+          process.exit(0);
         }
 
         // Special-case `create` to preserve canonical Core UX while allowing a
@@ -6065,6 +6150,7 @@ if (shouldBootstrapCli) {
         if ((RUNTIME_LIFECYCLE_COMMANDS as readonly string[]).includes(args[0])) {
           const action = args[0] as 'dev' | 'test' | 'build' | 'start';
           const projectJson = readRapidkitProjectJson(process.cwd());
+          const inferredRuntime = await inferRuntimeByFiles(process.cwd());
           const wsPath = findWorkspaceUp(process.cwd());
           let strictPolicyMode = false;
 
@@ -6113,6 +6199,11 @@ if (shouldBootstrapCli) {
                           'Java runtime version is not pinned in toolchain.lock — run `rapidkit setup java` first.'
                         );
                       }
+                      if (isDotnetProject(projectJson, process.cwd()) && !rt.dotnet?.version) {
+                        violations.push(
+                          '.NET runtime version is not pinned in toolchain.lock — run `rapidkit setup dotnet` first.'
+                        );
+                      }
                       if (isPythonProject(projectJson, process.cwd()) && !rt.python?.version) {
                         violations.push(
                           'Python runtime version is not pinned in toolchain.lock — run `rapidkit setup python` first.'
@@ -6137,7 +6228,8 @@ if (shouldBootstrapCli) {
                         wsProfile === 'python-only' &&
                         (isGoProject(projectJson, process.cwd()) ||
                           isNodeProject(projectJson, process.cwd()) ||
-                          isJavaProject(projectJson, process.cwd()))
+                          isJavaProject(projectJson, process.cwd()) ||
+                          isDotnetProject(projectJson, process.cwd()))
                       ) {
                         violations.push(
                           `Workspace profile is "python-only" but this project is not Python. Update the workspace profile or use a polyglot workspace.`
@@ -6147,7 +6239,8 @@ if (shouldBootstrapCli) {
                         wsProfile === 'node-only' &&
                         (isGoProject(projectJson, process.cwd()) ||
                           isPythonProject(projectJson, process.cwd()) ||
-                          isJavaProject(projectJson, process.cwd()))
+                          isJavaProject(projectJson, process.cwd()) ||
+                          isDotnetProject(projectJson, process.cwd()))
                       ) {
                         violations.push(
                           `Workspace profile is "node-only" but this project is not Node. Update the workspace profile or use a polyglot workspace.`
@@ -6157,7 +6250,8 @@ if (shouldBootstrapCli) {
                         wsProfile === 'go-only' &&
                         (isPythonProject(projectJson, process.cwd()) ||
                           isNodeProject(projectJson, process.cwd()) ||
-                          isJavaProject(projectJson, process.cwd()))
+                          isJavaProject(projectJson, process.cwd()) ||
+                          isDotnetProject(projectJson, process.cwd()))
                       ) {
                         violations.push(
                           `Workspace profile is "go-only" but this project is not Go. Update the workspace profile or use a polyglot workspace.`
@@ -6167,10 +6261,22 @@ if (shouldBootstrapCli) {
                         wsProfile === 'java-only' &&
                         (isPythonProject(projectJson, process.cwd()) ||
                           isNodeProject(projectJson, process.cwd()) ||
-                          isGoProject(projectJson, process.cwd()))
+                          isGoProject(projectJson, process.cwd()) ||
+                          isDotnetProject(projectJson, process.cwd()))
                       ) {
                         violations.push(
                           `Workspace profile is "java-only" but this project is not Java. Update the workspace profile or use a polyglot workspace.`
+                        );
+                      }
+                      if (
+                        wsProfile === 'dotnet-only' &&
+                        (isPythonProject(projectJson, process.cwd()) ||
+                          isNodeProject(projectJson, process.cwd()) ||
+                          isGoProject(projectJson, process.cwd()) ||
+                          isJavaProject(projectJson, process.cwd()))
+                      ) {
+                        violations.push(
+                          `Workspace profile is "dotnet-only" but this project is not .NET. Update the workspace profile or use a polyglot workspace.`
                         );
                       }
                     } catch {
@@ -6232,7 +6338,7 @@ if (shouldBootstrapCli) {
           }
 
           const lifecycle = await withWorkspaceDependencyPolicyContext(process.cwd(), async () => {
-            if (isGoProject(projectJson, process.cwd())) {
+            if (isGoProject(projectJson, process.cwd()) || inferredRuntime === 'go') {
               const adapter = getRuntimeAdapter('go', { runCommandInCwd, runCoreRapidkit });
               const result =
                 action === 'dev'
@@ -6250,21 +6356,39 @@ if (shouldBootstrapCli) {
               return result.exitCode;
             }
 
-            if (isJavaProject(projectJson, process.cwd())) {
+            if (isJavaProject(projectJson, process.cwd()) || inferredRuntime === 'java') {
               if (action === 'dev') return await handleJavaCommand('dev', process.cwd());
               if (action === 'test') return await handleJavaCommand('test', process.cwd());
               if (action === 'build') return await handleJavaCommand('build', process.cwd());
               return await handleJavaCommand('start', process.cwd());
             }
 
-            if (isNodeProject(projectJson, process.cwd())) {
+            if (isDotnetProject(projectJson, process.cwd()) || inferredRuntime === 'dotnet') {
+              const adapter = getRuntimeAdapter('dotnet', { runCommandInCwd, runCoreRapidkit });
+              const result =
+                action === 'dev'
+                  ? await adapter.runDev(process.cwd())
+                  : action === 'test'
+                    ? await adapter.runTest(process.cwd())
+                    : action === 'build'
+                      ? await adapter.runBuild(process.cwd())
+                      : await adapter.runStart(process.cwd());
+
+              if (result.message) {
+                console.log(chalk.red(`❌ ${result.message}`));
+              }
+
+              return result.exitCode;
+            }
+
+            if (isNodeProject(projectJson, process.cwd()) || inferredRuntime === 'node') {
               if (action === 'dev') return await handleNodeCommand('dev', process.cwd());
               if (action === 'test') return await handleNodeCommand('test', process.cwd());
               if (action === 'build') return await handleNodeCommand('build', process.cwd());
               return await handleNodeCommand('start', process.cwd());
             }
 
-            if (isPythonProject(projectJson, process.cwd())) {
+            if (isPythonProject(projectJson, process.cwd()) || inferredRuntime === 'python') {
               const adapter = getRuntimeAdapter('python', { runCommandInCwd, runCoreRapidkit });
               if (action === 'dev') return (await adapter.runDev(process.cwd())).exitCode;
               if (action === 'test') return (await adapter.runTest(process.cwd())).exitCode;
@@ -6288,7 +6412,12 @@ if (shouldBootstrapCli) {
         if (args[0] === 'add' || (args[0] === 'module' && args[1] === 'add')) {
           const projectJson = readRapidkitProjectJson(process.cwd());
           if (projectJson?.module_support === false) {
-            const runtimeLabel = projectJson?.runtime === 'java' ? 'Spring Boot' : 'Go';
+            const runtimeLabel =
+              projectJson?.runtime === 'java'
+                ? 'Spring Boot'
+                : projectJson?.runtime === 'dotnet'
+                  ? 'ASP.NET Core'
+                  : 'Go';
             console.error(
               chalk.red(`❌ RapidKit modules are not available for ${runtimeLabel} npm-level kits.`)
             );
@@ -6299,6 +6428,10 @@ if (shouldBootstrapCli) {
             );
             process.exit(1);
           }
+        }
+
+        if (blockUnsupportedProjectCommandIfNeeded(args)) {
+          return;
         }
 
         const shouldForward = await shouldForwardToCore(args);

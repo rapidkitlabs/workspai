@@ -2,8 +2,8 @@
 
 > RapidKit is an open-source workspace platform that standardizes how teams build, scale, and deploy backend services.
 
-Production-ready scaffolding for FastAPI, NestJS, Spring Boot, Go/Fiber, and Go/Gin.  
-**27+ plug-and-play modules** are available for FastAPI and NestJS projects. Spring Boot and Go kits run as npm-level generators.  
+Production-ready scaffolding for FastAPI, NestJS, Spring Boot, Go/Fiber, Go/Gin, and ASP.NET Core.  
+**27+ plug-and-play modules** are available for FastAPI and NestJS projects. Spring Boot, Go, and ASP.NET Core kits run as npm-level generators.  
 Built for clean architecture, minimal boilerplate, and fast deployment.
 
 > **💡 Recommended:** Install the [Workspai VS Code extension](https://marketplace.visualstudio.com/items?itemName=rapidkit.rapidkit-vscode) for AI-assisted project creation, workspace exploration, and context-aware coding — all backed by this CLI.
@@ -17,7 +17,7 @@ Built for clean architecture, minimal boilerplate, and fast deployment.
 The official RapidKit npm CLI for creating and operating workspaces and projects.
 
 - Workspace-first lifecycle (`create workspace` → `bootstrap` → `setup` → `create project`)
-- Multi-runtime support across Python, Node.js, Java, and Go
+- Multi-runtime support across Python, Node.js, Java, Go, and .NET
 - Policy enforcement with `warn` / `strict` modes
 - Cache and mirror lifecycle commands for stable environments
 
@@ -51,6 +51,7 @@ It works alongside Workspai, a product developed by RapidKit.
 - Python `>= 3.10` (for Python/Core workflows)
 - Java 21+ and Maven 3.9+ (optional, for Spring Boot projects)
 - Go (optional, for Go projects)
+- .NET SDK 8+ (optional, for ASP.NET Core projects)
 
 ## Install
 
@@ -109,6 +110,7 @@ npx rapidkit setup python
 npx rapidkit setup node --warm-deps
 npx rapidkit setup java --warm-deps
 npx rapidkit setup go --warm-deps
+npx rapidkit setup dotnet --warm-deps
 ```
 
 ### 3) Create projects
@@ -120,6 +122,8 @@ npx rapidkit create project fastapi.ddd my-api --yes --skip-install
 npx rapidkit create project nestjs.standard my-nest --yes --skip-install
 npx rapidkit create project springboot.standard my-spring --yes --skip-install
 npx rapidkit create project gofiber.standard my-fiber --yes --skip-install
+npx rapidkit create project gogin.standard my-gin --yes --skip-install
+npx rapidkit create project dotnet.webapi.clean my-dotnet --yes --skip-install
 ```
 
 ## Core Commands
@@ -130,7 +134,7 @@ npx rapidkit create project gofiber.standard my-fiber --yes --skip-install
 npx rapidkit create # Prompts: workspace | project
 npx rapidkit create workspace <name> [--profile <profile>] [--author <name>] [--yes]
 npx rapidkit bootstrap [--profile <profile>] [--json]
-npx rapidkit setup <python|node|go|java> [--warm-deps]
+npx rapidkit setup <python|node|go|java|dotnet> [--warm-deps]
 npx rapidkit analyze [--workspace <path>] [--json] [--strict] [--output <file>]
 npx rapidkit readiness [--json] [--strict]
 npx rapidkit autopilot release [--mode <audit|safe-fix|enforce>] [--json] [--output <file>] [--since <ref>] [--parallel] [--max-workers <n>]
@@ -199,7 +203,12 @@ JSON output (`--json`) includes:
 - `workspaceResolution` (`explicit` | `nearest` | `default-auto`)
 - `defaultWorkspaceCreated`
 - `suggestedCdCommand`
-- `importedProject` (`name`, `path`, `stack`, `confidence`, `source`)
+- `importedProject` (`name`, `path`, `stack`, `runtime`, `framework`, `supportTier`, `moduleSupport`, `confidence`, `source`)
+
+Imported projects also receive `.rapidkit/import-readiness.json`, which records framework detection,
+runtime command support, and module mutation policy. Existing projects from Laravel, Rails, Rust,
+Elixir, Kotlin, Deno, Bun, and other ecosystems are importable/governed even when RapidKit does not
+yet ship a first-class scaffold for that stack.
 
 ### Workspace snapshots and safe project operations
 
@@ -394,12 +403,21 @@ Compatibility policy for automation consumers:
 
 ```bash
 npx rapidkit create project <kit> <name> [--yes] [--skip-install]
+npx rapidkit project commands [--json]
+npx rapidkit commands --scope project [--json]
 npx rapidkit init
 npx rapidkit dev
 npx rapidkit test
 npx rapidkit build
 npx rapidkit start
 ```
+
+`project commands` shows the effective command contract for the current project. Core-backed
+FastAPI/NestJS projects can use module commands such as `add` and `modules`. npm-backed Go, Spring
+Boot, and ASP.NET Core projects use runtime lifecycle commands and workspace governance while Core
+module mutation remains disabled. Imported observed projects are safe to inspect, share, and govern;
+they expose help-level lifecycle support until a runtime adapter or project-local command mapping is
+available.
 
 ### Operations
 
@@ -551,11 +569,14 @@ project `consumes` it. Legacy `.rapidkit/workspace-dependency-graph.json` remain
 | **Go**     | Fiber, Gin, Echo, Chi          | Built-in |
 | **Java**   | Spring Boot, Quarkus, Gradle   | Built-in |
 | **Python** | FastAPI, Django, Flask, Poetry | Built-in |
-| **PHP**    | Laravel, Symfony, Slim         | Stable   |
-| **Rust**   | Actix, Axum, Rocket, Tokio     | Stable   |
-| **.NET**   | ASP.NET Core, Entity Framework | Stable   |
-| **Elixir** | Phoenix, Umbrella Projects     | Stable   |
-| **Ruby**   | Rails, Sinatra, RSpec          | Stable   |
+| **PHP**    | Laravel, Symfony, Slim         | Observed |
+| **Rust**   | Actix, Axum, Rocket, Tokio     | Observed |
+| **.NET**   | ASP.NET Core, Entity Framework | Built-in |
+| **Elixir** | Phoenix, Umbrella Projects     | Observed |
+| **Ruby**   | Rails, Sinatra, RSpec          | Observed |
+
+For the public scaffold/import/lifecycle/module support contract, see
+[docs/contracts/RUNTIME_SUPPORT_MATRIX.md](docs/contracts/RUNTIME_SUPPORT_MATRIX.md).
 
 ### Enterprise Features
 

@@ -314,6 +314,59 @@ describe('Phase 3 command contract handlers', () => {
       await cleanupWorkspaceDir(workspaceRoot);
     });
 
+    it('passes strict dotnet-only bootstrap for ASP.NET Core projects', async () => {
+      const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-bootstrap-dotnet-only-'));
+      const rapidkitDir = path.join(workspaceRoot, '.rapidkit');
+      const dotnetProjectDir = path.join(workspaceRoot, 'services', 'orders-api');
+
+      await mkdir(rapidkitDir, { recursive: true });
+      await mkdir(path.join(dotnetProjectDir, '.rapidkit'), { recursive: true });
+      await mkdir(path.join(dotnetProjectDir, 'src'), { recursive: true });
+      await writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '{}', 'utf-8');
+      await writeFile(
+        path.join(rapidkitDir, 'workspace.json'),
+        JSON.stringify({ profile: 'dotnet-only' }, null, 2),
+        'utf-8'
+      );
+      await writeFile(
+        path.join(rapidkitDir, 'policies.yml'),
+        [
+          'version: "1.0"',
+          'mode: strict',
+          'rules:',
+          '  enforce_workspace_marker: true',
+          '  enforce_toolchain_lock: false',
+          '  disallow_untrusted_tool_sources: false',
+          '',
+        ].join('\n'),
+        'utf-8'
+      );
+      await writeFile(
+        path.join(dotnetProjectDir, '.rapidkit', 'project.json'),
+        JSON.stringify({ runtime: 'dotnet', kit_name: 'dotnet.webapi.clean' }, null, 2),
+        'utf-8'
+      );
+      await writeFile(
+        path.join(dotnetProjectDir, 'src', 'orders-api.csproj'),
+        '<Project />',
+        'utf-8'
+      );
+
+      process.chdir(workspaceRoot);
+
+      const index = await import('../index.js');
+      const initRunner = vi.fn().mockResolvedValue(0);
+      const code = await index.handleBootstrapCommand(
+        ['bootstrap', '--profile=dotnet-only'],
+        initRunner
+      );
+
+      expect(code).toBe(0);
+      expect(initRunner).toHaveBeenCalledWith(['init']);
+
+      await cleanupWorkspaceDir(workspaceRoot);
+    });
+
     it('blocks strict java-only bootstrap when non-Java projects are discovered', async () => {
       const workspaceRoot = await mkdtemp(
         path.join(tmpdir(), 'rapidkit-bootstrap-java-only-fail-')
@@ -548,6 +601,18 @@ describe('Phase 3 command contract handlers', () => {
 
       expect(code).toBe(0);
       expect(getRuntimeAdapterMock).toHaveBeenCalledWith('java', expect.any(Object));
+    });
+
+    it('routes dotnet setup to dotnet runtime adapter', async () => {
+      const index = await import('../index.js');
+      areRuntimeAdaptersEnabledMock.mockReturnValue(true);
+      adapterCheckPrereqs.mockResolvedValue({ exitCode: 0 });
+      adapterDoctorHints.mockResolvedValue([]);
+
+      const code = await index.handleSetupCommand(['setup', 'dotnet']);
+
+      expect(code).toBe(0);
+      expect(getRuntimeAdapterMock).toHaveBeenCalledWith('dotnet', expect.any(Object));
     });
   });
 
@@ -1609,6 +1674,16 @@ describe('Phase 3 command contract handlers', () => {
       await expect(index.shouldForwardToCore(['mirror', 'status'])).resolves.toBe(false);
       await expect(index.shouldForwardToCore(['doctor', 'workspace'])).resolves.toBe(false);
       await expect(index.shouldForwardToCore(['workspace', 'list'])).resolves.toBe(false);
+      await expect(index.shouldForwardToCore(['project'])).resolves.toBe(false);
+      await expect(index.shouldForwardToCore(['project', 'archive', 'api'])).resolves.toBe(false);
+      await expect(index.shouldForwardToCore(['project', 'delete', 'api'])).resolves.toBe(false);
+      await expect(index.shouldForwardToCore(['project', 'commands', '--json'])).resolves.toBe(
+        false
+      );
+      await expect(index.shouldForwardToCore(['commands', '--scope', 'project'])).resolves.toBe(
+        false
+      );
+      await expect(index.shouldForwardToCore(['project', 'detect', '--json'])).resolves.toBe(true);
       await expect(index.shouldForwardToCore(['shell', 'activate'])).resolves.toBe(false);
       await expect(index.shouldForwardToCore(['ai'])).resolves.toBe(false);
       await expect(index.shouldForwardToCore(['config'])).resolves.toBe(false);

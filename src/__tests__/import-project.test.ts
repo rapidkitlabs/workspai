@@ -11,6 +11,8 @@ vi.mock('execa', () => ({
 import { execa } from 'execa';
 import { readImportedProjectsRegistry } from '../imported-projects-registry';
 import { importProjectIntoWorkspace } from '../import-project';
+import { resolveProjectCommandCapabilities } from '../utils/project-command-capabilities';
+import { syncWorkspaceContract } from '../utils/workspace-contract';
 
 const createdPaths: string[] = [];
 
@@ -57,15 +59,283 @@ describe('import-project', () => {
 
     expect(imported.name).toBe('edge-api');
     expect(imported.stack).toBe('express');
+    expect(imported.runtime).toBe('node');
+    expect(imported.framework).toBe('express');
+    expect(imported.frameworkDisplayName).toBe('Express');
+    expect(imported.supportTier).toBe('extended');
+    expect(imported.moduleSupport).toBe(false);
+    expect(imported.relativePath).toBe('edge-api');
     expect(await fsExtra.pathExists(path.join(imported.path, 'package.json'))).toBe(true);
+    expect(await fsExtra.pathExists(imported.projectJsonPath)).toBe(true);
+    expect(await fsExtra.pathExists(imported.importJsonPath)).toBe(true);
+    expect(await fsExtra.pathExists(imported.importReadinessPath)).toBe(true);
+
+    const projectJson = await fsExtra.readJson(imported.projectJsonPath);
+    expect(projectJson).toMatchObject({
+      name: 'edge-api',
+      slug: 'edge-api',
+      runtime: 'node',
+      framework: 'express',
+      kit_name: 'imported.express',
+      module_support: false,
+      import: {
+        managed_by: 'rapidkit-npm',
+        source_type: 'local-folder',
+        relative_path: 'edge-api',
+      },
+    });
+
+    const importJson = await fsExtra.readJson(imported.importJsonPath);
+    expect(importJson).toMatchObject({
+      kind: 'rapidkit.imported_project',
+      source: {
+        type: 'local-folder',
+        name: 'edge-api',
+      },
+      project: {
+        relative_path: 'edge-api',
+        module_support: false,
+      },
+      detection: {
+        framework: 'express',
+        framework_display_name: 'Express',
+        runtime: 'node',
+      },
+      policy: {
+        copied_secrets: false,
+        copied_dependency_caches: false,
+        module_mutation_enabled: false,
+      },
+    });
+
+    const readinessJson = await fsExtra.readJson(imported.importReadinessPath);
+    expect(readinessJson).toMatchObject({
+      kind: 'rapidkit.import_readiness',
+      status: 'review',
+      detection: {
+        framework: 'express',
+        frameworkDisplayName: 'Express',
+        runtime: 'node',
+        supportTier: 'extended',
+      },
+      commandSupport: {
+        moduleCommands: false,
+      },
+    });
+    expect(readinessJson.commandSupport.lifecycleCommands).toContain('dev');
 
     const registry = await readImportedProjectsRegistry(workspacePath);
     expect(registry).toEqual([
       expect.objectContaining({
         name: imported.name,
         path: imported.path,
+        relativePath: 'edge-api',
         stack: 'express',
+        runtime: 'node',
+        framework: 'express',
+        frameworkDisplayName: 'Express',
+        supportTier: 'extended',
+        moduleSupport: false,
         source: 'local-folder',
+      }),
+    ]);
+  });
+
+  it('copies local project sources without dependency caches or secret env files', async () => {
+    const workspacePath = await makeTempDir('rapidkit-import-workspace-');
+    const sourcePath = await makeTempDir('rapidkit-import-source-');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+    });
+    await fsExtra.writeFile(path.join(workspacePath, '.rapidkit-workspace'), '{}');
+
+    await fsExtra.writeJson(path.join(sourcePath, 'package.json'), {
+      name: 'safe-api',
+      dependencies: {
+        express: '^4.19.2',
+      },
+    });
+    await fsExtra.writeFile(path.join(sourcePath, '.env'), 'SECRET=do-not-copy\n');
+    await fsExtra.writeFile(path.join(sourcePath, '.env.local'), 'SECRET=do-not-copy\n');
+    await fsExtra.writeFile(path.join(sourcePath, '.env.example'), 'SECRET=\n');
+    await fsExtra.ensureDir(path.join(sourcePath, '.git'));
+    await fsExtra.writeFile(path.join(sourcePath, '.git', 'config'), '[core]\n');
+    await fsExtra.ensureDir(path.join(sourcePath, 'node_modules', 'leftpad'));
+    await fsExtra.writeFile(path.join(sourcePath, 'node_modules', 'leftpad', 'index.js'), '');
+    await fsExtra.ensureDir(path.join(sourcePath, 'dist'));
+    await fsExtra.writeFile(path.join(sourcePath, 'dist', 'bundle.js'), '');
+    await fsExtra.writeFile(path.join(sourcePath, 'server.key'), 'private-key\n');
+
+    const imported = await importProjectIntoWorkspace({
+      workspacePath,
+      source: sourcePath,
+      name: 'safe-api',
+    });
+
+    expect(await fsExtra.pathExists(path.join(imported.path, 'package.json'))).toBe(true);
+    expect(await fsExtra.pathExists(path.join(imported.path, '.env'))).toBe(false);
+    expect(await fsExtra.pathExists(path.join(imported.path, '.env.local'))).toBe(false);
+    expect(await fsExtra.pathExists(path.join(imported.path, '.env.example'))).toBe(true);
+    expect(await fsExtra.pathExists(path.join(imported.path, '.git'))).toBe(false);
+    expect(await fsExtra.pathExists(path.join(imported.path, 'node_modules'))).toBe(false);
+    expect(await fsExtra.pathExists(path.join(imported.path, 'dist'))).toBe(false);
+    expect(await fsExtra.pathExists(path.join(imported.path, 'server.key'))).toBe(false);
+  });
+
+  it('imports ASP.NET Core projects as extended dotnet projects without module mutation', async () => {
+    const workspacePath = await makeTempDir('rapidkit-import-workspace-');
+    const sourcePath = await makeTempDir('rapidkit-import-dotnet-source-');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+    });
+    await fsExtra.writeFile(path.join(workspacePath, '.rapidkit-workspace'), '{}');
+
+    await fsExtra.ensureDir(path.join(sourcePath, 'src', 'Api'));
+    await fsExtra.writeFile(
+      path.join(sourcePath, 'src', 'Api', 'Api.csproj'),
+      '<Project Sdk="Microsoft.NET.Sdk.Web"><ItemGroup><PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" /></ItemGroup></Project>\n'
+    );
+
+    const imported = await importProjectIntoWorkspace({
+      workspacePath,
+      source: sourcePath,
+      name: 'billing-dotnet-api',
+    });
+
+    expect(imported.stack).toBe('dotnet');
+    expect(imported.runtime).toBe('dotnet');
+    expect(imported.framework).toBe('dotnet');
+    expect(imported.frameworkDisplayName).toBe('ASP.NET Core');
+    expect(imported.supportTier).toBe('extended');
+    expect(imported.moduleSupport).toBe(false);
+
+    const projectJson = await fsExtra.readJson(imported.projectJsonPath);
+    expect(projectJson).toMatchObject({
+      runtime: 'dotnet',
+      framework: 'dotnet',
+      kit_name: 'imported.dotnet',
+      module_support: false,
+    });
+
+    const readinessJson = await fsExtra.readJson(imported.importReadinessPath);
+    expect(readinessJson).toMatchObject({
+      kind: 'rapidkit.import_readiness',
+      detection: {
+        runtime: 'dotnet',
+        framework: 'dotnet',
+        supportTier: 'extended',
+      },
+      commandSupport: {
+        moduleCommands: false,
+      },
+    });
+  });
+
+  it('imports observed ecosystem projects safely without over-promising lifecycle or module support', async () => {
+    const workspacePath = await makeTempDir('rapidkit-import-workspace-');
+    const sourcePath = await makeTempDir('rapidkit-import-laravel-source-');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+    });
+    await fsExtra.writeFile(path.join(workspacePath, '.rapidkit-workspace'), '{}');
+
+    await fsExtra.writeJson(path.join(sourcePath, 'composer.json'), {
+      require: {
+        'laravel/framework': '^11.0',
+      },
+    });
+    await fsExtra.writeFile(path.join(sourcePath, '.env'), 'APP_KEY=secret\n');
+    await fsExtra.writeFile(path.join(sourcePath, '.env.example'), 'APP_KEY=\n');
+    await fsExtra.ensureDir(path.join(sourcePath, 'vendor', 'laravel'));
+    await fsExtra.writeFile(path.join(sourcePath, 'vendor', 'laravel', 'framework.php'), '');
+
+    const imported = await importProjectIntoWorkspace({
+      workspacePath,
+      source: sourcePath,
+      name: 'customer-portal',
+    });
+
+    expect(imported.stack).toBe('unknown');
+    expect(imported.runtime).toBe('php');
+    expect(imported.framework).toBe('laravel');
+    expect(imported.frameworkDisplayName).toBe('Laravel');
+    expect(imported.supportTier).toBe('extended');
+    expect(imported.moduleSupport).toBe(false);
+    expect(await fsExtra.pathExists(path.join(imported.path, '.env'))).toBe(false);
+    expect(await fsExtra.pathExists(path.join(imported.path, '.env.example'))).toBe(true);
+    expect(await fsExtra.pathExists(path.join(imported.path, 'vendor'))).toBe(false);
+
+    const importJsonText = await fsExtra.readFile(imported.importJsonPath, 'utf8');
+    expect(importJsonText).not.toContain(sourcePath);
+
+    const readinessJson = await fsExtra.readJson(imported.importReadinessPath);
+    expect(readinessJson).toMatchObject({
+      status: 'review',
+      detection: {
+        runtime: 'php',
+        framework: 'laravel',
+        frameworkDisplayName: 'Laravel',
+        supportTier: 'extended',
+      },
+      commandSupport: {
+        lifecycleCommands: ['help'],
+        moduleCommands: false,
+      },
+    });
+    expect(readinessJson.commandSupport.unsupportedLifecycleCommands).toContain('dev');
+
+    const capabilities = resolveProjectCommandCapabilities(imported.path);
+    expect(capabilities.runtime).toBe('php');
+    expect(capabilities.framework).toBe('laravel');
+    expect(capabilities.frameworkSupportTier).toBe('extended');
+    expect(capabilities.runtimeSupportTier).toBe('observed');
+    expect(capabilities.commandMap.help).toMatchObject({ status: 'supported', owner: 'runtime' });
+    expect(capabilities.commandMap.dev).toMatchObject({ status: 'unsupported', owner: 'runtime' });
+    expect(capabilities.commandMap.modules).toMatchObject({ status: 'unsupported', owner: 'none' });
+  });
+
+  it('makes imported projects discoverable by the workspace contract graph flow', async () => {
+    const workspacePath = await makeTempDir('rapidkit-import-workspace-');
+    const sourcePath = await makeTempDir('rapidkit-import-source-');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+    });
+    await fsExtra.writeFile(path.join(workspacePath, '.rapidkit-workspace'), '{}');
+    await fsExtra.writeJson(path.join(sourcePath, 'package.json'), {
+      name: 'orders-api',
+      dependencies: {
+        express: '^4.19.2',
+      },
+    });
+
+    await importProjectIntoWorkspace({
+      workspacePath,
+      source: sourcePath,
+      name: 'orders-api',
+    });
+
+    const contractSync = await syncWorkspaceContract({
+      workspacePath,
+      now: new Date('2026-06-04T00:00:00.000Z'),
+    });
+
+    expect(contractSync.verification.status).toBe('passed');
+    expect(contractSync.addedProjects).toEqual(['orders-api']);
+    expect(contractSync.contract.projects).toEqual([
+      expect.objectContaining({
+        slug: 'orders-api',
+        relativePath: 'orders-api',
+        runtime: 'node',
+        framework: 'express',
+        kit: 'imported.express',
       }),
     ]);
   });
