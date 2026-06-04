@@ -672,6 +672,47 @@ describe('workspace-run', () => {
     await fsExtra.remove(workspacePath);
   });
 
+  it('prints actionable failure details when a workspace project runtime is missing', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
+    const projectPath = await createProjectWithoutContext(workspacePath, 'dotnet-api');
+    await fsExtra.ensureDir(path.join(projectPath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(projectPath, '.rapidkit', 'context.json'), {
+      name: 'dotnet-api',
+      runtime: 'dotnet',
+      framework: 'dotnet',
+    });
+    await fsExtra.writeFile(path.join(projectPath, 'dotnet-api.csproj'), '<Project />\n');
+
+    const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
+    execaMock.mockImplementation(async (cmd: string, args: string[]) => {
+      if (cmd === 'which' && args[0] === 'dotnet') {
+        return { exitCode: 1, stdout: '', stderr: '' };
+      }
+      return { exitCode: 0, stdout: '{}', stderr: '' };
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    const report = await runWorkspaceStage({
+      workspacePath,
+      stage: 'init',
+      enforceGates: false,
+      json: false,
+    });
+
+    const output = logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+    expect(output).toContain("Reason: Command 'dotnet' not found or not executable");
+    expect(output).toContain('Command: dotnet restore');
+    expect(output).toContain('Hint: Install .NET 8+ SDK');
+
+    const projectReport = report.projects[0];
+    expect(projectReport?.relativePath).toBe('dotnet-api');
+    expect(projectReport?.status).toBe('failed');
+    expect(projectReport?.errorCategory).toBe('setup');
+
+    await fsExtra.remove(workspacePath);
+  });
+
   // ─── invalid stage validation ─────────────────────────────────────────────
 
   it('throws for invalid stage name', async () => {

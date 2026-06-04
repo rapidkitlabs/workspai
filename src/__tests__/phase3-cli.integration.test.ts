@@ -6,6 +6,18 @@ import os from 'os';
 import path from 'path';
 import { ensureDistBuilt } from './helpers/dist';
 
+function cliEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.NODE_ENV;
+  delete env.NODE_OPTIONS;
+  delete env.VITEST;
+  delete env.VITEST_WORKER_ID;
+  return {
+    ...env,
+    ...overrides,
+  };
+}
+
 describe('Phase 3 commands - CLI process integration', () => {
   it('lists registered workspaces via workspace list', () => {
     const dist = ensureDistBuilt();
@@ -17,11 +29,10 @@ describe('Phase 3 commands - CLI process integration', () => {
     try {
       fs.mkdirSync(isolatedHome, { recursive: true });
 
-      const env = {
-        ...process.env,
+      const env = cliEnv({
         HOME: isolatedHome,
         USERPROFILE: isolatedHome,
-      };
+      });
 
       const createWorkspace = spawnSync(
         process.execPath,
@@ -291,10 +302,9 @@ describe('Phase 3 commands - CLI process integration', () => {
       const run = spawnSync(process.execPath, [dist, 'init'], {
         cwd: workspaceDir,
         encoding: 'utf8',
-        env: {
-          ...process.env,
+        env: cliEnv({
           RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
-        },
+        }),
       });
 
       expect(run.status).not.toBe(99);
@@ -311,10 +321,9 @@ describe('Phase 3 commands - CLI process integration', () => {
     const run = spawnSync(process.execPath, [dist, 'setup', 'node'], {
       cwd: process.cwd(),
       encoding: 'utf8',
-      env: {
-        ...process.env,
+      env: cliEnv({
         RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
-      },
+      }),
     });
 
     expect(run.status).toBe(0);
@@ -328,10 +337,9 @@ describe('Phase 3 commands - CLI process integration', () => {
     const run = spawnSync(process.execPath, [dist, 'setup', 'node'], {
       cwd: process.cwd(),
       encoding: 'utf8',
-      env: {
-        ...process.env,
+      env: cliEnv({
         RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '0',
-      },
+      }),
     });
 
     expect(run.status).toBe(0);
@@ -345,10 +353,9 @@ describe('Phase 3 commands - CLI process integration', () => {
     const run = spawnSync(process.execPath, [dist, 'cache', 'status'], {
       cwd: process.cwd(),
       encoding: 'utf8',
-      env: {
-        ...process.env,
+      env: cliEnv({
         RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
-      },
+      }),
     });
 
     expect(run.status).toBe(0);
@@ -379,11 +386,10 @@ describe('Phase 3 commands - CLI process integration', () => {
       const run = spawnSync(process.execPath, [dist, 'cache', 'clear'], {
         cwd: process.cwd(),
         encoding: 'utf8',
-        env: {
-          ...process.env,
+        env: cliEnv({
           RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
           RAPIDKIT_CACHE_DIR: cacheDir,
-        },
+        }),
       });
 
       expect(run.status).toBe(0);
@@ -423,10 +429,9 @@ describe('Phase 3 commands - CLI process integration', () => {
       const run = spawnSync(process.execPath, [dist, 'bootstrap', projectDir], {
         cwd: process.cwd(),
         encoding: 'utf8',
-        env: {
-          ...process.env,
+        env: cliEnv({
           RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
-        },
+        }),
       });
 
       expect(run.status).toBe(0);
@@ -494,10 +499,9 @@ describe('Phase 3 commands - CLI process integration', () => {
         const run = spawnSync(process.execPath, [dist, command], {
           cwd: projectDir,
           encoding: 'utf8',
-          env: {
-            ...process.env,
+          env: cliEnv({
             RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
-          },
+          }),
         });
 
         expect(run.status).toBe(0);
@@ -554,10 +558,9 @@ describe('Phase 3 commands - CLI process integration', () => {
       const run = spawnSync(process.execPath, [dist, 'dev'], {
         cwd: projectDir,
         encoding: 'utf8',
-        env: {
-          ...process.env,
+        env: cliEnv({
           RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
-        },
+        }),
       });
 
       expect(run.status).toBe(1);
@@ -613,10 +616,9 @@ describe('Phase 3 commands - CLI process integration', () => {
         const run = spawnSync(process.execPath, [dist, command], {
           cwd: projectDir,
           encoding: 'utf8',
-          env: {
-            ...process.env,
+          env: cliEnv({
             RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
-          },
+          }),
         });
 
         expect(run.status).toBe(1);
@@ -668,10 +670,9 @@ describe('Phase 3 commands - CLI process integration', () => {
       const run = spawnSync(process.execPath, [dist, 'dev'], {
         cwd: projectDir,
         encoding: 'utf8',
-        env: {
-          ...process.env,
+        env: cliEnv({
           RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
-        },
+        }),
       });
 
       expect(run.status).toBe(1);
@@ -718,10 +719,9 @@ describe('Phase 3 commands - CLI process integration', () => {
       const run = spawnSync(process.execPath, [dist, 'dev'], {
         cwd: projectDir,
         encoding: 'utf8',
-        env: {
-          ...process.env,
+        env: cliEnv({
           RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
-        },
+        }),
       });
 
       expect(run.status).toBe(1);
@@ -765,10 +765,9 @@ describe('Phase 3 commands - CLI process integration', () => {
       const run = spawnSync(process.execPath, [dist, 'lint'], {
         cwd: projectDir,
         encoding: 'utf8',
-        env: {
-          ...process.env,
+        env: cliEnv({
           RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1',
-        },
+        }),
       });
 
       expect(run.status).toBe(1);

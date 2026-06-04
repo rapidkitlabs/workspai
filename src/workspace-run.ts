@@ -748,6 +748,24 @@ function parseJsonOutput<T>(raw: string): T | null {
   }
 }
 
+function runtimeInstallHint(runtime: RuntimeFamily | undefined): string | null {
+  switch (runtime) {
+    case 'dotnet':
+      return 'Install .NET 8+ SDK, then rerun `npx rapidkit setup dotnet` or `npx rapidkit init`.';
+    case 'go':
+      return 'Install Go 1.21+, then rerun `npx rapidkit setup go` or `npx rapidkit init`.';
+    case 'java':
+    case 'jvm-generic':
+      return 'Install Java 21+ and Maven/Gradle, then rerun `npx rapidkit setup java` or `npx rapidkit init`.';
+    case 'node':
+      return 'Install Node.js LTS and npm/pnpm/yarn, then rerun `npx rapidkit setup node` or `npx rapidkit init`.';
+    case 'python':
+      return 'Install Python 3.10+ and pip/Poetry, then rerun `npx rapidkit setup python` or `npx rapidkit init`.';
+    default:
+      return null;
+  }
+}
+
 async function runWorkspaceGates(workspacePath: string): Promise<GateResult[]> {
   const gates: GateResult[] = [];
 
@@ -983,6 +1001,18 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
             `${statusIcon} [${completedTargets}/${totalTargets}] (${percentage}%) ${relativePath} ${row.durationMs}ms`
           )
         );
+        if (row.status === 'failed') {
+          if (row.reason) {
+            console.log(chalk.red(`   Reason: ${row.reason}`));
+          }
+          if (row.executionCommand) {
+            console.log(chalk.gray(`   Command: ${row.executionCommand}`));
+          }
+          const hint = runtimeInstallHint(row.runtimeDetected);
+          if (hint && row.errorCategory === 'setup') {
+            console.log(chalk.gray(`   Hint: ${hint}`));
+          }
+        }
       }
     };
 

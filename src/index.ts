@@ -1556,11 +1556,17 @@ async function runCommandInCwd(
 ): Promise<number> {
   return await new Promise<number>((resolve) => {
     const child = spawn(command, commandArgs, {
-      stdio: 'inherit',
+      stdio: ['ignore', 'pipe', 'pipe'],
       cwd,
       shell: shouldUseShellExecution(),
     });
 
+    child.stdout?.on('data', (chunk: Buffer) => {
+      process.stdout.write(chunk);
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      process.stderr.write(chunk);
+    });
     child.on('close', (code) => resolve(code ?? 1));
     child.on('error', () => resolve(1));
   });
@@ -6034,6 +6040,20 @@ function forceBlockingCliOutput(): void {
   }
 }
 
+async function exitAfterOutputFlush(code: number): Promise<never> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setTimeout(resolve, 25));
+  await Promise.all(
+    [process.stdout, process.stderr].map(
+      (stream) =>
+        new Promise<void>((resolve) => {
+          stream.write('', () => resolve());
+        })
+    )
+  );
+  process.exit(code);
+}
+
 // Delegate to local CLI if inside a RapidKit project
 if (shouldBootstrapCli) {
   forceBlockingCliOutput();
@@ -6066,15 +6086,15 @@ if (shouldBootstrapCli) {
   if (shouldKeepNpmOwnedCommandLocal && isNpmOnlyManualHandlerCommand(preFirst)) {
     (async () => {
       if (preFirst === 'bootstrap') {
-        process.exit(await handleBootstrapCommand(preArgs));
+        await exitAfterOutputFlush(await handleBootstrapCommand(preArgs));
       }
       if (preFirst === 'setup') {
-        process.exit(await handleSetupCommand(preArgs));
+        await exitAfterOutputFlush(await handleSetupCommand(preArgs));
       }
       if (preFirst === 'cache') {
-        process.exit(await handleCacheCommand(preArgs));
+        await exitAfterOutputFlush(await handleCacheCommand(preArgs));
       }
-      process.exit(await handleMirrorCommand(preArgs));
+      await exitAfterOutputFlush(await handleMirrorCommand(preArgs));
     })().catch((error) => {
       process.stderr.write(
         `RapidKit (npm) failed to run ${preFirst}: ${(error as Error)?.message ?? error}\n`
@@ -6082,11 +6102,14 @@ if (shouldBootstrapCli) {
       process.exit(1);
     });
   } else if (shouldParseNpmOnlyDirectly || shouldKeepNpmOwnedCommandLocal) {
-    program.parse();
+    program.parseAsync().catch((error) => {
+      process.stderr.write(`RapidKit (npm) failed: ${(error as Error)?.message ?? error}\n`);
+      process.exit(1);
+    });
   } else if (shouldHandleWorkspaceInitDirectly) {
     // Keep workspace-root init on npm wrapper path before any delegation attempt.
     handleInitCommand(preArgs)
-      .then((code) => process.exit(code))
+      .then((code) => exitAfterOutputFlush(code))
       .catch((error) => {
         process.stderr.write(
           `RapidKit (npm) failed to run workspace init: ${(error as Error)?.message ?? error}\n`
@@ -6105,12 +6128,12 @@ if (shouldBootstrapCli) {
 
         if (isNpmOnlyParseDirectInvocation(args)) {
           // Commander-native npm-only commands.
-          program.parse();
+          await program.parseAsync();
           return;
         }
 
         if (handleProjectCapabilityRequest(args)) {
-          process.exit(0);
+          await exitAfterOutputFlush(0);
         }
 
         // Special-case `create` to preserve canonical Core UX while allowing a
@@ -6118,32 +6141,32 @@ if (shouldBootstrapCli) {
         // cannot run.
         if (args[0] === 'create') {
           const code = await handleCreateOrFallback(args);
-          process.exit(code);
+          await exitAfterOutputFlush(code);
         }
 
         if (args[0] === 'init') {
           const code = await handleInitCommand(args);
-          process.exit(code);
+          await exitAfterOutputFlush(code);
         }
 
         if (isNpmOnlyManualHandlerCommand(args[0])) {
           if (args[0] === 'bootstrap') {
             const code = await handleBootstrapCommand(args);
-            process.exit(code);
+            await exitAfterOutputFlush(code);
           }
 
           if (args[0] === 'setup') {
             const code = await handleSetupCommand(args);
-            process.exit(code);
+            await exitAfterOutputFlush(code);
           }
 
           if (args[0] === 'cache') {
             const code = await handleCacheCommand(args);
-            process.exit(code);
+            await exitAfterOutputFlush(code);
           }
 
           const code = await handleMirrorCommand(args);
-          process.exit(code);
+          await exitAfterOutputFlush(code);
         }
 
         // lifecycle commands: enforce workspace dependency policy context and strict policy
@@ -6292,7 +6315,7 @@ if (shouldBootstrapCli) {
                         '💡 Fix violations or switch to warn mode: set mode: warn in .rapidkit/policies.yml'
                       )
                     );
-                    process.exit(1);
+                    await exitAfterOutputFlush(1);
                   }
                 }
               } catch {
@@ -6319,7 +6342,7 @@ if (shouldBootstrapCli) {
             if (readiness.evidencePath) {
               console.log(chalk.gray(`ℹ️  Readiness evidence: ${readiness.evidencePath}`));
             }
-            process.exit(1);
+            await exitAfterOutputFlush(1);
           }
 
           if (readiness.overallStatus !== 'pass' && !enforceReadiness) {
@@ -6400,11 +6423,11 @@ if (shouldBootstrapCli) {
           });
 
           if (!lifecycle.ok) {
-            process.exit(lifecycle.code);
+            await exitAfterOutputFlush(lifecycle.code);
           }
 
-          if (lifecycle.value >= 0) {
-            process.exit(lifecycle.value);
+          if (lifecycle.ok && lifecycle.value >= 0) {
+            await exitAfterOutputFlush(lifecycle.value);
           }
         }
 
@@ -6426,7 +6449,7 @@ if (shouldBootstrapCli) {
                 '   The module system requires Python and is currently only supported for FastAPI and NestJS projects.'
               )
             );
-            process.exit(1);
+            await exitAfterOutputFlush(1);
           }
         }
 
@@ -6441,9 +6464,9 @@ if (shouldBootstrapCli) {
 
         if (shouldForward) {
           const code = await runCoreRapidkit(args, { cwd: process.cwd() });
-          process.exit(code);
+          await exitAfterOutputFlush(code);
         }
-        program.parse();
+        await program.parseAsync();
       }
     });
   }
