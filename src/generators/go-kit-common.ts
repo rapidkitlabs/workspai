@@ -44,7 +44,8 @@ lint:
 	golangci-lint run ./...
 
 fmt:
-	gofmt -w .
+	@GOFMT_FILES="$$(find . -type f -name '*.go' -not -path './.rapidkit/*' -not -path './vendor/*' -not -path './tmp/*')" ; \\
+	if [ -n "$$GOFMT_FILES" ]; then gofmt -w $$GOFMT_FILES; fi
 `
     : '';
 
@@ -69,7 +70,7 @@ run:
 	${options.runCommand}
 
 build:
-	go build $(LDFLAGS) -o bin/${options.projectName} ./cmd/server
+	go build -buildvcs=false $(LDFLAGS) -o bin/${options.projectName} ./cmd/server
 
 test:
 	${options.testCommand}

@@ -175,7 +175,7 @@ export class GoRuntimeAdapter implements RuntimeAdapter {
     return this.withGoCacheEnv(projectPath, async () => {
       const prereq = await this.ensureGoInstalled(projectPath);
       if (prereq) return prereq;
-      return this.run('go', ['build', './...'], projectPath);
+      return this.run('go', ['build', '-buildvcs=false', './...'], projectPath);
     });
   }
 

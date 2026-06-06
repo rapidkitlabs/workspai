@@ -146,6 +146,11 @@ describe('workspace archive export/hydrate', () => {
     expect(isSafeArchiveEntryName('C:/Users/Public/escape.txt')).toBe(false);
 
     expect(shouldExcludeWorkspaceArchivePath('api/node_modules/pkg/index.js')).toBe(true);
+    expect(shouldExcludeWorkspaceArchivePath('.rapidkit/cache/go/mod/pkg/file.go')).toBe(true);
+    expect(shouldExcludeWorkspaceArchivePath('.rapidkit/reports/workspace-run-last.json')).toBe(
+      true
+    );
+    expect(shouldExcludeWorkspaceArchivePath('.rapidkit/workspace.json')).toBe(false);
     expect(shouldExcludeWorkspaceArchivePath('api/.venv/bin/python')).toBe(true);
     expect(shouldExcludeWorkspaceArchivePath('api/.env')).toBe(true);
     expect(shouldExcludeWorkspaceArchivePath('api/.env.example')).toBe(false);
@@ -170,6 +175,10 @@ describe('workspace archive export/hydrate', () => {
     await fsExtra.outputFile(path.join(workspacePath, 'api', '.env'), 'SECRET=1');
     await fsExtra.outputFile(path.join(workspacePath, 'api', '.env.example'), 'SECRET=');
     await fsExtra.outputFile(
+      path.join(workspacePath, '.rapidkit', 'cache', 'go', 'mod', 'x.go'),
+      ''
+    );
+    await fsExtra.outputFile(
       path.join(workspacePath, 'api', 'node_modules', 'pkg', 'index.js'),
       ''
     );
@@ -185,6 +194,9 @@ describe('workspace archive export/hydrate', () => {
     expect(exported.manifest.files.map((file) => file.path)).toContain('api/src/main.ts');
     expect(exported.manifest.files.map((file) => file.path)).toContain('api/.env.example');
     expect(exported.manifest.files.map((file) => file.path)).not.toContain('api/.env');
+    expect(exported.manifest.files.map((file) => file.path)).not.toContain(
+      '.rapidkit/cache/go/mod/x.go'
+    );
     expect(exported.manifest.files.map((file) => file.path)).not.toContain(
       'api/node_modules/pkg/index.js'
     );

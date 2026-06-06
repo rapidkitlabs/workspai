@@ -1052,6 +1052,7 @@ export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
   'config',
   'product',
   'shell',
+  'commands',
 ] as const;
 
 const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
@@ -1066,6 +1067,7 @@ const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
   'config',
   'product',
   'shell',
+  'commands',
 ] as const;
 
 const NPM_ONLY_MANUAL_HANDLER_COMMANDS = ['bootstrap', 'setup', 'cache', 'mirror'] as const;
@@ -1159,6 +1161,106 @@ function printProjectCommandCapabilities(options: { json?: boolean } = {}): void
   console.log(chalk.green(`Supported: ${capabilities.supportedCommands.join(', ') || 'none'}`));
   console.log(chalk.yellow(`Global: ${capabilities.globalCommands.join(', ') || 'none'}`));
   console.log(chalk.red(`Unsupported: ${capabilities.unsupportedCommands.join(', ') || 'none'}`));
+}
+
+function getGlobalCommandCapabilities() {
+  const npmOwned = [
+    'analyze',
+    'readiness',
+    'doctor',
+    'autopilot',
+    'import',
+    'snapshot',
+    'workspace',
+    'bootstrap',
+    'setup',
+    'cache',
+    'mirror',
+    'ai',
+    'config',
+    'product',
+    'shell',
+    'project',
+    'commands',
+  ];
+  const coreBacked = [
+    'version',
+    'create',
+    'add',
+    'list',
+    'info',
+    'upgrade',
+    'diff',
+    'merge',
+    'optimize',
+    'license',
+    'checkpoint',
+    'reconcile',
+    'rollback',
+    'uninstall',
+    'frameworks',
+    'modules',
+  ];
+  const projectScoped = ['init', 'dev', 'start', 'build', 'test', 'lint', 'format', 'help'];
+
+  return {
+    scope: 'global',
+    cli: 'rapidkit-npm',
+    version: getVersion(),
+    cwd: process.cwd(),
+    commands: {
+      npmOwned,
+      coreBacked,
+      projectScoped,
+    },
+    commandMap: Object.fromEntries([
+      ...npmOwned.map((command) => [
+        command,
+        {
+          command,
+          owner: 'npm-wrapper',
+          status: 'supported',
+          scope: command === 'project' ? 'project-introspection' : 'workspace',
+        },
+      ]),
+      ...coreBacked.map((command) => [
+        command,
+        {
+          command,
+          owner: 'python-core',
+          status: 'delegated',
+          scope: 'core',
+        },
+      ]),
+      ...projectScoped.map((command) => [
+        command,
+        {
+          command,
+          owner: 'runtime-adapter',
+          status: command === 'help' ? 'supported' : 'runtime-dependent',
+          scope: 'project',
+        },
+      ]),
+    ]),
+  };
+}
+
+function printGlobalCommandCapabilities(options: { json?: boolean } = {}): void {
+  const capabilities = getGlobalCommandCapabilities();
+
+  if (options.json) {
+    console.log(JSON.stringify(capabilities, null, 2));
+    return;
+  }
+
+  console.log(chalk.bold('RapidKit command capabilities'));
+  console.log(chalk.gray(`CLI: ${capabilities.cli} v${capabilities.version}`));
+  console.log('');
+  console.log(chalk.green(`npm wrapper: ${capabilities.commands.npmOwned.join(', ')}`));
+  console.log(chalk.cyan(`Python core: ${capabilities.commands.coreBacked.join(', ')}`));
+  console.log(chalk.yellow(`Project runtime: ${capabilities.commands.projectScoped.join(', ')}`));
+  console.log('');
+  console.log(chalk.gray('Tip: run `rapidkit project commands --json` inside a project.'));
 }
 
 function handleProjectCapabilityRequest(args: readonly string[]): boolean {
@@ -1940,6 +2042,10 @@ async function handleGoInit(projectPath: string): Promise<number> {
   const adapter = getRuntimeAdapter('go', { runCommandInCwd, runCoreRapidkit });
   const result = await adapter.initProject(projectPath);
 
+  return reportRuntimeCommandResult(result);
+}
+
+function reportRuntimeCommandResult(result: { exitCode: number; message?: string }): number {
   if (result.message) {
     console.log(chalk.red(`❌ ${result.message}`));
   }
@@ -1959,23 +2065,23 @@ async function handleNodeCommand(
 
   if (action === 'init') {
     const result = await adapter.initProject(projectPath);
-    return result.exitCode;
+    return reportRuntimeCommandResult(result);
   }
   if (action === 'dev') {
     const result = await adapter.runDev(projectPath);
-    return result.exitCode;
+    return reportRuntimeCommandResult(result);
   }
   if (action === 'test') {
     const result = await adapter.runTest(projectPath);
-    return result.exitCode;
+    return reportRuntimeCommandResult(result);
   }
   if (action === 'build') {
     const result = await adapter.runBuild(projectPath);
-    return result.exitCode;
+    return reportRuntimeCommandResult(result);
   }
 
   const result = await adapter.runStart(projectPath);
-  return result.exitCode;
+  return reportRuntimeCommandResult(result);
 }
 
 async function handleJavaCommand(
@@ -1986,23 +2092,23 @@ async function handleJavaCommand(
 
   if (action === 'init') {
     const result = await adapter.initProject(projectPath);
-    return result.exitCode;
+    return reportRuntimeCommandResult(result);
   }
   if (action === 'dev') {
     const result = await adapter.runDev(projectPath);
-    return result.exitCode;
+    return reportRuntimeCommandResult(result);
   }
   if (action === 'test') {
     const result = await adapter.runTest(projectPath);
-    return result.exitCode;
+    return reportRuntimeCommandResult(result);
   }
   if (action === 'build') {
     const result = await adapter.runBuild(projectPath);
-    return result.exitCode;
+    return reportRuntimeCommandResult(result);
   }
 
   const result = await adapter.runStart(projectPath);
-  return result.exitCode;
+  return reportRuntimeCommandResult(result);
 }
 
 export async function handleBootstrapCommand(
@@ -3665,7 +3771,7 @@ export async function handleInitCommand(args: string[]): Promise<number> {
           return await handleJavaCommand('init', targetPath);
         }
         if (isDotnetProject(targetJson, targetPath) || inferredRuntime === 'dotnet') {
-          return (await dotnetAdapter.initProject(targetPath)).exitCode;
+          return reportRuntimeCommandResult(await dotnetAdapter.initProject(targetPath));
         }
         if (isNodeProject(targetJson, targetPath) || inferredRuntime === 'node') {
           return await handleNodeInitSmart(targetPath);
@@ -3696,7 +3802,7 @@ export async function handleInitCommand(args: string[]): Promise<number> {
         !cwdIsWorkspaceRoot &&
         (isDotnetProject(projectJsonNow, cwd) || inferredRuntimeNow === 'dotnet')
       ) {
-        return (await dotnetAdapter.initProject(cwd)).exitCode;
+        return reportRuntimeCommandResult(await dotnetAdapter.initProject(cwd));
       }
 
       if (
@@ -3727,7 +3833,7 @@ export async function handleInitCommand(args: string[]): Promise<number> {
           return await handleJavaCommand('init', projectRoot);
         }
         if (isDotnetProject(projectRootJson, projectRoot) || inferredRootRuntime === 'dotnet') {
-          return (await dotnetAdapter.initProject(projectRoot)).exitCode;
+          return reportRuntimeCommandResult(await dotnetAdapter.initProject(projectRoot));
         }
         if (isNodeProject(projectRootJson, projectRoot) || inferredRootRuntime === 'node') {
           return await handleNodeInitSmart(projectRoot);
@@ -4222,7 +4328,8 @@ export async function shouldForwardToCore(args: string[]): Promise<boolean> {
     first === '-h' ||
     first === 'help' ||
     first === '--version' ||
-    first === '-V'
+    first === '-V' ||
+    first === '-v'
   ) {
     return false;
   }
@@ -4649,6 +4756,14 @@ registerAICommands(program);
 registerProductCommands(program);
 
 program
+  .command('commands')
+  .description('Show effective RapidKit command ownership and runtime support')
+  .option('--json', 'Emit machine-readable JSON output')
+  .action(async (options: { json?: boolean }) => {
+    printGlobalCommandCapabilities({ json: options.json });
+  });
+
+program
   .command('analyze')
   .description('Analyze workspace/project health and generate enterprise-ready evidence')
   .option('--workspace <path>', 'Workspace/root path to analyze')
@@ -5004,7 +5119,7 @@ snapshotCommand
           workspacePath: options.workspace,
           name,
           reason: options.reason,
-          dryRun: options.dryRun === true,
+          dryRun: options.dryRun === true || process.argv.includes('--dry-run'),
           force: options.force === true,
           safetySnapshot: options.safetySnapshot,
         });
@@ -5091,7 +5206,7 @@ projectCommand
           workspacePath: options.workspace,
           project,
           reason: options.reason,
-          dryRun: options.dryRun === true,
+          dryRun: options.dryRun === true || process.argv.includes('--dry-run'),
         });
 
         if (options.json) {
@@ -5197,7 +5312,7 @@ projectCommand
           reason: options.reason,
           permanent: options.permanent === true,
           confirm: options.confirm,
-          dryRun: options.dryRun === true,
+          dryRun: options.dryRun === true || process.argv.includes('--dry-run'),
         });
 
         if (options.json) {
@@ -6079,6 +6194,14 @@ if (shouldBootstrapCli) {
     process.exit(0);
   }
 
+  if (
+    preArgs.some((arg) => arg === '--version' || arg === '-V' || arg === '-v') &&
+    !preArgs.some((arg) => arg === '--help' || arg === '-h' || arg === 'help')
+  ) {
+    console.log(getVersion());
+    process.exit(0);
+  }
+
   if (handleProjectCapabilityRequest(preArgs)) {
     process.exit(0);
   }
@@ -6413,10 +6536,16 @@ if (shouldBootstrapCli) {
 
             if (isPythonProject(projectJson, process.cwd()) || inferredRuntime === 'python') {
               const adapter = getRuntimeAdapter('python', { runCommandInCwd, runCoreRapidkit });
-              if (action === 'dev') return (await adapter.runDev(process.cwd())).exitCode;
-              if (action === 'test') return (await adapter.runTest(process.cwd())).exitCode;
-              if (action === 'build') return (await adapter.runBuild(process.cwd())).exitCode;
-              return (await adapter.runStart(process.cwd())).exitCode;
+              if (action === 'dev') {
+                return reportRuntimeCommandResult(await adapter.runDev(process.cwd()));
+              }
+              if (action === 'test') {
+                return reportRuntimeCommandResult(await adapter.runTest(process.cwd()));
+              }
+              if (action === 'build') {
+                return reportRuntimeCommandResult(await adapter.runBuild(process.cwd()));
+              }
+              return reportRuntimeCommandResult(await adapter.runStart(process.cwd()));
             }
 
             return -1;

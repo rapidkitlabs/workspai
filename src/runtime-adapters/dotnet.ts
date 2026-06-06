@@ -97,7 +97,16 @@ export class DotnetRuntimeAdapter implements RuntimeAdapter {
   async initProject(projectPath: string): Promise<CommandResult> {
     const prereq = await this.ensureDotnetInstalled(projectPath);
     if (prereq) return prereq;
-    return this.run('dotnet', ['restore'], projectPath);
+    const result = await this.run('dotnet', ['restore'], projectPath);
+    if (result.exitCode === 0) {
+      return result;
+    }
+
+    return {
+      exitCode: result.exitCode,
+      message:
+        'dotnet restore failed. Check NuGet connectivity, package references, and .NET SDK workload availability, then retry.',
+    };
   }
 
   async runDev(projectPath: string): Promise<CommandResult> {

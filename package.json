@@ -70,6 +70,8 @@
     "test:scenarios": "bash scripts/scenario-matrix-local.sh",
     "test:scenarios:full": "RAPIDKIT_SCENARIO_FULL_BOOTSTRAP=1 bash scripts/scenario-matrix-local.sh",
     "test:scenarios:docker": "bash scripts/scenario-matrix.sh",
+    "test:runtime-matrix": "node scripts/runtime-acceptance-matrix.mjs",
+    "test:runtime-matrix:full": "node scripts/runtime-acceptance-matrix.mjs --full",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",

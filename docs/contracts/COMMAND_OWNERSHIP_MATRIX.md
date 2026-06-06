@@ -28,6 +28,7 @@ These commands are implemented and orchestrated by `rapidkit-npm`:
 - `analyze`
 - `config`
 - `product`
+- `commands`
 - `shell activate`
 
 Reason: workspace-level policy, registry, and platform orchestration live in npm wrapper.

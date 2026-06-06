@@ -399,6 +399,7 @@ function makefile(v: Required<GoFiberVariables>): string {
     devCommand: '$(GOBIN)/air',
     runCommand: 'go run $(LDFLAGS) ./cmd/server',
     testCommand: 'go test ./... -v -race',
+    includeLintAndFmt: true,
   });
 }
 

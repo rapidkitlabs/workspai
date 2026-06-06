@@ -186,6 +186,9 @@ export function shouldExcludeWorkspaceArchivePath(
 ): boolean {
   const normalized = toArchivePath(relativePath);
   const segments = normalized.split('/').filter(Boolean);
+  if (segments[0] === '.rapidkit' && ['cache', 'reports'].includes(segments[1] || '')) {
+    return true;
+  }
   if (segments.some((segment) => EXCLUDED_SEGMENTS.has(segment))) {
     return true;
   }

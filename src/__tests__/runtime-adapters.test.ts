@@ -141,7 +141,7 @@ describe('Runtime Adapters', () => {
       await adapter.runStart('/tmp/project');
 
       expect(run).toHaveBeenCalledWith('go', ['test', './...'], '/tmp/project');
-      expect(run).toHaveBeenCalledWith('go', ['build', './...'], '/tmp/project');
+      expect(run).toHaveBeenCalledWith('go', ['build', '-buildvcs=false', './...'], '/tmp/project');
       expect(run).toHaveBeenCalledWith('go', ['run', './.'], '/tmp/project');
     });
 
@@ -1499,6 +1499,19 @@ describe('Runtime Adapters', () => {
       const result = await adapter.initProject('/tmp/project');
       expect(result.exitCode).toBe(0);
       expect(runCommandInCwd).toHaveBeenCalledWith('dotnet', ['restore'], '/tmp/project');
+    });
+
+    it('returns actionable dotnet restore diagnostics', async () => {
+      const runCommandInCwd = vi.fn().mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+      const adapter = getRuntimeAdapter('dotnet', {
+        runCommandInCwd,
+        runCoreRapidkit: vi.fn().mockResolvedValue(0),
+      });
+
+      const result = await adapter.initProject('/tmp/project');
+
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('dotnet restore failed');
     });
   });
 });

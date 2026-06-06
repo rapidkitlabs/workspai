@@ -147,15 +147,18 @@ export function resolveProjectCommandCapabilities(
 
   for (const command of RUNTIME_COMMANDS) {
     const runtimeSupported =
-      !!projectRoot &&
-      !!runtimeAdapter &&
-      runtimeAdapter.supportedCommands.includes(command) &&
-      runtimeCommandSupport.lifecycleCommands.includes(command);
+      command === 'help' ||
+      (!!projectRoot &&
+        !!runtimeAdapter &&
+        runtimeAdapter.supportedCommands.includes(command) &&
+        runtimeCommandSupport.lifecycleCommands.includes(command));
     commandMap[command] = capability(command, {
       owner: 'runtime',
       status: runtimeSupported ? 'supported' : 'unsupported',
       reason: runtimeSupported
-        ? `Handled by the ${runtimeAdapter.displayName} runtime adapter or project-local launcher.`
+        ? command === 'help'
+          ? 'Help is available for every RapidKit project through the npm CLI.'
+          : `Handled by the ${runtimeAdapter?.displayName} runtime adapter or project-local launcher.`
         : !projectRoot
           ? 'No RapidKit project was detected.'
           : runtimeAdapter

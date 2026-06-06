@@ -33,8 +33,8 @@ It separates three concerns:
 
 | Tier        | Frameworks                                                                                                                                                  |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| first-class | FastAPI, NestJS, Go/Fiber, Go/Gin, Spring Boot                                                                                                              |
-| extended    | Django, Flask, Express, Fastify, Koa, Echo, ASP.NET Core, Laravel, Symfony, Rails, Sinatra, Actix, Axum, Rocket, Phoenix, Clojure, Scala, Kotlin, Deno, Bun |
+| first-class | FastAPI, NestJS                                                                                                                                              |
+| extended    | Go/Fiber, Go/Gin, Spring Boot, ASP.NET Core, Django, Flask, Express, Fastify, Koa, Echo, Laravel, Symfony, Rails, Sinatra, Actix, Axum, Rocket, Phoenix     |
 | observed    | Python, Node.js, Go, Java, PHP, Ruby, Rust, Elixir, Unknown/generic projects                                                                                |
 
 ## Import Policy
@@ -47,3 +47,26 @@ Imported projects are **observed and governed by default**:
 - `module_support` defaults to `false` for imported projects unless existing RapidKit metadata explicitly opts in.
 
 This keeps imports safe for arbitrary repositories while still enabling workspace-level visibility and lifecycle support where adapters exist.
+
+## Executable Acceptance Gate
+
+The runtime support contract is validated by
+[RUNTIME_ACCEPTANCE_MATRIX.md](RUNTIME_ACCEPTANCE_MATRIX.md).
+
+Run the default, network-safe gate locally before release:
+
+```bash
+npm run test:runtime-matrix
+```
+
+Run the full lifecycle gate on a prepared machine with Go, Java, .NET, Python,
+and Node installed:
+
+```bash
+npm run test:runtime-matrix:full
+```
+
+This gate is not wired into regular GitHub Actions yet because it creates real
+workspaces and projects across multiple runtimes. Keep it manual/local until a
+dedicated scheduled or manually dispatched workflow has runtime caches and cost
+controls.
