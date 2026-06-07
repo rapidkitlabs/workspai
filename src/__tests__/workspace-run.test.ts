@@ -685,7 +685,7 @@ describe('workspace-run', () => {
 
     const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
     execaMock.mockImplementation(async (cmd: string, args: string[]) => {
-      if (cmd === 'which' && args[0] === 'dotnet') {
+      if ((cmd === 'which' || cmd === 'where') && args[0] === 'dotnet') {
         return { exitCode: 1, stdout: '', stderr: '' };
       }
       return { exitCode: 0, stdout: '{}', stderr: '' };

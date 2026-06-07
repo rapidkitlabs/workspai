@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import fs from 'fs';
+import path from 'path';
 import { DotnetRuntimeAdapter } from '../runtime-adapters/dotnet.js';
 import { GoRuntimeAdapter } from '../runtime-adapters/go.js';
 import { JavaRuntimeAdapter } from '../runtime-adapters/java.js';
@@ -1363,6 +1364,7 @@ describe('Runtime Adapters', () => {
     it('discovers nested ASP.NET Core project files for lifecycle commands', async () => {
       const run = vi.fn().mockResolvedValue(0);
       const adapter = new DotnetRuntimeAdapter(run);
+      const projectFile = path.join('/tmp/dotnet-project', 'src', 'Api', 'Api.csproj');
       vi.spyOn(fs, 'readdirSync').mockImplementation((p: fs.PathLike, options?: unknown) => {
         const normalized = normalizePath(String(p));
         if (!options) {
@@ -1394,22 +1396,18 @@ describe('Runtime Adapters', () => {
       expect(run).toHaveBeenCalledWith('dotnet', ['--version'], '/tmp/dotnet-project');
       expect(run).toHaveBeenCalledWith(
         'dotnet',
-        ['watch', '--project', '/tmp/dotnet-project/src/Api/Api.csproj', 'run'],
+        ['watch', '--project', projectFile, 'run'],
+        '/tmp/dotnet-project'
+      );
+      expect(run).toHaveBeenCalledWith('dotnet', ['test', projectFile], '/tmp/dotnet-project');
+      expect(run).toHaveBeenCalledWith(
+        'dotnet',
+        ['build', projectFile, '-c', 'Release'],
         '/tmp/dotnet-project'
       );
       expect(run).toHaveBeenCalledWith(
         'dotnet',
-        ['test', '/tmp/dotnet-project/src/Api/Api.csproj'],
-        '/tmp/dotnet-project'
-      );
-      expect(run).toHaveBeenCalledWith(
-        'dotnet',
-        ['build', '/tmp/dotnet-project/src/Api/Api.csproj', '-c', 'Release'],
-        '/tmp/dotnet-project'
-      );
-      expect(run).toHaveBeenCalledWith(
-        'dotnet',
-        ['run', '--project', '/tmp/dotnet-project/src/Api/Api.csproj'],
+        ['run', '--project', projectFile],
         '/tmp/dotnet-project'
       );
     });
