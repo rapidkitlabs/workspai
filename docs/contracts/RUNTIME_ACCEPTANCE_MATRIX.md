@@ -78,7 +78,9 @@ Each run writes a JSON report with:
 - per-scenario command, cwd, exit code, duration, status, and output tails
 - final summary and exit code
 
-Use `--report <file>` to persist the report as local release evidence.
+By default, reports are written under the system temp report directory and are
+not deleted with the temporary workspace. Use `--report <file>` when you need a
+stable release-evidence path inside the repository or an artifact directory.
 
 ## Release Rule
 

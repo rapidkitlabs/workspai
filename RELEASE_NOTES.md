@@ -1,6 +1,39 @@
 # Release Notes
 
-## Latest Release: v0.31.0 (June 2, 2026)
+## Latest Release: v0.32.0 (June 7, 2026)
+
+### 🧪 Runtime Acceptance Matrix, Release Evidence, and Audit Hardening
+
+This release strengthens RapidKit npm as the workspace-level verification surface. It adds local runtime acceptance evidence for workspace/project commands, makes release reports survive temporary workspace cleanup, and tightens the security workflow around npm audit findings.
+
+**What's New:**
+
+- 🧪 **Runtime acceptance matrix**
+  - Added local acceptance coverage for workspace and project command flows across FastAPI, FastAPI DDD, NestJS, Go/Fiber, Go/Gin, Spring Boot, ASP.NET Core, and observed runtimes.
+  - Keeps the expensive matrix out of GitHub Actions by default while preserving it as explicit local release evidence.
+  - Documents the release rule for using the matrix before publishing multi-runtime CLI changes.
+
+- 🧾 **Stable release evidence paths**
+  - Runtime matrix reports now default to a stable system temp report directory.
+  - Reports are no longer removed when the temporary generated workspace is cleaned up.
+  - `--report <file>` still supports explicit repository or artifact evidence paths.
+
+- 🔒 **Security and dependency hardening**
+  - The security workflow now fails on moderate-or-higher `npm audit` findings.
+  - Refreshed vulnerable transitive dependency locks, including the Vitest toolchain.
+  - Verified the release with a clean audit and full local validation.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.32.0
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.32.0.md)
+
+---
+
+## Previous Release: v0.31.0 (June 2, 2026)
 
 ### 🧭 Workspace Contract Registry, Portable Archives, and CLI Ownership Hardening
 

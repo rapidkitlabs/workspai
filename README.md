@@ -3,7 +3,7 @@
 > RapidKit is an open-source workspace platform that standardizes how teams build, scale, and deploy backend services.
 
 Production-ready scaffolding for FastAPI, NestJS, Spring Boot, Go/Fiber, Go/Gin, and ASP.NET Core.  
-**27+ plug-and-play modules** are available for FastAPI and NestJS projects. Spring Boot, Go, and ASP.NET Core kits run as npm-level generators.  
+**50+ RapidKit Core modules** are available through the CLI for supported module-capable runtimes, with FastAPI and NestJS as first-class module installation targets. Spring Boot, Go, and ASP.NET Core kits run as npm-level generators.
 Built for clean architecture, minimal boilerplate, and fast deployment.
 
 > **💡 Recommended:** Install the [Workspai VS Code extension](https://marketplace.visualstudio.com/items?itemName=rapidkit.rapidkit-vscode) for AI-assisted project creation, workspace exploration, and context-aware coding — all backed by this CLI.

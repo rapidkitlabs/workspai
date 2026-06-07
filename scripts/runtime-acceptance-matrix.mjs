@@ -163,8 +163,12 @@ const workspaceName = args.workspaceName || 'rapidkit-runtime-acceptance';
 const runRoot =
   args.workspaceDir || fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-runtime-acceptance-'));
 const workspacePath = path.join(runRoot, workspaceName);
+const defaultReportRoot = args.workspaceDir
+  ? runRoot
+  : path.join(os.tmpdir(), 'rapidkit-runtime-acceptance-reports');
 const reportPath =
-  args.report || path.join(runRoot, `runtime-acceptance-report-${toFileTimestamp(startedAt)}.json`);
+  args.report ||
+  path.join(defaultReportRoot, `runtime-acceptance-report-${toFileTimestamp(startedAt)}.json`);
 const markdownReportPath = reportPath.replace(/\.json$/i, '.md');
 
 const report = {

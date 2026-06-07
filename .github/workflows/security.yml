@@ -12,32 +12,31 @@ on:
 jobs:
   security:
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Run npm audit
         run: npm audit --audit-level=moderate
-        continue-on-error: true
-      
+
       - name: Run dependency check
         run: |
           npm install -g npm-check-updates
           ncu --errorLevel 2
         continue-on-error: true
-      
+
       - name: Check for outdated dependencies
         run: npm outdated || true
-      
+
       - name: Generate security report
         run: |
           echo "# Security Audit Report" > security-report.md
@@ -48,7 +47,7 @@ jobs:
           echo "" >> security-report.md
           echo "## Outdated dependencies" >> security-report.md
           npm outdated >> security-report.md || true
-      
+
       - name: Upload security report
         uses: actions/upload-artifact@v4
         with:

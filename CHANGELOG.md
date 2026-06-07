@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-06-07
+
+### Added
+
+- Added the runtime acceptance matrix script as local release evidence for workspace and project commands across FastAPI, NestJS, Go/Fiber, Go/Gin, Spring Boot, ASP.NET Core, and observed runtimes.
+- Added runtime acceptance matrix documentation covering report persistence, release rules, and local-only execution expectations.
+
+### Changed
+
+- Updated runtime acceptance reports to write under a stable system temp report directory by default so evidence survives temporary workspace cleanup.
+- Hardened the security workflow so `npm audit --audit-level=moderate` fails the workflow instead of continuing after audit findings.
+- Refreshed vulnerable transitive dependency locks, including the Vitest toolchain, to clear npm audit findings before publish.
+
+### Verification
+
+- Validated with `npm run validate`.
+- Validated package publishing with `npm publish --dry-run --access public`.
+- Validated security posture with `npm audit --audit-level=moderate`.
+
 ## [0.31.0] - 2026-06-02
 
 ### Added
