@@ -1,6 +1,34 @@
 # Release Notes
 
-## Latest Release: v0.32.0 (June 7, 2026)
+## Latest Release: v0.32.1 (June 8, 2026)
+
+### Runtime Command Surface Parity and Windows Go Launcher Hardening
+
+This patch closes a product-surface drift gap between the npm CLI and companion tooling by adding a shared runtime command contract. It also hardens generated Go workspace launchers on Windows so users can run project lifecycle commands without requiring GNU Make.
+
+**What's New:**
+
+- 🧭 **Runtime command surface contract**
+  - Added a shared contract for lifecycle commands, module mutation commands, global commands, scaffold kits, runtime tiers, and module marketplace boundaries.
+  - Added regression coverage so command-surface drift is caught before release.
+  - Extended parity sync tooling to verify both import stack parity and runtime command surface parity.
+
+- 🪟 **Windows Go launcher hardening**
+  - Generated Go/Fiber and Go/Gin `rapidkit.cmd` launchers now use native Go commands for dev, build, test, format, and docs flows.
+  - Windows users no longer need GNU Make just to run generated Go workspace commands.
+  - Added generator coverage to lock this behavior.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.32.1
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.32.1.md)
+
+---
+
+## Previous Release: v0.32.0 (June 7, 2026)
 
 ### 🧪 Runtime Acceptance Matrix, Release Evidence, and Audit Hardening
 

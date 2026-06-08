@@ -1,0 +1,152 @@
+{
+  "schemaVersion": "rapidkit-runtime-command-surface-v1",
+  "lifecycleCommands": ["init", "dev", "start", "build", "test", "lint", "format", "help"],
+  "moduleMutationCommands": [
+    "add",
+    "modules",
+    "upgrade",
+    "diff",
+    "merge",
+    "reconcile",
+    "rollback",
+    "uninstall",
+    "checkpoint",
+    "snapshot",
+    "optimize"
+  ],
+  "globalCommands": ["create", "list", "info", "frameworks", "license"],
+  "universalCommands": ["version", "commands", "doctor", "project"],
+  "moduleSuggestionFrameworks": ["fastapi", "nestjs"],
+  "moduleUnsupportedFrameworks": ["go", "springboot", "dotnet"],
+  "scaffoldKits": [
+    "fastapi.standard",
+    "fastapi.ddd",
+    "nestjs.standard",
+    "gofiber.standard",
+    "gogin.standard",
+    "springboot.standard",
+    "dotnet.webapi.clean"
+  ],
+  "runtimeMatrix": {
+    "python": {
+      "tier": "first-class",
+      "scaffold": true,
+      "import": true,
+      "moduleCommands": true,
+      "doctor": "full",
+      "lifecycleCommands": ["init", "dev", "start", "build", "test", "lint", "format", "help"]
+    },
+    "node": {
+      "tier": "first-class",
+      "scaffold": true,
+      "import": true,
+      "moduleCommands": true,
+      "doctor": "full",
+      "lifecycleCommands": ["init", "dev", "start", "build", "test", "lint", "format", "help"]
+    },
+    "go": {
+      "tier": "extended",
+      "scaffold": true,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "readiness",
+      "lifecycleCommands": ["init", "dev", "start", "build", "test", "lint", "format", "help"]
+    },
+    "java": {
+      "tier": "extended",
+      "scaffold": true,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "readiness",
+      "lifecycleCommands": ["init", "dev", "start", "build", "test", "lint", "format", "help"]
+    },
+    "dotnet": {
+      "tier": "extended",
+      "scaffold": true,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "readiness",
+      "lifecycleCommands": ["init", "dev", "start", "build", "test", "lint", "format", "help"]
+    },
+    "php": {
+      "tier": "observed",
+      "scaffold": false,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "observed",
+      "lifecycleCommands": ["help"]
+    },
+    "ruby": {
+      "tier": "observed",
+      "scaffold": false,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "observed",
+      "lifecycleCommands": ["help"]
+    },
+    "rust": {
+      "tier": "observed",
+      "scaffold": false,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "observed",
+      "lifecycleCommands": ["help"]
+    },
+    "elixir": {
+      "tier": "observed",
+      "scaffold": false,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "observed",
+      "lifecycleCommands": ["help"]
+    },
+    "clojure": {
+      "tier": "observed",
+      "scaffold": false,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "observed",
+      "lifecycleCommands": ["help"]
+    },
+    "scala": {
+      "tier": "observed",
+      "scaffold": false,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "observed",
+      "lifecycleCommands": ["help"]
+    },
+    "kotlin": {
+      "tier": "observed",
+      "scaffold": false,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "observed",
+      "lifecycleCommands": ["help"]
+    },
+    "deno": {
+      "tier": "observed",
+      "scaffold": false,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "observed",
+      "lifecycleCommands": ["help"]
+    },
+    "bun": {
+      "tier": "observed",
+      "scaffold": false,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "observed",
+      "lifecycleCommands": ["help"]
+    },
+    "unknown": {
+      "tier": "observed",
+      "scaffold": false,
+      "import": true,
+      "moduleCommands": false,
+      "doctor": "observed",
+      "lifecycleCommands": ["help"]
+    }
+  }
+}

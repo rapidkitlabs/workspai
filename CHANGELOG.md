@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.1] - 2026-06-08
+
+### Added
+
+- Added the shared runtime command surface contract to keep `rapidkit-npm` and the Workspai VS Code extension aligned on lifecycle commands, module mutation support, scaffold kits, and runtime support tiers.
+- Added contract regression coverage for runtime command surface parity and module marketplace boundaries.
+
+### Changed
+
+- Updated parity contract sync tooling so import-stack parity and runtime command surface parity are checked together.
+- Hardened generated Go/Fiber and Go/Gin Windows launchers to use native Go commands instead of requiring GNU Make.
+
+### Fixed
+
+- Fixed Windows Go project launcher behavior for users without GNU Make installed.
+- Fixed a tooling drift gap where npm and extension command surfaces could evolve without a shared tested contract.
+
+### Verification
+
+- Validated with `npm run typecheck`.
+- Validated with `npm run lint`.
+- Validated runtime command surface coverage with `vitest` contract and Go generator tests.
+
 ## [0.32.0] - 2026-06-07
 
 ### Added

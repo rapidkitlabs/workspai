@@ -132,6 +132,24 @@ describe('generateGoFiberKit', () => {
         expect(exists, `Expected file to exist: ${file}`).toBe(true);
       }
     });
+
+    it('should generate a Windows launcher that does not require GNU Make', async () => {
+      const projectPath = path.join(testDir, 'fiber-windows-launcher');
+      await generateGoFiberKit(projectPath, {
+        project_name: 'fiber-windows-launcher',
+        skipGit: true,
+      });
+
+      const launcher = await fs.readFile(path.join(projectPath, 'rapidkit.cmd'), 'utf8');
+      expect(launcher).toContain('go run ./cmd/server');
+      expect(launcher).toContain(
+        'go build -buildvcs=false -o bin\\fiber-windows-launcher.exe ./cmd/server'
+      );
+      expect(launcher).toContain('go test ./... -v -race');
+      expect(launcher).toContain('gofmt -w .');
+      expect(launcher).not.toContain('make dev');
+      expect(launcher).not.toContain('make test');
+    });
   });
 
   describe('default variable values', () => {

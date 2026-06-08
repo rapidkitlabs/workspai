@@ -189,6 +189,7 @@ export function buildGoLauncherCmdTemplate(
   options: Omit<GoLauncherTemplateOptions, 'fallbackDevCommand'>
 ): string {
   return `@echo off
+setlocal
 rem RapidKit ${options.runtimeLabel} project launcher — Windows
 set CMD=%1
 if "%CMD%"=="" goto usage
@@ -202,16 +203,58 @@ if "%CMD%"=="init" (
     go mod tidy
     exit /b %ERRORLEVEL%
 )
-if "%CMD%"=="dev"  ( make dev %*   & exit /b %ERRORLEVEL% )
-if "%CMD%"=="build" ( make build %* & exit /b %ERRORLEVEL% )
-if "%CMD%"=="test"  ( make test %*  & exit /b %ERRORLEVEL% )
-if "%CMD%"=="lint"  ( make lint %*  & exit /b %ERRORLEVEL% )
-if "%CMD%"=="format" ( make fmt %*  & exit /b %ERRORLEVEL% )
-if "%CMD%"=="docs"  ( make docs %*  & exit /b %ERRORLEVEL% )
-if "%CMD%"=="start" ( bin\\${options.projectName}.exe %* & exit /b %ERRORLEVEL% )
+if "%CMD%"=="dev" (
+    where air >nul 2>nul
+    if errorlevel 1 (
+        go run ./cmd/server %*
+    ) else (
+        air %*
+    )
+    exit /b %ERRORLEVEL%
+)
+if "%CMD%"=="build" (
+    if not exist bin mkdir bin
+    go build -buildvcs=false -o bin\\${options.projectName}.exe ./cmd/server
+    exit /b %ERRORLEVEL%
+)
+if "%CMD%"=="test" (
+    go test ./... -v -race %*
+    exit /b %ERRORLEVEL%
+)
+if "%CMD%"=="lint" (
+    golangci-lint run %*
+    exit /b %ERRORLEVEL%
+)
+if "%CMD%"=="format" (
+    gofmt -w .
+    exit /b %ERRORLEVEL%
+)
+if "%CMD%"=="fmt" (
+    gofmt -w .
+    exit /b %ERRORLEVEL%
+)
+if "%CMD%"=="docs" (
+    where swag >nul 2>nul
+    if errorlevel 1 (
+        echo swag is required for docs. Run: go install ${GO_SWAG_INSTALL_TARGET}
+        exit /b 1
+    )
+    swag init -g ${GO_SWAG_GEN_ARGS}
+    exit /b %ERRORLEVEL%
+)
+if "%CMD%"=="start" (
+    if not exist bin\\${options.projectName}.exe call "%~f0" build
+    if errorlevel 1 exit /b %ERRORLEVEL%
+    bin\\${options.projectName}.exe %*
+    exit /b %ERRORLEVEL%
+)
 
 :usage
+echo RapidKit ${options.runtimeLabel} project launcher
+echo.
 echo Available: init, dev, start, build, docs, test, lint, format
+echo.
+echo Windows launcher uses native Go commands and does not require GNU Make.
 exit /b 1
 `;
 }
