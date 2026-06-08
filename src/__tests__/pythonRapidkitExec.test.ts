@@ -35,11 +35,6 @@ const mockFs = fsExtra as unknown as {
   ensureDir: Mock;
 };
 
-const pythonCandidates =
-  process.platform === 'win32'
-    ? (['python', 'py', 'python3'] as const)
-    : (['python3', 'python'] as const);
-
 describe('bridge internals', () => {
   let bridge: typeof import('../core-bridge/pythonRapidkitExec');
 
@@ -52,6 +47,10 @@ describe('bridge internals', () => {
   afterEach(() => {
     delete process.env.RAPIDKIT_DEBUG;
     delete process.env.RAPIDKIT_BRIDGE_FORCE_VENV;
+    delete process.env.RAPIDKIT_BRIDGE_PYTHON;
+    delete process.env.RAPIDKIT_PYTHON_CMD;
+    delete process.env.POETRY_PYTHON;
+    delete process.env.RAPIDKIT_CORE_PYTHON_PACKAGE;
   });
 
   describe('parseCoreCommandsFromHelp', () => {
@@ -95,24 +94,31 @@ rapidkit deploy
   });
 
   describe('pickSystemPython', () => {
-    it('returns python3 if available', async () => {
+    it('returns the first available Python candidate', async () => {
       mockExeca.mockResolvedValueOnce({ exitCode: 0 });
       const res = await bridge.__test__.pickSystemPython();
-      expect(res).toBe(pythonCandidates[0]);
+      expect(res).toBe(bridge.__test__.pythonCommandCandidates()[0]);
     });
 
-    it('falls back to python', async () => {
+    it('falls back to the next Python candidate', async () => {
       mockExeca
         .mockRejectedValueOnce(new Error('first candidate unavailable'))
         .mockResolvedValueOnce({ exitCode: 0 });
       const res = await bridge.__test__.pickSystemPython();
-      expect(res).toBe(pythonCandidates[1]);
+      expect(res).toBe(bridge.__test__.pythonCommandCandidates()[1]);
     });
 
     it('returns null if none found', async () => {
       mockExeca.mockRejectedValue(new Error('no python'));
       const res = await bridge.__test__.pickSystemPython();
       expect(res).toBeNull();
+    });
+
+    it('prefers explicit bridge Python override before generic candidates', () => {
+      process.env.RAPIDKIT_BRIDGE_PYTHON = '/opt/python/bin/python';
+      const candidates = bridge.__test__.pythonCommandCandidates();
+      expect(candidates[0]).toBe('/opt/python/bin/python');
+      expect(new Set(candidates).size).toBe(candidates.length);
     });
   });
 
@@ -174,6 +180,36 @@ rapidkit deploy
       await expect(bridge.__test__.ensureBridgeVenv('python3')).rejects.toMatchObject({
         code: 'BRIDGE_VENV_CREATE_FAILED',
       });
+    });
+
+    it('continues to the next Python candidate when one cannot create a venv', async () => {
+      process.env.RAPIDKIT_BRIDGE_PYTHON = 'bad-python';
+      process.env.RAPIDKIT_PYTHON_CMD = 'good-python';
+
+      mockFs.pathExists.mockResolvedValue(false);
+      mockFs.ensureDir.mockResolvedValue(undefined);
+
+      mockExeca
+        // candidate 1 exists
+        .mockResolvedValueOnce({ exitCode: 0, stdout: 'Python 3.13', stderr: '' })
+        // candidate 1 venv creation fails (e.g. missing ensurepip/python3-venv)
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'ensurepip missing' })
+        // candidate 2 exists
+        .mockResolvedValueOnce({ exitCode: 0, stdout: 'Python 3.10', stderr: '' })
+        // candidate 2 venv creation succeeds
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' })
+        // pip check succeeds
+        .mockResolvedValueOnce({ exitCode: 0, stdout: 'pip 24', stderr: '' })
+        // core install succeeds
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' });
+
+      const py = await bridge.__test__.ensureBridgeVenvFromCandidates();
+      expect(py).toContain('python');
+      expect(mockExeca).toHaveBeenCalledWith(
+        'good-python',
+        expect.arrayContaining(['-m', 'venv']),
+        expect.any(Object)
+      );
     });
   });
 });
@@ -296,39 +332,24 @@ describe('resolveRapidkitPython', () => {
     const res = await bridge.resolveRapidkitPython();
     expect(res.kind).toBe('system');
     if (res.kind === 'system') {
-      expect(res.cmd).toBe(pythonCandidates[0]);
+      expect(res.cmd).toBe(bridge.__test__.pythonCommandCandidates()[0]);
     }
   });
 
   it('bootstraps venv when system python has no rapidkit', async () => {
     process.env.RAPIDKIT_BRIDGE_FORCE_VENV = '1';
-    // tryRapidkit(python3): all probes must fail
-    // 1. sysconfig script path probe - returns path but doesn't exist
-    mockExeca.mockResolvedValueOnce({ stdout: '/some/path/rapidkit', exitCode: 0 });
-    mockFs.pathExists.mockResolvedValueOnce(false); // script doesn't exist
-    // 2. import probe fails - rapidkit not installed
-    mockExeca.mockResolvedValueOnce({ stdout: '0', exitCode: 0 });
-    // 3. -m rapidkit probe fails
-    mockExeca.mockResolvedValueOnce({ stdout: '', exitCode: 1 });
-
-    // tryRapidkit(python): all probes must fail
-    // 1. sysconfig script path probe
-    mockExeca.mockResolvedValueOnce({ stdout: '/some/path/rapidkit', exitCode: 0 });
-    mockFs.pathExists.mockResolvedValueOnce(false); // script doesn't exist
-    // 2. import probe fails
-    mockExeca.mockResolvedValueOnce({ stdout: '0', exitCode: 0 });
-    // 3. -m rapidkit probe fails
-    mockExeca.mockResolvedValueOnce({ stdout: '', exitCode: 1 });
-
-    // pickSystemPython: check python3 --version
-    mockExeca.mockResolvedValueOnce({ exitCode: 0 });
-
-    // ensureBridgeVenv: pathExists for venv python returns false
     mockFs.pathExists.mockResolvedValue(false);
     mockFs.ensureDir.mockResolvedValue(undefined);
 
-    // venv creation and pip install commands all succeed
-    mockExeca.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 } as any);
+    mockExeca
+      // candidate exists
+      .mockResolvedValueOnce({ stdout: 'Python 3.11', stderr: '', exitCode: 0 } as any)
+      // venv creation succeeds
+      .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0 } as any)
+      // pip check succeeds
+      .mockResolvedValueOnce({ stdout: 'pip 24', stderr: '', exitCode: 0 } as any)
+      // core install succeeds
+      .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0 } as any);
 
     const res = await bridge.resolveRapidkitPython();
     expect(res.kind).toBe('venv');

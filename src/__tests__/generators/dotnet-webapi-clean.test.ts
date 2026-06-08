@@ -103,9 +103,14 @@ describe('generateDotnetWebApiCleanKit', () => {
     expect(projectJson.runtime).toBe('dotnet');
     expect(projectJson.module_support).toBe(false);
 
+    const solution = await fs.readFile(path.join(projectPath, 'billing-api.sln'), 'utf8');
+    expect(solution).toContain('GlobalSection(SolutionConfigurationPlatforms)');
+    expect(solution).toContain('GlobalSection(ProjectConfigurationPlatforms)');
+
     const csproj = await fs.readFile(path.join(projectPath, 'src/billing-api.csproj'), 'utf8');
     expect(csproj).toContain('<Project Sdk="Microsoft.NET.Sdk.Web">');
     expect(csproj).toContain('<TargetFramework>net8.0</TargetFramework>');
+    expect(csproj).toContain('<NoWarn>$(NoWarn);1591</NoWarn>');
     expect(csproj).toContain('Swashbuckle.AspNetCore');
 
     const program = await fs.readFile(path.join(projectPath, 'src/Program.cs'), 'utf8');
@@ -113,7 +118,7 @@ describe('generateDotnetWebApiCleanKit', () => {
     expect(program).toContain('MapSystemEndpoints()');
 
     const unixLauncher = await fs.readFile(path.join(projectPath, 'rapidkit'), 'utf8');
-    expect(unixLauncher).toContain('dotnet watch');
+    expect(unixLauncher).toContain('dotnet run');
     expect(unixLauncher).toContain('dotnet format');
 
     const ciWorkflow = await fs.readFile(

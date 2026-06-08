@@ -1396,7 +1396,7 @@ describe('Runtime Adapters', () => {
       expect(run).toHaveBeenCalledWith('dotnet', ['--version'], '/tmp/dotnet-project');
       expect(run).toHaveBeenCalledWith(
         'dotnet',
-        ['watch', '--project', projectFile, 'run'],
+        ['run', '--project', projectFile],
         '/tmp/dotnet-project'
       );
       expect(run).toHaveBeenCalledWith('dotnet', ['test', projectFile], '/tmp/dotnet-project');

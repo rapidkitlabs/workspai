@@ -92,6 +92,7 @@ function csproj(v: Required<DotnetWebApiCleanVariables>): string {
     <Version>${v.app_version}</Version>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -368,26 +369,28 @@ function makefile(v: Required<DotnetWebApiCleanVariables>): string {
   return `.PHONY: init dev start build test lint format docker-up docker-down
 
 init:
-\tdotnet restore
+\tdotnet restore src/${v.project_name}.csproj
 \tdotnet tool restore || true
 
 dev:
-\tdotnet watch --project src/${v.project_name}.csproj run
+\tdotnet run --project src/${v.project_name}.csproj
 
 start:
 \tdotnet run --project src/${v.project_name}.csproj
 
 build:
-\tdotnet build -c Release
+\tdotnet build src/${v.project_name}.csproj -c Release
 
 test:
-\tdotnet test --collect:"XPlat Code Coverage"
+\tdotnet test tests/${v.project_name}.Tests.csproj --collect:"XPlat Code Coverage"
 
 lint:
-\tdotnet format --verify-no-changes
+\tdotnet format src/${v.project_name}.csproj --verify-no-changes
+\tdotnet format tests/${v.project_name}.Tests.csproj --verify-no-changes
 
 format:
-\tdotnet format
+\tdotnet format src/${v.project_name}.csproj
+\tdotnet format tests/${v.project_name}.Tests.csproj
 
 docker-up:
 \tdocker compose up --build -d
@@ -406,15 +409,21 @@ shift 2>/dev/null || true
 case "$CMD" in
   init)
     cd "$SCRIPT_DIR" || exit 1
-    dotnet restore "${v.project_name}.sln" || exit $?
+    dotnet restore "src/${v.project_name}.csproj" || exit $?
     dotnet tool restore 2>/dev/null || true
     ;;
-  dev) exec dotnet watch --project "$SCRIPT_DIR/src/${v.project_name}.csproj" run "$@" ;;
+  dev) exec dotnet run --project "$SCRIPT_DIR/src/${v.project_name}.csproj" "$@" ;;
   start) exec dotnet run --project "$SCRIPT_DIR/src/${v.project_name}.csproj" "$@" ;;
-  build) exec dotnet build "$SCRIPT_DIR/${v.project_name}.sln" -c Release "$@" ;;
-  test) exec dotnet test "$SCRIPT_DIR/${v.project_name}.sln" "$@" ;;
-  lint) exec dotnet format "$SCRIPT_DIR/${v.project_name}.sln" --verify-no-changes "$@" ;;
-  format|fmt) exec dotnet format "$SCRIPT_DIR/${v.project_name}.sln" "$@" ;;
+  build) exec dotnet build "$SCRIPT_DIR/src/${v.project_name}.csproj" -c Release "$@" ;;
+  test) exec dotnet test "$SCRIPT_DIR/tests/${v.project_name}.Tests.csproj" "$@" ;;
+  lint)
+    dotnet format "$SCRIPT_DIR/src/${v.project_name}.csproj" --verify-no-changes "$@" || exit $?
+    exec dotnet format "$SCRIPT_DIR/tests/${v.project_name}.Tests.csproj" --verify-no-changes "$@"
+    ;;
+  format|fmt)
+    dotnet format "$SCRIPT_DIR/src/${v.project_name}.csproj" "$@" || exit $?
+    exec dotnet format "$SCRIPT_DIR/tests/${v.project_name}.Tests.csproj" "$@"
+    ;;
   help|--help|-h)
     echo "RapidKit — ASP.NET Core project: ${v.project_name}"
     echo "Available: init, dev, start, build, test, lint, format"
@@ -431,17 +440,27 @@ if "%CMD%"=="" set CMD=help
 shift
 
 if "%CMD%"=="init" (
-  dotnet restore ${v.project_name}.sln
+  dotnet restore src\\${v.project_name}.csproj
   if errorlevel 1 exit /b %ERRORLEVEL%
   dotnet tool restore 2>nul
   exit /b 0
 )
-if "%CMD%"=="dev" ( dotnet watch --project src\\${v.project_name}.csproj run %* & exit /b %ERRORLEVEL% )
+if "%CMD%"=="dev" ( dotnet run --project src\\${v.project_name}.csproj %* & exit /b %ERRORLEVEL% )
 if "%CMD%"=="start" ( dotnet run --project src\\${v.project_name}.csproj %* & exit /b %ERRORLEVEL% )
-if "%CMD%"=="build" ( dotnet build ${v.project_name}.sln -c Release %* & exit /b %ERRORLEVEL% )
-if "%CMD%"=="test" ( dotnet test ${v.project_name}.sln %* & exit /b %ERRORLEVEL% )
-if "%CMD%"=="lint" ( dotnet format ${v.project_name}.sln --verify-no-changes %* & exit /b %ERRORLEVEL% )
-if "%CMD%"=="format" ( dotnet format ${v.project_name}.sln %* & exit /b %ERRORLEVEL% )
+if "%CMD%"=="build" ( dotnet build src\\${v.project_name}.csproj -c Release %* & exit /b %ERRORLEVEL% )
+if "%CMD%"=="test" ( dotnet test tests\\${v.project_name}.Tests.csproj %* & exit /b %ERRORLEVEL% )
+if "%CMD%"=="lint" (
+  dotnet format src\\${v.project_name}.csproj --verify-no-changes %*
+  if errorlevel 1 exit /b %ERRORLEVEL%
+  dotnet format tests\\${v.project_name}.Tests.csproj --verify-no-changes %*
+  exit /b %ERRORLEVEL%
+)
+if "%CMD%"=="format" (
+  dotnet format src\\${v.project_name}.csproj %*
+  if errorlevel 1 exit /b %ERRORLEVEL%
+  dotnet format tests\\${v.project_name}.Tests.csproj %*
+  exit /b %ERRORLEVEL%
+)
 
 echo Available: init, dev, start, build, test, lint, format
 exit /b 1
@@ -468,13 +487,17 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - name: Restore
-        run: dotnet restore ${v.project_name}.sln
+        run: |
+          dotnet restore src/${v.project_name}.csproj
+          dotnet restore tests/${v.project_name}.Tests.csproj
       - name: Format check
-        run: dotnet format ${v.project_name}.sln --verify-no-changes
+        run: |
+          dotnet format src/${v.project_name}.csproj --verify-no-changes
+          dotnet format tests/${v.project_name}.Tests.csproj --verify-no-changes
       - name: Build
-        run: dotnet build ${v.project_name}.sln -c Release --no-restore
+        run: dotnet build src/${v.project_name}.csproj -c Release --no-restore
       - name: Test
-        run: dotnet test ${v.project_name}.sln -c Release --no-build --collect:"XPlat Code Coverage"
+        run: dotnet test tests/${v.project_name}.Tests.csproj -c Release --no-build --collect:"XPlat Code Coverage"
 `;
 }
 
@@ -519,11 +542,56 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{33333333-3333-3333-3333-333333333333}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{44444444-4444-4444-4444-444444444444}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "${v.project_name}", "src\\${v.project_name}.csproj", "{11111111-1111-1111-1111-111111111111}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "${v.project_name}.Tests", "tests\\${v.project_name}.Tests.csproj", "{22222222-2222-2222-2222-222222222222}"
 EndProject
 Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{11111111-1111-1111-1111-111111111111}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-1111-1111-1111-111111111111}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11111111-1111-1111-1111-111111111111}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{11111111-1111-1111-1111-111111111111}.Debug|x64.Build.0 = Debug|Any CPU
+		{11111111-1111-1111-1111-111111111111}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{11111111-1111-1111-1111-111111111111}.Debug|x86.Build.0 = Debug|Any CPU
+		{11111111-1111-1111-1111-111111111111}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11111111-1111-1111-1111-111111111111}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11111111-1111-1111-1111-111111111111}.Release|x64.ActiveCfg = Release|Any CPU
+		{11111111-1111-1111-1111-111111111111}.Release|x64.Build.0 = Release|Any CPU
+		{11111111-1111-1111-1111-111111111111}.Release|x86.ActiveCfg = Release|Any CPU
+		{11111111-1111-1111-1111-111111111111}.Release|x86.Build.0 = Release|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Debug|x64.Build.0 = Debug|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Debug|x86.Build.0 = Debug|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Release|Any CPU.Build.0 = Release|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Release|x64.ActiveCfg = Release|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Release|x64.Build.0 = Release|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Release|x86.ActiveCfg = Release|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{11111111-1111-1111-1111-111111111111} = {33333333-3333-3333-3333-333333333333}
+		{22222222-2222-2222-2222-222222222222} = {44444444-4444-4444-4444-444444444444}
+	EndGlobalSection
 EndGlobal
 `.trimStart();
 }

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.2] - 2026-06-08
+
+### Added
+
+- Added Node-based wrappers for drift guard, local scenario matrix execution, package size reporting, and Husky preparation so release and validation scripts behave consistently across operating systems.
+- Added regression coverage for mixed-runtime workspace initialization when an extended runtime is missing from the user's machine.
+- Added an offline embeddings artifact validation script for deterministic package preparation.
+
+### Changed
+
+- Hardened Python bridge interpreter selection to prefer explicit overrides, local core virtual environments, versioned Python binaries, and platform defaults before failing.
+- Updated release and e2e shell scripts to select only Python interpreters with working `venv` support.
+- Updated `workspace run init` to continue initializing remaining projects when a project fails because an optional runtime SDK is unavailable.
+- Updated packaging docs to describe validation of the committed embeddings artifact instead of regenerating it during `prepack`.
+- Updated generated ASP.NET project launchers so `dev` uses stable `dotnet run` behavior instead of `dotnet watch`.
+
+### Fixed
+
+- Fixed mixed workspaces where a missing `.NET`, Java, or other extended runtime could prevent first-class FastAPI or NestJS projects from initializing.
+- Fixed package release flows where Husky output could pollute `npm pack --json` output.
+- Fixed release scripts that depended on Unix-only environment assignment or filesystem commands.
+- Fixed bridge fallback behavior when `python3` exists but cannot create a virtual environment.
+- Fixed generated ASP.NET builds failing on missing XML documentation comments by suppressing `CS1591` while keeping other warnings as errors.
+
+### Verification
+
+- Validated with `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test`, and `npm run test:runtime-matrix`.
+- Validated release and docs gates with `npm run validate:docs`, `npm run check:contracts`, `npm run test:parity-contract`, `npm run verify:package-cli`, and `npm pack --ignore-scripts --dry-run --json --silent`.
+- Validated local first-use scenarios with `npm run test:scenarios`.
+
 ## [0.32.1] - 2026-06-08
 
 ### Added

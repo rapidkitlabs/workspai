@@ -27,16 +27,6 @@ export class DotnetRuntimeAdapter implements RuntimeAdapter {
     };
   }
 
-  private findSolution(projectPath: string): string | null {
-    try {
-      const entries = fs.readdirSync(projectPath);
-      const solution = entries.find((entry) => entry.toLowerCase().endsWith('.sln'));
-      return solution ? path.join(projectPath, solution) : null;
-    } catch {
-      return null;
-    }
-  }
-
   private findFilesBySuffix(projectPath: string, suffix: string, maxDepth = 3): string[] {
     const results: string[] = [];
     const queue: Array<{ dir: string; depth: number }> = [{ dir: projectPath, depth: 0 }];
@@ -80,8 +70,11 @@ export class DotnetRuntimeAdapter implements RuntimeAdapter {
     );
   }
 
-  private solutionOrProject(projectPath: string): string | null {
-    return this.findSolution(projectPath) || this.findProjectFile(projectPath);
+  private findTestProjectFile(projectPath: string): string | null {
+    const candidates = this.findFilesBySuffix(projectPath, '.csproj');
+    return (
+      candidates.find((candidate) => candidate.toLowerCase().includes('.tests.csproj')) || null
+    );
   }
 
   async checkPrereqs(): Promise<CommandResult> {
@@ -97,7 +90,12 @@ export class DotnetRuntimeAdapter implements RuntimeAdapter {
   async initProject(projectPath: string): Promise<CommandResult> {
     const prereq = await this.ensureDotnetInstalled(projectPath);
     if (prereq) return prereq;
-    const result = await this.run('dotnet', ['restore'], projectPath);
+    const projectFile = this.findProjectFile(projectPath);
+    const result = await this.run(
+      'dotnet',
+      projectFile ? ['restore', projectFile] : ['restore'],
+      projectPath
+    );
     if (result.exitCode === 0) {
       return result;
     }
@@ -120,14 +118,14 @@ export class DotnetRuntimeAdapter implements RuntimeAdapter {
   async runTest(projectPath: string): Promise<CommandResult> {
     const prereq = await this.ensureDotnetInstalled(projectPath);
     if (prereq) return prereq;
-    const target = this.solutionOrProject(projectPath);
+    const target = this.findTestProjectFile(projectPath) || this.findProjectFile(projectPath);
     return this.run('dotnet', target ? ['test', target] : ['test'], projectPath);
   }
 
   async runBuild(projectPath: string): Promise<CommandResult> {
     const prereq = await this.ensureDotnetInstalled(projectPath);
     if (prereq) return prereq;
-    const target = this.solutionOrProject(projectPath);
+    const target = this.findProjectFile(projectPath);
     return this.run(
       'dotnet',
       target ? ['build', target, '-c', 'Release'] : ['build', '-c', 'Release'],

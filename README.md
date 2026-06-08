@@ -663,12 +663,14 @@ npm run install:local
 npx rapidkit --version
 ```
 
-> Packaging note: `npm run prepack` will regenerate `data/modules-embeddings.json` from the mock embeddings script before `npm pack` / `npm publish`.
+> Packaging note: `npm run prepack` validates the committed `data/modules-embeddings.json`
+> artifact before `npm pack` / `npm publish`. This keeps packaging deterministic and avoids
+> registry or `npx` downloads during release.
 >
 > If you need to refresh the local test embeddings manually, run:
 >
 > ```bash
-> npm run test:prepare-embeddings
+> npm run generate-embeddings
 > ```
 
 ## Troubleshooting

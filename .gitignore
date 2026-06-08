@@ -7,6 +7,13 @@ dist/
 .vscode/
 .idea/
 *.tsbuildinfo
+.rapidkit-workspace
+.rapidkit-workspace/
+
+# Python bridge / local core development
+.venv/
+__pycache__/
+*.pyc
 
 # Test coverage
 coverage/
@@ -24,5 +31,5 @@ rapidkit-full-workspace/
 .rapidkitrc.json
 .rapidkit/
 
-# AI embeddings (generated at runtime, ~1MB)
-data/modules-embeddings.json
+# Local package artifacts
+rapidkit-*.tgz

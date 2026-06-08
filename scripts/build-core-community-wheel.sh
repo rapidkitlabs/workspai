@@ -27,12 +27,67 @@ if [[ ! -f "$FINALIZER" ]]; then
   exit 1
 fi
 
-if command -v python3 >/dev/null 2>&1; then
-  PY=python3
-elif command -v python >/dev/null 2>&1; then
-  PY=python
-else
-  echo "Python not found on PATH (python3/python)." >&2
+python_candidates() {
+  local candidates=()
+  local value
+
+  for value in "${RAPIDKIT_BRIDGE_PYTHON:-}" "${RAPIDKIT_PYTHON_CMD:-}" "${POETRY_PYTHON:-}"; do
+    [[ -n "$value" ]] && candidates+=("$value")
+  done
+
+  if [[ -x "$CORE_SRC/.venv/bin/python" ]]; then
+    candidates+=("$CORE_SRC/.venv/bin/python")
+  fi
+
+  local minor
+  for minor in 14 13 12 11 10; do
+    candidates+=("python3.$minor")
+  done
+  candidates+=("python3" "python")
+
+  printf '%s\n' "${candidates[@]}"
+}
+
+probe_python_with_venv() {
+  local cmd="$1"
+  if [[ "$cmd" == */* ]]; then
+    [[ -x "$cmd" ]] || return 1
+  else
+    command -v "$cmd" >/dev/null 2>&1 || return 1
+  fi
+
+  "$cmd" --version >/dev/null 2>&1 || return 1
+
+  local probe_dir
+  probe_dir="$(mktemp -d)"
+  if "$cmd" -m venv "$probe_dir/venv" >/dev/null 2>&1; then
+    rm -rf "$probe_dir"
+    return 0
+  fi
+  rm -rf "$probe_dir"
+  return 1
+}
+
+select_python_with_venv() {
+  local seen="|"
+  local candidate
+  while IFS= read -r candidate; do
+    [[ -z "$candidate" ]] && continue
+    if [[ "$seen" == *"|$candidate|"* ]]; then
+      continue
+    fi
+    seen="$seen$candidate|"
+    if probe_python_with_venv "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done < <(python_candidates)
+  return 1
+}
+
+PY="$(select_python_with_venv || true)"
+if [[ -z "$PY" ]]; then
+  echo "Python with venv support not found. Install Python 3.10+ with venv/ensurepip support." >&2
   exit 1
 fi
 

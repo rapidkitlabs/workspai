@@ -66,6 +66,7 @@ exec "$sys_python" "$@"
     // Make sure our fake bin is first on PATH
     const env = { ...process.env } as Record<string, string | undefined>;
     env.PATH = `${fakeBin}${pathDelimiter()}:${env.PATH || ''}`;
+    env.RAPIDKIT_BRIDGE_PYTHON = pythonPath;
     env.XDG_CACHE_HOME = cacheDir; // ensure bridge venv would go into our temp cache
 
     // Run a core-forwarding command that would normally trigger bridge resolution
@@ -79,12 +80,13 @@ exec "$sys_python" "$@"
     expect(res.exitCode).toBe(0);
 
     // Verify that the bridge venv path does NOT exist
-    const bridgeVenv = join(cacheDir, 'rapidkit', 'npm-bridge', 'venv');
+    const bridgeRoot = join(cacheDir, 'rapidkit', 'npm-bridge');
+    const bridgeVenv = join(bridgeRoot, 'venv');
     // Ensure any leftover bridge venv is removed (tests should be isolated).
     // This avoids flakes where a previous test created the cached venv.
     await fsExtra.remove(bridgeVenv);
-    const exists = await fsExtra.pathExists(bridgeVenv);
-    expect(exists).toBe(false);
+    const entries = (await fsExtra.pathExists(bridgeRoot)) ? await fsExtra.readdir(bridgeRoot) : [];
+    expect(entries.filter((entry) => entry.startsWith('venv'))).toEqual([]);
   }, 120000);
 });
 

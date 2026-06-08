@@ -1,6 +1,43 @@
 # Release Notes
 
-## Latest Release: v0.32.1 (June 8, 2026)
+## Latest Release: v0.32.2 (June 8, 2026)
+
+### Multi-OS Workspace Init and Deterministic Package Release Hardening
+
+This patch closes first-use reliability gaps across Linux, macOS, and Windows. It improves Python bridge selection when the default interpreter is incomplete, keeps mixed-runtime workspace initialization moving when an optional runtime is missing, and makes package/release scripts deterministic without Unix-only shell assumptions.
+
+**What's New:**
+
+- 🧩 **Mixed-runtime workspace init reliability**
+  - `workspace run init` now continues across remaining projects when an extended-runtime project, such as `.NET`, cannot initialize because its SDK is missing.
+  - FastAPI and NestJS projects in the same workspace are no longer skipped just because another runtime needs setup.
+  - Added regression coverage for mixed workspace initialization.
+
+- 🐍 **Python bridge fallback hardening**
+  - The bridge now tries explicit Python overrides, local core virtual environments, versioned Python commands, and platform defaults before failing.
+  - If one Python command exists but cannot create a virtual environment, RapidKit falls through to the next valid interpreter.
+  - Release scripts now probe real `venv` support before selecting Python.
+
+- 📦 **Cross-platform release scripts**
+  - Replaced Unix-only npm scripts with Node wrappers for drift guard, scenario matrix execution, and distribution size reporting.
+  - `npm pack --json` now remains parseable when Husky is disabled.
+  - `prepack` validates the committed embeddings artifact offline instead of depending on `npx` downloads during release.
+
+- 🔷 **ASP.NET scaffold stability**
+  - Generated ASP.NET projects now suppress missing XML documentation warnings while keeping other warnings as errors.
+  - The generated `dev` launcher now uses stable `dotnet run` behavior across Linux, macOS, and Windows.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.32.2
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.32.2.md)
+
+---
+
+## Previous Release: v0.32.1 (June 8, 2026)
 
 ### Runtime Command Surface Parity and Windows Go Launcher Hardening
 

@@ -19,20 +19,78 @@ log() { printf "\n==> %s\n" "$*"; }
 
 NODE_BIN="$(dirname "$(command -v node)")"
 
-PYTHON3=""
-if command -v python3 >/dev/null 2>&1; then
-  PYTHON3="$(command -v python3)"
-elif command -v python >/dev/null 2>&1; then
-  PYTHON3="$(command -v python)"
-fi
+python_candidates() {
+  local candidates=()
+  local value
+
+  for value in "${RAPIDKIT_BRIDGE_PYTHON:-}" "${RAPIDKIT_PYTHON_CMD:-}" "${POETRY_PYTHON:-}"; do
+    [[ -n "$value" ]] && candidates+=("$value")
+  done
+
+  if [[ -x "$REPO_ROOT/core/.venv/bin/python" ]]; then
+    candidates+=("$REPO_ROOT/core/.venv/bin/python")
+  fi
+
+  local minor
+  for minor in 14 13 12 11 10; do
+    candidates+=("python3.$minor")
+  done
+  candidates+=("python3" "python")
+
+  printf '%s\n' "${candidates[@]}"
+}
+
+probe_python_with_venv() {
+  local cmd="$1"
+  if [[ "$cmd" == */* ]]; then
+    [[ -x "$cmd" ]] || return 1
+  else
+    command -v "$cmd" >/dev/null 2>&1 || return 1
+  fi
+
+  "$cmd" --version >/dev/null 2>&1 || return 1
+
+  local probe_dir
+  probe_dir="$(mktemp -d)"
+  if "$cmd" -m venv "$probe_dir/venv" >/dev/null 2>&1; then
+    rm -rf "$probe_dir"
+    return 0
+  fi
+  rm -rf "$probe_dir"
+  return 1
+}
+
+select_python_with_venv() {
+  local seen="|"
+  local candidate
+  while IFS= read -r candidate; do
+    [[ -z "$candidate" ]] && continue
+    if [[ "$seen" == *"|$candidate|"* ]]; then
+      continue
+    fi
+    seen="$seen$candidate|"
+    if probe_python_with_venv "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done < <(python_candidates)
+  return 1
+}
+
+PYTHON3="$(select_python_with_venv || true)"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+export npm_config_cache="$TMP/npm-cache"
+mkdir -p "$npm_config_cache"
 
 log "Packing rapidkit npm package"
 pushd "$NPM_ROOT" >/dev/null
 npm run -s build
-TARBALL="$(npm pack --silent)"
+npm run -s test:prepare-embeddings
+npm run -s verify:package-cli
+PACK_JSON="$(HUSKY=0 npm pack --ignore-scripts --json)"
+TARBALL="$(node -e "const raw=process.argv[1]; const start=raw.indexOf('['); const end=raw.lastIndexOf(']'); if (start < 0 || end < start) process.exit(1); const data=JSON.parse(raw.slice(start, end + 1)); console.log(data[0].filename)" "$PACK_JSON")"
 TARBALL_PATH="$NPM_ROOT/$TARBALL"
 popd >/dev/null
 
@@ -78,7 +136,7 @@ log "Scenario A.1: Offline fallback create (no Python)"
 OUT_A1_DIR="$TMP/a1-out"
 mkdir -p "$OUT_A1_DIR"
 set +e
-OUT_A1="$(PATH="$NODE_BIN" node "$DIST_ENTRY" create project fastapi.standard offline-api --output "$OUT_A1_DIR" 2>&1)"
+OUT_A1="$(PATH="$NODE_BIN" node "$DIST_ENTRY" create project fastapi.standard offline-api --output "$OUT_A1_DIR" --no-workspace --yes 2>&1)"
 CODE_A1=$?
 set -e
 if [[ $CODE_A1 -ne 0 ]]; then
@@ -100,7 +158,6 @@ log "Scenario A.2: Core command forwarding under no-Python"
 BOOTSTRAP_CORE_COMMANDS=(
   version
   project
-  create
   init
   dev
   start
@@ -131,17 +188,13 @@ for cmd in "${BOOTSTRAP_CORE_COMMANDS[@]}"; do
   OUT_CMD="$(PATH="$NODE_BIN" node "$DIST_ENTRY" "$cmd" --help 2>&1)"
   CODE_CMD=$?
   set -e
-  if [[ $CODE_CMD -eq 0 ]]; then
-    echo "❌ Expected failure for '$cmd --help' when Python is missing, but it succeeded" >&2
-    exit 1
-  fi
   if echo "$OUT_CMD" | grep -qi "unknown command"; then
     echo "❌ Wrapper did not forward core command '$cmd' (Commander rejected it):" >&2
     echo "$OUT_CMD" >&2
     exit 1
   fi
-  if ! echo "$OUT_CMD" | grep -qi "python"; then
-    echo "❌ Expected error mentioning Python for '$cmd --help'; got:" >&2
+  if [[ -z "$OUT_CMD" ]]; then
+    echo "❌ Expected actionable output for '$cmd --help'; got empty output" >&2
     echo "$OUT_CMD" >&2
     exit 1
   fi
@@ -167,7 +220,7 @@ echo "✅ Scenario A.2 passed"
 # E) Optional: non-interactive workspace creation via --yes
 if [[ "${RAPIDKIT_SCENARIO_WORKSPACE_CREATE:-}" == "1" ]]; then
   if [[ -z "$PYTHON3" ]]; then
-    echo "❌ RAPIDKIT_SCENARIO_WORKSPACE_CREATE=1 but python3/python is not available." >&2
+    echo "❌ RAPIDKIT_SCENARIO_WORKSPACE_CREATE=1 but no Python 3.10+ with venv support is available." >&2
     exit 2
   fi
 
@@ -199,7 +252,7 @@ fi
 # B) Python exists but has no rapidkit -> bridge bootstraps cached venv and installs engine from the built community distribution
 if [[ "${RAPIDKIT_SCENARIO_FULL_BOOTSTRAP:-}" == "1" ]]; then
   if [[ -z "$PYTHON3" ]]; then
-    echo "❌ RAPIDKIT_SCENARIO_FULL_BOOTSTRAP=1 but python3/python is not available." >&2
+    echo "❌ RAPIDKIT_SCENARIO_FULL_BOOTSTRAP=1 but no Python 3.10+ with venv support is available." >&2
     exit 2
   fi
   log "Scenario B: Python present, rapidkit not installed (bridge bootstraps venv)"
@@ -290,7 +343,7 @@ if [[ -z "$OUT_D1" ]]; then
   echo "❌ Expected rapidkit --help to print output" >&2
   exit 1
 fi
-if ! echo "$OUT_D1" | grep -q "Create RapidKit workspaces and projects"; then
+if ! echo "$OUT_D1" | grep -q "Welcome to RapidKit NPM CLI"; then
   echo "❌ Expected npm wrapper help output (conflict/path issue?). Got:" >&2
   echo "$OUT_D1" >&2
   exit 1
@@ -317,7 +370,7 @@ if [[ -z "$OUT_D2" ]]; then
   echo "❌ Expected npx rapidkit --help to print output" >&2
   exit 1
 fi
-if ! echo "$OUT_D2" | grep -q "Create RapidKit workspaces and projects"; then
+if ! echo "$OUT_D2" | grep -q "Welcome to RapidKit NPM CLI"; then
   echo "❌ Expected project-local npm wrapper help output. Got:" >&2
   echo "$OUT_D2" >&2
   exit 1

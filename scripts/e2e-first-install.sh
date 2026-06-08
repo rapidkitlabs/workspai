@@ -44,6 +44,64 @@ if [[ -z "$NPM_BIN" ]]; then
   exit 1
 fi
 
+python_candidates() {
+  local candidates=()
+  local value
+
+  for value in "${RAPIDKIT_BRIDGE_PYTHON:-}" "${RAPIDKIT_PYTHON_CMD:-}" "${POETRY_PYTHON:-}"; do
+    [[ -n "$value" ]] && candidates+=("$value")
+  done
+
+  if [[ -x "$ROOT/core/.venv/bin/python" ]]; then
+    candidates+=("$ROOT/core/.venv/bin/python")
+  fi
+
+  local minor
+  for minor in 14 13 12 11 10; do
+    candidates+=("python3.$minor")
+  done
+  candidates+=("python3" "python")
+
+  printf '%s\n' "${candidates[@]}"
+}
+
+probe_python_with_venv() {
+  local cmd="$1"
+  if [[ "$cmd" == */* ]]; then
+    [[ -x "$cmd" ]] || return 1
+  else
+    command -v "$cmd" >/dev/null 2>&1 || return 1
+  fi
+
+  "$cmd" --version >/dev/null 2>&1 || return 1
+
+  local probe_dir
+  probe_dir="$(mktemp -d)"
+  if "$cmd" -m venv "$probe_dir/venv" >/dev/null 2>&1; then
+    rm -rf "$probe_dir"
+    return 0
+  fi
+  rm -rf "$probe_dir"
+  return 1
+}
+
+select_python_with_venv() {
+  local seen="|"
+  local candidate
+  while IFS= read -r candidate; do
+    [[ -z "$candidate" ]] && continue
+    if [[ "$seen" == *"|$candidate|"* ]]; then
+      continue
+    fi
+    seen="$seen$candidate|"
+    if probe_python_with_venv "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done < <(python_candidates)
+  return 1
+}
+
 mkdir -p "$HOME" "$XDG_CACHE_HOME" "$npm_config_cache" "$npm_config_prefix"
 
 echo "E2E(first-install): base=$BASE"
@@ -58,16 +116,14 @@ step() {
   echo "E2E(first-install): <<< $name ($((end-start))s)" >&2
 }
 
-# Pre-flight: Python required for the real bridge path. If missing, fail with a clear message.
-if command -v python3 >/dev/null 2>&1; then
-  true
-elif command -v python >/dev/null 2>&1; then
-  true
-else
-  echo "E2E(first-install): Python not found on PATH (python3/python)." >&2
-  echo "Install Python 3.10+ to run the real bridge E2E." >&2
+# Pre-flight: Python required for the real bridge path. It must be able to create venvs.
+PYTHON_WITH_VENV="$(select_python_with_venv || true)"
+if [[ -z "$PYTHON_WITH_VENV" ]]; then
+  echo "E2E(first-install): Python with venv support not found." >&2
+  echo "Install Python 3.10+ with venv/ensurepip support, or set RAPIDKIT_BRIDGE_PYTHON." >&2
   exit 1
 fi
+export RAPIDKIT_BRIDGE_PYTHON="$PYTHON_WITH_VENV"
 
 # Build a local tarball for install (simulates a registry install, but offline).
 TARBALL=""
@@ -80,9 +136,13 @@ TARBALL=""
   fi
 
   step "npm build" "$NPM_BIN" -s run build
+  step "verify embeddings artifact" "$NPM_BIN" -s run test:prepare-embeddings
+  step "verify package CLI" "$NPM_BIN" -s run verify:package-cli
 
-  step "npm pack" "$NPM_BIN" pack --silent
-  TARBALL="$(ls -1 *.tgz | tail -n 1)"
+  echo "E2E(first-install): >>> npm pack" >&2
+  PACK_JSON="$(HUSKY=0 "$NPM_BIN" pack --ignore-scripts --json)"
+  echo "E2E(first-install): <<< npm pack" >&2
+  TARBALL="$(node -e "const raw=process.argv[1]; const start=raw.indexOf('['); const end=raw.lastIndexOf(']'); if (start < 0 || end < start) process.exit(1); const data=JSON.parse(raw.slice(start, end + 1)); console.log(data[0].filename)" "$PACK_JSON")"
   echo "$NPM_DIR/$TARBALL" > "$BASE/tarball_path"
 )
 TARBALL="$(cat "$BASE/tarball_path")"

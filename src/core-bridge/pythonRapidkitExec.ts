@@ -14,12 +14,40 @@ import {
 } from '../utils/platform-capabilities.js';
 import { getProbeTimeoutMs } from '../utils/command-timeouts.js';
 
-export type PythonCommand = 'python3' | 'python' | 'py';
+export type PythonCommand = string;
 
 const probeTimeoutMs = getProbeTimeoutMs();
 
 function pythonCommandCandidates(): PythonCommand[] {
-  return getPythonCommandCandidates() as PythonCommand[];
+  const candidates: string[] = [];
+  const add = (value: string | undefined) => {
+    const trimmed = value?.trim();
+    if (trimmed) candidates.push(trimmed);
+  };
+
+  add(process.env.RAPIDKIT_BRIDGE_PYTHON);
+  add(process.env.RAPIDKIT_PYTHON_CMD);
+  add(process.env.POETRY_PYTHON);
+
+  const spec = coreInstallTarget();
+  const looksLikeLocalCorePath =
+    (spec.startsWith('/') || spec.startsWith('.') || spec.startsWith('..')) &&
+    !spec.startsWith('file:');
+  if (looksLikeLocalCorePath) {
+    add(getVenvPythonPath(path.join(path.resolve(spec), '.venv')));
+  }
+
+  for (const probe of getPythonVersionProbeCandidates()) {
+    if (probe.args.length === 1 && probe.args[0] === '--version') {
+      add(probe.command);
+    }
+  }
+
+  for (const candidate of getPythonCommandCandidates()) {
+    add(candidate);
+  }
+
+  return [...new Set(candidates)];
 }
 
 function pythonLauncherArgs(cmd: string, args: string[]): string[] {
@@ -501,7 +529,6 @@ async function resolveRapidkitRunner(cwd?: string): Promise<RapidkitRunner> {
 }
 
 async function pickSystemPython(): Promise<PythonCommand | null> {
-  // Try standard Python commands
   for (const cmd of pythonCommandCandidates()) {
     try {
       await execa(cmd, pythonLauncherArgs(cmd, ['--version']), {
@@ -515,6 +542,38 @@ async function pickSystemPython(): Promise<PythonCommand | null> {
     }
   }
   return null;
+}
+
+async function ensureBridgeVenvFromCandidates(): Promise<string> {
+  let lastError: unknown = null;
+
+  for (const cmd of pythonCommandCandidates()) {
+    try {
+      await execa(cmd, pythonLauncherArgs(cmd, ['--version']), {
+        reject: false,
+        stdio: 'pipe',
+        timeout: 2000,
+      });
+    } catch (err) {
+      lastError = err;
+      continue;
+    }
+
+    try {
+      return await ensureBridgeVenv(cmd);
+    } catch (err) {
+      lastError = err;
+      continue;
+    }
+  }
+
+  if (lastError instanceof BridgeError) {
+    throw lastError;
+  }
+  if (lastError instanceof Error) {
+    throw new BridgeError('BRIDGE_VENV_BOOTSTRAP_FAILED', lastError.message);
+  }
+  throw new BridgeError('PYTHON_NOT_FOUND', 'No Python interpreter found (python3/python/py).');
 }
 
 /**
@@ -1167,11 +1226,7 @@ export async function resolveRapidkitPython(): Promise<
   // Deterministic mode (used by drift-guard / CI): always use the bridge venv.
   // This avoids accidentally using a developer's globally-installed rapidkit.
   if (process.env.RAPIDKIT_BRIDGE_FORCE_VENV === '1') {
-    const system = await pickSystemPython();
-    if (!system) {
-      throw new BridgeError('PYTHON_NOT_FOUND', 'No Python interpreter found (python3/python/py).');
-    }
-    const pythonPath = await ensureBridgeVenv(system);
+    const pythonPath = await ensureBridgeVenvFromCandidates();
     return { kind: 'venv', pythonPath };
   }
 
@@ -1187,7 +1242,12 @@ export async function resolveRapidkitPython(): Promise<
   if (!system) {
     throw new BridgeError('PYTHON_NOT_FOUND', 'No Python interpreter found (python3/python/py).');
   }
-  const pythonPath = await ensureBridgeVenv(system);
+  let pythonPath: string;
+  try {
+    pythonPath = await ensureBridgeVenv(system);
+  } catch {
+    pythonPath = await ensureBridgeVenvFromCandidates();
+  }
   return { kind: 'venv', pythonPath };
 }
 
@@ -1653,8 +1713,10 @@ export async function getModulesCatalog(
 }
 // --- internal/private functions for testing ---
 export const __test__ = {
+  pythonCommandCandidates,
   pickSystemPython,
   ensureBridgeVenv,
+  ensureBridgeVenvFromCandidates,
   parseCoreCommandsFromHelp,
   tryRapidkit,
   checkRapidkitCoreAvailable,

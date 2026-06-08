@@ -902,7 +902,7 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
   const blockingGate = gateResults.find((gate) => gate.status === 'fail');
 
   const runTargets = projectPaths.filter((projectPath) => affectedProjects.has(projectPath));
-  const continueOnError = options.continueOnError === true;
+  const continueOnError = options.continueOnError === true || options.stage === 'init';
   const parallel = options.parallel === true;
   const maxWorkers = normalizeWorkers(options.maxWorkers, runTargets.length);
   const totalTargets = runTargets.length;

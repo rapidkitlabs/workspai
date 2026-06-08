@@ -599,9 +599,11 @@ describe('CLI Entry Point', () => {
     }, 20000);
 
     it('should auto-create or reuse the default workspace when import runs outside any workspace', async () => {
-      const fakeHome = await fs.mkdtemp(path.join(TEST_DIR, 'home-import-default-'));
-      const cwdOutsideWorkspace = await fs.mkdtemp(path.join(TEST_DIR, 'cwd-import-default-'));
-      const sourceDir = await fs.mkdtemp(path.join(TEST_DIR, 'source-import-default-'));
+      const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), 'rapidkit-home-import-default-'));
+      const cwdOutsideWorkspace = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'rapidkit-cwd-import-default-')
+      );
+      const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), 'rapidkit-source-import-default-'));
 
       await fs.writeJson(path.join(sourceDir, 'package.json'), {
         name: 'default-orders-api',

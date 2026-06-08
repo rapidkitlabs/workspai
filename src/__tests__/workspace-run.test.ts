@@ -713,6 +713,55 @@ describe('workspace-run', () => {
     await fsExtra.remove(workspacePath);
   });
 
+  it('continues init across a mixed workspace when an extended runtime setup is missing', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
+    const dotnetPath = await createProjectWithoutContext(workspacePath, 'dotnet-api');
+    const nodePath = await createProject(workspacePath, 'node-api');
+
+    await fsExtra.ensureDir(path.join(dotnetPath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(dotnetPath, '.rapidkit', 'context.json'), {
+      name: 'dotnet-api',
+      runtime: 'dotnet',
+      framework: 'dotnet',
+    });
+    await fsExtra.writeFile(path.join(dotnetPath, 'dotnet-api.csproj'), '<Project />\n');
+    await fsExtra.writeJSON(path.join(nodePath, 'package.json'), {
+      scripts: {
+        install: 'node -e "process.exit(0)"',
+      },
+    });
+
+    const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
+    execaMock.mockImplementation(async (cmd: string, args: string[]) => {
+      if ((cmd === 'which' || cmd === 'where') && args[0] === 'dotnet') {
+        return { exitCode: 1, stdout: '', stderr: '' };
+      }
+      if (cmd === 'npm' && args.includes('install')) {
+        return { exitCode: 0, stdout: 'ok', stderr: '' };
+      }
+      return { exitCode: 0, stdout: '{}', stderr: '' };
+    });
+
+    const report = await runWorkspaceStage({
+      workspacePath,
+      stage: 'init',
+      enforceGates: false,
+      json: true,
+    });
+
+    const dotnetReport = report.projects.find((item) => item.relativePath === 'dotnet-api');
+    const nodeReport = report.projects.find((item) => item.relativePath === 'node-api');
+
+    expect(dotnetReport?.status).toBe('failed');
+    expect(nodeReport?.status).toBe('passed');
+    expect(report.summary.failed).toBe(1);
+    expect(report.summary.passed).toBe(1);
+    expect(report.summary.skipped).toBe(0);
+    expect(report.summary.exitCode).toBe(1);
+
+    await fsExtra.remove(workspacePath);
+  });
+
   // ─── invalid stage validation ─────────────────────────────────────────────
 
   it('throws for invalid stage name', async () => {

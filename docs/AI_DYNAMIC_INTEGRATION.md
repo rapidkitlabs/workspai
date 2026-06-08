@@ -10,6 +10,7 @@
 AI system uses a **dynamic runtime catalog** and fetches module metadata from **RapidKit Python Core** instead of relying only on hardcoded entries.
 
 ### Before (Static):
+
 ```typescript
 // ❌ Hardcoded fixed subset
 export const MODULE_CATALOG = [
@@ -19,11 +20,12 @@ export const MODULE_CATALOG = [
 ```
 
 ### After (Dynamic):
+
 ```typescript
 // ✅ Fetches from Python Core
 export async function getModuleCatalog() {
-  const result = await exec('rapidkit modules list --json')
-  return parseModules(result)
+  const result = await exec('rapidkit modules list --json');
+  return parseModules(result);
 }
 ```
 
@@ -58,6 +60,7 @@ Return Top Recommendations
 ### 1. Dynamic Module Fetching (`src/ai/module-catalog.ts`)
 
 **Features:**
+
 - ✅ Calls `rapidkit modules list --json`
 - ✅ 5-minute cache (reduces Python calls)
 - ✅ Fallback to hardcoded catalog if Python not available
@@ -65,10 +68,11 @@ Return Top Recommendations
 - ✅ Category and framework mapping
 
 **Code:**
+
 ```typescript
 export async function getModuleCatalog(): Promise<ModuleMetadata[]> {
   // Check cache
-  if (cachedModules && (Date.now() - lastFetchTime) < CACHE_TTL) {
+  if (cachedModules && Date.now() - lastFetchTime < CACHE_TTL) {
     return cachedModules;
   }
 
@@ -103,6 +107,7 @@ export async function getModuleCatalog(): Promise<ModuleMetadata[]> {
 ```
 
 **Category Mapping:**
+
 ```typescript
 Python Category → TypeScript Type
 ├─ "auth" → "auth"
@@ -135,6 +140,7 @@ After 5 min:
 ```
 
 **Benefits:**
+
 - ✅ Fast responses (cached)
 - ✅ Always up-to-date (5min refresh)
 - ✅ Reduces Python CLI calls
@@ -154,6 +160,7 @@ Try Python Core:
 ```
 
 **Fallback catalog:**
+
 - Baseline core modules (hardcoded subset)
 - Authentication, database, payment, etc.
 - Enough for basic recommendations
@@ -175,6 +182,7 @@ npx tsx src/ai/generate-embeddings.ts
 ```
 
 **Output:**
+
 ```json
 {
   "model": "text-embedding-3-small",
@@ -258,6 +266,7 @@ $ rapidkit ai recommend "blockchain integration"
 ## 📋 Benefits
 
 ### ✅ Always Up-to-Date
+
 ```
 When Python Core adds new modules:
 ├─ AI automatically picks them up
@@ -267,6 +276,7 @@ When Python Core adds new modules:
 ```
 
 ### ✅ Single Source of Truth
+
 ```
 Module Registry:
 ├─ Python Core: runtime catalog (source of truth)
@@ -275,6 +285,7 @@ Module Registry:
 ```
 
 ### ✅ Graceful Fallback
+
 ```
 If Python unavailable:
 ├─ Still works (fallback subset)
@@ -284,6 +295,7 @@ If Python unavailable:
 ```
 
 ### ✅ Performance
+
 ```
 Cache Strategy:
 ├─ First call: 10s (Python fetch)
@@ -305,8 +317,8 @@ export RAPIDKIT_AI_FALLBACK=true
 # Optional: Cache TTL (default: 5 minutes)
 export RAPIDKIT_CACHE_TTL=600000  # milliseconds
 
-# Optional: Python command (if not in PATH)
-export RAPIDKIT_PYTHON_CMD=/path/to/rapidkit
+# Optional: Python command/interpreter override (if python3/python is not the right one)
+export RAPIDKIT_PYTHON_CMD=/path/to/python
 ```
 
 ---
@@ -355,27 +367,29 @@ time rapidkit ai recommend "payment"  # ~10 seconds (cache expired)
 
 ## 📊 Comparison
 
-| Feature | Before (Static) | After (Dynamic) |
-|---------|----------------|-----------------|
-| **Module Count** | Fixed subset | Runtime catalog |
-| **Updates** | Manual code change | Automatic |
-| **Sync** | Manual | Automatic |
-| **Fallback** | ❌ None | ✅ Baseline subset |
-| **Cache** | ❌ None | ✅ 5-minute TTL |
-| **Python Required** | ❌ No | ⚠️ Recommended |
-| **Performance** | Fast (hardcoded) | Fast (cached) |
+| Feature             | Before (Static)    | After (Dynamic)    |
+| ------------------- | ------------------ | ------------------ |
+| **Module Count**    | Fixed subset       | Runtime catalog    |
+| **Updates**         | Manual code change | Automatic          |
+| **Sync**            | Manual             | Automatic          |
+| **Fallback**        | ❌ None            | ✅ Baseline subset |
+| **Cache**           | ❌ None            | ✅ 5-minute TTL    |
+| **Python Required** | ❌ No              | ⚠️ Recommended     |
+| **Performance**     | Fast (hardcoded)   | Fast (cached)      |
 
 ---
 
 ## 🚀 Next Steps
 
 ### Current Stage: ✅ Dynamic Fetching
+
 - ✅ Fetch from Python Core
 - ✅ Cache with TTL
 - ✅ Fallback to hardcoded
 - ✅ Error handling
 
 ### Next Stage: Module Installation
+
 ```bash
 rapidkit ai recommend "authentication"
 # → Shows recommendations
@@ -385,6 +399,7 @@ rapidkit ai recommend "authentication"
 ```
 
 ### Future Stage: Real-time Sync
+
 ```bash
 # Watch Python modules directory
 # Auto-regenerate embeddings when modules change
@@ -396,6 +411,7 @@ rapidkit ai recommend "authentication"
 ## 🎯 Summary
 
 **What Changed:**
+
 - ✅ AI now reads from Python Core dynamically
 - ✅ Runtime catalog instead of a fixed hardcoded subset
 - ✅ Always up-to-date
@@ -403,6 +419,7 @@ rapidkit ai recommend "authentication"
 - ✅ 5-minute cache for performance
 
 **What Stayed Same:**
+
 - ✅ Same API (getModuleCatalog)
 - ✅ Same recommendation algorithm
 - ✅ Same embedding model
@@ -410,6 +427,7 @@ rapidkit ai recommend "authentication"
 - ✅ Backward compatible
 
 **Result:**
+
 - 🎉 Runtime-driven catalog
 - 🎉 Single source of truth
 - 🎉 Production-ready
@@ -419,4 +437,4 @@ rapidkit ai recommend "authentication"
 
 **Built with ❤️ by the RapidKit Team**
 
-*Dynamic AI that grows with your framework.*
+_Dynamic AI that grows with your framework._
