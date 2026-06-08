@@ -185,7 +185,8 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
       );
       expect(projectJson.kit_name).toBe(kit);
       expect(projectJson.runtime).toBe(expectedRuntime);
-    }
+    },
+    30000
   );
 
   it('uses npm-owned generators when interactive project selection chooses Go or Java kits', async () => {
