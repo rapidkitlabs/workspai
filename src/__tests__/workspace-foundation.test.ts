@@ -26,7 +26,8 @@ describe('workspace foundation ensure', () => {
     const result = await ensureWorkspaceFoundation(workspacePath, { profile: 'polyglot' });
 
     expect(result.status).toBe('passed');
-    expect(result.created).toEqual(
+    const created = result.created.map((entry) => entry.replace(/\\/g, '/'));
+    expect(created).toEqual(
       expect.arrayContaining([
         '.rapidkit/workspace.json',
         '.rapidkit/toolchain.lock',

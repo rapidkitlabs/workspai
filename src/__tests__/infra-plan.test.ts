@@ -248,7 +248,9 @@ describe('infra stack contract parity', () => {
       process.chdir(os.tmpdir());
       const contract = loadInfraStackContract();
       expect(contract.schemaVersion).toBe(INFRA_STACK_SCHEMA_VERSION);
-      expect(resolveInfraStackContractPath()).toContain('contracts/infra-stack.v1.json');
+      expect(resolveInfraStackContractPath().replace(/\\/g, '/')).toContain(
+        'contracts/infra-stack.v1.json'
+      );
     } finally {
       process.chdir(originalCwd);
     }

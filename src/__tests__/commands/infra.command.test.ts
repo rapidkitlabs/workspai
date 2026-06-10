@@ -15,6 +15,24 @@ import { buildInfraPlan, writeInfraArtifacts } from '../../utils/infra-plan.js';
 const tempDirs: string[] = [];
 const mockExeca = execa as unknown as ReturnType<typeof vi.fn>;
 
+function expectDockerComposeCall(expectedArgs: string[], workspacePath: string): void {
+  const match = mockExeca.mock.calls.find(
+    ([cmd, args, options]) =>
+      cmd === 'docker' &&
+      args[0] === 'compose' &&
+      expectedArgs.every((item) => args.includes(item)) &&
+      path.resolve(String(options?.cwd ?? '')) === path.resolve(workspacePath)
+  );
+
+  expect(match, `docker compose call with ${expectedArgs.join(' ')}`).toBeDefined();
+
+  const composeFileArg = match![1][match![1].indexOf('-f') + 1];
+  expect(composeFileArg).toMatch(/docker-compose\.yml$/);
+  expect(String(composeFileArg).replace(/\\/g, '/')).toContain(
+    '.rapidkit/infra/docker-compose.yml'
+  );
+}
+
 async function createWorkspace(): Promise<string> {
   const dir = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-infra-command-'));
   tempDirs.push(dir);
@@ -97,17 +115,7 @@ describe('infra command', () => {
     registerInfraCommands(program);
     await program.parseAsync(['node', 'rapidkit', 'infra', 'up', '--no-plan']);
 
-    expect(mockExeca).toHaveBeenCalledWith(
-      'docker',
-      expect.arrayContaining([
-        'compose',
-        '-f',
-        expect.stringMatching(/docker-compose\.yml$/),
-        'up',
-        '-d',
-      ]),
-      expect.objectContaining({ cwd: workspacePath, reject: false })
-    );
+    expectDockerComposeCall(['up', '-d'], workspacePath);
   });
 
   it('runs docker compose down with optional volume cleanup', async () => {
@@ -131,16 +139,6 @@ describe('infra command', () => {
     registerInfraCommands(program);
     await program.parseAsync(['node', 'rapidkit', 'infra', 'down', '--volumes']);
 
-    expect(mockExeca).toHaveBeenCalledWith(
-      'docker',
-      expect.arrayContaining([
-        'compose',
-        '-f',
-        expect.stringMatching(/docker-compose\.yml$/),
-        'down',
-        '-v',
-      ]),
-      expect.objectContaining({ cwd: workspacePath, reject: false })
-    );
+    expectDockerComposeCall(['down', '-v'], workspacePath);
   });
 });
