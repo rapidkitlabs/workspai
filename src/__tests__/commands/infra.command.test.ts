@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import fs from 'fs';
 import fsExtra from 'fs-extra';
 import os from 'os';
 import path from 'path';
@@ -15,18 +16,43 @@ import { buildInfraPlan, writeInfraArtifacts } from '../../utils/infra-plan.js';
 const tempDirs: string[] = [];
 const mockExeca = execa as unknown as ReturnType<typeof vi.fn>;
 
+function normalizeTestPath(value: string): string {
+  try {
+    return fs.realpathSync.native(path.resolve(value));
+  } catch {
+    return path.resolve(value);
+  }
+}
+
+function composeInvocationArgs(cmd: string, args: string[]): string[] {
+  if (cmd === 'docker-compose') {
+    return args;
+  }
+  if (cmd === 'docker' && args[0] === 'compose') {
+    return args.slice(1);
+  }
+  return args;
+}
+
 function expectDockerComposeCall(expectedArgs: string[], workspacePath: string): void {
-  const match = mockExeca.mock.calls.find(
-    ([cmd, args, options]) =>
-      cmd === 'docker' &&
-      args[0] === 'compose' &&
-      expectedArgs.every((item) => args.includes(item)) &&
-      path.resolve(String(options?.cwd ?? '')) === path.resolve(workspacePath)
-  );
+  const expectedCwd = normalizeTestPath(workspacePath);
+  const match = mockExeca.mock.calls.find(([cmd, args, options]) => {
+    const invocationArgs = composeInvocationArgs(String(cmd), args as string[]);
+    const isComposeCall =
+      (cmd === 'docker' && args[0] === 'compose') ||
+      (cmd === 'docker-compose' && invocationArgs.includes('-f'));
+
+    return (
+      isComposeCall &&
+      expectedArgs.every((item) => invocationArgs.includes(item)) &&
+      normalizeTestPath(String(options?.cwd ?? '')) === expectedCwd
+    );
+  });
 
   expect(match, `docker compose call with ${expectedArgs.join(' ')}`).toBeDefined();
 
-  const composeFileArg = match![1][match![1].indexOf('-f') + 1];
+  const invocationArgs = composeInvocationArgs(String(match![0]), match![1] as string[]);
+  const composeFileArg = invocationArgs[invocationArgs.indexOf('-f') + 1];
   expect(composeFileArg).toMatch(/docker-compose\.yml$/);
   expect(String(composeFileArg).replace(/\\/g, '/')).toContain(
     '.rapidkit/infra/docker-compose.yml'
