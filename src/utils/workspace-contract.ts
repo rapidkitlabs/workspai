@@ -1,6 +1,8 @@
 import path from 'path';
 import fsExtra from 'fs-extra';
 
+import { auditWorkspaceModulePaths } from './module-layout.js';
+
 export const WORKSPACE_CONTRACT_PATH = '.rapidkit/workspace.contract.json';
 export const WORKSPACE_CONTRACT_SCHEMA_VERSION = 1;
 
@@ -139,7 +141,7 @@ async function readWorkspaceMetadata(
   }
 }
 
-async function discoverProjectJsonFiles(workspacePath: string): Promise<string[]> {
+export async function discoverProjectJsonFiles(workspacePath: string): Promise<string[]> {
   const results: string[] = [];
   const queue = [workspacePath];
   const visited = new Set<string>();
@@ -487,6 +489,7 @@ export async function buildWorkspaceContractGraph(input: {
 export async function verifyWorkspaceContract(input: {
   workspacePath: string;
   contractPath?: string;
+  strict?: boolean;
 }): Promise<WorkspaceContractVerificationResult> {
   const { contractPath, contract } = await readWorkspaceContract(input);
   const violations: string[] = [];
@@ -605,6 +608,27 @@ export async function verifyWorkspaceContract(input: {
       : 'passed',
     message: 'Project path, API, event, and env contracts are valid.',
   });
+
+  const moduleAudit = await auditWorkspaceModulePaths(input.workspacePath);
+  if (moduleAudit.moduleCount > 0) {
+    for (const issue of moduleAudit.issues) {
+      violations.push(`${path.basename(issue.projectRoot)}: ${issue.message} (slug=${issue.slug})`);
+    }
+    checks.push({
+      id: 'module-paths',
+      status: moduleAudit.status,
+      message:
+        moduleAudit.status === 'passed'
+          ? `All ${moduleAudit.moduleCount} registered module(s) resolve under canonical paths.`
+          : `${moduleAudit.issues.length} registered module(s) missing canonical install paths.`,
+    });
+  } else if (input.strict) {
+    checks.push({
+      id: 'module-paths',
+      status: 'passed',
+      message: 'No registry-backed modules declared in workspace projects.',
+    });
+  }
 
   return {
     status: violations.length > 0 ? 'failed' : 'passed',

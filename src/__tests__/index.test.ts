@@ -172,6 +172,7 @@ describe('CLI Entry Point', () => {
           npx rapidkit project archive <name>      Archive a project with a safety snapshot
           npx rapidkit project restore <archive>   Restore an archived project safely
           npx rapidkit workspace share [--output <file>] Export collaboration bundle
+          npx rapidkit workspace foundation ensure   Ensure workspace.json/policies/toolchain files
           npx rapidkit workspace contract init     Create workspace service contract
           npx rapidkit workspace contract verify   Verify service ports/dependencies
           npx rapidkit workspace contract graph    Show service dependency graph
@@ -184,6 +185,8 @@ describe('CLI Entry Point', () => {
           npx rapidkit setup python|node|go|java|dotnet [--warm-deps]  Set up runtime (+ optional deps warm-up)
           npx rapidkit mirror [status|sync|verify|rotate] Registry mirror management
           npx rapidkit cache [status|clear|prune|repair]  Package cache management
+          npx rapidkit infra plan                     Discover and generate infra compose
+          npx rapidkit infra up|down|status           Manage Docker sidecar infrastructure
 
         Options (workspace creation):"
       `);

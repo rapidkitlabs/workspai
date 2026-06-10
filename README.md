@@ -20,6 +20,7 @@ The official RapidKit npm CLI for creating and operating workspaces and projects
 - Multi-runtime support across Python, Node.js, Java, Go, and .NET
 - Policy enforcement with `warn` / `strict` modes
 - Cache and mirror lifecycle commands for stable environments
+- Contract-driven workspace infra sidecar (`infra plan|up|down|status`) for local Postgres, Redis, mail, and related dev dependencies
 
 ## Workspace-First Architecture
 
@@ -149,6 +150,7 @@ npx rapidkit doctor
 npx rapidkit doctor workspace [--fix] [--plan] [--apply]
 npx rapidkit doctor project [--fix] [--plan] [--apply]
 npx rapidkit workspace list # Display all workspaces created on this system
+npx rapidkit workspace foundation ensure [--force] [--json]
 npx rapidkit workspace share [--output <file>] [--include-paths] [--no-doctor]
 npx rapidkit workspace contract init [--force] [--json]
 npx rapidkit workspace contract inspect [--json]
@@ -170,6 +172,10 @@ npx rapidkit project restore <archive> [--name <project-name>] [--force] [--dry-
 npx rapidkit project delete <name> [--permanent --confirm <name>] [--dry-run] [--json]
 npx rapidkit workspace init # Full-init alias (same behavior as root init/workspace run init at workspace root)
 npx rapidkit workspace run <init|test|build|start> [--affected] [--blast-radius] [--since <ref>] [--parallel] [--max-workers <n>] [--strict] [--json]
+npx rapidkit infra plan [--workspace <path>] [--json] [--dry-run] [--verbose]
+npx rapidkit infra up [--workspace <path>] [--no-plan] [--build]
+npx rapidkit infra down [--workspace <path>] [--volumes]
+npx rapidkit infra status [--workspace <path>] [--json] [--strict]
 ```
 
 ### Project import into workspace
@@ -313,13 +319,46 @@ and `workspace archive doctor` when you want human-readable readiness/security g
 imports the workspace. Use `--include-env` only for trusted internal handoffs when you intentionally need
 environment files inside the archive.
 
+### Workspace infrastructure (sidecar)
+
+Use `infra` when a workspace needs local dev dependencies (PostgreSQL, Redis, Mailpit, MinIO, and
+related services) without replacing the workspace's own `docker-compose.yml`.
+
+Discovery is contract-first and runtime-agnostic:
+
+- Installed Core module slugs from each project's `registry.json`
+- Infra-related variables from each project's `.env.example`
+- Optional env declarations from `.rapidkit/workspace.contract.json`
+- Manual overrides in `.rapidkit/infra/overrides.json`
+
+```bash
+cd my-workspace
+npx rapidkit infra plan
+npx rapidkit infra up
+npx rapidkit infra status --strict
+npx rapidkit infra down
+```
+
+Artifacts are written beside the workspace (sidecar strategy):
+
+- `.rapidkit/infra/docker-compose.yml` — generated Docker Compose stack
+- `.rapidkit/reports/infra-plan.json` — machine-readable plan and discovery evidence
+- `.rapidkit/infra/.env.example` — connection env preview for local `.env` files
+
+`infra up` refreshes the plan by default. Use `--no-plan` to start from the last saved plan only.
+Connection defaults prefer project `.env.example` values (for example `RAPIDKIT_DB_POSTGRES_URL`).
+
+This command family is wrapper-owned, does not mutate Core modules, and works for polyglot workspaces
+(FastAPI, NestJS, Go, Spring Boot, .NET, and imported projects) as long as projects expose
+`.rapidkit/project.json` and env/override signals.
+
 ### Command ownership
 
 RapidKit keeps the wrapper boundary explicit so users know which layer owns each action.
 
 | Command family                                     | Owner                  | Notes                                                                                                                           |
 | -------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `create workspace`, `workspace`, `cache`, `mirror` | RapidKit wrapper       | Platform-level orchestration                                                                                                    |
+| `create workspace`, `workspace`, `cache`, `mirror`, `infra` | RapidKit wrapper       | Platform-level orchestration                                                                                                    |
 | `init`                                             | Wrapper orchestrated   | Project init in project dirs; full-init alias at workspace root                                                                 |
 | `dev`, `test`, `build`, `start`                    | Runtime aware          | Delegates to the active project/runtime when available                                                                          |
 | `readiness`                                        | Wrapper release gate   | Generates release-readiness evidence (`--json` for CI, `--strict` for fail-fast)                                                |
@@ -331,6 +370,7 @@ RapidKit keeps the wrapper boundary explicit so users know which layer owns each
 | `doctor workspace`                                 | Workspace health       | Full workspace scan with project-level details and fixes                                                                        |
 | `doctor project`                                   | Project health         | Current project (or nearest parent) diagnostics with project evidence and scoped fixes                                          |
 | `workspace run`                                    | Workspace orchestrator | Stage execution across discovered projects with optional affected-only, blast-radius expansion, and policy-gated pre-checks     |
+| `infra`                                            | Workspace sidecar      | Contract-driven local infra discovery, compose generation, and Docker lifecycle (`plan`, `up`, `down`, `status`)                  |
 
 Use `npx rapidkit doctor` for a quick host pre-flight, `npx rapidkit doctor project` for a service-level check, and `npx rapidkit doctor workspace` for the full workspace picture.
 Use `npx rapidkit analyze --json` to generate CI-friendly workspace health evidence and save it under `.rapidkit/reports/`.
@@ -424,7 +464,10 @@ available.
 ```bash
 npx rapidkit cache <status|clear|prune|repair>
 npx rapidkit mirror <status|sync|verify|rotate>
+npx rapidkit infra <plan|up|down|status>
 ```
+
+See [Workspace infrastructure (sidecar)](#workspace-infrastructure-sidecar) for discovery rules and generated artifacts.
 
 ## Profiles
 

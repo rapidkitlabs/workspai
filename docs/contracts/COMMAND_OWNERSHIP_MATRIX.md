@@ -28,6 +28,7 @@ These commands are implemented and orchestrated by `rapidkit-npm`:
 - `analyze`
 - `config`
 - `product`
+- `infra`
 - `commands`
 - `shell activate`
 

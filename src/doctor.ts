@@ -2085,6 +2085,23 @@ async function checkProject(
     // Ignore if can't read registry
   }
 
+  try {
+    const { auditProjectModulePaths } = await import('./utils/module-layout.js');
+    const moduleAudit = await auditProjectModulePaths(projectPath);
+    if (moduleAudit.issues.length > 0) {
+      for (const issue of moduleAudit.issues) {
+        health.issues.push(`${issue.message} (${issue.slug})`);
+      }
+      health.fixCommands = health.fixCommands ?? [];
+      health.fixCommands.push('npx rapidkit workspace contract verify --strict --json');
+      health.fixCommands.push(
+        'npx rapidkit add module <slug>  # reinstall via Core-backed module install'
+      );
+    }
+  } catch {
+    // Non-fatal module layout audit
+  }
+
   // Try to read kit info from .rapidkit/project.json
   let projectJsonData: Record<string, unknown> | null = null;
   try {

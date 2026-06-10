@@ -2,7 +2,7 @@
 
 import type { DynamicModule, Type } from '@nestjs/common';
 
-// Central export for dynamically injected RapidKit modules
+// Central export for dynamically injected RapidKit modules installed under src/modules/free/**
 
 type ModuleRef = DynamicModule | Type<unknown>;
 
@@ -16,9 +16,6 @@ const registerOptionalModule = (loader: () => ModuleRef | null | undefined): Mod
 };
 
 const optionalModules: Array<ModuleRef | null> = [
-	registerOptionalModule(() => require('../config/logging.module').LoggingModule as ModuleRef),
-	registerOptionalModule(() => require('../config/settings.module').SettingsModule as ModuleRef),
-	registerOptionalModule(() => require('../deployment/deployment.module').DeploymentModule as ModuleRef),
 	// <<<inject:module-exports>>>
 ];
 

@@ -1,6 +1,39 @@
 # Release Notes
 
-## Latest Release: v0.32.2 (June 8, 2026)
+## Latest Release: v0.33.0 (June 10, 2026)
+
+### Workspace Infra Sidecar, Module Layout Contract, and Foundation Ensure
+
+This minor release adds contract-driven local dev infrastructure for polyglot workspaces, canonical module layout verification, and a foundation ensure command for workspace governance files.
+
+**What's New:**
+
+- 🐳 **Infra sidecar (`rapidkit infra`)**
+  - `plan` discovers Postgres, Redis, Mailpit, MinIO, and related services from modules, `.env.example`, workspace contract env, and overrides.
+  - `up|down|status` manage a generated stack at `.rapidkit/infra/docker-compose.yml` without touching the workspace's main compose file.
+  - Emits `.rapidkit/reports/infra-plan.json` and connection env previews aligned with project defaults.
+
+- 📐 **Module layout contract**
+  - Added `contracts/module-layout.v1.json` and doctor workspace module-path audits.
+  - `workspace contract verify --strict --module-paths` checks canonical `src/modules/free/` placement.
+
+- 🧱 **Workspace foundation ensure**
+  - `npx rapidkit workspace foundation ensure` reconciles workspace.json, policies, toolchain lock, and foundation artifacts.
+
+- 🪺 **NestJS kit alignment**
+  - NestJS standard templates now use the canonical module root and TS path mapping expected by Core modules.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.33.0
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.33.0.md)
+
+---
+
+## Previous Release: v0.32.2 (June 8, 2026)
 
 ### Multi-OS Workspace Init and Deterministic Package Release Hardening
 

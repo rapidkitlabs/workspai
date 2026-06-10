@@ -25,6 +25,7 @@ import { BOOTSTRAP_CORE_COMMANDS_SET } from './core-bridge/bootstrapCoreCommands
 import { registerConfigCommands } from './commands/config.js';
 import { registerAICommands } from './commands/ai.js';
 import { registerProductCommands } from './commands/product.js';
+import { registerInfraCommands } from './commands/infra.js';
 import { getRuntimeAdapter } from './runtime-adapters/index.js';
 import type { CommandResult } from './runtime-adapters/types.js';
 import { Cache } from './utils/cache.js';
@@ -1051,6 +1052,7 @@ export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
   'ai',
   'config',
   'product',
+  'infra',
   'shell',
   'commands',
 ] as const;
@@ -1066,6 +1068,7 @@ const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
   'ai',
   'config',
   'product',
+  'infra',
   'shell',
   'commands',
 ] as const;
@@ -1179,6 +1182,7 @@ function getGlobalCommandCapabilities() {
     'ai',
     'config',
     'product',
+    'infra',
     'shell',
     'project',
     'commands',
@@ -4755,6 +4759,9 @@ registerAICommands(program);
 // Register Product Factory commands
 registerProductCommands(program);
 
+// Register infrastructure sidecar commands
+registerInfraCommands(program);
+
 program
   .command('commands')
   .description('Show effective RapidKit command ownership and runtime support')
@@ -5499,6 +5506,27 @@ program
       console.log(chalk.cyan(`📂 Scanning workspace: ${path.basename(workspacePath)}`));
       await syncWorkspaceProjects(workspacePath);
       await syncWorkspaceContractAfterProjectChange(workspacePath);
+    } else if (action === 'foundation') {
+      const workspacePath = requireWorkspaceRootForAction('foundation');
+      const foundationAction = subaction || 'ensure';
+      if (foundationAction !== 'ensure') {
+        console.log(chalk.red(`❌ Unknown workspace foundation action: ${foundationAction}`));
+        console.log(chalk.gray('   npx rapidkit workspace foundation ensure [--force] [--json]'));
+        process.exit(1);
+      }
+      const { ensureWorkspaceFoundation } = await import('./utils/workspace-foundation.js');
+      const result = await ensureWorkspaceFoundation(workspacePath, {
+        force: actionOptions.force === true || hasRawFlag('--force'),
+      });
+      if (actionOptions.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      if (result.created.length > 0) {
+        console.log(chalk.green(`✔ Workspace foundation ensured: ${result.created.join(', ')}`));
+      } else {
+        console.log(chalk.gray('Workspace foundation files are already up to date.'));
+      }
     } else if (action === 'policy') {
       const workspacePath = requireWorkspaceRootForAction('policy');
       const code = await handleWorkspacePolicyCommand(workspacePath, subaction, key, value);
@@ -5545,7 +5573,11 @@ program
         }
 
         if (contractAction === 'verify') {
-          const result = await verifyWorkspaceContract({ workspacePath, contractPath });
+          const result = await verifyWorkspaceContract({
+            workspacePath,
+            contractPath,
+            strict: actionOptions.strict === true || hasRawFlag('--strict'),
+          });
           if (actionOptions.json) {
             console.log(JSON.stringify(result, null, 2));
           } else {
@@ -5977,6 +6009,11 @@ function printHelp() {
     chalk.gray('  npx rapidkit workspace share [--output <file>] Export collaboration bundle')
   );
   console.log(
+    chalk.gray(
+      '  npx rapidkit workspace foundation ensure   Ensure workspace.json/policies/toolchain files'
+    )
+  );
+  console.log(
     chalk.gray('  npx rapidkit workspace contract init     Create workspace service contract')
   );
   console.log(
@@ -6014,7 +6051,15 @@ function printHelp() {
     chalk.gray('  npx rapidkit mirror [status|sync|verify|rotate] Registry mirror management')
   );
   console.log(
-    chalk.gray('  npx rapidkit cache [status|clear|prune|repair]  Package cache management\n')
+    chalk.gray('  npx rapidkit cache [status|clear|prune|repair]  Package cache management')
+  );
+  console.log(
+    chalk.gray('  npx rapidkit infra plan                     Discover and generate infra compose')
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit infra up|down|status           Manage Docker sidecar infrastructure\n'
+    )
   );
 
   console.log(chalk.bold('Options (workspace creation):'));

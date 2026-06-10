@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "rapidkit.module-layout.v1",
+  "canonicalModuleRoot": "src/modules/free",
+  "pathPattern": "src/modules/free/{category}/{module}",
+  "slugPattern": "free/{category}/{module}",
+  "frameworks": {
+    "fastapi": {
+      "moduleCommands": true,
+      "injectAnchors": [
+        "src/routing/__init__.py",
+        "src/modules/__init__.py"
+      ],
+      "moduleMarkerFiles": ["__init__.py"]
+    },
+    "nestjs": {
+      "moduleCommands": true,
+      "injectAnchors": [
+        "src/app.module.ts",
+        "src/modules/index.ts"
+      ],
+      "moduleMarkerFiles": ["index.ts", "module.ts"]
+    }
+  },
+  "unsupportedModuleFrameworks": ["go", "springboot", "dotnet"]
+}

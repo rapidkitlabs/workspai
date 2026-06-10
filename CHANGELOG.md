@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-06-10
+
+### Added
+
+- Added wrapper-owned `rapidkit infra plan|up|down|status` for contract-driven local infrastructure sidecars (PostgreSQL, Redis, Mailpit, MinIO, and related services) via `.rapidkit/infra/docker-compose.yml`.
+- Added `contracts/infra-stack.v1.json` plus discovery from installed modules, project `.env.example`, workspace contract env, and `.rapidkit/infra/overrides.json`.
+- Added infra plan artifacts under `.rapidkit/reports/infra-plan.json` and connection env previews under `.rapidkit/infra/.env.example`.
+- Added `npx rapidkit workspace foundation ensure` to reconcile workspace.json, policies, toolchain, and related foundation files.
+- Added canonical module layout contract (`contracts/module-layout.v1.json`) with doctor workspace module-path audit and `--module-paths` support on `workspace contract verify --strict`.
+- Added regression coverage for infra planning/commands, module layout parity, workspace foundation, and CLI help snapshots.
+
+### Changed
+
+- Updated workspace contract discovery to export project scanning helpers used by infra and layout tooling.
+- Updated NestJS kit templates to use the canonical `src/modules/free/` module root and aligned TypeScript path mapping.
+- Updated CLI help, README, and command ownership matrix to document `infra` and foundation ensure.
+- Published `contracts/` in the npm package tarball so bundled contract resolution works outside the repo root.
+
+### Fixed
+
+- Fixed infra contract loading to resolve from the installed package instead of `process.cwd()`.
+- Fixed infra compose generation for empty plans and aligned Postgres container env/healthchecks with workspace `.env.example` defaults.
+- Improved Docker Compose invocation with compose v2/v1 fallback, normalized `-f` paths, and actionable errors for disk/full-daemon failures.
+
+### Verification
+
+- Validated with `npm run build`, infra unit/command tests, ownership matrix drift guard, and SaaS workspace sidecar smoke (`infra plan`, `infra up`, `infra status --strict`).
+
 ## [0.32.2] - 2026-06-08
 
 ### Added

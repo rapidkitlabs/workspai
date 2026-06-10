@@ -1,6 +1,6 @@
 {
   "name": "rapidkit",
-  "version": "0.32.2",
+  "version": "0.33.0",
   "type": "module",
   "description": "Official CLI for RapidKit, an open-source workspace platform that standardizes how teams build, scale, and deploy backend services.",
   "keywords": [
@@ -34,6 +34,7 @@
   },
   "files": [
     "dist",
+    "contracts",
     "data/modules-embeddings.json",
     "scripts/enforce-package-manager.cjs",
     "scripts/check-cli-resolution.cjs"
