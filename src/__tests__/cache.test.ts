@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
 import { Cache, getCachedOrFetch } from '../utils/cache.js';
 
 describe('Cache', () => {
@@ -30,17 +33,27 @@ describe('Cache', () => {
     });
 
     it('should store and retrieve data from disk cache', async () => {
-      const testData = { name: 'disk-test', value: 456 };
-      await cache.set('disk-key', testData);
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'rapidkit-cache-test-'));
+      const previousCacheDir = process.env.RAPIDKIT_CACHE_DIR;
+      process.env.RAPIDKIT_CACHE_DIR = tmpDir;
 
-      // Wait a bit for disk write to complete
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      try {
+        const testData = { name: 'disk-test', value: 456 };
+        await cache.set('disk-key', testData);
 
-      // Clear memory cache and get from disk
-      cache['memoryCache'].clear();
+        // Clear memory cache and get from disk
+        cache['memoryCache'].clear();
 
-      const result = await cache.get<typeof testData>('disk-key');
-      expect(result).toEqual(testData);
+        const result = await cache.get<typeof testData>('disk-key');
+        expect(result).toEqual(testData);
+      } finally {
+        if (previousCacheDir === undefined) {
+          delete process.env.RAPIDKIT_CACHE_DIR;
+        } else {
+          process.env.RAPIDKIT_CACHE_DIR = previousCacheDir;
+        }
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      }
     });
 
     it('should return null for non-existent keys', async () => {

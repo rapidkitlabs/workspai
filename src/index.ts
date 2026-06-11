@@ -22,6 +22,12 @@ import {
   runCoreRapidkitStreamed,
 } from './core-bridge/pythonRapidkitExec.js';
 import { BOOTSTRAP_CORE_COMMANDS_SET } from './core-bridge/bootstrapCoreCommands.js';
+import {
+  WRAPPER_SHARED_CLI_FLAGS,
+  isCoreDelegatedTopLevelCommand,
+  isPythonCoreContextEngine,
+  shouldBridgeInvocationToCore,
+} from './core-bridge/coreForwarding.js';
 import { registerConfigCommands } from './commands/config.js';
 import { registerAICommands } from './commands/ai.js';
 import { registerProductCommands } from './commands/product.js';
@@ -1296,7 +1302,7 @@ function hasWorkspaceRootMarkers(targetDir: string): boolean {
 
 /**
  * Check if we're inside a RapidKit project and delegate to local CLI if needed
- * If .rapidkit/context.json exists and engine is 'pip', block npm CLI and print message.
+ * If .rapidkit/context.json exists and engine is Python-core backed, delegate module/core commands.
  */
 function findContextFileUp(start: string): string | null {
   let p = start;
@@ -4104,7 +4110,8 @@ async function delegateToLocalCLI(): Promise<boolean> {
         !allowShellActivate &&
         !isNpmOnlyCommand &&
         !isInitCommand &&
-        !shouldKeepLifecycleOnWrapper
+        !shouldKeepLifecycleOnWrapper &&
+        shouldBridgeInvocationToCore(args)
       ) {
         // Strict policy pre-flight for lifecycle commands
         if (firstArg && (STRICT_POLICY_PROJECT_COMMANDS as readonly string[]).includes(firstArg)) {
@@ -4207,12 +4214,11 @@ async function delegateToLocalCLI(): Promise<boolean> {
     return true;
   }
 
-  // Special handling for pip-engine projects (Python RapidKit)
-  // Delegate to the Python core engine when context.json reports pip.
+  // Delegate to the Python core engine when context.json reports a Python install backend.
   if (contextFile && (await fsExtra.pathExists(contextFile))) {
     try {
       const ctx = await fsExtra.readJson(contextFile);
-      if (ctx.engine === 'pip') {
+      if (isPythonCoreContextEngine(ctx.engine)) {
         const firstArg = args[0];
 
         // If a local project script exists, delegate there first (prefer local CLI)
@@ -4278,7 +4284,8 @@ async function delegateToLocalCLI(): Promise<boolean> {
           !isHelpLike &&
           !isNpmOnlyInvocation(args) &&
           firstArg !== 'init' &&
-          !shouldKeepLifecycleOnWrapper
+          !shouldKeepLifecycleOnWrapper &&
+          shouldBridgeInvocationToCore(args)
         ) {
           const code = await runCoreRapidkit(args, { cwd });
           process.exit(code);
@@ -4341,23 +4348,16 @@ export async function shouldForwardToCore(args: string[]): Promise<boolean> {
   // npm-only shorthand flags
   if (args.includes('--template') || args.includes('-t')) return false;
 
-  // Wrapper-only flags/options mean we're in "create workspace/project" mode.
-  // In that case, do not spend time bootstrapping core just to disambiguate.
-  const WRAPPER_FLAGS = new Set([
-    '--yes',
-    '-y',
-    '--skip-git',
-    '--skip-install',
-    '--debug',
-    '--dry-run',
-    '--no-update-check',
-    '--create-workspace',
-    '--no-workspace',
-  ]);
-  if (args.some((a) => WRAPPER_FLAGS.has(a))) return false;
-
-  // Cache-first: if we already discovered core commands previously, use that.
   const cached = await getCachedCoreTopLevelCommands();
+
+  // Core-owned commands may carry wrapper-shared flags (notably --dry-run) and must still forward.
+  if (isCoreDelegatedTopLevelCommand(first, cached)) {
+    return true;
+  }
+
+  // Wrapper-shared flags with non-core top-level tokens imply create/workspace orchestration.
+  if (args.some((a) => WRAPPER_SHARED_CLI_FLAGS.has(a))) return false;
+
   if (cached) {
     return cached.has(first);
   }
@@ -4373,10 +4373,6 @@ export async function shouldForwardToCore(args: string[]): Promise<boolean> {
 
   // Otherwise, treat it as a workspace/project name and let commander handle it.
   return false;
-
-  // Unreachable, but kept for clarity if logic changes later.
-  // const coreCommands = await getCoreTopLevelCommands();
-  // return coreCommands.has(first);
 }
 
 program

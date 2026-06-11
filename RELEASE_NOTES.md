@@ -1,6 +1,35 @@
 # Release Notes
 
-## Latest Release: v0.33.0 (June 10, 2026)
+## Latest Release: v0.33.1 (June 10, 2026)
+
+### Core Bridge Forwarding Fix for Module Lifecycle and `--dry-run`
+
+This patch fixes npm-to-core command routing so module maintenance and dry-run previews reach Python core reliably, while workspace create/import flows stay on the npm wrapper.
+
+**What's Fixed:**
+
+- 🔁 **Module lifecycle forwarding**
+  - `rollback`, `uninstall`, `upgrade`, `diff`, and `checkpoint` now forward to core even when `--dry-run` is present.
+  - Prevents silent no-op behavior from the Workspai dashboard and terminal maintenance flows.
+
+- 🧭 **Workspace vs core boundary**
+  - Bare workspace names like `my-workspace --dry-run` no longer mis-route to Python core.
+  - `create workspace`, `create project`, and npm-owned generator flows remain on the wrapper.
+
+- 🐍 **Python context delegation**
+  - In-project delegation now covers `pip`, `poetry`, `venv`, `pipx`, and `python` engines — not `pip` alone.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.33.1
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.33.1.md)
+
+---
+
+## Previous Release: v0.33.0 (June 10, 2026)
 
 ### Workspace Infra Sidecar, Module Layout Contract, and Foundation Ensure
 

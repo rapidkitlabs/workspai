@@ -1698,6 +1698,25 @@ describe('Phase 3 command contract handlers', () => {
       await expect(index.shouldForwardToCore(['docs'])).resolves.toBe(true);
     });
 
+    it('forwards module lifecycle commands with wrapper-shared --dry-run to core', async () => {
+      const index = await import('../index.js');
+
+      await expect(
+        index.shouldForwardToCore(['rollback', 'module', 'free/core/health', '--dry-run'])
+      ).resolves.toBe(true);
+      await expect(
+        index.shouldForwardToCore(['uninstall', 'module', 'free/core/health', '--dry-run'])
+      ).resolves.toBe(true);
+      await expect(
+        index.shouldForwardToCore(['upgrade', 'module', 'free/core/health', '--dry-run'])
+      ).resolves.toBe(true);
+    });
+
+    it('does not forward bare workspace dry-run names to core', async () => {
+      const index = await import('../index.js');
+      await expect(index.shouldForwardToCore(['my-workspace', '--dry-run'])).resolves.toBe(false);
+    });
+
     it('detects npm/npx execution context so npm-owned commands stay local', async () => {
       const index = await import('../index.js');
 

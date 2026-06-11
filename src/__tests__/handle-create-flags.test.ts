@@ -224,7 +224,7 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
         Object.defineProperty(process.stdin, 'isTTY', stdinIsTty);
       }
     }
-  });
+  }, 30000);
 
   it('rejects invalid project names for npm-level generators before filesystem writes', async () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);

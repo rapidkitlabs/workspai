@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.1] - 2026-06-10
+
+### Added
+
+- Added `coreForwarding` bridge helpers with explicit rules for wrapper-shared CLI flags and Python core context engines.
+- Added regression coverage for module lifecycle `--dry-run` forwarding and bare workspace name boundaries.
+
+### Fixed
+
+- Fixed npm bridge mis-routing when `--dry-run` prevented core module lifecycle commands (`rollback`, `uninstall`, `upgrade`, `diff`, `checkpoint`) from reaching Python core.
+- Fixed bare workspace names such as `my-workspace --dry-run` being forwarded to core instead of staying on the npm wrapper.
+- Extended in-project Python core delegation from `pip` only to `poetry`, `venv`, `pipx`, and `python` install backends.
+
+### Changed
+
+- Refactored `shouldForwardToCore()` to recognize core-owned commands before wrapper-shared flag short-circuit.
+
+### Verification
+
+- Validated with `npm run build` and targeted forwarding tests in `coreForwarding.test.ts` and `phase3-commands.test.ts`.
+
 ## [0.33.0] - 2026-06-10
 
 ### Added
