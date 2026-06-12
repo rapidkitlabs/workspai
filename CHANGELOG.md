@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.2] - 2026-06-12
+
+### Added
+
+- Added cross-platform regression coverage for workspace-local Core runner discovery, marker-based virtualenv paths, user-local/pipx Core installs, and generated launcher recursion guards.
+- Added a focused Windows bridge resolver regression step to the native `windows-latest` E2E workflow.
+
+### Changed
+
+- Hardened generated workspace launchers so missing local virtualenvs fall back to a non-local npm wrapper before deterministic user-local Core executables.
+- Updated Python Core runner resolution to honor `.rapidkit-workspace` `metadata.python.venvPath` for non-standard workspace-local engine installs.
+- Updated user-local Core discovery to scan pipx/Python script locations even when those locations are not on `PATH`.
+
+### Fixed
+
+- Fixed Windows `npx --package rapidkit rapidkit ...` flows being shadowed by a workspace-local `rapidkit.cmd` that could not locate Core.
+- Fixed launcher recursion by marking forwarded calls with `RAPIDKIT_LOCAL_LAUNCHER_BYPASS` so the npm wrapper does not delegate back to the same local launcher.
+- Fixed an interactive npm-owned generator regression test that could hit git initialization and timeout during coverage runs.
+
+### Verification
+
+- Validated with `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test`, and `npm run test:coverage`.
+- Validated focused bridge coverage with platform, launcher, workspace runner, Python bridge, and create fallback regression tests.
+
 ## [0.33.1] - 2026-06-10
 
 ### Added

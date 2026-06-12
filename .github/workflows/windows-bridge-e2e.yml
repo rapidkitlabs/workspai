@@ -43,6 +43,15 @@ jobs:
         shell: pwsh
         run: npm run test:prepare-embeddings
 
+      - name: Focused bridge resolver regression tests
+        shell: pwsh
+        run: |
+          npm run test -- `
+            src/__tests__/platform-capabilities.test.ts `
+            src/__tests__/workspace-launcher-windows.test.ts `
+            src/__tests__/pythonRapidkitExec-workspace-runner.test.ts `
+            src/__tests__/pythonRapidkitExec.test.ts
+
       - name: Bridge + lifecycle smoke (native pwsh)
         shell: pwsh
         run: |

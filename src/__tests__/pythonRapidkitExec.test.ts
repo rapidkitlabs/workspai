@@ -3,6 +3,8 @@ import type { Mock } from 'vitest';
 import * as fsExtra from 'fs-extra';
 import { execa } from 'execa';
 import { EventEmitter } from 'events';
+import os from 'os';
+import path from 'path';
 
 const { spawnMock } = vi.hoisted(() => ({
   spawnMock: vi.fn(),
@@ -382,6 +384,67 @@ describe('resolveRapidkitRunner', () => {
 
     expect(runner.exitCode).toBe(0);
   });
+
+  it('finds user-local pipx rapidkit when it is not on PATH', async () => {
+    const userLocalRapidkit =
+      process.platform === 'win32'
+        ? path.join(os.homedir(), '.local', 'bin', 'rapidkit.exe')
+        : path.join(os.homedir(), '.local', 'bin', 'rapidkit');
+
+    mockFs.pathExists.mockImplementation(
+      async (candidate: string) => candidate === userLocalRapidkit
+    );
+    mockExeca.mockImplementation(async (cmd: string, args?: string[]) => {
+      if (cmd === userLocalRapidkit && args?.join(' ') === '--version --json') {
+        return { exitCode: 0, stdout: '{"version":"0.5.4"}', stderr: '' };
+      }
+      return { exitCode: 1, stdout: '', stderr: '' };
+    });
+
+    const runner = await bridge.__test__.findUserLocalRapidkitRunner();
+
+    expect(runner).toEqual({ cmd: userLocalRapidkit, baseArgs: [] });
+  });
+
+  it.each([
+    {
+      platform: 'win32' as NodeJS.Platform,
+      env: {
+        USERPROFILE: 'C:/Users/Admin',
+        APPDATA: 'C:/Users/Admin/AppData/Roaming',
+        LOCALAPPDATA: 'C:/Users/Admin/AppData/Local',
+      },
+      expected: path.join('C:/Users/Admin', '.local', 'bin', 'rapidkit.exe'),
+    },
+    {
+      platform: 'linux' as NodeJS.Platform,
+      env: {},
+      expected: path.join(os.homedir(), '.local', 'bin', 'rapidkit'),
+    },
+    {
+      platform: 'darwin' as NodeJS.Platform,
+      env: {},
+      expected: path.join(os.homedir(), '.local', 'bin', 'rapidkit'),
+    },
+  ])(
+    'resolves user-local core paths consistently on $platform',
+    async ({ platform, env, expected }) => {
+      mockFs.pathExists.mockImplementation(async (candidate: string) => candidate === expected);
+      mockExeca.mockImplementation(async (cmd: string, args?: string[]) => {
+        if (cmd === expected && args?.join(' ') === '--version --json') {
+          return { exitCode: 0, stdout: '{"version":"0.5.4"}', stderr: '' };
+        }
+        return { exitCode: 1, stdout: '', stderr: '' };
+      });
+
+      const runner = await bridge.__test__.findUserLocalRapidkitRunner(
+        platform,
+        env as NodeJS.ProcessEnv
+      );
+
+      expect(runner).toEqual({ cmd: expected, baseArgs: [] });
+    }
+  );
 });
 
 describe('getCachedCoreTopLevelCommands', () => {

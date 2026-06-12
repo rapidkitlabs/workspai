@@ -1,6 +1,40 @@
 # Release Notes
 
-## Latest Release: v0.33.1 (June 10, 2026)
+## Latest Release: v0.33.2 (June 12, 2026)
+
+### Windows Workspace Launcher and Core Resolver Hardening
+
+This patch makes global, `npx`, and workspace-local command flows behave consistently when RapidKit Core is installed inside a workspace, via pipx/user-local locations, or behind a generated workspace launcher.
+
+**What's Fixed:**
+
+- 🪟 **Windows launcher shadowing**
+  - Generated `rapidkit.cmd` launchers now forward to a non-local npm wrapper when the workspace virtualenv is missing.
+  - Forwarded calls set `RAPIDKIT_LOCAL_LAUNCHER_BYPASS=1` so the npm wrapper cannot recurse back into the same local launcher.
+
+- 🧭 **Workspace-local Core discovery**
+  - The npm bridge now detects workspace Core installs from both default `.venv` paths and `.rapidkit-workspace` `metadata.python.venvPath`.
+  - Workspace Python version metadata is honored from the marker when available.
+
+- 🐍 **User-local / pipx fallback**
+  - The bridge now scans deterministic user-local Core launcher paths even when pipx/Python script directories are not on `PATH`.
+  - Generated launchers fall back to user-local Core executables after checking the npm wrapper path.
+
+- ✅ **Regression coverage**
+  - Added Windows launcher, POSIX launcher, user-local Core, workspace marker, and multi-OS resolver coverage.
+  - The Windows bridge E2E workflow now runs the focused resolver regression suite before native smoke tests.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.33.2
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.33.2.md)
+
+---
+
+## Previous Release: v0.33.1 (June 10, 2026)
 
 ### Core Bridge Forwarding Fix for Module Lifecycle and `--dry-run`
 

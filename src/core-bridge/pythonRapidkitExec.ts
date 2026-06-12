@@ -8,6 +8,7 @@ import {
   getDefaultPythonCommand,
   getPythonCommandCandidates,
   getPythonVersionProbeCandidates,
+  getUserLocalBinCandidates,
   getVenvPythonPath,
   getVenvRapidkitPath,
   isWindowsPlatform,
@@ -175,6 +176,34 @@ function bridgePython(venvDir: string): string {
 
 function bridgeRapidkitCli(venvDir: string): string {
   return getVenvRapidkitPath(venvDir);
+}
+
+async function findUserLocalRapidkitRunner(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<RapidkitRunner | null> {
+  const names = isWindowsPlatform(platform) ? ['rapidkit.exe', 'rapidkit.cmd'] : ['rapidkit'];
+  const candidates = getUserLocalBinCandidates(env, platform).flatMap((dir) =>
+    names.map((name) => path.join(dir, name))
+  );
+
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      if (!(await fsExtra.pathExists(candidate))) continue;
+      const res = await execa(candidate, ['--version', '--json'], {
+        reject: false,
+        stdio: 'pipe',
+        timeout: 4000,
+      });
+      if (res.exitCode === 0 && (await isCoreJsonVersion(res.stdout))) {
+        return { cmd: candidate, baseArgs: [] };
+      }
+    } catch {
+      // Ignore broken candidates and keep scanning deterministic user-local locations.
+    }
+  }
+
+  return null;
 }
 
 function isPinnedSpec(spec: string): boolean {
@@ -351,6 +380,7 @@ async function tryRapidkit(cmd: PythonCommand): Promise<boolean> {
 type RapidkitRunner = {
   cmd: string;
   baseArgs: string[];
+  workspaceDir?: string;
 };
 
 async function isCoreJsonVersion(stdout: unknown): Promise<boolean> {
@@ -369,36 +399,68 @@ async function isCoreJsonVersion(stdout: unknown): Promise<boolean> {
   }
 }
 
-async function findWorkspaceRunner(startDir: string): Promise<RapidkitRunner | null> {
-  const cliRel = path.relative('.', getVenvRapidkitPath('.venv'));
-  const pyRel = path.relative('.', getVenvPythonPath('.venv'));
+async function findWorkspaceRunner(
+  startDir: string,
+  platform: NodeJS.Platform = process.platform
+): Promise<RapidkitRunner | null> {
+  const readMarkerVenvPath = async (workspaceDir: string): Promise<string | null> => {
+    try {
+      const markerPath = path.join(workspaceDir, '.rapidkit-workspace');
+      if (!(await fsExtra.pathExists(markerPath))) return null;
+      const marker = await fsExtra.readJson(markerPath);
+      const raw = marker?.metadata?.python?.venvPath;
+      if (typeof raw !== 'string' || !raw.trim()) return null;
+      return path.isAbsolute(raw) ? raw : path.join(workspaceDir, raw);
+    } catch {
+      return null;
+    }
+  };
 
-  let p = startDir;
-  // Hard cap to avoid pathological scans.
-  for (let i = 0; i < 25; i += 1) {
-    const cli = path.join(p, cliRel);
+  const probeVenv = async (
+    workspaceDir: string,
+    venvDir: string
+  ): Promise<RapidkitRunner | null> => {
+    const cli = getVenvRapidkitPath(venvDir, platform);
     if (await fsExtra.pathExists(cli)) {
       const probe = await execa(cli, ['--version', '--json'], {
         reject: false,
         stdio: 'pipe',
         timeout: 1500,
-        cwd: p,
+        cwd: workspaceDir,
       });
       if (probe.exitCode === 0 && (await isCoreJsonVersion(probe.stdout))) {
-        return { cmd: cli, baseArgs: [] };
+        return { cmd: cli, baseArgs: [], workspaceDir };
       }
     }
 
-    const py = path.join(p, pyRel);
+    const py = getVenvPythonPath(venvDir, platform);
     if (await fsExtra.pathExists(py)) {
       const probe = await execa(py, ['-m', 'rapidkit', '--version', '--json'], {
         reject: false,
         stdio: 'pipe',
         timeout: 1500,
-        cwd: p,
+        cwd: workspaceDir,
       });
       if (probe.exitCode === 0 && (await isCoreJsonVersion(probe.stdout))) {
-        return { cmd: py, baseArgs: ['-m', 'rapidkit'] };
+        return { cmd: py, baseArgs: ['-m', 'rapidkit'], workspaceDir };
+      }
+    }
+
+    return null;
+  };
+
+  let p = startDir;
+  // Hard cap to avoid pathological scans.
+  for (let i = 0; i < 25; i += 1) {
+    const markerVenvPath = await readMarkerVenvPath(p);
+    const venvCandidates = [path.join(p, '.venv'), markerVenvPath].filter(
+      (value): value is string => !!value
+    );
+
+    for (const venvDir of [...new Set(venvCandidates)]) {
+      const runner = await probeVenv(p, venvDir);
+      if (runner) {
+        return runner;
       }
     }
 
@@ -428,9 +490,14 @@ async function getWorkspacePythonVersion(workspaceDir: string): Promise<string |
   try {
     const markerPath = path.join(workspaceDir, '.rapidkit-workspace');
     if (await fsExtra.pathExists(markerPath)) {
-      const content = await fsExtra.readFile(markerPath, 'utf-8');
-      const marker = JSON.parse(content);
-      if (marker.pythonVersion) return marker.pythonVersion;
+      const marker = await fsExtra.readJson(markerPath);
+      if (typeof marker?.pythonVersion === 'string' && marker.pythonVersion.trim()) {
+        return marker.pythonVersion.trim();
+      }
+      const metadataVersion = marker?.metadata?.python?.pythonVersion;
+      if (typeof metadataVersion === 'string' && metadataVersion.trim()) {
+        return metadataVersion.trim();
+      }
     }
   } catch {
     // Ignore
@@ -447,9 +514,11 @@ async function resolveRapidkitRunner(cwd?: string): Promise<RapidkitRunner> {
       const local = await findWorkspaceRunner(cwd);
       if (local) {
         // Also set PYENV_VERSION based on workspace Python version
-        const workspaceDir = path.dirname(local.cmd).includes('.venv')
-          ? path.dirname(path.dirname(path.dirname(local.cmd)))
-          : path.dirname(local.cmd);
+        const workspaceDir =
+          local.workspaceDir ??
+          (path.dirname(local.cmd).includes('.venv')
+            ? path.dirname(path.dirname(path.dirname(local.cmd)))
+            : path.dirname(local.cmd));
         const pythonVersion = await getWorkspacePythonVersion(workspaceDir);
         if (pythonVersion) {
           process.env.PYENV_VERSION = pythonVersion;
@@ -519,6 +588,10 @@ async function resolveRapidkitRunner(cwd?: string): Promise<RapidkitRunner> {
   // If system python is present but rapidkit isn't importable (and no interpreter-specific
   // console script worked), bootstrap the bridge venv. Falling back to PATH `rapidkit` is
   // unsafe because it can be the npm wrapper itself.
+  const userLocalRunner = await findUserLocalRapidkitRunner();
+  if (userLocalRunner) return userLocalRunner;
+
+  // If no user-local/pipx console script is available, bootstrap the bridge venv.
   const venvDir = bridgeVenvDir();
   const pythonPath = await ensureBridgeVenv(resolved.cmd);
   const cli = bridgeRapidkitCli(venvDir);
@@ -1719,6 +1792,8 @@ export const __test__ = {
   ensureBridgeVenvFromCandidates,
   parseCoreCommandsFromHelp,
   tryRapidkit,
+  findUserLocalRapidkitRunner,
+  findWorkspaceRunner,
   checkRapidkitCoreAvailable,
   checkRapidkitCoreVersionCompatible,
   isVersionSatisfyingConstraint,

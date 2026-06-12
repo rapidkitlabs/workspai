@@ -208,6 +208,7 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
       const code = await index.handleCreateOrFallback([
         'create',
         '--no-workspace',
+        '--skip-git',
         '--skip-install',
       ]);
       expect(code).toBe(0);

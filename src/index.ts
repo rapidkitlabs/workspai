@@ -4066,6 +4066,7 @@ async function delegateToLocalCLI(): Promise<boolean> {
     isGoProject(cwdProjectJson, cwd) || isNodeProject(cwdProjectJson, cwd);
   const shouldKeepLifecycleOnWrapper =
     !!firstArg && runtimeLifecycleCommands.has(firstArg) && isGoOrNodeProjectInCwd;
+  const bypassLocalWorkspaceLauncher = process.env.RAPIDKIT_LOCAL_LAUNCHER_BYPASS === '1';
 
   // CRITICAL: npm-only commands must NEVER be delegated to the Python core CLI.
   // These commands are implemented exclusively in the npm wrapper.
@@ -4141,7 +4142,9 @@ async function delegateToLocalCLI(): Promise<boolean> {
   // FIRST: Check if we have a local rapidkit script and should delegate
   // This works for BOTH npm and pip engine projects
   const isWindows = isWindowsPlatform();
-  const localScriptCandidates = getRapidkitLocalScriptCandidates(cwd);
+  const localScriptCandidates = bypassLocalWorkspaceLauncher
+    ? []
+    : getRapidkitLocalScriptCandidates(cwd);
 
   let localScript: string | null = null;
   for (const candidate of localScriptCandidates) {
@@ -4223,7 +4226,9 @@ async function delegateToLocalCLI(): Promise<boolean> {
 
         // If a local project script exists, delegate there first (prefer local CLI)
         // On Windows, prefer .cmd files
-        const localScriptCandidatesEarly = getRapidkitLocalScriptCandidates(cwd);
+        const localScriptCandidatesEarly = bypassLocalWorkspaceLauncher
+          ? []
+          : getRapidkitLocalScriptCandidates(cwd);
         let localScriptEarly: string | null = null;
         for (const c of localScriptCandidatesEarly) {
           if (await fsExtra.pathExists(c)) {

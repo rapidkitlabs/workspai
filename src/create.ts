@@ -707,7 +707,20 @@ fi
 
 `
     : ''
-}echo "RapidKit launcher could not find a local Python CLI." 1>&2
+}if command -v rapidkit >/dev/null 2>&1; then
+  RAPIDKIT_CMD=$(command -v rapidkit)
+  if [ "$RAPIDKIT_CMD" != "$SCRIPT_DIR/rapidkit" ] && [ "$RAPIDKIT_CMD" != "$SCRIPT_DIR/.rapidkit/rapidkit" ]; then
+    RAPIDKIT_LOCAL_LAUNCHER_BYPASS=1 exec "$RAPIDKIT_CMD" "$@"
+  fi
+fi
+
+for RAPIDKIT_CORE in "$HOME/.local/bin/rapidkit" "$HOME/Library/Python/3.14/bin/rapidkit" "$HOME/Library/Python/3.13/bin/rapidkit" "$HOME/Library/Python/3.12/bin/rapidkit" "$HOME/Library/Python/3.11/bin/rapidkit" "$HOME/Library/Python/3.10/bin/rapidkit"; do
+  if [ -x "$RAPIDKIT_CORE" ]; then
+    exec "$RAPIDKIT_CORE" "$@"
+  fi
+done
+
+echo "RapidKit launcher could not find a local Python CLI." 1>&2
 echo "- If you used venv: ensure .venv exists (or re-run the installer)." 1>&2
 ${
   allowPoetry
@@ -742,8 +755,26 @@ if %ERRORLEVEL%==0 if exist "%SCRIPT_DIR%\\pyproject.toml" (
 
 `
     : ''
-}echo RapidKit launcher could not find a local Python CLI. 1>&2
+}:rapidkit_npm_wrapper_fallback
+for /f "delims=" %%R in ('where rapidkit.cmd 2^>nul') do (
+  if /I not "%%~fR"=="%SCRIPT_DIR%rapidkit.cmd" if /I not "%%~fR"=="%SCRIPT_DIR%.rapidkit\\rapidkit.cmd" (
+    set "RAPIDKIT_LOCAL_LAUNCHER_BYPASS=1"
+    "%%~fR" %*
+    exit /b %ERRORLEVEL%
+  )
+)
+
+:rapidkit_core_fallback
+for %%R in ("%USERPROFILE%\\.local\\bin\\rapidkit.exe" "%APPDATA%\\Python\\Scripts\\rapidkit.exe" "%LOCALAPPDATA%\\Programs\\Python\\Scripts\\rapidkit.exe") do (
+  if exist "%%~R" (
+    "%%~R" %*
+    exit /b %ERRORLEVEL%
+  )
+)
+
+echo RapidKit launcher could not find a local Python CLI. 1>&2
 echo Tip: run .venv\\Scripts\\rapidkit.exe --help 1>&2
+echo Tip: for npm-owned workspace commands, run npx --yes --package rapidkit rapidkit %* from a shell where npm is on PATH. 1>&2
 exit /b 1
 `;
 }
