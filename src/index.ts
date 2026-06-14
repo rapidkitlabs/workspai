@@ -1048,6 +1048,7 @@ export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
   'readiness',
   'doctor',
   'autopilot',
+  'pipeline',
   'import',
   'snapshot',
   'workspace',
@@ -1068,6 +1069,7 @@ const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
   'readiness',
   'doctor',
   'autopilot',
+  'pipeline',
   'import',
   'snapshot',
   'workspace',
@@ -2211,6 +2213,7 @@ export async function handleBootstrapCommand(
     let ciMode = false;
     let offlineMode = false;
     let jsonMode = false;
+    let complianceOnly = false;
 
     for (let i = 1; i < args.length; i += 1) {
       const token = args[i];
@@ -2226,12 +2229,16 @@ export async function handleBootstrapCommand(
         jsonMode = true;
         continue;
       }
+      if (token === '--compliance-only') {
+        complianceOnly = true;
+        continue;
+      }
       if (token === '--profile') {
         const next = args[i + 1];
         if (!next || next.startsWith('-')) {
           console.log(
             chalk.yellow(
-              'Usage: rapidkit bootstrap [path] [--profile <minimal|java-only|go-only|dotnet-only|python-only|node-only|polyglot|enterprise>] [--ci] [--offline] [--json]'
+              'Usage: rapidkit bootstrap [path] [--profile <minimal|java-only|go-only|dotnet-only|python-only|node-only|polyglot|enterprise>] [--ci] [--offline] [--json] [--compliance-only]'
             )
           );
           return 1;
@@ -2798,10 +2805,10 @@ export async function handleBootstrapCommand(
       return 1;
     }
 
-    // In JSON mode, skip the init phase to keep stdout clean for machine consumption.
-    // JSON output is about compliance checking only; initialization is a side-effect.
+    // JSON + --compliance-only skips init to keep stdout clean for compliance-only CI gates.
     let initExitCode = 0;
-    if (!jsonMode) {
+    const skipInit = jsonMode && complianceOnly;
+    if (!skipInit) {
       initExitCode = await initRunner(initArgs);
     }
     const failedCheckCount = checks.filter((c) => c.status === 'failed').length;
@@ -2811,11 +2818,22 @@ export async function handleBootstrapCommand(
       ...baseReport,
       result: resultValue,
       initExitCode,
+      complianceOnly: jsonMode && complianceOnly,
     };
 
     await fsExtra.ensureDir(reportDir);
     await writeJsonFile(reportPath, report);
     await writeJsonFile(latestReportPath, report);
+
+    if (workspacePath && initExitCode === 0) {
+      try {
+        const { syncWorkspaceProjects } = await import('./workspace.js');
+        await syncWorkspaceProjects(workspacePath, jsonMode);
+        await syncWorkspaceContractAfterProjectChange(workspacePath, { silent: jsonMode });
+      } catch {
+        // Best-effort post-bootstrap registry/contract sync.
+      }
+    }
 
     if (jsonMode) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
@@ -4899,13 +4917,65 @@ program
 program
   .command('readiness')
   .description(
-    '🚦 Generate machine-readable release readiness summary (env + doctor + verify + dependency)'
+    '🚦 Generate machine-readable release readiness summary (env + doctor + analyze + verify + dependency)'
   )
   .option('--json', 'Output readiness result in JSON format')
   .option('--strict', 'Exit with code 1 unless overall readiness is pass')
-  .action(async (options: { json?: boolean; strict?: boolean }) => {
-    await runReleaseReadinessCommand(options);
+  .option(
+    '--skip-verify',
+    'Skip verify gate (use for workspaces without extension verify artifacts)'
+  )
+  .action(async (options: { json?: boolean; strict?: boolean; skipVerify?: boolean }) => {
+    await runReleaseReadinessCommand({
+      json: options.json,
+      strict: options.strict,
+      skipVerify: options.skipVerify,
+    });
   });
+
+program
+  .command('pipeline')
+  .description(
+    '🔗 Run governance pipeline: sync → doctor → analyze → readiness → autopilot (writes pipeline-last-run.json)'
+  )
+  .option('--json', 'Output pipeline report as JSON')
+  .option('--strict', 'Treat warnings as blocking and propagate non-zero exit codes')
+  .option('--skip-verify', 'Skip readiness verify gate')
+  .option('--skip-analyze', 'Skip analyze stage')
+  .option('--skip-autopilot', 'Skip autopilot release stage')
+  .option(
+    '--autopilot-mode <mode>',
+    'Autopilot mode when stage is enabled: audit | safe-fix | enforce',
+    'audit'
+  )
+  .action(
+    async (options: {
+      json?: boolean;
+      strict?: boolean;
+      skipVerify?: boolean;
+      skipAnalyze?: boolean;
+      skipAutopilot?: boolean;
+      autopilotMode?: string;
+    }) => {
+      const autopilotMode = String(options.autopilotMode || 'audit')
+        .trim()
+        .toLowerCase();
+      if (!['audit', 'safe-fix', 'enforce'].includes(autopilotMode)) {
+        console.log(chalk.red(`Invalid autopilot mode: ${options.autopilotMode}`));
+        process.exit(1);
+      }
+
+      const { runPipelineCommand } = await import('./pipeline.js');
+      await runPipelineCommand({
+        json: options.json === true,
+        strict: options.strict === true,
+        skipVerify: options.skipVerify === true,
+        skipAnalyze: options.skipAnalyze === true,
+        skipAutopilot: options.skipAutopilot === true,
+        autopilotMode: autopilotMode as 'audit' | 'safe-fix' | 'enforce',
+      });
+    }
+  );
 
 program
   .command('autopilot <action>')
@@ -5354,6 +5424,8 @@ program
   .option('--workspace', 'Check entire workspace (including all projects)')
   .option('--project', 'Check only the current project (or nearest parent project)')
   .option('--json', 'Output results in JSON format (for CI/CD pipelines)')
+  .option('--strict', 'Exit 1 on health errors or warnings (workspace/project scope)')
+  .option('--ci', 'CI gate: exit 1 on errors, exit 2 on warnings only')
   .option('--fix', 'Automatically fix common issues (with confirmation)')
   .option('--plan', 'Generate remediation plan without applying changes')
   .option('--apply', 'Apply remediation plan non-interactively')
@@ -5364,6 +5436,8 @@ program
         workspace?: boolean;
         project?: boolean;
         json?: boolean;
+        strict?: boolean;
+        ci?: boolean;
         fix?: boolean;
         plan?: boolean;
         apply?: boolean;
@@ -5412,11 +5486,16 @@ program
       }
 
       const { runDoctor } = await import('./doctor.js');
-      await runDoctor({
+      const exitCode = await runDoctor({
         ...options,
         workspace: options.workspace || scope === 'workspace',
         project: options.project || scope === 'project',
+        strict: options.strict === true,
+        ci: options.ci === true,
       });
+      if (exitCode !== 0) {
+        process.exit(exitCode);
+      }
     }
   );
 
@@ -5504,9 +5583,27 @@ program
     } else if (action === 'sync') {
       const workspacePath = requireWorkspaceRootForAction('sync');
       const { syncWorkspaceProjects } = await import('./workspace.js');
-      console.log(chalk.cyan(`📂 Scanning workspace: ${path.basename(workspacePath)}`));
-      await syncWorkspaceProjects(workspacePath);
-      await syncWorkspaceContractAfterProjectChange(workspacePath);
+      if (!actionOptions.json) {
+        console.log(chalk.cyan(`📂 Scanning workspace: ${path.basename(workspacePath)}`));
+      }
+      const syncResult = await syncWorkspaceProjects(workspacePath, actionOptions.json === true);
+      await syncWorkspaceContractAfterProjectChange(workspacePath, {
+        silent: actionOptions.json === true,
+      });
+      if (actionOptions.json) {
+        console.log(
+          JSON.stringify(
+            {
+              schemaVersion: 'rapidkit-workspace-sync-v1',
+              workspacePath,
+              registry: syncResult,
+              contractSynced: true,
+            },
+            null,
+            2
+          )
+        );
+      }
     } else if (action === 'foundation') {
       const workspacePath = requireWorkspaceRootForAction('foundation');
       const foundationAction = subaction || 'ensure';
@@ -5981,7 +6078,23 @@ function printHelp() {
   console.log(
     chalk.gray('  npx rapidkit analyze [--json --strict]   Analyze workspace health and gaps')
   );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit pipeline [--json --strict]    Governance loop: sync → doctor → analyze → readiness → autopilot'
+    )
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit readiness [--json --strict]   Release readiness gates (env/doctor/analyze/verify/deps)'
+    )
+  );
+  console.log(
+    chalk.gray('  npx rapidkit doctor workspace [--ci]     Workspace health with CI exit codes')
+  );
   console.log(chalk.gray('  npx rapidkit workspace list               List registered workspaces'));
+  console.log(
+    chalk.gray('  npx rapidkit workspace sync [--json]      Sync registry + contract from projects')
+  );
   console.log(
     chalk.gray(
       '  npx rapidkit import <path|git-url>        Copy or clone a backend project into this workspace'

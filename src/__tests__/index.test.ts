@@ -164,7 +164,11 @@ describe('CLI Entry Point', () => {
         "Workspace commands (inside a workspace):
           npx rapidkit bootstrap [--profile <p>]   Re-bootstrap toolchains
           npx rapidkit analyze [--json --strict]   Analyze workspace health and gaps
+          npx rapidkit pipeline [--json --strict]    Governance loop: sync → doctor → analyze → readiness → autopilot
+          npx rapidkit readiness [--json --strict]   Release readiness gates (env/doctor/analyze/verify/deps)
+          npx rapidkit doctor workspace [--ci]     Workspace health with CI exit codes
           npx rapidkit workspace list               List registered workspaces
+          npx rapidkit workspace sync [--json]      Sync registry + contract from projects
           npx rapidkit import <path|git-url>        Copy or clone a backend project into this workspace
           npx rapidkit snapshot create [name]      Create a recoverable workspace snapshot
           npx rapidkit snapshot restore <name>     Restore snapshot metadata with safety guard

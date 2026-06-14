@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { execa } from 'execa';
 import { runWorkspaceStage, type WorkspaceRunReport } from './workspace-run.js';
+import { findWorkspaceRootUp } from './utils/workspace-root.js';
 
 export type AutopilotReleaseMode = 'audit' | 'safe-fix' | 'enforce';
 export type AutopilotStageStatus = 'pass' | 'warn' | 'fail' | 'skipped';
@@ -15,11 +16,13 @@ export interface AutopilotReleaseOptions {
   maxWorkers?: number;
   json?: boolean;
   output?: string;
+  skipPipelineStages?: boolean;
 }
 
 export interface AutopilotStageResult {
   name:
     | 'doctor-workspace'
+    | 'analyze'
     | 'readiness'
     | 'remediation-plan'
     | 'remediation-apply'
@@ -48,6 +51,7 @@ export interface AutopilotReleaseReport {
   nextActions: string[];
   artifacts: {
     reportPath: string;
+    analyzeEvidencePath?: string;
     readinessEvidencePath?: string;
     workspaceRunTestPath?: string;
     workspaceRunBuildPath?: string;
@@ -69,26 +73,9 @@ function parseJsonOutput<T>(raw: string): T | null {
   }
 }
 
-function findWorkspaceUp(startPath: string): string | null {
-  let current = path.resolve(startPath);
-
-  while (true) {
-    if (
-      fs.existsSync(path.join(current, '.rapidkit-workspace')) ||
-      fs.existsSync(path.join(current, '.rapidkit', 'workspace.json'))
-    ) {
-      return current;
-    }
-
-    const parent = path.dirname(current);
-    if (parent === current) return null;
-    current = parent;
-  }
-}
-
 function resolveWorkspacePath(candidatePath: string): string {
   const absolute = path.resolve(candidatePath);
-  const scoped = findWorkspaceUp(absolute);
+  const scoped = findWorkspaceRootUp(absolute);
   if (!scoped) {
     throw new Error('No RapidKit workspace found in current directory or parents');
   }
@@ -204,6 +191,7 @@ export async function runAutopilotRelease(
   const stages: AutopilotStageResult[] = [];
   const blockingReasons: string[] = [];
   let readinessEvidencePath: string | undefined;
+  let analyzeEvidencePath: string | undefined;
   let workspaceRunTestPath: string | undefined;
   let workspaceRunBuildPath: string | undefined;
   let safeFixesApplied = 0;
@@ -211,98 +199,185 @@ export async function runAutopilotRelease(
   let plannedRemediationSteps = 0;
   let plannedExecutableRemediationSteps = 0;
 
-  const doctorStart = Date.now();
-  const doctorRun = await runRapidkitSelfCommand(['doctor', 'workspace', '--json'], workspacePath);
-  const doctorDuration = Date.now() - doctorStart;
+  let doctorStageIndex = -1;
+  let readinessStageIndex = -1;
+  let doctorStatus: AutopilotStageStatus = 'skipped';
+  let readinessStatus: AutopilotStageStatus = 'skipped';
 
-  let doctorStatus: AutopilotStageStatus = 'pass';
-  if (doctorRun.crashed) {
-    doctorStatus = 'fail';
-    executionError = true;
-    blockingReasons.push(
-      `doctor workspace execution error: ${doctorRun.stderr || 'unknown error'}`
+  const doctorGateArgs =
+    mode === 'enforce'
+      ? (['doctor', 'workspace', '--json', '--strict'] as const)
+      : (['doctor', 'workspace', '--json', '--ci'] as const);
+
+  if (inputOptions.skipPipelineStages) {
+    stages.push(
+      {
+        name: 'doctor-workspace',
+        status: 'skipped',
+        durationMs: 0,
+        summary: 'doctor stage skipped (pipeline already executed)',
+      },
+      {
+        name: 'analyze',
+        status: 'skipped',
+        durationMs: 0,
+        summary: 'analyze stage skipped (pipeline already executed)',
+      },
+      {
+        name: 'readiness',
+        status: 'skipped',
+        durationMs: 0,
+        summary: 'readiness stage skipped (pipeline already executed)',
+      }
     );
-  } else if (doctorRun.exitCode !== 0) {
-    doctorStatus = 'fail';
-    blockingReasons.push('doctor workspace command failed');
   } else {
-    const payload = parseJsonOutput<Record<string, unknown>>(doctorRun.stdout);
-    const healthScore =
-      payload && payload.healthScore && typeof payload.healthScore === 'object'
-        ? (payload.healthScore as Record<string, unknown>)
-        : {};
-    const errors = Number(healthScore.errors ?? 0);
-    const warnings = Number(healthScore.warnings ?? 0);
+    const doctorStart = Date.now();
+    const doctorRun = await runRapidkitSelfCommand([...doctorGateArgs], workspacePath);
+    const doctorDuration = Date.now() - doctorStart;
 
-    if (Number.isFinite(errors) && errors > 0) {
+    doctorStatus = 'pass';
+    if (doctorRun.crashed) {
       doctorStatus = 'fail';
-      blockingReasons.push(`doctor workspace reports ${errors} error(s)`);
-    } else if (Number.isFinite(warnings) && warnings > 0) {
+      executionError = true;
+      blockingReasons.push(
+        `doctor workspace execution error: ${doctorRun.stderr || 'unknown error'}`
+      );
+    } else if (doctorRun.exitCode === 1) {
+      doctorStatus = 'fail';
+      blockingReasons.push('doctor workspace command failed or reported errors');
+    } else if (doctorRun.exitCode === 2) {
       doctorStatus = 'warn';
-    }
-  }
+      blockingReasons.push('doctor workspace reported warnings');
+    } else if (doctorRun.exitCode !== 0) {
+      doctorStatus = 'fail';
+      blockingReasons.push('doctor workspace command failed');
+    } else {
+      const payload = parseJsonOutput<Record<string, unknown>>(doctorRun.stdout);
+      const healthScore =
+        payload && payload.healthScore && typeof payload.healthScore === 'object'
+          ? (payload.healthScore as Record<string, unknown>)
+          : {};
+      const errors = Number(healthScore.errors ?? 0);
+      const warnings = Number(healthScore.warnings ?? 0);
 
-  const doctorStageIndex =
-    stages.push({
-      name: 'doctor-workspace',
-      status: doctorStatus,
-      durationMs: doctorDuration,
-      summary:
-        doctorStatus === 'pass'
-          ? 'doctor workspace passed'
-          : doctorStatus === 'warn'
-            ? 'doctor workspace reported warnings'
-            : 'doctor workspace reported errors',
-    }) - 1;
-
-  if (mode === 'enforce' && doctorStatus === 'warn') {
-    blockingReasons.push('doctor workspace reported warnings under enforce mode');
-  }
-
-  const readinessStart = Date.now();
-  const readinessRun = await runRapidkitSelfCommand(['readiness', '--json'], workspacePath);
-  const readinessDuration = Date.now() - readinessStart;
-
-  let readinessStatus: AutopilotStageStatus = 'fail';
-  if (readinessRun.crashed) {
-    readinessStatus = 'fail';
-    executionError = true;
-    blockingReasons.push(`readiness execution error: ${readinessRun.stderr || 'unknown error'}`);
-  } else if (readinessRun.exitCode !== 0) {
-    readinessStatus = 'fail';
-    blockingReasons.push('readiness command failed');
-  } else {
-    const payload = parseJsonOutput<Record<string, unknown>>(readinessRun.stdout);
-    const overallStatus = String(payload?.overallStatus ?? 'fail');
-    readinessStatus = stageStatusFromReadiness(overallStatus);
-
-    if (typeof payload?.evidencePath === 'string' && payload.evidencePath.trim().length > 0) {
-      readinessEvidencePath = payload.evidencePath;
-    }
-
-    if (readinessStatus === 'fail') {
-      const reasons = Array.isArray(payload?.blockingReasons)
-        ? payload?.blockingReasons.filter((item): item is string => typeof item === 'string')
-        : [];
-
-      if (reasons.length > 0) {
-        blockingReasons.push(...reasons.map((reason) => `readiness: ${reason}`));
-      } else {
-        blockingReasons.push('readiness overall status is fail');
+      if (Number.isFinite(errors) && errors > 0) {
+        doctorStatus = 'fail';
+        blockingReasons.push(`doctor workspace reports ${errors} error(s)`);
+      } else if (Number.isFinite(warnings) && warnings > 0) {
+        doctorStatus = 'warn';
       }
     }
-  }
 
-  const readinessStageIndex =
+    doctorStageIndex =
+      stages.push({
+        name: 'doctor-workspace',
+        status: doctorStatus,
+        durationMs: doctorDuration,
+        summary:
+          doctorStatus === 'pass'
+            ? 'doctor workspace passed'
+            : doctorStatus === 'warn'
+              ? 'doctor workspace reported warnings'
+              : 'doctor workspace reported errors',
+      }) - 1;
+
+    if (mode === 'enforce' && doctorStatus === 'warn') {
+      blockingReasons.push('doctor workspace reported warnings under enforce mode');
+    }
+
+    const analyzeStart = Date.now();
+    const analyzeRun = await runRapidkitSelfCommand(['analyze', '--json'], workspacePath);
+    const analyzeDuration = Date.now() - analyzeStart;
+    analyzeEvidencePath = path.join(workspacePath, '.rapidkit', 'reports', 'analyze-last-run.json');
+
+    let analyzeStatus: AutopilotStageStatus = 'pass';
+    if (analyzeRun.crashed) {
+      analyzeStatus = 'fail';
+      executionError = true;
+      blockingReasons.push(`analyze execution error: ${analyzeRun.stderr || 'unknown error'}`);
+    } else if (analyzeRun.exitCode !== 0) {
+      analyzeStatus = analyzeRun.exitCode === 2 ? 'warn' : 'fail';
+      blockingReasons.push(
+        analyzeRun.exitCode === 2
+          ? 'analyze reported needs-attention verdict'
+          : 'analyze command failed or reported blocked verdict'
+      );
+    } else {
+      const payload = parseJsonOutput<Record<string, unknown>>(analyzeRun.stdout);
+      const summary =
+        payload && payload.summary && typeof payload.summary === 'object'
+          ? (payload.summary as Record<string, unknown>)
+          : {};
+      const verdict = String(summary.verdict ?? 'ready');
+      if (verdict === 'blocked') {
+        analyzeStatus = 'fail';
+        blockingReasons.push('analyze reported blocked verdict');
+      } else if (verdict === 'needs-attention') {
+        analyzeStatus = 'warn';
+      }
+    }
+
     stages.push({
-      name: 'readiness',
-      status: readinessStatus,
-      durationMs: readinessDuration,
-      summary: `readiness overall status is ${readinessStatus}`,
-    }) - 1;
+      name: 'analyze',
+      status: analyzeStatus,
+      durationMs: analyzeDuration,
+      summary:
+        analyzeStatus === 'pass'
+          ? 'analyze passed'
+          : analyzeStatus === 'warn'
+            ? 'analyze reported needs-attention'
+            : 'analyze reported blocked verdict',
+    });
 
-  if (mode === 'enforce' && readinessStatus === 'warn') {
-    blockingReasons.push('readiness reported warnings under enforce mode');
+    if (mode === 'enforce' && analyzeStatus === 'warn') {
+      blockingReasons.push('analyze reported warnings under enforce mode');
+    }
+
+    const readinessStart = Date.now();
+    const readinessRun = await runRapidkitSelfCommand(['readiness', '--json'], workspacePath);
+    const readinessDuration = Date.now() - readinessStart;
+
+    readinessStatus = 'fail';
+    if (readinessRun.crashed) {
+      readinessStatus = 'fail';
+      executionError = true;
+      blockingReasons.push(`readiness execution error: ${readinessRun.stderr || 'unknown error'}`);
+    } else if (readinessRun.exitCode !== 0) {
+      readinessStatus = 'fail';
+      blockingReasons.push('readiness command failed');
+    } else {
+      const payload = parseJsonOutput<Record<string, unknown>>(readinessRun.stdout);
+      const overallStatus = String(payload?.overallStatus ?? 'fail');
+      readinessStatus = stageStatusFromReadiness(overallStatus);
+
+      if (typeof payload?.evidencePath === 'string' && payload.evidencePath.trim().length > 0) {
+        readinessEvidencePath = payload.evidencePath;
+      }
+
+      if (readinessStatus === 'fail') {
+        const reasons = Array.isArray(payload?.blockingReasons)
+          ? payload?.blockingReasons.filter((item): item is string => typeof item === 'string')
+          : [];
+
+        if (reasons.length > 0) {
+          blockingReasons.push(...reasons.map((reason) => `readiness: ${reason}`));
+        } else {
+          blockingReasons.push('readiness overall status is fail');
+        }
+      }
+    }
+
+    readinessStageIndex =
+      stages.push({
+        name: 'readiness',
+        status: readinessStatus,
+        durationMs: readinessDuration,
+        summary: `readiness overall status is ${readinessStatus}`,
+      }) - 1;
+
+    if (mode === 'enforce' && readinessStatus === 'warn') {
+      blockingReasons.push('readiness reported warnings under enforce mode');
+    }
   }
 
   const planStart = Date.now();
@@ -417,8 +492,10 @@ export async function runAutopilotRelease(
           doctorStatus = 'pass';
         }
       }
-      stages[doctorStageIndex].status = doctorStatus;
-      stages[doctorStageIndex].summary = `doctor workspace post-apply status is ${doctorStatus}`;
+      if (doctorStageIndex >= 0) {
+        stages[doctorStageIndex].status = doctorStatus;
+        stages[doctorStageIndex].summary = `doctor workspace post-apply status is ${doctorStatus}`;
+      }
 
       const postReadinessRun = await runRapidkitSelfCommand(['readiness', '--json'], workspacePath);
       if (postReadinessRun.crashed) {
@@ -459,9 +536,11 @@ export async function runAutopilotRelease(
           }
         }
       }
-      stages[readinessStageIndex].status = readinessStatus;
-      stages[readinessStageIndex].summary =
-        `readiness post-apply overall status is ${readinessStatus}`;
+      if (readinessStageIndex >= 0) {
+        stages[readinessStageIndex].status = readinessStatus;
+        stages[readinessStageIndex].summary =
+          `readiness post-apply overall status is ${readinessStatus}`;
+      }
     }
 
     stages.push({
@@ -630,6 +709,7 @@ export async function runAutopilotRelease(
     nextActions,
     artifacts: {
       reportPath,
+      analyzeEvidencePath,
       readinessEvidencePath,
       workspaceRunTestPath,
       workspaceRunBuildPath,

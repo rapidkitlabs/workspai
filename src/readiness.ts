@@ -10,13 +10,14 @@ import {
   readRapidkitProjectJson,
 } from './utils/runtime-detection.js';
 import { isDoctorEvidencePayloadCompatible } from './utils/doctor-evidence-contract.js';
+import { findWorkspaceRootUp } from './utils/workspace-root.js';
 
 export type ReadinessGateStatus = 'pass' | 'warn' | 'fail';
 export type ReadinessOverallStatus = 'pass' | 'warn' | 'fail';
 export type LifecycleAction = 'dev' | 'test' | 'build' | 'start';
 
 export interface ReadinessGateResult {
-  gate: 'env' | 'doctor' | 'verify' | 'dependency';
+  gate: 'env' | 'doctor' | 'analyze' | 'verify' | 'dependency';
   status: ReadinessGateStatus;
   summary: string;
   details: string[];
@@ -40,29 +41,13 @@ interface EvaluateReleaseReadinessOptions {
   startPath?: string;
   action?: LifecycleAction;
   writeReport?: boolean;
+  skipVerify?: boolean;
 }
 
 interface ReadinessCommandOptions {
   json?: boolean;
   strict?: boolean;
-}
-
-function findWorkspaceUp(startPath: string): string | null {
-  let current = startPath;
-
-  while (true) {
-    if (
-      fs.existsSync(path.join(current, '.rapidkit-workspace')) ||
-      fs.existsSync(path.join(current, '.rapidkit', 'workspace.json'))
-    ) {
-      return current;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-
-  return null;
+  skipVerify?: boolean;
 }
 
 function detectProjectRuntime(projectPath: string): 'python' | 'node' | 'go' | 'java' | 'unknown' {
@@ -253,22 +238,66 @@ function buildDoctorGate(workspacePath: string): {
   };
 }
 
-function buildVerifyGate(workspacePath: string): ReadinessGateResult {
-  const reportsDir = path.join(workspacePath, '.rapidkit', 'reports');
-  const verifyPath = selectLatestReport(reportsDir, [/verify-pack-contract/i, /^verify.*\.json$/i]);
+function buildAnalyzeGate(workspacePath: string): ReadinessGateResult {
+  const reportPath = path.join(workspacePath, '.rapidkit', 'reports', 'analyze-last-run.json');
 
-  if (!verifyPath) {
+  if (!fs.existsSync(reportPath)) {
     return {
-      gate: 'verify',
+      gate: 'analyze',
       status: 'fail',
-      summary: 'Verify-pack contract evidence is missing',
-      details: [
-        'Export verify-pack contract JSON from extension/CI before release readiness checks.',
-      ],
-      evidencePath: path.join(reportsDir, '*verify-pack-contract*.json'),
+      summary: 'Analyze evidence is missing',
+      details: ['Run rapidkit analyze --json before release readiness checks.'],
+      evidencePath: reportPath,
     };
   }
 
+  try {
+    const payload = JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as Record<string, unknown>;
+    const summary = toObjectRecord(payload.summary);
+    const verdict = String(summary.verdict ?? '').toLowerCase();
+    const score = Number(summary.score ?? 0);
+    const findings = toObjectRecord(summary.findings);
+    const failCount = Number(findings.fail ?? 0);
+
+    if (verdict === 'blocked' || failCount > 0) {
+      return {
+        gate: 'analyze',
+        status: 'fail',
+        summary: `Analyze verdict is blocked (score ${score}/100)`,
+        details: ['Resolve analyze findings and regenerate analyze-last-run.json.'],
+        evidencePath: reportPath,
+      };
+    }
+
+    if (verdict === 'needs-attention') {
+      return {
+        gate: 'analyze',
+        status: 'warn',
+        summary: `Analyze needs attention (score ${score}/100)`,
+        details: ['Review analyze warnings before release.'],
+        evidencePath: reportPath,
+      };
+    }
+
+    return {
+      gate: 'analyze',
+      status: 'pass',
+      summary: `Analyze passed (score ${score}/100)`,
+      details: [],
+      evidencePath: reportPath,
+    };
+  } catch {
+    return {
+      gate: 'analyze',
+      status: 'fail',
+      summary: 'Analyze evidence is invalid JSON',
+      details: ['Re-run rapidkit analyze --json to regenerate evidence.'],
+      evidencePath: reportPath,
+    };
+  }
+}
+
+function evaluateExtensionVerifyArtifact(verifyPath: string): ReadinessGateResult {
   try {
     const payload = JSON.parse(fs.readFileSync(verifyPath, 'utf-8')) as Record<string, unknown>;
     const status = String(payload.status ?? '').toLowerCase();
@@ -309,6 +338,113 @@ function buildVerifyGate(workspacePath: string): ReadinessGateResult {
       summary: 'Verify-pack contract is invalid JSON',
       details: ['Regenerate verify-pack contract artifact.'],
       evidencePath: verifyPath,
+    };
+  }
+}
+
+async function buildVerifyGate(
+  workspacePath: string,
+  options: { skipVerify?: boolean }
+): Promise<ReadinessGateResult> {
+  if (options.skipVerify) {
+    return {
+      gate: 'verify',
+      status: 'pass',
+      summary: 'Verify gate skipped (--skip-verify)',
+      details: ['Verification was explicitly skipped for this readiness run.'],
+    };
+  }
+
+  const reportsDir = path.join(workspacePath, '.rapidkit', 'reports');
+  const verifyPath = selectLatestReport(reportsDir, [/verify-pack-contract/i, /^verify.*\.json$/i]);
+
+  if (verifyPath) {
+    return evaluateExtensionVerifyArtifact(verifyPath);
+  }
+
+  const cliEvidencePath = path.join(reportsDir, 'workspace-contract-verify-last-run.json');
+  const cachedCliEvidence = selectLatestReport(reportsDir, [
+    /workspace-contract-verify-last-run/i,
+    /workspace-contract-verify/i,
+  ]);
+
+  if (cachedCliEvidence) {
+    try {
+      const payload = JSON.parse(fs.readFileSync(cachedCliEvidence, 'utf-8')) as Record<
+        string,
+        unknown
+      >;
+      const status = String(payload.status ?? '').toLowerCase();
+      if (status === 'passed' || status === 'pass') {
+        return {
+          gate: 'verify',
+          status: 'pass',
+          summary: 'Workspace contract verification passed (CLI cache)',
+          details: [],
+          evidencePath: cachedCliEvidence,
+        };
+      }
+      if (status === 'failed' || status === 'fail') {
+        const violations = Array.isArray(payload.violations)
+          ? (payload.violations as string[])
+          : [];
+        return {
+          gate: 'verify',
+          status: 'fail',
+          summary: 'Workspace contract verification failed (CLI cache)',
+          details: violations.slice(0, 5),
+          evidencePath: cachedCliEvidence,
+        };
+      }
+    } catch {
+      // fall through to inline verify
+    }
+  }
+
+  try {
+    const { verifyWorkspaceContract } = await import('./utils/workspace-contract.js');
+    const result = await verifyWorkspaceContract({ workspacePath });
+    const evidencePayload = {
+      schemaVersion: 'v1',
+      source: 'cli',
+      generatedAt: new Date().toISOString(),
+      status: result.status,
+      contractPath: result.contractPath,
+      projectCount: result.projectCount,
+      checks: result.checks,
+      violations: result.violations,
+    };
+    await fsExtra.ensureDir(reportsDir);
+    await fsExtra.writeJSON(cliEvidencePath, evidencePayload, { spaces: 2 });
+
+    if (result.status === 'failed') {
+      return {
+        gate: 'verify',
+        status: 'fail',
+        summary: 'Workspace contract verification failed (CLI)',
+        details: result.violations.slice(0, 5),
+        evidencePath: cliEvidencePath,
+      };
+    }
+
+    return {
+      gate: 'verify',
+      status: 'pass',
+      summary: 'Workspace contract verification passed (CLI)',
+      details: [],
+      evidencePath: cliEvidencePath,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      gate: 'verify',
+      status: 'fail',
+      summary: 'No verify evidence and workspace contract verification unavailable',
+      details: [
+        'Run rapidkit workspace contract verify --json or export verify-pack contract from CI.',
+        message,
+      ],
+      evidencePath: path.join(reportsDir, '*verify*.json'),
     };
   }
 }
@@ -394,15 +530,16 @@ export async function evaluateReleaseReadiness(
   options: EvaluateReleaseReadinessOptions = {}
 ): Promise<ReleaseReadinessContract> {
   const projectPath = path.resolve(options.startPath ?? process.cwd());
-  const workspacePath = findWorkspaceUp(projectPath) ?? projectPath;
+  const workspacePath = findWorkspaceRootUp(projectPath) ?? projectPath;
   const projectRuntime = detectProjectRuntime(projectPath);
 
   const envGate = buildEnvGate(workspacePath, projectRuntime);
   const doctor = buildDoctorGate(workspacePath);
-  const verifyGate = buildVerifyGate(workspacePath);
+  const analyzeGate = buildAnalyzeGate(workspacePath);
+  const verifyGate = await buildVerifyGate(workspacePath, { skipVerify: options.skipVerify });
   const dependencyGate = buildDependencyGate(doctor.payload, workspacePath);
 
-  const gates = [envGate, doctor.gate, verifyGate, dependencyGate];
+  const gates = [envGate, doctor.gate, analyzeGate, verifyGate, dependencyGate];
   const overallStatus = computeOverallStatus(gates);
 
   const contract: ReleaseReadinessContract = {
@@ -439,7 +576,10 @@ function overallIndicator(status: ReadinessOverallStatus): string {
 }
 
 export async function runReleaseReadinessCommand(options: ReadinessCommandOptions): Promise<void> {
-  const contract = await evaluateReleaseReadiness({ writeReport: true });
+  const contract = await evaluateReleaseReadiness({
+    writeReport: true,
+    skipVerify: options.skipVerify === true,
+  });
 
   if (options.json) {
     console.log(JSON.stringify(contract, null, 2));

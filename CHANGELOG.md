@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-06-14
+
+### Added
+
+- Added wrapper-owned `rapidkit pipeline` command to orchestrate sync → doctor → analyze → readiness → autopilot and write `.rapidkit/reports/pipeline-last-run.json`.
+- Added `contracts/pipeline-last-run.v1.json` schema for pipeline evidence.
+- Added `doctor workspace|project --strict` and `--ci` exit-code gates for CI pipelines.
+- Added readiness **analyze** gate consuming `analyze-last-run.json`.
+- Added CLI-native verify fallback via inline `workspace contract verify` with evidence at `workspace-contract-verify-last-run.json`.
+- Added `--skip-verify` on `readiness` and `pipeline` for environments without extension verify artifacts.
+- Added `workspace sync --json` machine-readable output for CI.
+- Added shared `findWorkspaceRootUp()` in `src/utils/workspace-root.ts`.
+- Added analyze stage to `autopilot release` and `skipPipelineStages` when invoked from pipeline.
+- Added regression coverage for doctor gate exit codes, readiness verify/analyze gates, and pipeline ownership.
+
+### Changed
+
+- Bootstrap now auto-syncs workspace registry and contract after successful init.
+- `bootstrap --json --compliance-only` skips init for compliance-only CI gates; default `bootstrap --json` runs init after compliance checks.
+- Readiness verify gate accepts extension verify-pack artifacts **or** CLI contract verification.
+- Updated CLI help, README, and command ownership matrix for the governance loop.
+
+### Fixed
+
+- Doctor JSON/project modes now return CI gate exit codes consistently via `computeDoctorGateExitCode()`.
+- Autopilot doctor stage respects `--ci` / `--strict` subprocess exit codes from the npm wrapper.
+
+### Verification
+
+- Validated with `npm run typecheck`, `npm run lint`, `npm run format:check`, and `npm test` (1224 tests).
+
 ## [0.33.2] - 2026-06-12
 
 ### Added

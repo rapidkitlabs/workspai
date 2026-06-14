@@ -135,9 +135,26 @@ export async function registerWorkspace(workspacePath: string, name: string): Pr
 /**
  * Scan workspace directory and register all projects that have .rapidkit/context.json
  */
-export async function syncWorkspaceProjects(workspacePath: string, silent = false): Promise<void> {
+export interface SyncWorkspaceResult {
+  workspacePath: string;
+  workspaceFound: boolean;
+  added: string[];
+  skipped: number;
+}
+
+export async function syncWorkspaceProjects(
+  workspacePath: string,
+  silent = false
+): Promise<SyncWorkspaceResult> {
+  const normalizedWorkspacePath = normalizeRegistryPath(workspacePath);
+  const emptyResult: SyncWorkspaceResult = {
+    workspacePath: normalizedWorkspacePath,
+    workspaceFound: false,
+    added: [],
+    skipped: 0,
+  };
+
   try {
-    const normalizedWorkspacePath = normalizeRegistryPath(workspacePath);
     const registryDir = getWorkspaceRegistryDirectory();
 
     const registryFile = path.join(registryDir, 'workspaces.json');
@@ -152,14 +169,14 @@ export async function syncWorkspaceProjects(workspacePath: string, silent = fals
       }
     } catch (_error) {
       if (!silent) console.log('⚠️  Workspace registry not found');
-      return;
+      return emptyResult;
     }
 
     // Find workspace in registry
     const workspace = registry.workspaces.find((w) => w.path === normalizedWorkspacePath);
     if (!workspace) {
       if (!silent) console.log('⚠️  Workspace not registered in registry');
-      return;
+      return emptyResult;
     }
 
     // Initialize projects array if needed
@@ -170,6 +187,7 @@ export async function syncWorkspaceProjects(workspacePath: string, silent = fals
     // Scan workspace directory recursively for projects
     let addedCount = 0;
     let skippedCount = 0;
+    const addedPaths: string[] = [];
 
     const queue = [workspacePath];
     const visited = new Set<string>();
@@ -218,6 +236,7 @@ export async function syncWorkspaceProjects(workspacePath: string, silent = fals
                 path: projectPath,
               });
               addedCount++;
+              addedPaths.push(projectPath);
               if (!silent) console.log(`✔ Added: ${path.relative(workspacePath, projectPath)}`);
             } else {
               skippedCount++;
@@ -238,8 +257,16 @@ export async function syncWorkspaceProjects(workspacePath: string, silent = fals
     } else {
       if (!silent) console.log(`\n✅ All projects already registered (${skippedCount} found)`);
     }
+
+    return {
+      workspacePath: normalizedWorkspacePath,
+      workspaceFound: true,
+      added: addedPaths,
+      skipped: skippedCount,
+    };
   } catch (error) {
     if (!silent) console.error('❌ Failed to sync projects:', (error as Error).message);
+    return emptyResult;
   }
 }
 

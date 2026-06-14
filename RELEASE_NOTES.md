@@ -1,6 +1,47 @@
 # Release Notes
 
-## Latest Release: v0.33.2 (June 12, 2026)
+## Latest Release: v0.34.0 (June 14, 2026)
+
+### CLI Governance Pipeline and Enterprise Release Gates
+
+This minor release completes the npm-wrapper governance loop so teams can run bootstrap → sync → doctor → analyze → readiness → autopilot entirely from the CLI, without depending on the VS Code extension for verify evidence.
+
+**What's New:**
+
+- 🔗 **`rapidkit pipeline`**
+  - One command runs sync, doctor, analyze, readiness, and autopilot audit.
+  - Writes `.rapidkit/reports/pipeline-last-run.json` with stage verdicts and exit codes.
+  - Flags: `--json`, `--strict`, `--skip-verify`, `--skip-analyze`, `--skip-autopilot`.
+
+- 🩺 **Doctor CI gates**
+  - `--strict`: exit `1` on errors or warnings.
+  - `--ci`: exit `1` on errors, exit `2` on warnings.
+
+- 🚦 **Readiness improvements**
+  - New **analyze** gate reads `analyze-last-run.json`.
+  - Verify gate falls back to CLI `workspace contract verify` when extension artifacts are absent.
+  - `--skip-verify` for pipelines that verify elsewhere.
+
+- 🚀 **Bootstrap and sync**
+  - Post-success bootstrap auto-syncs registry + contract.
+  - `--compliance-only` with `--json` for compliance-only CI (skips init).
+  - `workspace sync --json` for machine-readable registry sync output.
+
+- 🤖 **Autopilot**
+  - Adds analyze stage between doctor and readiness.
+  - Uses doctor `--ci` / `--strict` based on mode.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.34.0
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.34.0.md)
+
+---
+
+## Previous Release: v0.33.2 (June 12, 2026)
 
 ### Windows Workspace Launcher and Core Resolver Hardening
 

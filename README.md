@@ -30,8 +30,47 @@ RapidKit is designed around the workspace as the operational boundary.
 - Projects are discovered and managed inside that workspace boundary.
 - Wrapper-owned commands stay in the npm CLI; runtime-specific execution is delegated only when appropriate.
 - Release evidence is written into `.rapidkit/reports/` so CI, docs, and local workflows use the same contract surface.
+- A single governance loop connects bootstrap, sync, doctor, analyze, readiness, and autopilot without requiring the VS Code extension.
 
 This layout keeps workspace setup deterministic, makes cross-project orchestration explicit, and avoids drifting behavior between the CLI and the core runtime.
+
+## Governance Pipeline (CLI-native)
+
+RapidKit ships a wrapper-owned release loop for CI and local pre-merge checks:
+
+```text
+bootstrap → workspace sync → doctor → analyze → readiness → autopilot
+```
+
+Run the full loop in one command:
+
+```bash
+npx rapidkit pipeline --json --strict
+```
+
+Or run stages individually:
+
+```bash
+npx rapidkit bootstrap --profile polyglot
+npx rapidkit workspace sync --json
+npx rapidkit doctor workspace --json --ci
+npx rapidkit analyze --json --strict
+npx rapidkit readiness --json --strict
+npx rapidkit autopilot release --mode audit --json
+```
+
+Evidence artifacts:
+
+| Stage      | Report path |
+| ---------- | ----------- |
+| Pipeline   | `.rapidkit/reports/pipeline-last-run.json` |
+| Doctor     | `.rapidkit/reports/doctor-last-run.json` |
+| Analyze    | `.rapidkit/reports/analyze-last-run.json` |
+| Readiness  | `.rapidkit/reports/release-readiness-last-run.json` |
+| Autopilot  | `.rapidkit/reports/autopilot-release-last-run.json` |
+| Contract verify (CLI fallback) | `.rapidkit/reports/workspace-contract-verify-last-run.json` |
+
+The verify gate accepts extension `verify-pack-contract` artifacts **or** runs `workspace contract verify` inline when no extension artifact is present. Use `--skip-verify` on `readiness` / `pipeline` when verify is handled elsewhere.
 
 ## RapidKit CLI in the Workspai Ecosystem
 
@@ -134,21 +173,31 @@ npx rapidkit create project dotnet.webapi.clean my-dotnet --yes --skip-install
 ```bash
 npx rapidkit create # Prompts: workspace | project
 npx rapidkit create workspace <name> [--profile <profile>] [--author <name>] [--yes]
-npx rapidkit bootstrap [--profile <profile>] [--json]
+npx rapidkit bootstrap [--profile <profile>] [--json] [--compliance-only]
 npx rapidkit setup <python|node|go|java|dotnet> [--warm-deps]
+npx rapidkit pipeline [--json] [--strict] [--skip-verify] [--skip-analyze] [--skip-autopilot] [--autopilot-mode <audit|safe-fix|enforce>]
 npx rapidkit analyze [--workspace <path>] [--json] [--strict] [--output <file>]
-npx rapidkit readiness [--json] [--strict]
+npx rapidkit readiness [--json] [--strict] [--skip-verify]
 npx rapidkit autopilot release [--mode <audit|safe-fix|enforce>] [--json] [--output <file>] [--since <ref>] [--parallel] [--max-workers <n>]
 ```
 
-Recommended for CI: `npx rapidkit autopilot release --mode enforce --json --output .rapidkit/reports/autopilot-release.json`
+Recommended for CI:
 
 ```bash
+npx rapidkit pipeline --json --strict
+# or the release gate alone:
+npx rapidkit autopilot release --mode enforce --json --output .rapidkit/reports/autopilot-release.json
+```
+
+`bootstrap --json --compliance-only` runs compliance checks only (skips init) for machine-readable CI gates. Default `bootstrap --json` still runs init after compliance checks.
+
+```bash
+npx rapidkit workspace sync [--json]
 npx rapidkit workspace policy show
 npx rapidkit workspace policy set <key> <value>
 npx rapidkit doctor
-npx rapidkit doctor workspace [--fix] [--plan] [--apply]
-npx rapidkit doctor project [--fix] [--plan] [--apply]
+npx rapidkit doctor workspace [--json] [--strict] [--ci] [--fix] [--plan] [--apply]
+npx rapidkit doctor project [--json] [--strict] [--ci] [--fix] [--plan] [--apply]
 npx rapidkit workspace list # Display all workspaces created on this system
 npx rapidkit workspace foundation ensure [--force] [--json]
 npx rapidkit workspace share [--output <file>] [--include-paths] [--no-doctor]
@@ -361,23 +410,33 @@ RapidKit keeps the wrapper boundary explicit so users know which layer owns each
 | `create workspace`, `workspace`, `cache`, `mirror`, `infra` | RapidKit wrapper       | Platform-level orchestration                                                                                                    |
 | `init`                                             | Wrapper orchestrated   | Project init in project dirs; full-init alias at workspace root                                                                 |
 | `dev`, `test`, `build`, `start`                    | Runtime aware          | Delegates to the active project/runtime when available                                                                          |
-| `readiness`                                        | Wrapper release gate   | Generates release-readiness evidence (`--json` for CI, `--strict` for fail-fast)                                                |
-| `autopilot release`                                | Wrapper orchestrator   | Runs doctor/readiness/remediation/workspace-run gates and emits release verdict evidence                                        |
+| `readiness`                                        | Wrapper release gate   | Env + doctor + analyze + verify + dependency gates (`--json`, `--strict`, `--skip-verify`)                                      |
+| `pipeline`                                         | Wrapper orchestrator   | End-to-end governance loop: sync → doctor → analyze → readiness → autopilot; writes `pipeline-last-run.json`                   |
+| `autopilot release`                                | Wrapper orchestrator   | Runs doctor/analyze/readiness/remediation/workspace-run gates and emits release verdict evidence                                |
 | `import`                                           | Workspace ingestion    | Imports local folders or git backends with rollback-safe sync behavior                                                          |
 | `snapshot`                                         | Workspace recovery     | Creates/list/restores metadata or full workspace snapshots with destructive-operation guards                                    |
 | `project archive/restore/delete`                   | Project lifecycle      | Archives by default, restores archived projects, requires exact confirmation for permanent delete, and creates safety snapshots |
 | `doctor`                                           | Wrapper system check   | Checks host prerequisites by default                                                                                            |
-| `doctor workspace`                                 | Workspace health       | Full workspace scan with project-level details and fixes                                                                        |
+| `doctor workspace`                                 | Workspace health       | Full workspace scan with project-level details, CI exit codes (`--strict`, `--ci`), and fixes                                  |
 | `doctor project`                                   | Project health         | Current project (or nearest parent) diagnostics with project evidence and scoped fixes                                          |
 | `workspace run`                                    | Workspace orchestrator | Stage execution across discovered projects with optional affected-only, blast-radius expansion, and policy-gated pre-checks     |
 | `infra`                                            | Workspace sidecar      | Contract-driven local infra discovery, compose generation, and Docker lifecycle (`plan`, `up`, `down`, `status`)                  |
 
 Use `npx rapidkit doctor` for a quick host pre-flight, `npx rapidkit doctor project` for a service-level check, and `npx rapidkit doctor workspace` for the full workspace picture.
+Use `npx rapidkit pipeline --json --strict` to run the full governance loop and gate CI on a single exit code.
 Use `npx rapidkit analyze --json` to generate CI-friendly workspace health evidence and save it under `.rapidkit/reports/`.
+Use `npx rapidkit doctor workspace --ci` for CI-friendly exit codes (1 = errors, 2 = warnings).
 Use `npx rapidkit doctor workspace --plan` or `npx rapidkit doctor project --plan` to preview remediation safely.
 Use `npx rapidkit doctor workspace --apply` or `npx rapidkit doctor project --apply` for non-interactive remediation runs.
 Use `npx rapidkit readiness` when you need machine-readable release evidence or strict CI gating.
+Use `npx rapidkit readiness --skip-verify` when verify is handled by extension/CI separately.
 Use `npx rapidkit autopilot release` to run an end-to-end pre-merge release gate in one command.
+
+### Doctor workspace CI exit codes
+
+- `npx rapidkit doctor workspace --strict` exits `1` when health score reports errors **or** warnings.
+- `npx rapidkit doctor workspace --ci` exits `1` on errors and `2` on warnings only (errors take precedence).
+- Without `--strict` or `--ci`, doctor reports findings but exits `0` (backward compatible).
 
 ### Doctor workspace fix behavior
 
@@ -725,6 +784,8 @@ npx rapidkit --version
 | `python3` not found            | `python3 --version`                                | Install Python 3.10+ and re-run `npx rapidkit create workspace ...`     |
 | `setup --warm-deps` skipped    | Check for `package.json` / `go.mod` in current dir | Run from the target project directory                                   |
 | strict policy blocks command   | Review `.rapidkit/policies.yml`                    | Set policy intentionally via `npx rapidkit workspace policy set ...`    |
+| `npm audit fix --force` downgrades tsup | Check `package.json` — tsup should stay `^8.5.1` | **Do not use `--force`**. Run `npm install` after restoring tsup; use `esbuild` override if audit still flags dev deps |
+| Security Audit CI fails on esbuild | Run `npm audit --audit-level=moderate` locally     | Keep `tsup@^8.5.1` and `"overrides": { "esbuild": "^0.28.1" }` in `package.json` |
 | doctor output seems stale      | Check report timestamp in `.rapidkit/reports/`     | Re-run `npx rapidkit doctor workspace` or `npx rapidkit doctor project` |
 | affected run scope seems wrong | Verify git ref                                     | Use `--since <ref>` explicitly                                          |
 

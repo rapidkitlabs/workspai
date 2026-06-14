@@ -19,6 +19,24 @@ async function makeWorkspace(): Promise<string> {
   return root;
 }
 
+async function writeAnalyzeEvidence(
+  workspace: string,
+  verdict: 'ready' | 'needs-attention' | 'blocked' = 'ready'
+) {
+  await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'reports', 'analyze-last-run.json'), {
+    schemaVersion: 'rapidkit-analyze-v1',
+    summary: {
+      score: verdict === 'ready' ? 92 : verdict === 'needs-attention' ? 72 : 40,
+      verdict,
+      findings: {
+        fail: verdict === 'blocked' ? 1 : 0,
+        warn: verdict === 'needs-attention' ? 1 : 0,
+        info: 0,
+      },
+    },
+  });
+}
+
 afterEach(async () => {
   while (createdPaths.length > 0) {
     const target = createdPaths.pop();
@@ -68,8 +86,9 @@ describe('release readiness', () => {
       }
     );
 
-    const readiness = await evaluateReleaseReadiness({ startPath: workspace, writeReport: false });
+    await writeAnalyzeEvidence(workspace);
 
+    const readiness = await evaluateReleaseReadiness({ startPath: workspace, writeReport: false });
     expect(readiness.overallStatus).toBe('pass');
     expect(readiness.blocking).toBe(false);
     expect(readiness.gates.every((gate) => gate.status === 'pass')).toBe(true);
@@ -103,6 +122,8 @@ describe('release readiness', () => {
       '[tool.poetry]\nname = "orders-api"\nversion = "0.1.0"\n',
       'utf-8'
     );
+
+    await writeAnalyzeEvidence(workspace);
 
     const readiness = await evaluateReleaseReadiness({ startPath: workspace, writeReport: false });
 
@@ -144,6 +165,8 @@ describe('release readiness', () => {
         },
       }
     );
+
+    await writeAnalyzeEvidence(workspace);
 
     const readiness = await evaluateReleaseReadiness({ startPath: workspace, writeReport: false });
     const dependencyGate = readiness.gates.find((gate) => gate.gate === 'dependency');
@@ -189,11 +212,59 @@ describe('release readiness', () => {
       }
     );
 
+    await writeAnalyzeEvidence(workspace);
+
     const readiness = await evaluateReleaseReadiness({ startPath: workspace, writeReport: false });
     const doctorGate = readiness.gates.find((gate) => gate.gate === 'doctor');
 
     expect(readiness.overallStatus).toBe('fail');
     expect(doctorGate?.status).toBe('fail');
     expect(doctorGate?.summary).toContain('missing');
+  });
+
+  it('passes verify gate with --skip-verify even when verify artifacts are missing', async () => {
+    const workspace = await makeWorkspace();
+
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'toolchain.lock'), {
+      runtime: { node: { version: '20.12.0' } },
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'reports', 'doctor-last-run.json'), {
+      summary: { totalIssues: 0, hasSystemErrors: false },
+      projects: [{ name: 'api-service', depsInstalled: true, vulnerabilities: 0 }],
+    });
+    await writeAnalyzeEvidence(workspace);
+
+    const readiness = await evaluateReleaseReadiness({
+      startPath: workspace,
+      writeReport: false,
+      skipVerify: true,
+    });
+    const verifyGate = readiness.gates.find((gate) => gate.gate === 'verify');
+
+    expect(readiness.overallStatus).toBe('pass');
+    expect(verifyGate?.status).toBe('pass');
+    expect(verifyGate?.summary).toContain('skipped');
+  });
+
+  it('fails analyze gate when analyze evidence is missing', async () => {
+    const workspace = await makeWorkspace();
+
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'toolchain.lock'), {
+      runtime: { node: { version: '20.12.0' } },
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'reports', 'doctor-last-run.json'), {
+      summary: { totalIssues: 0, hasSystemErrors: false },
+      projects: [{ name: 'api-service', depsInstalled: true, vulnerabilities: 0 }],
+    });
+
+    const readiness = await evaluateReleaseReadiness({
+      startPath: workspace,
+      writeReport: false,
+      skipVerify: true,
+    });
+    const analyzeGate = readiness.gates.find((gate) => gate.gate === 'analyze');
+
+    expect(readiness.overallStatus).toBe('fail');
+    expect(analyzeGate?.status).toBe('fail');
   });
 });

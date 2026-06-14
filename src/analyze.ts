@@ -7,6 +7,7 @@ import {
   type BackendRuntimeFamily,
 } from './utils/backend-framework-contract.js';
 import { discoverWorkspaceProjects } from './utils/workspace-discovery.js';
+import { findWorkspaceRootUp } from './utils/workspace-root.js';
 
 export type AnalyzeSeverity = 'info' | 'warn' | 'fail';
 
@@ -133,20 +134,7 @@ async function readText(filePath: string): Promise<string> {
 }
 
 function findWorkspaceUp(startPath: string): string | null {
-  let current = path.resolve(startPath);
-
-  while (true) {
-    if (
-      fs.existsSync(path.join(current, '.rapidkit-workspace')) ||
-      fs.existsSync(path.join(current, '.rapidkit', 'workspace.json'))
-    ) {
-      return current;
-    }
-
-    const parent = path.dirname(current);
-    if (parent === current) return null;
-    current = parent;
-  }
+  return findWorkspaceRootUp(startPath);
 }
 
 async function isProjectDir(dirPath: string, rootPath: string): Promise<boolean> {

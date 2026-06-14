@@ -4349,16 +4349,32 @@ async function executeFixCommands(
   console.log(chalk.bold.green('\n✅ Fix process completed!'));
 }
 
+export function computeDoctorGateExitCode(
+  healthScore: { errors?: number; warnings?: number } | null | undefined,
+  options: { strict?: boolean; ci?: boolean }
+): number {
+  if (!options.strict && !options.ci) return 0;
+  const errors = Number(healthScore?.errors ?? 0);
+  const warnings = Number(healthScore?.warnings ?? 0);
+  if (errors > 0) return 1;
+  if (options.ci && warnings > 0) return 2;
+  if (options.strict && warnings > 0) return 1;
+  return 0;
+}
+
 export async function runDoctor(
   options: {
     workspace?: boolean;
     project?: boolean;
     json?: boolean;
+    quiet?: boolean;
     fix?: boolean;
     plan?: boolean;
     apply?: boolean;
+    strict?: boolean;
+    ci?: boolean;
   } = {}
-): Promise<void> {
+): Promise<number> {
   const wantsWorkspaceScope = Boolean(options.fix || options.plan || options.apply);
   const autoWorkspacePath =
     !options.workspace && !options.project && wantsWorkspaceScope
@@ -4469,8 +4485,10 @@ export async function runDoctor(
         ...(remediationPlan ? { remediationPlan } : {}),
       };
 
-      console.log(JSON.stringify(output, null, 2));
-      return;
+      if (!options.quiet) {
+        console.log(JSON.stringify(output, null, 2));
+      }
+      return computeDoctorGateExitCode(health.healthScore, options);
     }
 
     // Render health score
@@ -4591,6 +4609,8 @@ export async function runDoctor(
     } else {
       console.log(chalk.bold.green('\n✅ All checks passed! Workspace is healthy.'));
     }
+
+    return computeDoctorGateExitCode(health.healthScore, options);
   } else if (projectMode) {
     const projectPath = await findProjectRoot(process.cwd());
 
@@ -4673,8 +4693,10 @@ export async function runDoctor(
         ...(remediationPlan ? { remediationPlan } : {}),
       };
 
-      console.log(JSON.stringify(output, null, 2));
-      return;
+      if (!options.quiet) {
+        console.log(JSON.stringify(output, null, 2));
+      }
+      return computeDoctorGateExitCode(envelope.healthScore, options);
     }
 
     console.log(chalk.bold(`Project: ${chalk.cyan(path.basename(projectPath))}`));
@@ -4739,6 +4761,8 @@ export async function runDoctor(
     } else {
       console.log(chalk.bold.green('\n✅ All checks passed! Project is healthy.'));
     }
+
+    return computeDoctorGateExitCode(envelope.healthScore, options);
   } else {
     // System mode: check system tools only
     console.log(chalk.bold('System Tools:\n'));
@@ -4787,7 +4811,13 @@ export async function runDoctor(
         )
       );
     }
-  }
 
-  console.log('');
+    console.log('');
+
+    const systemErrors = [python, core].filter((c) => c.status === 'error').length;
+    if (options.strict || options.ci) {
+      if (systemErrors > 0) return 1;
+    }
+    return 0;
+  }
 }
