@@ -10,7 +10,7 @@ import {
   readRapidkitProjectJson,
 } from './utils/runtime-detection.js';
 import { isDoctorEvidencePayloadCompatible } from './utils/doctor-evidence-contract.js';
-import { findWorkspaceRootUp } from './utils/workspace-root.js';
+import { findWorkspaceRootUp, isWorkspaceShellDirectory } from './utils/workspace-root.js';
 
 export type ReadinessGateStatus = 'pass' | 'warn' | 'fail';
 export type ReadinessOverallStatus = 'pass' | 'warn' | 'fail';
@@ -48,6 +48,46 @@ interface ReadinessCommandOptions {
   json?: boolean;
   strict?: boolean;
   skipVerify?: boolean;
+}
+
+function resolveReadinessProjectPath(startPath: string, workspacePath: string): string {
+  const resolvedStart = path.resolve(startPath);
+  if (!isWorkspaceShellDirectory(resolvedStart)) {
+    return resolvedStart;
+  }
+
+  const contractPath = path.join(workspacePath, '.rapidkit', 'workspace.contract.json');
+  if (fs.existsSync(contractPath)) {
+    try {
+      const contract = JSON.parse(fs.readFileSync(contractPath, 'utf-8')) as Record<
+        string,
+        unknown
+      >;
+      const projects = Array.isArray(contract.projects) ? contract.projects : [];
+      for (const entry of projects) {
+        const record = toObjectRecord(entry);
+        const relativePath =
+          typeof record.relativePath === 'string' ? record.relativePath.trim() : '';
+        if (relativePath) {
+          return path.join(workspacePath, relativePath);
+        }
+      }
+    } catch {
+      // Fall through to doctor evidence.
+    }
+  }
+
+  const doctor = loadDoctorPayload(workspacePath);
+  const doctorProjects = Array.isArray(doctor.payload?.projects) ? doctor.payload.projects : [];
+  for (const entry of doctorProjects) {
+    const record = toObjectRecord(entry);
+    const projectPath = typeof record.path === 'string' ? record.path.trim() : '';
+    if (projectPath) {
+      return path.resolve(projectPath);
+    }
+  }
+
+  return resolvedStart;
 }
 
 function detectProjectRuntime(projectPath: string): 'python' | 'node' | 'go' | 'java' | 'unknown' {
@@ -529,8 +569,9 @@ async function writeReadinessEvidence(
 export async function evaluateReleaseReadiness(
   options: EvaluateReleaseReadinessOptions = {}
 ): Promise<ReleaseReadinessContract> {
-  const projectPath = path.resolve(options.startPath ?? process.cwd());
-  const workspacePath = findWorkspaceRootUp(projectPath) ?? projectPath;
+  const startPath = path.resolve(options.startPath ?? process.cwd());
+  const workspacePath = findWorkspaceRootUp(startPath) ?? startPath;
+  const projectPath = resolveReadinessProjectPath(startPath, workspacePath);
   const projectRuntime = detectProjectRuntime(projectPath);
 
   const envGate = buildEnvGate(workspacePath, projectRuntime);

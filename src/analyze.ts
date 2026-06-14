@@ -7,7 +7,7 @@ import {
   type BackendRuntimeFamily,
 } from './utils/backend-framework-contract.js';
 import { discoverWorkspaceProjects } from './utils/workspace-discovery.js';
-import { findWorkspaceRootUp } from './utils/workspace-root.js';
+import { findWorkspaceRootUp, isWorkspaceShellDirectory } from './utils/workspace-root.js';
 
 export type AnalyzeSeverity = 'info' | 'warn' | 'fail';
 
@@ -145,6 +145,11 @@ async function isProjectDir(dirPath: string, rootPath: string): Promise<boolean>
     return true;
   }
 
+  // Workspace shells may contain pyproject/venv for RapidKit tooling — not app projects.
+  if (isWorkspaceShellDirectory(dirPath)) {
+    return false;
+  }
+
   if (path.resolve(dirPath) === path.resolve(rootPath)) {
     return detectRuntimeCandidatesFromProject(dirPath).length > 0;
   }
@@ -162,6 +167,10 @@ async function discoverProjects(workspacePath: string): Promise<string[]> {
 
   if (projects.length > 0) {
     return projects;
+  }
+
+  if (isWorkspaceShellDirectory(workspacePath)) {
+    return [];
   }
 
   return detectRuntimeCandidatesFromProject(workspacePath).length > 0 ? [workspacePath] : [];

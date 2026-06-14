@@ -108,6 +108,55 @@ describe('analyze command', () => {
     expect(evidenceJson.workspacePath).toBe(path.resolve(workspaceDir));
   });
 
+  it('ignores workspace shell pyproject at root and analyzes registered child projects', async () => {
+    const workspaceDir = await createTempDir();
+    const projectDir = path.join(workspaceDir, 'admin-api');
+
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'src'), { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'test'), { recursive: true });
+    await fs.mkdir(path.join(workspaceDir, '.rapidkit'), { recursive: true });
+    await fs.mkdir(path.join(projectDir, '.rapidkit'), { recursive: true });
+
+    await fs.writeFile(
+      path.join(workspaceDir, '.rapidkit', 'workspace.json'),
+      JSON.stringify({ profile: 'polyglot', workspace_name: 'admin-dashboard-wsp' }, null, 2)
+    );
+    await fs.writeFile(
+      path.join(workspaceDir, 'pyproject.toml'),
+      [
+        '[tool.poetry]',
+        'name = "admin-dashboard-wsp"',
+        'package-mode = false',
+        '',
+        '[tool.poetry.dependencies]',
+        'python = "^3.10"',
+        'rapidkit-core = "*"',
+      ].join('\n')
+    );
+    await fs.writeFile(path.join(workspaceDir, '.rapidkit-workspace'), 'workspace');
+    await fs.writeFile(
+      path.join(projectDir, '.rapidkit', 'project.json'),
+      JSON.stringify({ kit_name: 'nestjs.standard' }, null, 2)
+    );
+    await fs.writeFile(
+      path.join(projectDir, 'package.json'),
+      JSON.stringify({ name: 'admin-api', scripts: { test: 'jest' } }, null, 2)
+    );
+    await fs.writeFile(path.join(projectDir, 'Dockerfile'), 'FROM node:20');
+    await fs.writeFile(path.join(projectDir, '.env.example'), 'PORT=3000');
+    await fs.writeFile(path.join(projectDir, 'src', 'health.ts'), 'export const ok = true;');
+
+    const report = await runAnalyze({ workspacePath: workspaceDir, json: true });
+
+    expect(report.summary.projectCount).toBe(1);
+    expect(report.projects[0]?.name).toBe('admin-api');
+    expect(report.projects[0]?.relativePath).toBe('admin-api');
+    expect(report.projects[0]?.framework).not.toBe('python');
+    expect(report.projects[0]?.hasRapidKitMarker).toBe(true);
+    expect(report.findings.some((item) => item.id === 'project.marker.missing')).toBe(false);
+  });
+
   it('returns blocked exit code when strict mode is enabled and warnings exist', async () => {
     const workspaceDir = await createTempDir();
     const projectDir = path.join(workspaceDir, 'service-b');

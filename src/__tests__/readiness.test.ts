@@ -47,6 +47,67 @@ afterEach(async () => {
 });
 
 describe('release readiness', () => {
+  it('resolves workspace shell cwd to registered child project for env gate', async () => {
+    const workspace = await makeWorkspace();
+    const projectDir = path.join(workspace, 'admin-api');
+    await fsExtra.ensureDir(projectDir);
+    await fsExtra.ensureDir(path.join(projectDir, '.rapidkit'));
+
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'workspace.json'), {
+      profile: 'polyglot',
+      workspace_name: 'admin-dashboard-wsp',
+    });
+    await fsExtra.writeFile(
+      path.join(workspace, 'pyproject.toml'),
+      '[tool.poetry]\nname = "admin-dashboard-wsp"\npackage-mode = false\n',
+      'utf-8'
+    );
+    await fsExtra.writeJSON(path.join(projectDir, '.rapidkit', 'project.json'), {
+      kit_name: 'nestjs.standard',
+    });
+    await fsExtra.writeJSON(path.join(projectDir, 'package.json'), {
+      name: 'admin-api',
+      scripts: { test: 'jest' },
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'workspace.contract.json'), {
+      schemaVersion: 1,
+      kind: 'rapidkit.workspace.contract',
+      projects: [{ slug: 'admin-api', relativePath: 'admin-api', framework: 'nestjs' }],
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'toolchain.lock'), {
+      runtime: {
+        node: { version: '20.12.0' },
+      },
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'reports', 'doctor-last-run.json'), {
+      schemaVersion: 'doctor-workspace-evidence-v1',
+      evidenceType: 'workspace',
+      summary: { totalIssues: 0, hasSystemErrors: false },
+      projects: [
+        {
+          name: 'admin-api',
+          path: projectDir,
+          depsInstalled: true,
+          vulnerabilities: 0,
+        },
+      ],
+    });
+    await fsExtra.writeJSON(
+      path.join(workspace, '.rapidkit', 'reports', 'workspace-verify-pack-contract.json'),
+      {
+        schemaVersion: 'v1',
+        status: 'pass',
+        summary: { failedChecks: 0 },
+      }
+    );
+    await writeAnalyzeEvidence(workspace);
+
+    const readiness = await evaluateReleaseReadiness({ startPath: workspace, writeReport: false });
+
+    expect(readiness.projectPath).toBe(projectDir);
+    expect(readiness.gates.find((gate) => gate.gate === 'env')?.status).toBe('pass');
+  });
+
   it('returns pass when env/doctor/verify/dependency checks are healthy', async () => {
     const workspace = await makeWorkspace();
 
