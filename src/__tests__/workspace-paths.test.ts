@@ -97,8 +97,9 @@ describe('workspace-paths', () => {
   });
 
   it('honors --output parent directories for new workspaces', () => {
-    expect(resolveNewWorkspacePath('custom-ws', { outputDir: '/tmp/custom-parent' })).toBe(
-      '/tmp/custom-parent/custom-ws'
+    const outputParent = path.resolve('/tmp/custom-parent');
+    expect(resolveNewWorkspacePath('custom-ws', { outputDir: outputParent })).toBe(
+      path.join(outputParent, 'custom-ws')
     );
   });
 

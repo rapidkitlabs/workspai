@@ -12,10 +12,15 @@ function cliEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   delete env.NODE_OPTIONS;
   delete env.VITEST;
   delete env.VITEST_WORKER_ID;
-  return {
+  const merged = {
     ...env,
     ...overrides,
   };
+  if (merged.HOME && process.platform === 'win32') {
+    merged.APPDATA = merged.APPDATA ?? merged.HOME;
+    merged.USERPROFILE = merged.USERPROFILE ?? merged.HOME;
+  }
+  return merged;
 }
 
 describe('Phase 3 commands - CLI process integration', () => {

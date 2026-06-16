@@ -95,7 +95,7 @@ jobs:
           $createLog = Join-Path $testRoot 'create-ws.log'
           & node $cli create workspace ws-win --yes --profile minimal *> $createLog
           if ($LASTEXITCODE -ne 0) {
-            Write-Host 'Workspace creation printed:' >&2
+            Write-Error 'Workspace creation printed:'
             Get-Content $createLog -TotalCount 200 | ForEach-Object { Write-Host $_ }
             throw 'create workspace failed'
           }
@@ -119,12 +119,12 @@ jobs:
                 $wsDir = $found2.FullName
               }
               else {
-                Write-Host 'Workspace ws-win not found after create. Debug listing:' >&2
-                Write-Host "TEST_ROOT: $testRoot" >&2
+                Write-Error 'Workspace ws-win not found after create. Debug listing:'
+                Write-Host "TEST_ROOT: $testRoot"
                 Get-ChildItem -Path $testRoot -Force -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
-                Write-Host "User rapidkit workspaces:" >&2
+                Write-Host 'User rapidkit workspaces:'
                 Get-ChildItem -Path (Join-Path $env:USERPROFILE 'rapidkit\workspaces') -Force -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
-                Write-Host 'create-ws.log (head):' >&2
+                Write-Error 'create-ws.log (head):'
                 Get-Content $createLog -TotalCount 200 | ForEach-Object { Write-Host $_ }
                 throw 'Workspace ws-win not found'
               }

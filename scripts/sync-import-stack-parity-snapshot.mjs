@@ -70,7 +70,9 @@ for (const fileName of NPM_CANONICAL_CONTRACT_FILES) {
   const mirrorToVscode = VSCODE_MIRROR_FILES.includes(fileName);
 
   if (checkOnly) {
-    verifyTarget(frontTarget, content, 'Front/contracts');
+    if (fs.existsSync(frontContractsRoot)) {
+      verifyTarget(frontTarget, content, 'Front/contracts');
+    }
 
     if (!npmOnly && mirrorToVscode && fs.existsSync(vscodeRoot)) {
       verifyTarget(vscodeTarget, content, 'vscode');

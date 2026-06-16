@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as frontendProject from '../frontend-project.js';
 import * as index from '../index.js';
 import { resolveFrontendGenerator } from '../frontend-project.js';
+import { getWorkspaceRegistryDirectory } from '../utils/platform-capabilities.js';
 
 describe('frontend create registry', () => {
   let fakeHome: string;
@@ -18,6 +19,9 @@ describe('frontend create registry', () => {
     cwdOutsideWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), 'rapidkit-cwd-frontend-create-'));
     process.env.HOME = fakeHome;
     process.env.USERPROFILE = fakeHome;
+    if (process.platform === 'win32') {
+      process.env.APPDATA = fakeHome;
+    }
     process.chdir(cwdOutsideWorkspace);
     vi.restoreAllMocks();
   });
@@ -73,7 +77,8 @@ describe('frontend create registry', () => {
     expect(exitCode).toBe(0);
 
     const expectedWorkspacePath = path.join(fakeHome, 'rapidkit', 'workspaces', 'workspai');
-    const registry = await fs.readJson(path.join(fakeHome, '.rapidkit', 'workspaces.json'));
+    const registryPath = path.join(getWorkspaceRegistryDirectory(), 'workspaces.json');
+    const registry = await fs.readJson(registryPath);
 
     expect(registry.workspaces).toEqual([
       expect.objectContaining({

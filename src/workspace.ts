@@ -1,4 +1,4 @@
-import { promises as fs } from 'fs';
+import { promises as fs, realpathSync } from 'fs';
 import path from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -31,7 +31,12 @@ interface WorkspaceOptions {
 }
 
 function normalizeRegistryPath(inputPath: string): string {
-  const resolved = path.resolve(inputPath);
+  let resolved = path.resolve(inputPath);
+  try {
+    resolved = realpathSync.native(resolved);
+  } catch {
+    // Keep resolved path when the target does not exist yet.
+  }
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 

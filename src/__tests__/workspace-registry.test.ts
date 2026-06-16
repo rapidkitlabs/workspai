@@ -6,6 +6,7 @@ import fsExtra from 'fs-extra';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { registerProjectInWorkspace, registerWorkspace } from '../workspace';
+import { getWorkspaceRegistryDirectory } from '../utils/platform-capabilities.js';
 
 const createdPaths: string[] = [];
 const originalHome = process.env.HOME;
@@ -38,12 +39,18 @@ describe('workspace registry', () => {
     const oldProjectPath = path.join(homePath, 'projects', 'web-old');
     const newProjectPath = path.join(homePath, 'projects', 'web-new');
     process.env.HOME = homePath;
+    process.env.USERPROFILE = homePath;
+    if (process.platform === 'win32') {
+      process.env.APPDATA = homePath;
+    }
 
     await registerWorkspace(workspacePath, 'default-workspace');
     await registerProjectInWorkspace(workspacePath, 'web', oldProjectPath);
     await registerProjectInWorkspace(workspacePath, 'web', newProjectPath);
 
-    const registry = await fsExtra.readJson(path.join(homePath, '.rapidkit', 'workspaces.json'));
+    const registry = await fsExtra.readJson(
+      path.join(getWorkspaceRegistryDirectory(), 'workspaces.json')
+    );
     expect(registry.workspaces).toEqual([
       expect.objectContaining({
         name: 'default-workspace',

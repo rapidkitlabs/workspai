@@ -192,8 +192,38 @@ jobs:
 
           CLI="node $GITHUB_WORKSPACE/dist/index.js"
 
-          $CLI create workspace ws-chaos --yes --profile polyglot
-          cd ws-chaos
+          echo "Creating workspace ws-chaos (cwd=$PWD)"
+          if ! $CLI create workspace ws-chaos --yes --profile polyglot > create-ws.log 2>&1; then
+            echo "Workspace creation printed:" >&2
+            sed -n '1,200p' create-ws.log || true
+          fi
+
+          if [ -d "ws-chaos" ]; then
+            WS_DIR="$PWD/ws-chaos"
+          elif [ -d "$HOME/rapidkit/workspaces/ws-chaos" ]; then
+            WS_DIR="$HOME/rapidkit/workspaces/ws-chaos"
+          else
+            FOUND=$(find "$PWD" -maxdepth 3 -type d -name ws-chaos -print -quit || true)
+            if [ -n "$FOUND" ]; then
+              WS_DIR="$FOUND"
+            else
+              FOUND2=$(find "$HOME/rapidkit/workspaces" -maxdepth 3 -type d -name ws-chaos -print -quit || true)
+              if [ -n "$FOUND2" ]; then
+                WS_DIR="$FOUND2"
+              else
+                echo "Workspace ws-chaos not found after create. Debug listing:" >&2
+                echo "PWD: $PWD" >&2
+                ls -la "$PWD" || true
+                echo "Home rapidkit workspaces:" >&2
+                ls -la "$HOME/rapidkit/workspaces" || true
+                sed -n '1,200p' create-ws.log || true
+                exit 1
+              fi
+            fi
+          fi
+
+          echo "Using workspace at: $WS_DIR"
+          cd "$WS_DIR"
 
           $CLI create project nestjs.standard chaos-nest --yes --skip-install
           $CLI create project gofiber.standard chaos-fiber --yes --skip-install
