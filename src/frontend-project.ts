@@ -249,12 +249,12 @@ const FRONTEND_GENERATORS: FrontendGeneratorDefinition[] = [
     displayName: 'Astro',
     framework: 'astro',
     defaultPort: 4321,
-    commandDisplay: (name) => `npm create astro@latest ${name}`,
+    commandDisplay: (name) => `npm create astro@4 ${name}`,
     commandExec: (name, options) => ({
       command: 'npm',
       args: [
         'create',
-        'astro@latest',
+        'astro@4',
         name,
         '--',
         '--yes',

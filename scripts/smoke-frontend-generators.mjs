@@ -32,7 +32,7 @@ const bundleTokens = {
   'vite-vanilla': ['frontend.vite-vanilla', 'vanilla-ts'],
   nuxt: ['frontend.nuxt', 'nuxi@latest'],
   angular: ['frontend.angular', '@angular/cli@19'],
-  astro: ['frontend.astro', 'create astro@latest'],
+  astro: ['frontend.astro', 'create astro@4'],
   sveltekit: ['frontend.sveltekit', 'sv@latest'],
 };
 
