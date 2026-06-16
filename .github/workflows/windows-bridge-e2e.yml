@@ -92,11 +92,50 @@ jobs:
           }
 
           Write-Host '--- Create workspace'
-          & node $cli create workspace ws-win --yes --profile minimal
+          $createLog = Join-Path $testRoot 'create-ws.log'
+          & node $cli create workspace ws-win --yes --profile minimal *> $createLog
           if ($LASTEXITCODE -ne 0) {
+            Write-Host 'Workspace creation printed:' >&2
+            Get-Content $createLog -TotalCount 200 | ForEach-Object { Write-Host $_ }
             throw 'create workspace failed'
           }
-          Set-Location (Join-Path $testRoot 'ws-win')
+
+          # Locate the created workspace. Rapidkit may place it in the current
+          # test root or under the user profile rapidkit/workspaces folder.
+          if (Test-Path (Join-Path $testRoot 'ws-win')) {
+            $wsDir = Join-Path $testRoot 'ws-win'
+          }
+          elseif (Test-Path (Join-Path $env:USERPROFILE 'rapidkit\workspaces\ws-win')) {
+            $wsDir = Join-Path $env:USERPROFILE 'rapidkit\workspaces\ws-win'
+          }
+          else {
+            $found = Get-ChildItem -Path $testRoot -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'ws-win' } | Select-Object -First 1
+            if ($found) {
+              $wsDir = $found.FullName
+            }
+            else {
+              $found2 = Get-ChildItem -Path (Join-Path $env:USERPROFILE 'rapidkit\workspaces') -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'ws-win' } | Select-Object -First 1
+              if ($found2) {
+                $wsDir = $found2.FullName
+              }
+              else {
+                Write-Host 'Workspace ws-win not found after create. Debug listing:' >&2
+                Write-Host "TEST_ROOT: $testRoot" >&2
+                Get-ChildItem -Path $testRoot -Force -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+                Write-Host "User rapidkit workspaces:" >&2
+                Get-ChildItem -Path (Join-Path $env:USERPROFILE 'rapidkit\workspaces') -Force -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+                Write-Host 'create-ws.log (head):' >&2
+                Get-Content $createLog -TotalCount 200 | ForEach-Object { Write-Host $_ }
+                throw 'Workspace ws-win not found'
+              }
+            }
+          }
+
+          Write-Host "Using workspace at: $wsDir"
+          Set-Location $wsDir
+
+          # show git availability for debugging potential 'Could not initialize git repository'
+          try { & git --version } catch { Write-Host 'git not found' }
 
           Write-Host '--- Bootstrap workspace (go-only -> polyglot)'
           & node $cli bootstrap --profile go-only

@@ -78,8 +78,48 @@ jobs:
 
           CLI="node $GITHUB_WORKSPACE/dist/index.js"
 
-          $CLI create workspace ws-matrix --yes --profile go-only
-          cd ws-matrix
+          # Try to create workspace; capture output for debugging if creation fails
+          echo "Creating workspace ws-matrix (cwd=$PWD)"
+          if ! $CLI create workspace ws-matrix --yes --profile go-only > create-ws.log 2>&1; then
+            echo "Workspace creation printed:" >&2
+            sed -n '1,200p' create-ws.log || true
+            # continue and attempt to locate created workspace below
+          fi
+
+          # Determine where the workspace was created. Rapidkit may create global
+          # workspaces under $HOME/rapidkit/workspaces or create it in the current
+          # directory; prefer local dir but fall back to global location.
+          if [ -d "ws-matrix" ]; then
+            WS_DIR="$PWD/ws-matrix"
+          elif [ -d "$HOME/rapidkit/workspaces/ws-matrix" ]; then
+            WS_DIR="$HOME/rapidkit/workspaces/ws-matrix"
+          else
+            # Try quick searches
+            FOUND=$(find "$PWD" -maxdepth 3 -type d -name ws-matrix -print -quit || true)
+            if [ -n "$FOUND" ]; then
+              WS_DIR="$FOUND"
+            else
+              FOUND2=$(find "$HOME/rapidkit/workspaces" -maxdepth 3 -type d -name ws-matrix -print -quit || true)
+              if [ -n "$FOUND2" ]; then
+                WS_DIR="$FOUND2"
+              else
+                echo "Workspace ws-matrix not found after create. Debug listing:" >&2
+                echo "PWD: $PWD" >&2
+                ls -la "$PWD" || true
+                echo "Home rapidkit workspaces:" >&2
+                ls -la "$HOME/rapidkit/workspaces" || true
+                echo "create-ws.log (if any):" >&2
+                sed -n '1,200p' create-ws.log || true
+                exit 1
+              fi
+            fi
+          fi
+
+          echo "Using workspace at: $WS_DIR"
+          cd "$WS_DIR"
+
+          # show git availability for debugging potential 'Could not initialize git repository'
+          echo "git: $(git --version 2>/dev/null || true)"
 
           # Bootstrap profile-switch smoke
           $CLI bootstrap --profile go-only
