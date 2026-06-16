@@ -13,6 +13,7 @@ import {
   INFRA_PLAN_RELATIVE_PATH,
   type InfraPlan,
 } from '../utils/infra-stack.js';
+import { normalizeRegistryPath } from '../utils/registry-path.js';
 
 export function resolveInfraWorkspacePath(workspacePath?: string): string {
   const resolved = workspacePath ? path.resolve(workspacePath) : findWorkspaceRoot(process.cwd());
@@ -21,7 +22,7 @@ export function resolveInfraWorkspacePath(workspacePath?: string): string {
       'Not inside a RapidKit workspace. Run from workspace root or pass --workspace.'
     );
   }
-  return resolved;
+  return normalizeRegistryPath(resolved);
 }
 
 function composeFilePath(workspacePath: string): string {

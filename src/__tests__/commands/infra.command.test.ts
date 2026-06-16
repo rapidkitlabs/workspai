@@ -17,6 +17,7 @@ import {
 } from '../../commands/infra.js';
 import { buildInfraPlan, writeInfraArtifacts } from '../../utils/infra-plan.js';
 import { INFRA_PLAN_RELATIVE_PATH, INFRA_PLAN_SCHEMA_VERSION } from '../../utils/infra-stack.js';
+import { normalizeRegistryPath } from '../../utils/registry-path.js';
 
 const tempDirs: string[] = [];
 const mockExeca = execa as unknown as ReturnType<typeof vi.fn>;
@@ -177,8 +178,8 @@ describe('infra command', () => {
     const workspacePath = await createWorkspace();
     process.chdir(workspacePath);
 
-    expect(resolveInfraWorkspacePath()).toBe(path.resolve(workspacePath));
-    expect(resolveInfraWorkspacePath(workspacePath)).toBe(path.resolve(workspacePath));
+    expect(resolveInfraWorkspacePath()).toBe(normalizeRegistryPath(workspacePath));
+    expect(resolveInfraWorkspacePath(workspacePath)).toBe(normalizeRegistryPath(workspacePath));
   });
 
   it('throws when workspace root cannot be resolved', () => {

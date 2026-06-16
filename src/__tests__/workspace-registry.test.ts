@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { registerProjectInWorkspace, registerWorkspace } from '../workspace';
 import { getWorkspaceRegistryDirectory } from '../utils/platform-capabilities.js';
+import { normalizeRegistryPath } from '../utils/registry-path.js';
 
 const createdPaths: string[] = [];
 const originalHome = process.env.HOME;
@@ -54,11 +55,11 @@ describe('workspace registry', () => {
     expect(registry.workspaces).toEqual([
       expect.objectContaining({
         name: 'default-workspace',
-        path: workspacePath,
+        path: normalizeRegistryPath(workspacePath),
         projects: [
           {
             name: 'web',
-            path: newProjectPath,
+            path: normalizeRegistryPath(newProjectPath),
           },
         ],
       }),

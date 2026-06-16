@@ -1,10 +1,11 @@
-import { promises as fs, realpathSync } from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
 import { execa } from 'execa';
 import { getVersion } from './update-checker.js';
 import { getWorkspaceRegistryDirectory } from './utils/platform-capabilities.js';
+import { normalizeRegistryPath } from './utils/registry-path.js';
 import { isDoctorEvidencePayloadCompatible } from './utils/doctor-evidence-contract.js';
 import { discoverWorkspaceProjects as discoverWorkspaceProjectsShared } from './utils/workspace-discovery.js';
 
@@ -28,16 +29,6 @@ interface WorkspaceOptions {
   name: string;
   author: string;
   skipGit?: boolean;
-}
-
-function normalizeRegistryPath(inputPath: string): string {
-  let resolved = path.resolve(inputPath);
-  try {
-    resolved = realpathSync.native(resolved);
-  } catch {
-    // Keep resolved path when the target does not exist yet.
-  }
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
 function normalizeWorkspaceEntry(entry: WorkspaceEntry): WorkspaceEntry {

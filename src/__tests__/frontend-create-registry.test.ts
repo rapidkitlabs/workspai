@@ -7,6 +7,7 @@ import * as frontendProject from '../frontend-project.js';
 import * as index from '../index.js';
 import { resolveFrontendGenerator } from '../frontend-project.js';
 import { getWorkspaceRegistryDirectory } from '../utils/platform-capabilities.js';
+import { normalizeRegistryPath } from '../utils/registry-path.js';
 
 describe('frontend create registry', () => {
   let fakeHome: string;
@@ -83,11 +84,11 @@ describe('frontend create registry', () => {
     expect(registry.workspaces).toEqual([
       expect.objectContaining({
         name: 'workspai',
-        path: expectedWorkspacePath,
+        path: normalizeRegistryPath(expectedWorkspacePath),
         projects: [
           expect.objectContaining({
             name: 'orphan-next',
-            path: projectPath,
+            path: normalizeRegistryPath(projectPath),
           }),
         ],
       }),
