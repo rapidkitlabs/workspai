@@ -757,7 +757,10 @@ function projectRiskForChange(change: WorkspaceModelDiffChange): WorkspaceImpact
   return 'medium';
 }
 
-function workspaceRiskForChange(change: WorkspaceModelDiffChange): WorkspaceImpactRisk {
+function workspaceRiskForChange(
+  change: WorkspaceModelDiffChange,
+  options?: { projectCount?: number }
+): WorkspaceImpactRisk {
   if (change.severity === 'critical') {
     return 'critical';
   }
@@ -765,12 +768,44 @@ function workspaceRiskForChange(change: WorkspaceModelDiffChange): WorkspaceImpa
     return 'high';
   }
   if (change.type === 'validation.changed') {
+    if ((options?.projectCount ?? 0) === 0) {
+      return 'low';
+    }
     return 'high';
   }
   if (change.target === 'evidence') {
     return 'low';
   }
   return change.severity === 'warning' ? 'medium' : 'low';
+}
+
+function softenImpactRiskForEmptyWorkspace(input: {
+  risk: WorkspaceImpactRisk;
+  affectedProjects: number;
+  projectCount: number;
+  changes: WorkspaceModelDiffChange[];
+}): WorkspaceImpactRisk {
+  if (input.affectedProjects > 0 || input.projectCount > 0) {
+    return input.risk;
+  }
+
+  const bootstrapNoiseOnly = input.changes.every((change) => {
+    if (change.severity === 'critical') {
+      return false;
+    }
+    return change.type.startsWith('git.') || change.type === 'validation.changed';
+  });
+  if (!bootstrapNoiseOnly) {
+    return input.risk;
+  }
+
+  if (riskRank(input.risk) >= riskRank('high')) {
+    return 'low';
+  }
+  if (input.risk === 'medium') {
+    return 'low';
+  }
+  return input.risk;
 }
 
 function scopeMatchesProject(scope: string | undefined, project: WorkspaceModelProject): boolean {
@@ -820,18 +855,24 @@ export async function buildWorkspaceImpact(
   options: BuildWorkspaceImpactOptions
 ): Promise<WorkspaceImpact> {
   const workspacePath = path.resolve(options.workspacePath);
-  const resolvedFromPath = resolveWorkspaceRelativePath(workspacePath, options.fromPath);
-  const diff =
-    options.diff ??
-    (await readDiffFromPath(resolvedFromPath)) ??
-    (await diffWorkspaceModel({
+  const gitRequested = isGitDiffSource(options.fromPath);
+  let diff = options.diff;
+  if (!diff && !gitRequested) {
+    const fromPath = resolveWorkspaceRelativePath(workspacePath, options.fromPath);
+    diff = (await readDiffFromPath(fromPath)) ?? undefined;
+  }
+  if (!diff) {
+    diff = await diffWorkspaceModel({
       workspacePath,
       fromPath: options.fromPath,
       includeAbsolutePaths: options.includeAbsolutePaths,
       includeEvidence: options.includeEvidence,
+      includeGitObservation: options.includeGitObservation,
+      gitObservation: options.gitObservation,
       now: options.now,
       model: options.model,
-    }));
+    });
+  }
   const currentProjectsByPath = new Map(
     diff.currentModel.projects.map((project) => [project.path, project])
   );
@@ -889,13 +930,14 @@ export async function buildWorkspaceImpact(
   }
 
   const workspaceChanges = diff.changes.filter((change) => !change.type.startsWith('project.'));
+  const projectCount = diff.currentModel.summary?.projectCount ?? diff.currentModel.projects.length;
   const workspaceImpact: WorkspaceImpactItem[] = workspaceChanges.map((change) => ({
     id: `workspace:${change.target}`,
     scope: 'workspace',
     target: change.target,
     title: `Workspace impact: ${change.target}`,
     summary: change.message,
-    risk: workspaceRiskForChange(change),
+    risk: workspaceRiskForChange(change, { projectCount }),
     reasons: [`${change.type}: ${change.message}`],
     verification: workspaceVerificationPlan(),
   }));
@@ -905,10 +947,16 @@ export async function buildWorkspaceImpact(
     ...workspaceImpact.flatMap((item) => item.verification),
     ...(diff.summary.changed ? workspaceVerificationPlan() : []),
   ]).filter((command) => command.required);
-  const risk = highestRisk([
+  const rawRisk = highestRisk([
     ...affectedProjects.map((item) => item.risk),
     ...workspaceImpact.map((item) => item.risk),
   ]);
+  const risk = softenImpactRiskForEmptyWorkspace({
+    risk: rawRisk,
+    affectedProjects: affectedProjects.length,
+    projectCount,
+    changes: diff.changes,
+  });
   const summary = {
     changed: diff.summary.changed,
     risk,

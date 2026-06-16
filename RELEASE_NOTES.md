@@ -1,6 +1,44 @@
 # Release Notes
 
-## Latest Release: v0.35.0 (June 16, 2026)
+## Latest Release: v0.36.0 (June 16, 2026)
+
+### Empty-Workspace Evidence Parity and Governance Hardening
+
+This patch release aligns CLI evidence with Workspai dashboard expectations: empty workspaces stay actionable instead of blocked, autopilot and workspace-run artifacts use stable paths, and mirror/intelligence reports carry the metadata extensions need to render governance cards without gaps.
+
+**What's New:**
+
+- 🚀 **Autopilot evidence alias**
+  - Writes `autopilot-release-last-run.json` (canonical) and `autopilot-release.json` (dashboard/`--output` alias).
+  - Adds `enterpriseControls` and `artifacts.aliasEvidencePath`.
+
+- 🏃 **Workspace run evidence**
+  - `enterpriseControls.evidencePath` on `workspace-run-last.json`.
+
+- 📋 **Bootstrap transparency**
+  - `profile_requested` and `bootstrap_note` in `workspace.json` when create falls back from Python-dependent profiles.
+
+- 🪞 **Mirror inventory**
+  - `mirror-ops.latest.json` payloads include config/lock/artifact counts.
+
+**Improvements:**
+
+- **Analyze** — zero projects → warn, not fail; scaffold-first next actions.
+- **Impact** — empty-workspace git/validation noise softened across profiles.
+- **Readiness** — workspace-scoped Python env gate when no projects registered.
+- **Workspace run** — `--strict` respects skipped gates; empty runs exit cleanly.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.36.0
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.36.0.md)
+
+---
+
+## Previous Release: v0.35.0 (June 16, 2026)
 
 ### Adoption, Frontend Scaffold, and Workspace Intelligence
 

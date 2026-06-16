@@ -18,7 +18,7 @@ vi.mock('../workspace-run.js', () => {
 
 import { execa } from 'execa';
 import { runWorkspaceStage } from '../workspace-run.js';
-import { runAutopilotRelease } from '../autopilot-release.js';
+import { runAutopilotRelease, AUTOPILOT_RELEASE_ALIAS_FILENAME } from '../autopilot-release.js';
 
 const createdPaths: string[] = [];
 
@@ -207,6 +207,19 @@ describe('autopilot-release', () => {
       'autopilot-workspace-run-build.json'
     );
     expect(await fsExtra.pathExists(reportPath)).toBe(true);
+    const aliasPath = path.join(
+      workspace,
+      '.rapidkit',
+      'reports',
+      AUTOPILOT_RELEASE_ALIAS_FILENAME
+    );
+    expect(await fsExtra.pathExists(aliasPath)).toBe(true);
+    const aliasPayload = JSON.parse(await fsExtra.readFile(aliasPath, 'utf8'));
+    expect(aliasPayload.summary.verdict).toBe('approved');
+    expect(report.artifacts.aliasEvidencePath).toBe(aliasPath);
+    expect(report.enterpriseControls?.aliasEvidencePath).toBe(
+      `.rapidkit/reports/${AUTOPILOT_RELEASE_ALIAS_FILENAME}`
+    );
     expect(await fsExtra.pathExists(testArtifactPath)).toBe(true);
     expect(await fsExtra.pathExists(buildArtifactPath)).toBe(true);
   });

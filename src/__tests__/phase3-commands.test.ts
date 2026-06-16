@@ -776,6 +776,17 @@ describe('Phase 3 command contract handlers', () => {
         fsExtra.pathExists(path.join(rapidkitDir, 'reports', 'mirror-ops.latest.json'))
       ).resolves.toBe(true);
 
+      const mirrorReport = JSON.parse(
+        await fsExtra.readFile(path.join(rapidkitDir, 'reports', 'mirror-ops.latest.json'), 'utf-8')
+      ) as {
+        mirror?: { configExists: boolean; lockExists: boolean; artifactsCount: number };
+      };
+      expect(mirrorReport.mirror).toMatchObject({
+        configExists: true,
+        lockExists: true,
+      });
+      expect(typeof mirrorReport.mirror?.artifactsCount).toBe('number');
+
       await cleanupWorkspaceDir(workspaceRoot);
     });
 

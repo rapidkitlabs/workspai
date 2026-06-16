@@ -504,8 +504,15 @@ function buildNextActions(report: {
   findings: AnalyzeFinding[];
   projectCount: number;
   hasGraph: boolean;
+  workspaceDetected: boolean;
 }): string[] {
   if (report.projectCount === 0) {
+    if (report.workspaceDetected) {
+      return [
+        'Add your first project: npx rapidkit create project <name> --kit <kit>',
+        'Import an existing service: npx rapidkit import <path>',
+      ];
+    }
     return [
       'Create a RapidKit workspace: npx rapidkit create workspace my-workspace --profile polyglot',
       'Import an existing service: npx rapidkit import ../service',
@@ -579,7 +586,7 @@ export async function runAnalyze(options: AnalyzeOptions = {}): Promise<AnalyzeR
     workspaceFindings.push(
       finding(
         'workspace.projects.missing',
-        'fail',
+        'warn',
         '.',
         'No backend projects detected',
         'RapidKit did not find runtime markers or project metadata under this root.',
@@ -635,6 +642,7 @@ export async function runAnalyze(options: AnalyzeOptions = {}): Promise<AnalyzeR
       findings,
       projectCount: projects.length,
       hasGraph: dependencyEdges.length > 0,
+      workspaceDetected,
     }),
     enterpriseControls: {
       jsonReady: true,

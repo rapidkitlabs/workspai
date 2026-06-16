@@ -1,6 +1,6 @@
 {
   "name": "rapidkit",
-  "version": "0.35.0",
+  "version": "0.36.0",
   "type": "module",
   "description": "Official CLI for RapidKit — workspace-first platform to create, adopt, govern, and operate polyglot projects (Python, Node, Go, Java, .NET, frontend) with shared evidence for CI, Workspai, and AI agents.",
   "keywords": [

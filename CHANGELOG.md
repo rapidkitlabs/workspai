@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-06-16
+
+### Added
+
+- Autopilot release now writes both `.rapidkit/reports/autopilot-release-last-run.json` and alias `.rapidkit/reports/autopilot-release.json` for dashboard and `--output` parity.
+- Autopilot reports include `enterpriseControls` and `artifacts.aliasEvidencePath`.
+- Workspace run reports include `enterpriseControls.evidencePath` for `.rapidkit/reports/workspace-run-last.json`.
+- Workspace manifest records `profile_requested` and `bootstrap_note` when create/bootstrap falls back to a Python-free profile.
+- Exported `buildWorkspaceManifest()` for contract-stable workspace metadata generation.
+- Mirror sync/verify/rotate JSON reports include `mirror: { configExists, lockExists, artifactsCount }` inventory metadata.
+
+### Changed
+
+- Analyze treats zero-project workspaces as `warn` (not `fail`) for `workspace.projects.missing` across all profiles; verdict stays `needs-attention` instead of `blocked`.
+- Analyze `nextActions` for registered empty workspaces prioritize create/import project over create-workspace CTAs.
+- Workspace impact softens bootstrap-only git/validation noise to low risk for any profile with zero registered projects.
+- `buildWorkspaceImpact` forwards `gitObservation` and skips invalid git path reads when `fromPath` is `git`.
+- Readiness env gate uses workspace-scoped Python wording when no projects are registered.
+- Workspace run `--strict` exit codes: skipped gates no longer fail the run; enforced `warn`/`fail` gates still block under strict mode.
+
+### Fixed
+
+- Empty workspace `workspace run --strict` with gates disabled returns exit code `0` instead of `1`.
+- Workspace intelligence `validation.changed` risk mapping no longer compares against impossible `critical` severity on info/warning-only diffs.
+
+### Verification
+
+- `npm test -- src/__tests__/analyze.test.ts src/__tests__/autopilot-release.test.ts src/__tests__/readiness.test.ts src/__tests__/workspace-intelligence.test.ts src/__tests__/workspace-run.test.ts src/__tests__/workspace-manifest-bootstrap.test.ts src/__tests__/phase3-commands.test.ts`
+- `npm run quality`
+
 ## [0.35.0] - 2026-06-16
 
 ### Added

@@ -328,4 +328,75 @@ describe('release readiness', () => {
     expect(readiness.overallStatus).toBe('fail');
     expect(analyzeGate?.status).toBe('fail');
   });
+
+  it('uses workspace-scoped env gate wording when no projects are registered', async () => {
+    const workspace = await makeWorkspace();
+
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'workspace.json'), {
+      profile: 'minimal',
+      workspace_name: 'minimal-shell',
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'workspace.contract.json'), {
+      schemaVersion: 1,
+      projects: [],
+    });
+    await fsExtra.writeFile(
+      path.join(workspace, 'pyproject.toml'),
+      '[tool.poetry]\nname = "minimal-shell"\npackage-mode = false\n',
+      'utf-8'
+    );
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'toolchain.lock'), {
+      runtime: {
+        node: { version: '20.12.0' },
+        python: { version: null },
+      },
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'reports', 'doctor-last-run.json'), {
+      healthScore: { passed: 5, warnings: 0, errors: 0, total: 5 },
+      projects: [],
+    });
+    await writeAnalyzeEvidence(workspace, 'needs-attention');
+
+    const readiness = await evaluateReleaseReadiness({ startPath: workspace, writeReport: false });
+    const envGate = readiness.gates.find((gate) => gate.gate === 'env');
+    expect(envGate?.summary).toContain('Workspace (python)');
+    expect(envGate?.summary).not.toContain('Project runtime');
+  });
+
+  it('warns on analyze gate for polyglot workspace with zero projects instead of failing', async () => {
+    const workspace = await makeWorkspace();
+
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'workspace.json'), {
+      profile: 'polyglot',
+      workspace_name: 'empty-polyglot',
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'workspace.contract.json'), {
+      schemaVersion: 1,
+      projects: [],
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'toolchain.lock'), {
+      runtime: {
+        node: { version: '20.12.0' },
+        python: { version: null },
+      },
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'reports', 'doctor-last-run.json'), {
+      schemaVersion: 'doctor-workspace-evidence-v1',
+      evidenceType: 'workspace',
+      summary: { totalIssues: 0, hasSystemErrors: false },
+      healthScore: { passed: 5, warnings: 0, errors: 0, total: 5 },
+      projects: [],
+    });
+    await writeAnalyzeEvidence(workspace, 'needs-attention');
+
+    const readiness = await evaluateReleaseReadiness({
+      startPath: workspace,
+      writeReport: false,
+      skipVerify: true,
+    });
+    const analyzeGate = readiness.gates.find((gate) => gate.gate === 'analyze');
+
+    expect(analyzeGate?.status).toBe('warn');
+    expect(readiness.overallStatus).toBe('warn');
+  });
 });

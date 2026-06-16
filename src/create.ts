@@ -99,11 +99,12 @@ async function writePyprojectStub(workspacePath: string, workspaceName: string):
   );
 }
 
-function buildWorkspaceManifest(
+export function buildWorkspaceManifest(
   workspaceName: string,
   installMethod: InstallMethod,
   pythonVersion?: string,
-  profile?: string
+  profile?: string,
+  bootstrapMeta?: { profileRequested?: string; bootstrapNote?: string }
 ): string {
   return JSON.stringify(
     {
@@ -113,6 +114,10 @@ function buildWorkspaceManifest(
       created_at: new Date().toISOString(),
       created_by: 'rapidkit-npm',
       profile: profile || 'minimal',
+      ...(bootstrapMeta?.profileRequested
+        ? { profile_requested: bootstrapMeta.profileRequested }
+        : {}),
+      ...(bootstrapMeta?.bootstrapNote ? { bootstrap_note: bootstrapMeta.bootstrapNote } : {}),
       engine: {
         install_method: installMethod,
         python_version: pythonVersion || null,
@@ -213,14 +218,15 @@ async function writeWorkspaceFoundationFiles(
   workspaceName: string,
   installMethod: InstallMethod,
   pythonVersion?: string,
-  profile?: string
+  profile?: string,
+  bootstrapMeta?: { profileRequested?: string; bootstrapNote?: string }
 ): Promise<void> {
   // Detect optional runtimes silently so toolchain.lock is accurate without blocking creation.
   const [goVersion, dotnetVersion] = await Promise.all([detectGoVersion(), detectDotnetVersion()]);
 
   await fsExtra.outputFile(
     path.join(workspacePath, '.rapidkit', 'workspace.json'),
-    buildWorkspaceManifest(workspaceName, installMethod, pythonVersion, profile),
+    buildWorkspaceManifest(workspaceName, installMethod, pythonVersion, profile, bootstrapMeta),
     'utf-8'
   );
   await fsExtra.outputFile(
@@ -1335,7 +1341,10 @@ export async function createProject(
               spinner2.succeed('Directory created');
 
               await writeWorkspaceMarker(projectPath, name, 'venv', undefined);
-              await writeWorkspaceFoundationFiles(projectPath, name, 'venv', undefined, fallback);
+              await writeWorkspaceFoundationFiles(projectPath, name, 'venv', undefined, fallback, {
+                profileRequested: originalProfile,
+                bootstrapNote: 'python-free-fallback',
+              });
               await writeWorkspaceGitignore(projectPath);
               await writePyprojectStub(projectPath, name);
 
@@ -1439,7 +1448,10 @@ export async function createProject(
             spinner2.succeed('Directory created');
 
             await writeWorkspaceMarker(projectPath, name, 'venv', undefined);
-            await writeWorkspaceFoundationFiles(projectPath, name, 'venv', undefined, fallback);
+            await writeWorkspaceFoundationFiles(projectPath, name, 'venv', undefined, fallback, {
+              profileRequested: originalProfile,
+              bootstrapNote: 'python-free-fallback',
+            });
             await writeWorkspaceGitignore(projectPath);
             await writePyprojectStub(projectPath, name);
 

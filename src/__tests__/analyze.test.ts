@@ -185,4 +185,51 @@ describe('analyze command', () => {
     expect(payload.summary.verdict).toBe('blocked');
     expect(payload.findings.some((item: any) => item.severity === 'warn')).toBe(true);
   });
+
+  it('warns instead of failing when workspace has no projects', async () => {
+    const workspaceDir = await createTempDir();
+    await fs.mkdir(path.join(workspaceDir, '.rapidkit'), { recursive: true });
+    await fs.writeFile(
+      path.join(workspaceDir, '.rapidkit', 'workspace.json'),
+      JSON.stringify({ profile: 'minimal', workspace_name: 'empty-minimal' }, null, 2)
+    );
+    await fs.writeFile(
+      path.join(workspaceDir, '.rapidkit-workspace'),
+      JSON.stringify({ signature: 'RAPIDKIT_WORKSPACE', name: 'empty-minimal' }, null, 2)
+    );
+
+    const report = await runAnalyze({ workspacePath: workspaceDir });
+
+    const missingProjectsFinding = report.findings.find(
+      (item) => item.id === 'workspace.projects.missing'
+    );
+    expect(missingProjectsFinding?.severity).toBe('warn');
+    expect(report.summary.findings.fail).toBe(0);
+    expect(report.summary.verdict).not.toBe('blocked');
+    expect(report.nextActions[0]).toContain('create project');
+  });
+
+  it('warns for polyglot profile with zero projects and prioritizes project scaffolding', async () => {
+    const workspaceDir = await createTempDir();
+    await fs.mkdir(path.join(workspaceDir, '.rapidkit'), { recursive: true });
+    await fs.writeFile(
+      path.join(workspaceDir, '.rapidkit', 'workspace.json'),
+      JSON.stringify({ profile: 'polyglot', workspace_name: 'empty-polyglot' }, null, 2)
+    );
+    await fs.writeFile(
+      path.join(workspaceDir, '.rapidkit-workspace'),
+      JSON.stringify({ signature: 'RAPIDKIT_WORKSPACE', name: 'empty-polyglot' }, null, 2)
+    );
+
+    const report = await runAnalyze({ workspacePath: workspaceDir });
+
+    expect(report.profile).toBe('polyglot');
+    expect(report.summary.projectCount).toBe(0);
+    expect(report.findings.find((item) => item.id === 'workspace.projects.missing')?.severity).toBe(
+      'warn'
+    );
+    expect(report.summary.verdict).toBe('needs-attention');
+    expect(report.nextActions[0]).toContain('create project');
+    expect(report.nextActions[0]).not.toContain('create workspace');
+  });
 });

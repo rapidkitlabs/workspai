@@ -391,4 +391,39 @@ describe('workspace intelligence snapshots and diffs', () => {
     });
     expect(cleanDiff.summary.changed).toBe(false);
   });
+
+  it('softens impact risk for empty workspaces with bootstrap-only git noise', async () => {
+    const workspacePath = await makeTempDir('rk-intel-empty-polyglot-');
+    await fsExtra.outputJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'empty-polyglot',
+      profile: 'polyglot',
+    });
+
+    const before = await buildWorkspaceModelSnapshot({
+      workspacePath,
+      now: new Date('2026-06-14T00:00:00.000Z'),
+    });
+    await writeWorkspaceModelSnapshot(before, workspacePath);
+    await fsExtra.writeFile(path.join(workspacePath, 'README.md'), '# notes\n', 'utf-8');
+
+    const impact = await buildWorkspaceImpact({
+      workspacePath,
+      fromPath: 'git',
+      now: new Date('2026-06-14T00:02:00.000Z'),
+      gitObservation: {
+        available: true,
+        branch: 'main',
+        commit: 'abc123',
+        ref: 'HEAD',
+        dirty: true,
+        changedFiles: [],
+        untrackedFiles: ['README.md'],
+        deletedFiles: [],
+      },
+    });
+
+    expect(impact.summary.changed).toBe(true);
+    expect(impact.summary.affectedProjects).toBe(0);
+    expect(impact.summary.risk).toBe('low');
+  });
 });

@@ -98,6 +98,53 @@ describe('workspace-run', () => {
 
     const reportPath = path.join(workspacePath, '.rapidkit', 'reports', 'workspace-run-last.json');
     expect(await fsExtra.pathExists(reportPath)).toBe(true);
+    expect(report.enterpriseControls).toEqual({
+      jsonReady: true,
+      evidencePath: '.rapidkit/reports/workspace-run-last.json',
+    });
+
+    await fsExtra.remove(workspacePath);
+  });
+
+  it('writes enterprise evidence metadata for empty workspace runs', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-empty-'));
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+
+    const report = await runWorkspaceStage({
+      workspacePath,
+      stage: 'test',
+      json: true,
+      enforceGates: false,
+    });
+
+    expect(report.summary.projectCount).toBe(0);
+    expect(report.summary.selectedCount).toBe(0);
+    expect(report.enterpriseControls?.evidencePath).toBe(
+      '.rapidkit/reports/workspace-run-last.json'
+    );
+
+    await fsExtra.remove(workspacePath);
+  });
+
+  it('does not fail strict empty workspace runs when gates are skipped', async () => {
+    const workspacePath = await fsExtra.mkdtemp(
+      path.join(os.tmpdir(), 'rk-workspace-run-strict-empty-')
+    );
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+
+    const report = await runWorkspaceStage({
+      workspacePath,
+      stage: 'build',
+      json: true,
+      strict: true,
+      enforceGates: false,
+      affected: true,
+      since: 'HEAD~1',
+    });
+
+    expect(report.summary.projectCount).toBe(0);
+    expect(report.summary.selectedCount).toBe(0);
+    expect(report.summary.exitCode).toBe(0);
 
     await fsExtra.remove(workspacePath);
   });

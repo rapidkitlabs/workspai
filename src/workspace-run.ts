@@ -112,7 +112,13 @@ export interface WorkspaceRunReport {
     exitCode: number;
   };
   projects: ProjectExecutionResult[];
+  enterpriseControls?: {
+    jsonReady: boolean;
+    evidencePath: string;
+  };
 }
+
+export const WORKSPACE_RUN_LAST_REPORT_FILENAME = 'workspace-run-last.json';
 
 const STAGE_SET: Set<WorkspaceRunStage> = new Set(['init', 'test', 'build', 'start']);
 
@@ -1210,7 +1216,10 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
 
   const strict = options.strict === true;
   const exitCode =
-    failed > 0 || (strict && gateResults.some((gate) => gate.status !== 'pass')) ? 1 : 0;
+    failed > 0 ||
+    (strict && gateResults.some((gate) => gate.status === 'fail' || gate.status === 'warn'))
+      ? 1
+      : 0;
 
   const report: WorkspaceRunReport = {
     schemaVersion: '1.0',
@@ -1251,9 +1260,18 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
       exitCode,
     },
     projects: rows,
+    enterpriseControls: {
+      jsonReady: true,
+      evidencePath: `.rapidkit/reports/${WORKSPACE_RUN_LAST_REPORT_FILENAME}`,
+    },
   };
 
-  const reportPath = path.join(workspacePath, '.rapidkit', 'reports', 'workspace-run-last.json');
+  const reportPath = path.join(
+    workspacePath,
+    '.rapidkit',
+    'reports',
+    WORKSPACE_RUN_LAST_REPORT_FILENAME
+  );
   await writeJsonFile(reportPath, report);
 
   if (!options.json) {

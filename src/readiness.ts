@@ -123,9 +123,32 @@ function toObjectRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+function countRegisteredWorkspaceProjects(workspacePath: string): number {
+  const contractPath = path.join(workspacePath, '.rapidkit', 'workspace.contract.json');
+  if (fs.existsSync(contractPath)) {
+    try {
+      const contract = JSON.parse(fs.readFileSync(contractPath, 'utf-8')) as Record<
+        string,
+        unknown
+      >;
+      const projects = Array.isArray(contract.projects) ? contract.projects : [];
+      if (projects.length > 0) {
+        return projects.length;
+      }
+    } catch {
+      // Fall through to doctor evidence.
+    }
+  }
+
+  const doctor = loadDoctorPayload(workspacePath);
+  const doctorProjects = Array.isArray(doctor.payload?.projects) ? doctor.payload.projects : [];
+  return doctorProjects.length;
+}
+
 function buildEnvGate(
   workspacePath: string,
-  projectRuntime: 'python' | 'node' | 'go' | 'java' | 'unknown'
+  projectRuntime: 'python' | 'node' | 'go' | 'java' | 'unknown',
+  options?: { hasRegisteredProjects?: boolean }
 ): ReadinessGateResult {
   const lockPath = path.join(workspacePath, '.rapidkit', 'toolchain.lock');
 
@@ -165,10 +188,11 @@ function buildEnvGate(
     if (projectRuntime !== 'unknown') {
       const runtimeEntry = toObjectRecord(runtime[projectRuntime]);
       if (typeof runtimeEntry.version !== 'string' || runtimeEntry.version.trim().length === 0) {
+        const runtimeScopeLabel = options?.hasRegisteredProjects ? 'Project runtime' : 'Workspace';
         return {
           gate: 'env',
           status: 'fail',
-          summary: `Project runtime (${projectRuntime}) is not pinned in toolchain.lock`,
+          summary: `${runtimeScopeLabel} (${projectRuntime}) is not pinned in toolchain.lock`,
           details: [
             `Run rapidkit setup ${projectRuntime} and rapidkit bootstrap to lock ${projectRuntime} for this workspace.`,
           ],
@@ -573,8 +597,9 @@ export async function evaluateReleaseReadiness(
   const workspacePath = findWorkspaceRootUp(startPath) ?? startPath;
   const projectPath = resolveReadinessProjectPath(startPath, workspacePath);
   const projectRuntime = detectProjectRuntime(projectPath);
+  const hasRegisteredProjects = countRegisteredWorkspaceProjects(workspacePath) > 0;
 
-  const envGate = buildEnvGate(workspacePath, projectRuntime);
+  const envGate = buildEnvGate(workspacePath, projectRuntime, { hasRegisteredProjects });
   const doctor = buildDoctorGate(workspacePath);
   const analyzeGate = buildAnalyzeGate(workspacePath);
   const verifyGate = await buildVerifyGate(workspacePath, { skipVerify: options.skipVerify });

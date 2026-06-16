@@ -3881,6 +3881,22 @@ export async function handleMirrorCommand(args: string[]): Promise<number> {
     await writeJsonFile(latestReportPath, payload);
   }
 
+  async function readMirrorInventory(): Promise<{
+    configExists: boolean;
+    lockExists: boolean;
+    artifactsCount: number;
+  }> {
+    const configExists = await fsExtra.pathExists(mirrorConfigPath);
+    const lockExists = await fsExtra.pathExists(mirrorLockPath);
+    let artifactsCount = 0;
+    if (await fsExtra.pathExists(artifactsDir)) {
+      artifactsCount = (await fs.promises.readdir(artifactsDir, { withFileTypes: true })).filter(
+        (entry) => entry.isFile()
+      ).length;
+    }
+    return { configExists, lockExists, artifactsCount };
+  }
+
   if (action === 'status') {
     // Auto-create a default mirror-config.json if it doesn't exist yet.
     // This removes the perpetual "Config: missing" noise and gives users
@@ -3968,6 +3984,7 @@ export async function handleMirrorCommand(args: string[]): Promise<number> {
         result: 'failed',
         timestamp: new Date().toISOString(),
         workspacePath,
+        mirror: await readMirrorInventory(),
         details: lifecycle.details,
         checks: lifecycle.checks,
       };
@@ -3994,6 +4011,7 @@ export async function handleMirrorCommand(args: string[]): Promise<number> {
         result: 'failed',
         timestamp: new Date().toISOString(),
         workspacePath,
+        mirror: await readMirrorInventory(),
         details: lifecycle.details,
         checks: lifecycle.checks,
       };
@@ -4019,6 +4037,7 @@ export async function handleMirrorCommand(args: string[]): Promise<number> {
       result: 'ok',
       timestamp: new Date().toISOString(),
       workspacePath,
+      mirror: await readMirrorInventory(),
       details: lifecycle.details,
       checks: lifecycle.checks,
     };

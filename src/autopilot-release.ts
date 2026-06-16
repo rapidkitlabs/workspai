@@ -51,12 +51,22 @@ export interface AutopilotReleaseReport {
   nextActions: string[];
   artifacts: {
     reportPath: string;
+    /** Stable alias for dashboards and `--output` defaults (same payload as reportPath). */
+    aliasEvidencePath: string;
     analyzeEvidencePath?: string;
     readinessEvidencePath?: string;
     workspaceRunTestPath?: string;
     workspaceRunBuildPath?: string;
   };
+  enterpriseControls?: {
+    jsonReady: boolean;
+    evidencePath: string;
+    aliasEvidencePath: string;
+  };
 }
+
+export const AUTOPILOT_RELEASE_LAST_RUN_FILENAME = 'autopilot-release-last-run.json';
+export const AUTOPILOT_RELEASE_ALIAS_FILENAME = 'autopilot-release.json';
 
 interface CommandRunResult {
   exitCode: number;
@@ -683,12 +693,9 @@ export async function runAutopilotRelease(
     hasWarnings: warnCount > 0,
   });
 
-  const reportPath = path.join(
-    workspacePath,
-    '.rapidkit',
-    'reports',
-    'autopilot-release-last-run.json'
-  );
+  const reportsDir = path.join(workspacePath, '.rapidkit', 'reports');
+  const reportPath = path.join(reportsDir, AUTOPILOT_RELEASE_LAST_RUN_FILENAME);
+  const aliasEvidencePath = path.join(reportsDir, AUTOPILOT_RELEASE_ALIAS_FILENAME);
 
   const report: AutopilotReleaseReport = {
     schemaVersion: 'autopilot-release-v1',
@@ -709,14 +716,21 @@ export async function runAutopilotRelease(
     nextActions,
     artifacts: {
       reportPath,
+      aliasEvidencePath,
       analyzeEvidencePath,
       readinessEvidencePath,
       workspaceRunTestPath,
       workspaceRunBuildPath,
     },
+    enterpriseControls: {
+      jsonReady: true,
+      evidencePath: `.rapidkit/reports/${AUTOPILOT_RELEASE_LAST_RUN_FILENAME}`,
+      aliasEvidencePath: `.rapidkit/reports/${AUTOPILOT_RELEASE_ALIAS_FILENAME}`,
+    },
   };
 
   await writeJsonFile(reportPath, report);
+  await writeJsonFile(aliasEvidencePath, report);
   if (inputOptions.output) {
     await writeJsonFile(path.resolve(inputOptions.output), report);
   }
