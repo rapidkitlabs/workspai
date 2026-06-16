@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-model.v1.json",
+  "title": "RapidKit Workspace Intelligence Model",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "workspace",
+    "identity",
+    "summary",
+    "projects",
+    "contracts",
+    "evidence",
+    "discovery",
+    "policies"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "workspace-model.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workspace": {
+      "type": "object",
+      "required": ["name", "root", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "root": { "type": "string" },
+        "type": { "type": "string" },
+        "profile": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "identity": { "type": "object", "additionalProperties": true },
+    "summary": { "type": "object", "additionalProperties": true },
+    "projects": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "contracts": { "type": "object", "additionalProperties": true },
+    "evidence": { "type": "object", "additionalProperties": true },
+    "discovery": { "type": "object", "additionalProperties": true },
+    "policies": { "type": "object", "additionalProperties": true },
+    "validation": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": true
+}

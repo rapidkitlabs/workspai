@@ -1,117 +1,107 @@
 # Setup & Workflow
 
-This document is the canonical setup/reference for maintaining the RapidKit npm CLI.
+Canonical setup reference for **maintainers** of the RapidKit npm CLI.
 
-If you are an end user, start with:
-- `../README.md`
-- `./OPEN_SOURCE_USER_SCENARIOS.md`
-- `./doctor-command.md`
+**End users:** start with [../README.md](../README.md), [OPEN_SOURCE_USER_SCENARIOS.md](./OPEN_SOURCE_USER_SCENARIOS.md), and [workspace-operations.md](./workspace-operations.md).
 
 ## Prerequisites
 
 - Node.js `>= 20.19.6`
-- npm (official and only supported package manager for this repository)
-
-Policy details: `./PACKAGE_MANAGER_POLICY.md`
-
-## Install
+- npm ([PACKAGE_MANAGER_POLICY.md](./PACKAGE_MANAGER_POLICY.md))
 
 ```bash
 npm ci
 ```
 
-## Build & Quality Gates
+## Build & quality gates
 
 ```bash
 npm run build
 npm run validate
 npm run validate:docs
+npm run validate:contracts
 ```
 
-- `validate`: typecheck + lint + format + tests
-- `validate:docs`: markdown links + docs drift guard + docs examples + README command smoke
+| Command | Purpose |
+| --- | --- |
+| `validate` | typecheck + lint + format + tests |
+| `validate:docs` | markdown links, drift guard, doc examples, README smoke |
+| `validate:contracts` | generated JSON contracts + parity tests |
 
-## Workspace-Based CLI Smoke (Recommended)
+See [ci-workflows.md](./ci-workflows.md) for GitHub Actions mapping.
+
+## Workspace CLI smoke
 
 ```bash
 npm run build
 
-# CLI surface
-node dist/index.js
 node dist/index.js --help
-node dist/index.js help
 node dist/index.js --version
 
-# Workspace lifecycle
 node dist/index.js create workspace test-ws --yes --profile polyglot
 node dist/index.js workspace list
 cd test-ws
 node ../dist/index.js bootstrap --profile polyglot
 node ../dist/index.js setup python
 node ../dist/index.js setup node --warm-deps
-node ../dist/index.js setup go --warm-deps
+node ../dist/index.js doctor workspace
 node ../dist/index.js workspace policy show
-node ../dist/index.js workspace policy set mode strict
-node ../dist/index.js workspace policy set mode warn
 node ../dist/index.js cache status
 node ../dist/index.js mirror status
 ```
 
-## Scenario Matrix (Release Confidence)
+## Release confidence scripts
 
 ```bash
 npm run test:scenarios
 npm run test:scenarios:full
-npm run test:scenarios:docker
-```
-
-## Packaging Sanity Check
-
-```bash
+npm run test:runtime-matrix:full
+npm run smoke:frontend-generators
 npm pack --dry-run
 ```
 
-## Common Development Commands
+## Common development commands
 
 ```bash
 npm run typecheck
 npm run lint
-npm run lint:fix
-npm run format
 npm run format:check
-npm run test
+npm test
 npm run test:coverage
 ```
 
-## Environment Variables
+Details: [DEVELOPMENT.md](./DEVELOPMENT.md).
+
+## Environment variables
 
 Bridge + Core integration:
 
-- `RAPIDKIT_DEV_PATH`: local RapidKit Core checkout path for development/testing
-- `RAPIDKIT_CORE_PYTHON_PACKAGE`: override Core install target for Python bridge
-- `RAPIDKIT_BRIDGE_FORCE_VENV=1`: force cached bridge venv even if system Python has Core
-- `RAPIDKIT_BRIDGE_UPGRADE_PIP=1`: upgrade pip inside bridge venv during bootstrap
-- `XDG_CACHE_HOME`: cache root used by bridge (Linux default: `$HOME/.cache`)
+- `RAPIDKIT_DEV_PATH` — local RapidKit Core checkout
+- `RAPIDKIT_CORE_PYTHON_PACKAGE` — override Core install target
+- `RAPIDKIT_BRIDGE_FORCE_VENV=1` — force cached bridge venv
+- `RAPIDKIT_BRIDGE_UPGRADE_PIP=1` — upgrade pip in bridge venv
+- `XDG_CACHE_HOME` — bridge cache root
 
-Scenario toggles:
+Scenario toggles: `RAPIDKIT_SCENARIO_FULL_BOOTSTRAP`, `RAPIDKIT_SCENARIO_WORKSPACE_CREATE`
 
-- `RAPIDKIT_SCENARIO_FULL_BOOTSTRAP=1`: enable extended bootstrap scenarios
-- `RAPIDKIT_SCENARIO_WORKSPACE_CREATE=1`: enable workspace creation scenario
+General: `DEBUG`, `NODE_ENV`
 
-General:
+## Open-source release hygiene
 
-- `DEBUG`: enable debug logging (alternative to `--debug`)
-- `NODE_ENV`: runtime mode
-
-## Open-Source Release Hygiene
-
-Before tagging a release:
+Before tagging:
 
 ```bash
 npm run validate
 npm run validate:docs
+npm run security
 npm run test:scenarios
 npm pack --dry-run
 ```
 
-Ensure all examples use placeholders (never real credentials), and do not commit generated artifacts such as local coverage outputs unless intentionally versioned.
+Use placeholders in examples (never real credentials). Do not commit local coverage output unless intentional.
+
+## See also
+
+- [Documentation index](./README.md)
+- [commands-reference.md](./commands-reference.md)
+- [contracts/README.md](./contracts/README.md)

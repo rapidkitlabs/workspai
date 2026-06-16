@@ -4,8 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.27.x (latest minor) | :white_check_mark: |
-| < 0.27.0 | :x: |
+| 0.35.x (latest minor) | :white_check_mark: |
+| < 0.35.0 | :x: |
 
 During the `0.x` phase, only the latest minor line receives security fixes.
 

@@ -26,6 +26,16 @@ else
 	echo "ℹ️ Skipping contracts check (core schema not found)"
 fi
 
+# Shared contracts (canonical: rapidkit-npm/contracts/)
+echo "📋 Validating shared contracts..."
+npm run validate:contracts || {
+	echo "❌ Contract validation failed."
+	echo "   1. Change code or run: npm run generate:contracts"
+	echo "   2. Run: npm run sync:parity-snapshot"
+	echo "   3. Commit contracts/ in rapidkit-npm and rapidkit-vscode"
+	exit 1
+}
+
 # Tests
 echo "🧪 Running tests..."
 npm test || exit 1

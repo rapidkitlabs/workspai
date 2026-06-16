@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-model-diff.v1.json",
+  "title": "RapidKit Workspace Model Diff",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "fromRef",
+    "toRef",
+    "fromHash",
+    "toHash",
+    "summary",
+    "changes",
+    "currentModel"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "workspace-model-diff.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "fromRef": { "type": "string" },
+    "toRef": { "type": "string" },
+    "fromHash": { "type": "string" },
+    "toHash": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "required": [
+        "changed",
+        "addedProjects",
+        "removedProjects",
+        "changedProjects",
+        "workspaceChanges",
+        "validationChanges",
+        "gitChangedFiles"
+      ],
+      "properties": {
+        "changed": { "type": "boolean" },
+        "addedProjects": { "type": "integer", "minimum": 0 },
+        "removedProjects": { "type": "integer", "minimum": 0 },
+        "changedProjects": { "type": "integer", "minimum": 0 },
+        "workspaceChanges": { "type": "integer", "minimum": 0 },
+        "validationChanges": { "type": "integer", "minimum": 0 },
+        "gitChangedFiles": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "git": {
+      "type": "object",
+      "required": ["available", "dirty", "changedFiles", "untrackedFiles", "deletedFiles"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "ref": { "type": "string" },
+        "branch": { "type": "string" },
+        "commit": { "type": "string" },
+        "dirty": { "type": "boolean" },
+        "changedFiles": { "type": "integer", "minimum": 0 },
+        "untrackedFiles": { "type": "integer", "minimum": 0 },
+        "deletedFiles": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "severity", "target", "message"],
+        "properties": {
+          "type": {
+            "enum": [
+              "project.added",
+              "project.removed",
+              "project.changed",
+              "workspace.changed",
+              "validation.changed",
+              "git.file.changed",
+              "git.untracked",
+              "git.deleted"
+            ]
+          },
+          "severity": {
+            "enum": ["info", "warning", "critical"]
+          },
+          "target": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "currentModel": {
+      "type": "object",
+      "required": ["schemaVersion"],
+      "properties": {
+        "schemaVersion": {
+          "const": "workspace-model.v1"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

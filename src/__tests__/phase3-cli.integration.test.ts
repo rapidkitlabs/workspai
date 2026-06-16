@@ -24,7 +24,7 @@ describe('Phase 3 commands - CLI process integration', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-ws-list-'));
     const isolatedHome = path.join(tempDir, 'home');
     const workspaceName = 'ws-list-check';
-    const workspaceDir = path.join(tempDir, workspaceName);
+    const workspaceDir = path.join(isolatedHome, 'rapidkit', 'workspaces', workspaceName);
 
     try {
       fs.mkdirSync(isolatedHome, { recursive: true });
@@ -164,17 +164,16 @@ describe('Phase 3 commands - CLI process integration', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-ws-sync-nested-'));
     const isolatedHome = path.join(tempDir, 'home');
     const workspaceName = 'ws-sync-nested';
-    const workspaceDir = path.join(tempDir, workspaceName);
+    const workspaceDir = path.join(isolatedHome, 'rapidkit', 'workspaces', workspaceName);
     const nestedProjectDir = path.join(workspaceDir, 'apps', 'orders-api');
 
     try {
       fs.mkdirSync(isolatedHome, { recursive: true });
 
-      const env = {
-        ...process.env,
+      const env = cliEnv({
         HOME: isolatedHome,
         USERPROFILE: isolatedHome,
-      };
+      });
 
       const createWorkspace = spawnSync(
         process.execPath,
@@ -606,6 +605,11 @@ describe('Phase 3 commands - CLI process integration', () => {
             name: 'node-app',
             version: '1.0.0',
             private: true,
+            scripts: {
+              lint: 'eslint .',
+              format: 'prettier --write .',
+              build: 'nest build',
+            },
           },
           null,
           2
@@ -715,6 +719,7 @@ describe('Phase 3 commands - CLI process integration', () => {
         path.join(projectDir, '.rapidkit', 'project.json'),
         JSON.stringify({ runtime: 'java', kit_name: 'springboot.standard' }, null, 2)
       );
+      fs.writeFileSync(path.join(projectDir, 'pom.xml'), '<project />');
 
       const run = spawnSync(process.execPath, [dist, 'dev'], {
         cwd: projectDir,
@@ -759,7 +764,17 @@ describe('Phase 3 commands - CLI process integration', () => {
         path.join(projectDir, '.rapidkit', 'project.json'),
         JSON.stringify({ runtime: 'node', kit_name: 'nestjs.standard' }, null, 2)
       );
-      fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'node-app' }));
+      fs.writeFileSync(
+        path.join(projectDir, 'package.json'),
+        JSON.stringify({
+          name: 'node-app',
+          scripts: {
+            lint: 'eslint .',
+            format: 'prettier --write .',
+            build: 'nest build',
+          },
+        })
+      );
       fs.writeFileSync(path.join(workspaceDir, '.rapidkit', 'toolchain.lock'), '{ invalid json');
 
       const run = spawnSync(process.execPath, [dist, 'lint'], {

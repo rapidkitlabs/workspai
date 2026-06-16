@@ -1,6 +1,34 @@
 # RapidKit Practical User Scenarios (Open Source Edition)
 
-This document explains, in practical terms, how the new workspace architecture features create real value for end users in production-like usage.
+Practical workflows for OSS teams using the npm CLI. Command syntax: [commands-reference.md](./commands-reference.md). Import/adopt details: [workspace-operations.md](./workspace-operations.md).
+
+## Scenario 0 — Existing project (adopt or import)
+
+Goal: connect code you already have without reshuffling repositories.
+
+### Adopt in place (keep source where it is)
+
+```bash
+npx rapidkit adopt /path/to/existing-app --workspace /path/to/workspace --json
+npx rapidkit workspace model --json
+npx rapidkit doctor project --json
+```
+
+Works for Next.js, Vite, NestJS, FastAPI, Go, Spring Boot, and other detected stacks. See [workspace-operations.md#import-and-adoption](./workspace-operations.md#import-and-adoption).
+
+### Import (copy or clone into workspace)
+
+```bash
+npx rapidkit import ../orders-api --workspace ./platform
+npx rapidkit import https://github.com/acme/orders-api.git --git --workspace ./platform
+```
+
+### New frontend in workspace
+
+```bash
+cd my-workspace
+npx rapidkit create frontend nextjs marketing-web --yes
+```
 
 ## What changed from the old flow?
 
@@ -130,6 +158,13 @@ Optional exported evidence sinks:
 
 ## Practical recommendation
 
-- Individuals/small teams: start with Scenario 1 → 2.
+- Individuals/small teams: start with Scenario 0 → 1 → 2.
 - Product teams/platform teams: adopt Scenario 3.
 - Regulated/high-compliance environments: run Scenario 4 by default.
+
+## See also
+
+- [Documentation index](./README.md)
+- [workspace-operations.md](./workspace-operations.md)
+- [doctor-command.md](./doctor-command.md)
+- [ci-workflows.md](./ci-workflows.md) (`pipeline --json --strict`)

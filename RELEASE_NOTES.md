@@ -1,6 +1,43 @@
 # Release Notes
 
-## Latest Release: v0.34.0 (June 14, 2026)
+## Latest Release: v0.35.0 (June 16, 2026)
+
+### Adoption, Frontend Scaffold, and Workspace Intelligence
+
+This release adds in-place project adoption, official `create frontend` generators, and workspace intelligence commands (`model`, `context`, `snapshot`, `verify`, `diff`, `impact`) so teams can govern polyglot workspaces from the CLI alone.
+
+**What's New:**
+
+- 🔗 **`rapidkit adopt`**
+  - Link existing local projects into a workspace without moving source files.
+  - Adoption metadata at `.rapidkit/adopt.json` and `.rapidkit/adopt-readiness.json`.
+
+- 🎨 **`rapidkit create frontend`**
+  - Official generators for Next.js, Remix, Vite variants, Nuxt, Angular, Astro, and SvelteKit.
+  - Non-interactive flags for extension and CI scaffold flows.
+
+- 🧠 **Workspace intelligence**
+  - `workspace model`, `context`, `snapshot`, `verify`, `diff`, and `impact` with JSON contracts.
+  - Registry/contract sync includes adopted and imported external projects.
+
+- 🩺 **Doctor and detection**
+  - Frontend framework probes and richer project-scoped evidence.
+  - Improved Node framework detection before generic fallbacks.
+
+- 🏗️ **Enterprise / polyglot**
+  - Expanded infra stack catalog, lifecycle probes, and runtime executor coverage.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.35.0
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.35.0.md)
+
+---
+
+## Previous Release: v0.34.0 (June 14, 2026)
 
 ### CLI Governance Pipeline and Enterprise Release Gates
 

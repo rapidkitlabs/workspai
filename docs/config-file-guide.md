@@ -238,11 +238,11 @@ Output:
 
 ---
 
-## 📚 Additional Resources
+## Additional resources
 
-- [Example Config](../rapidkit.config.example.js)
-- [Documentation](https://getrapidkit.com/docs/config)
-- [CLI Reference](https://getrapidkit.com/docs/cli)
+- [Example config](../rapidkit.config.example.js)
+- [commands-reference.md](./commands-reference.md) — CLI syntax
+- [Documentation](https://getrapidkit.com/docs/config) (external)
 
 ---
 
@@ -292,5 +292,4 @@ npx rapidkit workspace policy set <key> <value>
 
 ---
 
-**Last Updated**: February 26, 2026  
-**Version**: 0.25.0
+**Last updated:** June 2026 · **CLI version:** 0.35.x

@@ -420,6 +420,35 @@ describe('Create Module - Internal Functions', () => {
       ).resolves.toBeUndefined();
     });
 
+    it('should auto-fallback enterprise to node-only when Python not found with --yes', async () => {
+      vi.mocked(inquirer.prompt).mockResolvedValue({
+        pythonVersion: '3.10',
+        installMethod: 'venv',
+      });
+
+      const outputFiles: Array<{ target: string; content: string }> = [];
+      vi.mocked(fsExtra.outputFile).mockImplementation(async (target, content) => {
+        outputFiles.push({ target: String(target), content: String(content) });
+      });
+
+      vi.mocked(execa).mockImplementation((command: string, args?: readonly string[]) => {
+        if ((command === 'python' || command === 'python3') && args?.[0] === '--version') {
+          return Promise.reject(new Error('Command not found: python'));
+        }
+        if (command === 'git') {
+          return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 } as any);
+        }
+        return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 } as any);
+      });
+
+      await expect(
+        createProject('enterprise-ws', { profile: 'enterprise', yes: true })
+      ).resolves.toBeUndefined();
+
+      const manifest = outputFiles.find((entry) => entry.target.endsWith('workspace.json'));
+      expect(manifest?.content).toContain('node-only');
+    });
+
     it('should install from local path in venv test mode', async () => {
       process.env.RAPIDKIT_DEV_PATH = '/local/rapidkit';
 

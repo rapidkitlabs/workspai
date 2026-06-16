@@ -1,141 +1,119 @@
-# Documentation
+# RapidKit NPM — Documentation Index
 
-Public documentation is split into two tracks:
-- **User Track**: install, configure, and use RapidKit in open-source projects.
-- **Contributor Track**: maintain/extend the npm CLI codebase.
+Hub for user and contributor documentation. Start with the [main README](../README.md) for install and quickstarts.
 
-## 📚 Available Documentation
+## Table of contents
 
-### Getting Started
+- [User documentation](#user-documentation)
+- [Operations & security](#operations--security)
+- [AI module recommendations](#ai-module-recommendations)
+- [Technical contracts](#technical-contracts)
+- [Contributor documentation](#contributor-documentation)
+- [Validation commands](#validation-commands)
 
-- **[../README.md](../README.md)** - Main project documentation, installation, and quick start
-- **[../CHANGELOG.md](../CHANGELOG.md)** - Version history and changes
-- **[SETUP.md](./SETUP.md)** - Maintainer setup, validation, and workspace smoke flow
+## User documentation
 
-### User Guides
+| Document | Description |
+| --- | --- |
+| [commands-reference.md](./commands-reference.md) | Full CLI syntax, profiles, and policy keys |
+| [workspace-operations.md](./workspace-operations.md) | Import, adopt, snapshots, archives, contracts, infra |
+| [workspace-run.md](./workspace-run.md) | Polyglot fleet orchestration (`workspace run`) |
+| [OPEN_SOURCE_USER_SCENARIOS.md](./OPEN_SOURCE_USER_SCENARIOS.md) | Role-based workflows (junior → enterprise) |
+| [doctor-command.md](./doctor-command.md) | Doctor scopes, CI exit codes, JSON evidence |
+| [config-file-guide.md](./config-file-guide.md) | User config file (`~/.rapidkitrc.json`, `rapidkit.config.*`) |
+| [WORKSPACE_MARKER_SPEC.md](./WORKSPACE_MARKER_SPEC.md) | Workspace marker format |
+| [PACKAGE_MANAGER_POLICY.md](./PACKAGE_MANAGER_POLICY.md) | npm-only policy for this repository |
 
-- **[OPEN_SOURCE_USER_SCENARIOS.md](./OPEN_SOURCE_USER_SCENARIOS.md)** - Practical scenarios for OSS teams
-- **[doctor-command.md](./doctor-command.md)** - Doctor command documentation
-- **[config-file-guide.md](./config-file-guide.md)** - Configuration file reference
-- **[PACKAGE_MANAGER_POLICY.md](./PACKAGE_MANAGER_POLICY.md)** - Supported package manager policy
-- **[WORKSPACE_MARKER_SPEC.md](./WORKSPACE_MARKER_SPEC.md)** - Workspace marker specification
+**Common tasks**
 
-### Operations & Security
+- Adopt an existing repo: [workspace-operations.md#import-and-adoption](./workspace-operations.md#import-and-adoption)
+- Scaffold a frontend app: [commands-reference.md](./commands-reference.md) (`create frontend`)
+- CI release gate: [commands-reference.md](./commands-reference.md) (`pipeline`, `readiness`)
+- Agent context: `workspace model` / `workspace context` — schemas in [contracts/workspace-intelligence/](../contracts/workspace-intelligence/)
 
-- **[SECURITY.md](./SECURITY.md)** - Security policy and vulnerability reporting
-- **[mirror-config.enterprise.example.json](./mirror-config.enterprise.example.json)** - Enterprise mirror + evidence export template
-- **[governance-policy.enterprise.example.json](./governance-policy.enterprise.example.json)** - Governance allowlist policy template
-- **[policies.workspace.example.yml](./policies.workspace.example.yml)** - Workspace policy template
+## Operations & security
 
-### AI Features
+| Document | Description |
+| --- | --- |
+| [SECURITY.md](./SECURITY.md) | Vulnerability reporting and supported versions |
+| [policies.workspace.example.yml](./policies.workspace.example.yml) | Workspace policy template |
+| [governance-policy.enterprise.example.json](./governance-policy.enterprise.example.json) | Sigstore governance allowlist template |
+| [mirror-config.enterprise.example.json](./mirror-config.enterprise.example.json) | Mirror + evidence export template |
 
-- **[AI_QUICKSTART.md](./AI_QUICKSTART.md)** - Quick start guide for AI-powered module recommendations
-- **[AI_FEATURES.md](./AI_FEATURES.md)** - Complete AI features documentation
-- **[AI_EXAMPLES.md](./AI_EXAMPLES.md)** - Real-world AI usage examples
-- **[AI_DYNAMIC_INTEGRATION.md](./AI_DYNAMIC_INTEGRATION.md)** - Advanced AI integration patterns
+## AI module recommendations
 
-### Contributor Docs
+FastAPI/NestJS module suggestions via OpenAI embeddings (optional).
 
-- **[DEVELOPMENT.md](./DEVELOPMENT.md)** - Development guide, configuration, testing, and debugging
-- **[OPTIMIZATION_GUIDE.md](./OPTIMIZATION_GUIDE.md)** - Comprehensive optimization suggestions and best practices
-- **[UTILITIES.md](./UTILITIES.md)** - Cache system and performance monitoring utilities documentation
+| Document | Description |
+| --- | --- |
+| [AI_QUICKSTART.md](./AI_QUICKSTART.md) | 60-second setup |
+| [AI_FEATURES.md](./AI_FEATURES.md) | Complete feature reference |
+| [AI_EXAMPLES.md](./AI_EXAMPLES.md) | Use-case examples |
+| [AI_DYNAMIC_INTEGRATION.md](./AI_DYNAMIC_INTEGRATION.md) | Integration architecture |
 
-## 🎯 Quick Links
+## Technical contracts
 
-### For Users
+JSON schemas and ownership rules for tooling parity.
 
-1. Start with [README.md](../README.md) for installation and basic usage
-2. Try [AI_QUICKSTART.md](./AI_QUICKSTART.md) for AI-powered module recommendations
-3. Use [OPEN_SOURCE_USER_SCENARIOS.md](./OPEN_SOURCE_USER_SCENARIOS.md) for practical workflows
-4. Check [SECURITY.md](./SECURITY.md) for reporting/security policy
-5. Check [CHANGELOG.md](../CHANGELOG.md) for latest features
+| Location | Description |
+| --- | --- |
+| [contracts/README.md](./contracts/README.md) | Core CLI JSON contracts + generator scripts |
+| [contracts/COMMAND_OWNERSHIP_MATRIX.md](./contracts/COMMAND_OWNERSHIP_MATRIX.md) | npm wrapper vs Core command ownership |
+| [contracts/RUNTIME_SUPPORT_MATRIX.md](./contracts/RUNTIME_SUPPORT_MATRIX.md) | Scaffold/import/lifecycle support tiers |
+| [contracts/RUNTIME_ACCEPTANCE_MATRIX.md](./contracts/RUNTIME_ACCEPTANCE_MATRIX.md) | Runtime acceptance test expectations |
+| [../contracts/](../contracts/) | Canonical JSON schemas (published in npm tarball) |
 
-### For Contributors
+Regenerate and verify:
 
-1. Read [DEVELOPMENT.md](./DEVELOPMENT.md) for development setup
-2. Use [SETUP.md](./SETUP.md) for contributor workflow commands
-3. Review [OPTIMIZATION_GUIDE.md](./OPTIMIZATION_GUIDE.md) for improvement opportunities
-4. Check [UTILITIES.md](./UTILITIES.md) for cache/performance helpers
-5. Validate docs JSON templates with `npm run validate:docs-examples`
-6. Run full docs release checks with `npm run validate:docs`
-
-## 📖 Documentation Structure
-
+```bash
+npm run generate:contracts
+npm run check:generated-contracts
+npm run validate:contracts
 ```
+
+## Contributor documentation
+
+| Document | Description |
+| --- | --- |
+| [DEVELOPMENT.md](./DEVELOPMENT.md) | Local dev, testing, debugging |
+| [SETUP.md](./SETUP.md) | Build gates, smoke flows, release hygiene |
+| [ci-workflows.md](./ci-workflows.md) | GitHub Actions workflow map |
+| [OPTIMIZATION_GUIDE.md](./OPTIMIZATION_GUIDE.md) | Performance and improvement notes |
+| [UTILITIES.md](./UTILITIES.md) | Internal cache and metrics helpers |
+
+Also see [../CONTRIBUTING.md](../CONTRIBUTING.md) and [../CHANGELOG.md](../CHANGELOG.md).
+
+## Validation commands
+
+```bash
+npm run validate:docs          # links + drift guard + examples + README smoke
+npm run check:markdown-links   # local markdown link integrity
+npm run validate:docs-examples # example JSON/YAML in docs
+npm run smoke:readme           # CLI help smoke for documented commands
+```
+
+## Repository layout
+
+```text
 rapidkit-npm/
-├── README.md                           # Main documentation
-├── CHANGELOG.md                        # Version history
+├── README.md                 # User hub (install, quickstarts, doc links)
+├── CHANGELOG.md
+├── RELEASE_NOTES.md
+├── releases/                 # Per-version release notes
 └── docs/
-    ├── README.md                       # This file
-    ├── AI_QUICKSTART.md                # AI quick start
-    ├── AI_FEATURES.md                  # AI features documentation
-    ├── AI_EXAMPLES.md                  # AI usage examples
-    ├── AI_DYNAMIC_INTEGRATION.md       # Advanced AI integration
-    ├── DEVELOPMENT.md                  # Development guide
-    ├── SETUP.md                        # Setup and commands
-    ├── OPEN_SOURCE_USER_SCENARIOS.md   # Publish-ready user scenarios by role
-    ├── OPTIMIZATION_GUIDE.md           # Optimization suggestions
-    ├── UTILITIES.md                    # Cache and performance utilities
-    ├── SECURITY.md                     # Security policy
-    ├── config-file-guide.md            # Configuration reference
-    ├── mirror-config.enterprise.example.json # Enterprise mirror/evidence template
-    ├── governance-policy.enterprise.example.json # Env policy allowlist template
-    ├── policies.workspace.example.yml   # Workspace policy template
-    ├── doctor-command.md               # Doctor command docs
-    ├── WORKSPACE_MARKER_SPEC.md        # Workspace marker spec
-    └── contracts/                      # Technical specifications
+    ├── README.md             # This index
+    ├── commands-reference.md
+    ├── workspace-operations.md
+    ├── workspace-run.md
+    ├── ci-workflows.md
+    ├── doctor-command.md
+    ├── OPEN_SOURCE_USER_SCENARIOS.md
+    ├── config-file-guide.md
+    ├── SECURITY.md
+    ├── SETUP.md
+    ├── DEVELOPMENT.md
+    ├── contracts/            # Contract docs (mirrors + matrices)
+    └── …                     # AI guides, policies, examples
 ```
 
-Enterprise governance runbook is intentionally excluded from the OSS docs index.
-
-## 🚀 Quick Start
-
-### Create a Project
-
-```bash
-# Canonical (recommended)
-npx rapidkit create project fastapi.standard my-api
-npx rapidkit create project nestjs.standard my-api
-
-# Workspace (for multiple projects)
-npx rapidkit my-workspace
-```
-
-### Use Project CLI
-
-Use the local project launcher (`rapidkit`) after entering a generated project folder.
-
-```bash
-cd my-api
-rapidkit init      # Install dependencies
-rapidkit dev       # Start dev server (port 8000)
-rapidkit test      # Run tests
-rapidkit --help    # Show all commands
-```
-
-### Workspace Runtime Lifecycle
-
-```bash
-npx rapidkit bootstrap --profile polyglot
-npx rapidkit setup python
-npx rapidkit setup node --warm-deps
-npx rapidkit setup go --warm-deps
-npx rapidkit doctor workspace
-npx rapidkit workspace list
-npx rapidkit workspace policy show
-npx rapidkit workspace policy set mode strict
-npx rapidkit cache status
-npx rapidkit mirror status
-```
-
-`npx rapidkit bootstrap` now auto-syncs legacy workspaces (missing `.rapidkit-workspace`
-or newer `.rapidkit/*` foundation files) so older workspace roots can align with
-the current workspace architecture without manual file creation.
-
-Root help commands are equivalent and intentionally aligned:
-
-```bash
-npx rapidkit
-npx rapidkit --help
-npx rapidkit help
-```
+Enterprise governance runbooks are maintained outside this OSS docs tree.

@@ -1,99 +1,93 @@
 import fs from 'fs';
 import path from 'path';
 
-const FILE_NAMES = [
-  'backend-import-stack-parity.snapshot.json',
+/**
+ * Canonical shared contracts live in rapidkit-npm/contracts/ (git).
+ * This script distributes copies to:
+ * - ../contracts/ (local Front monorepo mirror for ../contracts test paths)
+ * - ../rapidkit-vscode/contracts/ (extension subset)
+ */
+const NPM_CANONICAL_CONTRACT_FILES = [
   'runtime-command-surface.v1.json',
+  'backend-import-stack-parity.snapshot.json',
+  'module-layout.v1.json',
+  'pipeline-last-run.v1.json',
+  'infra-stack.v1.json',
 ];
+
+const VSCODE_MIRROR_FILES = [
+  'runtime-command-surface.v1.json',
+  'backend-import-stack-parity.snapshot.json',
+  'module-support.v1.json',
+];
+
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has('--check');
 const npmOnly = args.has('--npm-only');
 
 const npmRoot = path.resolve(process.cwd());
+const frontContractsRoot = path.resolve(npmRoot, '..', 'contracts');
 const vscodeRoot = process.env.RAPIDKIT_VSCODE_REPO_PATH
   ? path.resolve(process.env.RAPIDKIT_VSCODE_REPO_PATH)
   : path.resolve(npmRoot, '..', 'rapidkit-vscode');
 
-function normalizePath(value) {
-  return path.resolve(value);
-}
-
-function pickSource(fileName) {
-  const explicit = process.env.RAPIDKIT_BACKEND_IMPORT_PARITY_SNAPSHOT_SOURCE;
-  const runtimeExplicit = process.env.RAPIDKIT_RUNTIME_COMMAND_SURFACE_CONTRACT_SOURCE;
-  const npmTarget = path.resolve(npmRoot, 'contracts', fileName);
-  const candidates = [
-    fileName === 'backend-import-stack-parity.snapshot.json' && explicit?.trim()
-      ? normalizePath(explicit.trim())
-      : null,
-    fileName === 'runtime-command-surface.v1.json' && runtimeExplicit?.trim()
-      ? normalizePath(runtimeExplicit.trim())
-      : null,
-    path.resolve(npmRoot, '..', 'contracts', fileName),
-    npmTarget,
-  ].filter(Boolean);
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
+function readCanonical(fileName) {
+  const canonicalPath = path.resolve(npmRoot, 'contracts', fileName);
+  if (!fs.existsSync(canonicalPath)) {
+    console.error(`Canonical contract missing in rapidkit-npm: ${canonicalPath}`);
+    console.error('Edit contracts/ in rapidkit-npm, then run: npm run sync:parity-snapshot');
+    process.exit(1);
   }
-
-  return null;
+  return {
+    canonicalPath,
+    content: fs.readFileSync(canonicalPath, 'utf-8'),
+  };
 }
 
-function writeTarget(targetPath, sourceContent) {
+function writeTarget(targetPath, content) {
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  fs.writeFileSync(targetPath, sourceContent, 'utf-8');
+  fs.writeFileSync(targetPath, content, 'utf-8');
 }
 
-function verifyTarget(targetPath, sourceContent, label) {
+function verifyTarget(targetPath, content, label) {
   if (!fs.existsSync(targetPath)) {
-    console.error(`${label} parity snapshot is missing: ${targetPath}`);
+    console.error(`${label} contract copy is missing: ${targetPath}`);
     process.exit(1);
   }
 
   const targetContent = fs.readFileSync(targetPath, 'utf-8');
-  if (targetContent !== sourceContent) {
-    console.error(`${label} parity snapshot is out of sync: ${targetPath}`);
+  if (targetContent !== content) {
+    console.error(`${label} contract copy is out of sync: ${targetPath}`);
+    console.error('Run from rapidkit-npm: npm run sync:parity-snapshot');
     process.exit(1);
   }
 }
 
-for (const fileName of FILE_NAMES) {
-  const npmTarget = path.resolve(npmRoot, 'contracts', fileName);
+for (const fileName of NPM_CANONICAL_CONTRACT_FILES) {
+  const { canonicalPath, content } = readCanonical(fileName);
+  const frontTarget = path.resolve(frontContractsRoot, fileName);
   const vscodeTarget = path.resolve(vscodeRoot, 'contracts', fileName);
-  const sourcePath = pickSource(fileName);
-  if (!sourcePath) {
-    console.error(`No contract source found for ${fileName}.`);
-    console.error(`Expected one of: ${path.resolve(npmRoot, '..', 'contracts', fileName)} or ${npmTarget}`);
-    process.exit(1);
-  }
-
-  const sourceContent = fs.readFileSync(sourcePath, 'utf-8');
+  const mirrorToVscode = VSCODE_MIRROR_FILES.includes(fileName);
 
   if (checkOnly) {
-    verifyTarget(npmTarget, sourceContent, 'npm');
+    verifyTarget(frontTarget, content, 'Front/contracts');
 
-    if (!npmOnly && fs.existsSync(vscodeRoot)) {
-      verifyTarget(vscodeTarget, sourceContent, 'vscode');
+    if (!npmOnly && mirrorToVscode && fs.existsSync(vscodeRoot)) {
+      verifyTarget(vscodeTarget, content, 'vscode');
     }
     continue;
   }
 
-  writeTarget(npmTarget, sourceContent);
+  writeTarget(frontTarget, content);
+  console.log(`Contract synced from ${canonicalPath}`);
+  console.log(`- Front mirror: ${frontTarget}`);
 
-  if (!npmOnly && fs.existsSync(vscodeRoot)) {
-    writeTarget(vscodeTarget, sourceContent);
-  }
-
-  console.log(`Contract synced from ${sourcePath}`);
-  console.log(`- npm target: ${npmTarget}`);
-  if (!npmOnly && fs.existsSync(vscodeRoot)) {
+  if (!npmOnly && mirrorToVscode && fs.existsSync(vscodeRoot)) {
+    writeTarget(vscodeTarget, content);
     console.log(`- vscode target: ${vscodeTarget}`);
   }
 }
 
 if (checkOnly) {
-  console.log('Parity contract targets are in sync.');
+  console.log('Shared contract copies match rapidkit-npm/contracts/ canonical source.');
 }

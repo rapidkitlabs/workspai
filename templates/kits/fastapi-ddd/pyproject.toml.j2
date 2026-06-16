@@ -49,9 +49,11 @@ markers = [
 ]
 
 [tool.ruff]
-ignore = ["E501"]
 line-length = 100
 exclude = [".rapidkit/vendor"]
+
+[tool.ruff.lint]
+ignore = ["E501"]
 
 [tool.mypy]
 python_version = "{{ python_version }}"

@@ -3,16 +3,30 @@ import path from 'path';
 
 import {
   detectBackendFrameworkFromProject,
+  detectRuntimeCandidatesFromProject,
   type BackendFrameworkDetection,
 } from './backend-framework-contract.js';
 import { getRuntimeAdapter } from './runtime-adapters.js';
-import { readRapidkitProjectJson, type RapidkitProjectJson } from './runtime-detection.js';
+import { readProjectMetadata, type ProjectMetadata } from './project-metadata.js';
 import {
-  buildRuntimeCommandSupport,
   getFrameworkSupportTier,
   getRuntimeSupport,
   type RapidKitSupportTier,
 } from './support-matrix.js';
+import { isCoreDelegatedProjectCommand, hasNpmRuntimeExecutor } from './runtime-executors.js';
+import { WORKSPACE_RUN_STAGES, type WorkspaceRunStageName } from './cli-lifecycle-contract.js';
+import {
+  buildProjectAwareRuntimeCommandSupport,
+  isRuntimeLifecycleCommandAvailable,
+  type LifecycleProbeCommand,
+} from './runtime-lifecycle-probes.js';
+
+export type CommandExecutionScope =
+  | 'universal'
+  | 'global'
+  | 'local-only'
+  | 'fleet'
+  | 'core-delegated';
 
 export type CommandCapabilityStatus = 'supported' | 'unsupported' | 'global';
 export type CommandCapabilityOwner = 'npm' | 'core' | 'runtime' | 'none';
@@ -22,6 +36,8 @@ export interface CommandCapability {
   owner: CommandCapabilityOwner;
   status: CommandCapabilityStatus;
   reason?: string;
+  executionScope?: CommandExecutionScope;
+  fleetEligible?: boolean;
 }
 
 export interface ProjectCommandCapabilities {
@@ -37,24 +53,19 @@ export interface ProjectCommandCapabilities {
   runtimeSupportTier: RapidKitSupportTier;
   runtimeDoctorSupport: 'full' | 'readiness' | 'observed';
   moduleSupport: boolean;
+  fleetStages: WorkspaceRunStageName[];
+  localOnlyCommands: string[];
   commandMap: Record<string, CommandCapability>;
   supportedCommands: string[];
   unsupportedCommands: string[];
   globalCommands: string[];
 }
 
-const UNIVERSAL_COMMANDS = ['version', 'commands', 'doctor', 'project'] as const;
+const UNIVERSAL_COMMANDS = ['version', 'commands', 'doctor', 'project', 'help'] as const;
 
-const RUNTIME_COMMANDS = [
-  'init',
-  'dev',
-  'start',
-  'build',
-  'test',
-  'lint',
-  'format',
-  'help',
-] as const;
+const RUNTIME_COMMANDS = ['init', 'dev', 'start', 'build', 'test', 'lint', 'format'] as const;
+
+const CORE_PROJECT_COMMANDS = ['docs'] as const;
 
 const CORE_MODULE_COMMANDS = [
   'add',
@@ -75,15 +86,29 @@ const ENGINE_GLOBAL_COMMANDS = ['create', 'list', 'info', 'frameworks', 'license
 export const PROJECT_CAPABILITY_COMMANDS = [
   ...UNIVERSAL_COMMANDS,
   ...RUNTIME_COMMANDS,
+  ...CORE_PROJECT_COMMANDS,
   ...CORE_MODULE_COMMANDS,
   ...ENGINE_GLOBAL_COMMANDS,
 ] as const;
 
+/** Command groups mirrored in contracts/runtime-command-surface.v1.json */
+export const RUNTIME_SURFACE_LIFECYCLE_COMMANDS = [...RUNTIME_COMMANDS, 'help'] as const;
+export const RUNTIME_SURFACE_UNIVERSAL_COMMANDS = UNIVERSAL_COMMANDS.filter(
+  (command) => command !== 'help'
+);
+export const RUNTIME_SURFACE_MODULE_MUTATION_COMMANDS = [...CORE_MODULE_COMMANDS];
+export const RUNTIME_SURFACE_GLOBAL_COMMANDS = [...ENGINE_GLOBAL_COMMANDS];
+export const RUNTIME_SURFACE_CORE_PROJECT_COMMANDS = [...CORE_PROJECT_COMMANDS];
+
 export function findRapidkitProjectRoot(start: string): string | null {
   let current = path.resolve(start);
   while (true) {
-    const projectJson = path.join(current, '.rapidkit', 'project.json');
-    if (fs.existsSync(projectJson)) return current;
+    const rapidkitDir = path.join(current, '.rapidkit');
+    const projectJson = path.join(rapidkitDir, 'project.json');
+    const contextJson = path.join(rapidkitDir, 'context.json');
+    if (fs.existsSync(projectJson) || fs.existsSync(contextJson)) {
+      return current;
+    }
     const parent = path.dirname(current);
     if (parent === current) break;
     current = parent;
@@ -91,46 +116,110 @@ export function findRapidkitProjectRoot(start: string): string | null {
   return null;
 }
 
-function readContextEngine(projectRoot: string): ProjectCommandCapabilities['engine'] {
-  const contextPath = path.join(projectRoot, '.rapidkit', 'context.json');
-  if (!fs.existsSync(contextPath)) return 'unknown';
-  try {
-    const context = JSON.parse(fs.readFileSync(contextPath, 'utf8')) as Record<string, unknown>;
-    const engine = context.engine;
-    if (engine === 'npm' || engine === 'pip' || engine === 'python') return engine;
-  } catch {
-    // Ignore malformed context files; capabilities still fall back to project metadata.
-  }
-  return 'unknown';
-}
-
-function hasCoreModuleSupport(
-  projectJson: RapidkitProjectJson,
-  detection: BackendFrameworkDetection
-) {
-  if (projectJson?.module_support === false) return false;
-  return getRuntimeSupport(detection.runtime).moduleCommands;
-}
-
 function capability(command: string, data: Omit<CommandCapability, 'command'>): CommandCapability {
   return { command, ...data };
+}
+
+const LOCAL_ONLY_RUNTIME_COMMANDS = new Set<string>(['dev', 'lint', 'format']);
+const FLEET_STAGE_COMMANDS = new Set<string>(WORKSPACE_RUN_STAGES);
+
+function resolveRuntimeCommandExecutionScope(
+  command: (typeof RUNTIME_COMMANDS)[number],
+  runtimeSupported: boolean
+): { executionScope: CommandExecutionScope; fleetEligible: boolean } {
+  if (!runtimeSupported) {
+    return { executionScope: 'local-only', fleetEligible: false };
+  }
+  if (FLEET_STAGE_COMMANDS.has(command)) {
+    return { executionScope: 'fleet', fleetEligible: true };
+  }
+  if (LOCAL_ONLY_RUNTIME_COMMANDS.has(command)) {
+    return { executionScope: 'local-only', fleetEligible: false };
+  }
+  return { executionScope: 'local-only', fleetEligible: false };
+}
+
+function resolveRuntimeCommandOwner(
+  command: (typeof RUNTIME_COMMANDS)[number],
+  detection: BackendFrameworkDetection
+): CommandCapabilityOwner {
+  if (isCoreDelegatedProjectCommand(detection.runtime, command)) {
+    return 'core';
+  }
+  return 'runtime';
+}
+
+function isRuntimeLifecycleCommandSupported(
+  projectRoot: string | null,
+  command: (typeof RUNTIME_COMMANDS)[number],
+  detection: BackendFrameworkDetection,
+  runtimeCommandSupport: ReturnType<typeof buildProjectAwareRuntimeCommandSupport>
+): boolean {
+  if (!projectRoot) return false;
+  if (!runtimeCommandSupport.lifecycleCommands.includes(command)) return false;
+
+  return isRuntimeLifecycleCommandAvailable(
+    projectRoot,
+    detection.runtime,
+    command as LifecycleProbeCommand,
+    detection.key
+  );
+}
+
+function resolveDocsCapability(
+  projectRoot: string | null,
+  detection: BackendFrameworkDetection
+): CommandCapability {
+  const supported =
+    !!projectRoot &&
+    (detection.runtime === 'python' ||
+      (hasNpmRuntimeExecutor(detection.runtime) &&
+        isRuntimeLifecycleCommandAvailable(
+          projectRoot,
+          detection.runtime,
+          'build',
+          detection.key
+        )));
+
+  return capability('docs', {
+    owner: detection.runtime === 'python' ? 'core' : 'runtime',
+    status: supported ? 'supported' : 'unsupported',
+    reason: supported
+      ? detection.runtime === 'python'
+        ? 'Documentation generation is delegated to Python Core for this project.'
+        : 'Project documentation commands are available through the npm wrapper for this runtime.'
+      : 'Documentation commands require a supported Python or npm-executor project manifest.',
+  });
+}
+
+function resolveCapabilityProjectRoot(start: string): string | null {
+  const explicitPath = path.resolve(start);
+  const metadataRoot = findRapidkitProjectRoot(start);
+  if (metadataRoot) {
+    return metadataRoot;
+  }
+  if (detectRuntimeCandidatesFromProject(explicitPath).length > 0) {
+    return explicitPath;
+  }
+  return null;
 }
 
 export function resolveProjectCommandCapabilities(
   start: string = process.cwd()
 ): ProjectCommandCapabilities {
-  const projectRoot = findRapidkitProjectRoot(start);
-  const projectJson = projectRoot ? readRapidkitProjectJson(projectRoot) : null;
-  const detection = projectRoot
-    ? detectBackendFrameworkFromProject(projectRoot, projectJson)
-    : detectBackendFrameworkFromProject(start, projectJson);
-  const moduleSupport = projectRoot ? hasCoreModuleSupport(projectJson, detection) : false;
-  const engine = projectRoot ? readContextEngine(projectRoot) : 'unknown';
+  const projectRoot = resolveCapabilityProjectRoot(start);
+  const metadata: ProjectMetadata | null = projectRoot ? readProjectMetadata(projectRoot) : null;
+  const detection =
+    metadata?.detection ?? detectBackendFrameworkFromProject(start, metadata?.projectJson ?? null);
+  const moduleSupport = metadata?.moduleSupport ?? false;
+  const engine = metadata?.engine ?? 'unknown';
   const runtimeAdapter = getRuntimeAdapter(detection.runtime);
   const runtimeSupport = getRuntimeSupport(detection.runtime);
-  const runtimeCommandSupport = buildRuntimeCommandSupport({
+  const runtimeCommandSupport = buildProjectAwareRuntimeCommandSupport({
     runtime: detection.runtime,
     moduleSupport,
+    projectPath: projectRoot ?? undefined,
+    framework: detection.key,
   });
   const commandMap: Record<string, CommandCapability> = {};
 
@@ -141,31 +230,47 @@ export function resolveProjectCommandCapabilities(
       reason:
         command === 'project'
           ? 'Project detection is a Core contract; workspace project lifecycle remains npm-owned.'
-          : 'Universal command available across RapidKit project types.',
+          : command === 'help'
+            ? 'Help is available for every RapidKit project through the npm CLI.'
+            : 'Universal command available across RapidKit project types.',
     });
   }
 
   for (const command of RUNTIME_COMMANDS) {
-    const runtimeSupported =
-      command === 'help' ||
-      (!!projectRoot &&
-        !!runtimeAdapter &&
-        runtimeAdapter.supportedCommands.includes(command) &&
-        runtimeCommandSupport.lifecycleCommands.includes(command));
+    const runtimeSupported = isRuntimeLifecycleCommandSupported(
+      projectRoot,
+      command,
+      detection,
+      runtimeCommandSupport
+    );
+    const owner = resolveRuntimeCommandOwner(command, detection);
+    const execution = resolveRuntimeCommandExecutionScope(command, runtimeSupported);
     commandMap[command] = capability(command, {
-      owner: 'runtime',
+      owner,
       status: runtimeSupported ? 'supported' : 'unsupported',
+      executionScope: execution.executionScope,
+      fleetEligible: execution.fleetEligible,
       reason: runtimeSupported
-        ? command === 'help'
-          ? 'Help is available for every RapidKit project through the npm CLI.'
-          : `Handled by the ${runtimeAdapter?.displayName} runtime adapter or project-local launcher.`
+        ? owner === 'core'
+          ? `Delegated to Python Core for ${detection.displayName} projects.`
+          : execution.fleetEligible
+            ? `Handled by runtime adapter and eligible for workspace fleet stages (${command}).`
+            : command === 'dev'
+              ? `Local development command only; workspace fleet excludes dev by design.`
+              : detection.runtime === 'node'
+                ? `Handled by npm/pnpm/yarn via the resolved ${command} script in package.json.`
+                : `Handled by the ${runtimeAdapter?.displayName ?? detection.displayName} runtime adapter for local project execution.`
         : !projectRoot
           ? 'No RapidKit project was detected.'
-          : runtimeAdapter
-            ? `The ${detection.displayName} runtime is tracked, but ${command} is not supported at the ${runtimeSupport.tier} support tier.`
-            : `No runtime adapter is available for ${detection.displayName} projects yet.`,
+          : detection.runtime === 'node'
+            ? `No ${command} script was found in package.json for this ${detection.displayName} project.`
+            : !hasNpmRuntimeExecutor(detection.runtime)
+              ? `${detection.displayName} is tracked as an observed runtime; ${command} requires project manifests or explicit scripts.`
+              : `The ${detection.displayName} runtime is tracked, but ${command} is not available from detected project manifests.`,
     });
   }
+
+  commandMap.docs = resolveDocsCapability(projectRoot, detection);
 
   for (const command of CORE_MODULE_COMMANDS) {
     commandMap[command] = capability(command, {
@@ -189,6 +294,21 @@ export function resolveProjectCommandCapabilities(
   }
 
   const entries = Object.values(commandMap);
+  const supportedRuntimeCommands = entries
+    .filter((entry) =>
+      RUNTIME_COMMANDS.includes(entry.command as (typeof RUNTIME_COMMANDS)[number])
+    )
+    .filter((entry) => entry.status === 'supported');
+  const fleetStages = WORKSPACE_RUN_STAGES.filter((stage) =>
+    supportedRuntimeCommands.some(
+      (entry) => entry.fleetEligible === true && entry.command === stage
+    )
+  );
+  const localOnlyCommands = supportedRuntimeCommands
+    .filter((entry) => entry.executionScope === 'local-only')
+    .map((entry) => entry.command)
+    .sort();
+
   return {
     schemaVersion: 1,
     scope: 'project',
@@ -202,6 +322,8 @@ export function resolveProjectCommandCapabilities(
     runtimeSupportTier: runtimeSupport.tier,
     runtimeDoctorSupport: runtimeSupport.doctorSupport,
     moduleSupport,
+    fleetStages,
+    localOnlyCommands,
     commandMap,
     supportedCommands: entries
       .filter((entry) => entry.status === 'supported')

@@ -19,6 +19,7 @@ These commands are implemented and orchestrated by `rapidkit-npm`:
 - `pipeline`
 - `doctor`
 - `import`
+- `adopt`
 - `snapshot`
 - `workspace`
 - `bootstrap`

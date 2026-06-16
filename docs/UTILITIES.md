@@ -1,11 +1,8 @@
 # Utilities Documentation
 
-> Cache and performance helper reference for the npm CLI codebase.
->
-> For end-user command usage, prefer:
-> - `docs/doctor-command.md`
-> - `docs/OPEN_SOURCE_USER_SCENARIOS.md`
-> - `../README.md`
+Internal cache and performance helpers for the npm CLI codebase.
+
+**End-user commands:** [doctor-command.md](./doctor-command.md) · [OPEN_SOURCE_USER_SCENARIOS.md](./OPEN_SOURCE_USER_SCENARIOS.md) · [../README.md](../README.md)
 
 ## Cache System
 

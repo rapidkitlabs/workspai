@@ -9,7 +9,7 @@ import * as fs from 'fs-extra';
 import os from 'os';
 import { spawnSync } from 'child_process';
 
-import { handleImportCommand } from '../index';
+import { handleAdoptCommand, handleImportCommand } from '../index';
 import { ensureDistBuilt } from './helpers/dist';
 
 interface CliExecOptions {
@@ -101,6 +101,7 @@ describe('CLI Entry Point', () => {
       expect(stdout).toContain('rapidkit dev');
       expect(stdout).toContain('rapidkit workspace list');
       expect(stdout).toContain('rapidkit import <path|git-url>');
+      expect(stdout).toContain('rapidkit adopt [path]');
       expect(stdout).toContain('mirror [status|sync|verify|rotate]');
       expect(stdout).toContain('cache [status|clear|prune|repair]');
 
@@ -168,8 +169,16 @@ describe('CLI Entry Point', () => {
           npx rapidkit readiness [--json --strict]   Release readiness gates (env/doctor/analyze/verify/deps)
           npx rapidkit doctor workspace [--ci]     Workspace health with CI exit codes
           npx rapidkit workspace list               List registered workspaces
+          npx rapidkit workspace model --json      Build workspace intelligence model
+          npx rapidkit workspace context --for-agent --json  Build agent-ready context pack
+          npx rapidkit workspace snapshot --json   Persist workspace intelligence snapshot
+          npx rapidkit workspace diff --from <file|git[:ref]> --json  Diff current model against a snapshot
+          npx rapidkit workspace impact --from <file> --json  Build blast radius from model diff
+          npx rapidkit workspace verify [--strict] --json  Evaluate impact verification evidence
+          npx rapidkit workspace run test --scope project:<name>  Run a stage for one project
           npx rapidkit workspace sync [--json]      Sync registry + contract from projects
           npx rapidkit import <path|git-url>        Copy or clone a backend project into this workspace
+          npx rapidkit adopt [path]                Link an existing local project to a workspace
           npx rapidkit snapshot create [name]      Create a recoverable workspace snapshot
           npx rapidkit snapshot restore <name>     Restore snapshot metadata with safety guard
           npx rapidkit snapshot inspect <name>     Inspect snapshot manifest and size
@@ -548,6 +557,150 @@ describe('CLI Entry Point', () => {
       }
     }, 20000);
 
+    it('should adopt a local frontend project through the CLI wrapper and keep it linked in place', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-adopt-'));
+      const sourceDir = await fs.mkdtemp(path.join(TEST_DIR, 'source-adopt-next-'));
+
+      await fs.ensureDir(path.join(workspaceRoot, '.rapidkit'));
+      await fs.writeJson(path.join(workspaceRoot, '.rapidkit', 'workspace.json'), {
+        workspace_name: 'demo-workspace',
+      });
+      await fs.writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '{}');
+      await fs.writeJson(path.join(sourceDir, 'package.json'), {
+        private: true,
+        dependencies: {
+          next: '^15.0.0',
+          react: '^19.0.0',
+        },
+        scripts: {
+          dev: 'next dev',
+          build: 'next build',
+        },
+      });
+
+      try {
+        const { stdout, exitCode } = await execa('node', [
+          CLI_PATH,
+          'adopt',
+          sourceDir,
+          '--workspace',
+          workspaceRoot,
+          '--name',
+          'web',
+          '--json',
+        ]);
+
+        expect(exitCode).toBe(0);
+
+        const payload = JSON.parse(stdout) as {
+          workspacePath: string;
+          workspaceResolution: string;
+          adoptedProject: {
+            name: string;
+            path: string;
+            relationship: string;
+            stack: string;
+            framework: string;
+            frameworkDisplayName: string;
+            source?: string;
+          };
+        };
+
+        expect(payload.workspacePath).toBe(workspaceRoot);
+        expect(payload.workspaceResolution).toBe('explicit');
+        expect(payload.adoptedProject).toMatchObject({
+          name: 'web',
+          path: sourceDir,
+          relationship: 'adopted',
+          stack: 'nextjs',
+          framework: 'nextjs',
+          frameworkDisplayName: 'Next.js',
+        });
+        expect(await fs.pathExists(path.join(sourceDir, '.rapidkit', 'adopt.json'))).toBe(true);
+        expect(await fs.pathExists(path.join(workspaceRoot, 'web'))).toBe(false);
+
+        const registry = await fs.readJson(
+          path.join(workspaceRoot, '.rapidkit', 'imported-projects.json')
+        );
+        expect(registry.projects).toEqual([
+          expect.objectContaining({
+            name: 'web',
+            path: sourceDir,
+            relationship: 'adopted',
+            source: 'adopted-local',
+            stack: 'nextjs',
+          }),
+        ]);
+      } finally {
+        await fs.remove(workspaceRoot);
+        await fs.remove(sourceDir);
+      }
+    }, 20000);
+
+    it('should register the workspace before registering an adopted project', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-adopt-register-'));
+      const sourceDir = await fs.mkdtemp(path.join(TEST_DIR, 'source-adopt-register-'));
+      const calls: string[] = [];
+
+      await fs.ensureDir(path.join(workspaceRoot, '.rapidkit'));
+      await fs.writeJson(path.join(workspaceRoot, '.rapidkit', 'workspace.json'), {
+        workspace_name: 'default-workspace',
+      });
+      await fs.writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '{}');
+      await fs.writeJson(path.join(sourceDir, 'package.json'), {
+        private: true,
+        dependencies: {
+          next: '^15.0.0',
+          react: '^19.0.0',
+        },
+      });
+
+      const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+      try {
+        const exitCode = await handleAdoptCommand(
+          sourceDir,
+          {
+            workspace: workspaceRoot,
+            name: 'web',
+            json: true,
+          },
+          {
+            registerWorkspace: async (nextWorkspacePath, workspaceName) => {
+              calls.push(`workspace:${workspaceName}:${nextWorkspacePath}`);
+            },
+            registerProjectInWorkspace: async (nextWorkspacePath, projectName, projectPath) => {
+              calls.push(`project:${projectName}:${projectPath}:${nextWorkspacePath}`);
+            },
+            syncWorkspaceProjects: async (nextWorkspacePath) => {
+              calls.push(`sync:${nextWorkspacePath}`);
+            },
+          }
+        );
+
+        expect(exitCode).toBe(0);
+        expect(calls).toEqual([
+          `workspace:${path.basename(workspaceRoot)}:${workspaceRoot}`,
+          `project:web:${sourceDir}:${workspaceRoot}`,
+          `sync:${workspaceRoot}`,
+        ]);
+        expect(await fs.pathExists(path.join(sourceDir, '.rapidkit', 'adopt.json'))).toBe(true);
+
+        const payload = JSON.parse(consoleLog.mock.calls[0]?.[0] as string) as {
+          adoptedProject: { name: string; path: string; stack: string };
+        };
+        expect(payload.adoptedProject).toMatchObject({
+          name: 'web',
+          path: sourceDir,
+          stack: 'nextjs',
+        });
+      } finally {
+        consoleLog.mockRestore();
+        await fs.remove(workspaceRoot);
+        await fs.remove(sourceDir);
+      }
+    });
+
     it('should import a git repository through the CLI wrapper with --git', async () => {
       const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-import-git-'));
       const gitSource = await fs.mkdtemp(path.join(TEST_DIR, 'source-import-git-'));
@@ -635,12 +788,7 @@ describe('CLI Entry Point', () => {
 
         expect(exitCode).toBe(0);
 
-        const expectedWorkspacePath = path.join(
-          fakeHome,
-          'Workspai',
-          'rapidkits',
-          'default-workspace'
-        );
+        const expectedWorkspacePath = path.join(fakeHome, 'rapidkit', 'workspaces', 'workspai');
         const payload = JSON.parse(stdout) as {
           workspacePath: string;
           workspaceResolution: string;
@@ -703,9 +851,9 @@ describe('CLI Entry Point', () => {
           expect(payload.error).toContain('Workspace path is not a valid RapidKit workspace');
         });
 
-        expect(
-          await fs.pathExists(path.join(fakeHome, 'Workspai', 'rapidkits', 'default-workspace'))
-        ).toBe(false);
+        expect(await fs.pathExists(path.join(fakeHome, 'rapidkit', 'workspaces', 'workspai'))).toBe(
+          false
+        );
       } finally {
         await fs.remove(fakeHome);
         await fs.remove(cwdOutsideWorkspace);
@@ -813,46 +961,39 @@ describe('CLI Entry Point', () => {
       }
     });
 
-    it('should require workspace root for workspace run init when called from a nested directory', async () => {
+    it('resolves workspace root for workspace run init when called from a nested directory', async () => {
       const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-root-nested-'));
       const nestedDir = path.join(workspaceRoot, 'my-nest-services');
       await fs.ensureDir(nestedDir);
       await fs.writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '');
 
       try {
-        await execa('node', [CLI_PATH, 'workspace', 'run', 'init'], {
+        const { stdout, exitCode } = await execa('node', [CLI_PATH, 'workspace', 'run', 'init'], {
           cwd: nestedDir,
         });
-        expect.fail('Should have thrown because command is not executed from workspace root');
-      } catch (error: any) {
-        expect(error.exitCode).toBe(1);
-        const output = `${error.stdout || ''}\n${error.stderr || ''}`;
-        expect(output).toContain('must be run from workspace root');
-        expect(output).toContain(workspaceRoot);
-        expect(output).toContain('For project-only init');
+        expect(exitCode).toBe(0);
+        expect(stdout).toContain('Using workspace root');
+        expect(stdout).toContain(workspaceRoot);
+        expect(stdout).toContain('Workspace run (init)');
       } finally {
         await fs.remove(workspaceRoot);
       }
     });
 
-    it('should require workspace root for workspace init when called from a nested directory', async () => {
+    it('resolves workspace root for workspace init when called from a nested directory', async () => {
       const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-root-nested-init-'));
       const nestedDir = path.join(workspaceRoot, 'my-nest-services');
       await fs.ensureDir(nestedDir);
       await fs.writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '');
 
       try {
-        await execa('node', [CLI_PATH, 'workspace', 'init'], {
+        const { stdout, exitCode } = await execa('node', [CLI_PATH, 'workspace', 'init'], {
           cwd: nestedDir,
         });
-        expect.fail('Should have thrown because command is not executed from workspace root');
-      } catch (error: any) {
-        expect(error.exitCode).toBe(1);
-        const output = `${error.stdout || ''}\n${error.stderr || ''}`;
-        expect(output).toContain('workspace init is an alias');
-        expect(output).toContain('must be run from workspace root');
-        expect(output).toContain(workspaceRoot);
-        expect(output).toContain('For project-only init');
+        expect(exitCode).toBe(0);
+        expect(stdout).toContain('Using workspace root');
+        expect(stdout).toContain(workspaceRoot);
+        expect(stdout).toContain('workspace init is an alias');
       } finally {
         await fs.remove(workspaceRoot);
       }
@@ -867,7 +1008,7 @@ describe('CLI Entry Point', () => {
         const output = `${error.stdout || ''}\n${error.stderr || ''}`;
         expect(output).toContain('Unknown workspace action: unknown-action');
         expect(output).toContain(
-          'Available: list, sync, policy, share, export, hydrate, import, run'
+          'Available: list, model, context, snapshot, diff, impact, sync, policy, share, export, hydrate, import, run'
         );
       }
     });

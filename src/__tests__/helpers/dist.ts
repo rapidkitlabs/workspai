@@ -33,8 +33,14 @@ export function ensureDistBuilt(label = 'CLI tests'): string {
   const distPath = path.join(repoRoot, 'dist', 'index.js');
   const sourcePaths = [
     path.join(repoRoot, 'src', 'index.ts'),
+    path.join(repoRoot, 'src', 'frontend-project.ts'),
     path.join(repoRoot, 'src', 'import-project.ts'),
     path.join(repoRoot, 'src', 'imported-projects-registry.ts'),
+    path.join(repoRoot, 'src', 'workspace-context.ts'),
+    path.join(repoRoot, 'src', 'workspace-intelligence.ts'),
+    path.join(repoRoot, 'src', 'workspace-model.ts'),
+    path.join(repoRoot, 'src', 'workspace-git-observation.ts'),
+    path.join(repoRoot, 'src', 'workspace-verify.ts'),
     path.join(repoRoot, 'src', 'workspace-snapshot.ts'),
   ];
 

@@ -12,6 +12,9 @@ import {
   type BackendRuntimeFamily,
   type BackendSupportTier,
 } from './utils/backend-framework-contract.js';
+import { resolveImportModuleSupport } from './utils/import-module-support.js';
+import { inferWorkspaceProjectKind, type WorkspaceProjectKind } from './utils/project-kind.js';
+import { resolveWorkspaceProjectPaths } from './utils/workspace-project-paths.js';
 import {
   removeImportedProjectsRegistryEntries,
   upsertImportedProjectsRegistry,
@@ -25,6 +28,7 @@ export interface ImportProjectIntoWorkspaceOptions {
   source: string;
   name?: string;
   sourceType?: ImportSourceType;
+  enableModules?: boolean;
 }
 
 export interface ImportedProjectResult {
@@ -123,10 +127,6 @@ function assertImportSourceOutsideWorkspace(workspacePath: string, sourcePath: s
   }
 }
 
-function toPosixPath(input: string): string {
-  return input.replace(/\\/g, '/');
-}
-
 function isSensitiveEnvFile(baseName: string): boolean {
   if (!baseName.startsWith('.env')) {
     return false;
@@ -171,12 +171,6 @@ function shouldCopyProjectEntry(sourcePath: string): boolean {
   return true;
 }
 
-function shouldEnableModuleSupport(existingProjectJson: Record<string, unknown> | null): boolean {
-  // Imported projects are observed by default. Core module mutation is enabled
-  // only when the project already opted in via RapidKit metadata.
-  return existingProjectJson?.module_support === true;
-}
-
 async function readExistingProjectJson(
   projectPath: string
 ): Promise<Record<string, unknown> | null> {
@@ -198,6 +192,8 @@ async function writeImportedProjectMetadata(input: {
   sourceType: ImportSourceType;
   detection: BackendFrameworkDetection;
   existingProjectJson: Record<string, unknown> | null;
+  projectKind: WorkspaceProjectKind;
+  enableModules?: boolean;
 }): Promise<{
   projectJsonPath: string;
   importJsonPath: string;
@@ -205,11 +201,24 @@ async function writeImportedProjectMetadata(input: {
   moduleSupport: boolean;
 }> {
   const importedAt = new Date().toISOString();
-  const relativePath = toPosixPath(path.relative(input.workspacePath, input.projectPath));
+  const projectName =
+    typeof input.existingProjectJson?.name === 'string'
+      ? input.existingProjectJson.name
+      : path.basename(input.projectPath);
+  const paths = resolveWorkspaceProjectPaths({
+    workspacePath: input.workspacePath,
+    projectPath: input.projectPath,
+    projectName,
+  });
+  const relativePath = paths.contractRelativePath;
   const projectJsonPath = path.join(input.projectPath, '.rapidkit', 'project.json');
   const importJsonPath = path.join(input.projectPath, '.rapidkit', 'import.json');
   const importReadinessPath = path.join(input.projectPath, '.rapidkit', 'import-readiness.json');
-  const moduleSupport = shouldEnableModuleSupport(input.existingProjectJson);
+  const moduleSupport = resolveImportModuleSupport({
+    existingProjectJson: input.existingProjectJson,
+    detection: input.detection,
+    enableModules: input.enableModules,
+  });
   const existingModules = Array.isArray(input.existingProjectJson?.modules)
     ? input.existingProjectJson.modules
     : [];
@@ -241,6 +250,7 @@ async function writeImportedProjectMetadata(input: {
       typeof input.existingProjectJson?.slug === 'string'
         ? input.existingProjectJson.slug
         : path.basename(input.projectPath),
+    kind: input.projectKind,
     runtime: input.detection.runtime,
     framework: input.detection.key,
     kit:
@@ -263,6 +273,8 @@ async function writeImportedProjectMetadata(input: {
       source_type: input.sourceType,
       imported_at: importedAt,
       relative_path: relativePath,
+      discovered_relative_path: paths.relativePath,
+      is_external: paths.isExternal,
       detection: {
         framework: input.detection.key,
         runtime: input.detection.runtime,
@@ -286,12 +298,14 @@ async function writeImportedProjectMetadata(input: {
       name: payload.name,
       slug: payload.slug,
       relative_path: relativePath,
+      kind: input.projectKind,
       module_support: moduleSupport,
     },
     detection: {
       framework: input.detection.key,
       framework_display_name: input.detection.displayName,
       runtime: input.detection.runtime,
+      kind: input.projectKind,
       confidence: input.detection.confidence,
       support_tier: input.detection.supportTier,
       import_stack: input.detection.importStack,
@@ -306,9 +320,11 @@ async function writeImportedProjectMetadata(input: {
   const readinessPayload = buildImportReadinessReport({
     projectName: String(payload.name),
     relativePath,
+    projectKind: input.projectKind,
     source: input.sourceType,
     detection: input.detection,
     moduleSupport,
+    projectPath: input.projectPath,
     generatedAt: new Date(importedAt),
   });
 
@@ -393,17 +409,25 @@ export async function importProjectIntoWorkspace(
 
     const existingProjectJson = await readExistingProjectJson(destinationPath);
     const detection = detectBackendFrameworkFromProject(destinationPath, existingProjectJson);
+    const projectKind = await inferWorkspaceProjectKind(destinationPath, existingProjectJson);
     const metadata = await writeImportedProjectMetadata({
       workspacePath,
       projectPath: destinationPath,
       sourceType,
       detection,
       existingProjectJson,
+      projectKind,
+      enableModules: options.enableModules,
+    });
+    const importedPaths = resolveWorkspaceProjectPaths({
+      workspacePath,
+      projectPath: destinationPath,
+      projectName: path.basename(destinationPath),
     });
     const importedProject: ImportedProjectResult = {
       name: path.basename(destinationPath),
       path: destinationPath,
-      relativePath: toPosixPath(path.relative(workspacePath, destinationPath)),
+      relativePath: importedPaths.contractRelativePath,
       stack: detection.importStack,
       runtime: detection.runtime,
       framework: detection.key,

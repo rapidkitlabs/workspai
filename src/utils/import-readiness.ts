@@ -5,7 +5,8 @@ import type {
   BackendRuntimeFamily,
   BackendSupportTier,
 } from './backend-framework-contract.js';
-import { buildRuntimeCommandSupport, getRuntimeSupport } from './support-matrix.js';
+import { getRuntimeSupport } from './support-matrix.js';
+import { buildProjectAwareRuntimeCommandSupport } from './runtime-lifecycle-probes.js';
 
 export type ImportReadinessStatus = 'ready' | 'review' | 'blocked';
 
@@ -24,7 +25,8 @@ export interface ImportReadinessReport {
   project: {
     name: string;
     relativePath: string;
-    source: 'local-folder' | 'git-url';
+    kind?: string;
+    source: 'local-folder' | 'git-url' | 'adopted-local';
   };
   detection: {
     runtime: BackendRuntimeFamily;
@@ -45,15 +47,19 @@ export interface ImportReadinessReport {
 export function buildImportReadinessReport(input: {
   projectName: string;
   relativePath: string;
-  source: 'local-folder' | 'git-url';
+  projectKind?: string;
+  source: 'local-folder' | 'git-url' | 'adopted-local';
   detection: BackendFrameworkDetection;
   moduleSupport: boolean;
+  projectPath?: string;
   generatedAt?: Date;
 }): ImportReadinessReport {
   const runtimeSupport = getRuntimeSupport(input.detection.runtime);
-  const commandSupport = buildRuntimeCommandSupport({
+  const commandSupport = buildProjectAwareRuntimeCommandSupport({
     runtime: input.detection.runtime,
     moduleSupport: input.moduleSupport,
+    projectPath: input.projectPath,
+    framework: input.detection.key,
   });
   const checks: ImportReadinessCheck[] = [];
 
@@ -62,7 +68,7 @@ export function buildImportReadinessReport(input: {
     status: input.detection.key === 'unknown' ? 'warn' : 'pass',
     message:
       input.detection.key === 'unknown'
-        ? 'RapidKit could not confidently identify the backend framework.'
+        ? 'RapidKit could not confidently identify the project framework.'
         : `Detected ${input.detection.displayName} with ${input.detection.confidence} confidence.`,
     recommendation:
       input.detection.key === 'unknown'
@@ -115,6 +121,7 @@ export function buildImportReadinessReport(input: {
     project: {
       name: input.projectName,
       relativePath: input.relativePath,
+      ...(input.projectKind ? { kind: input.projectKind } : {}),
       source: input.source,
     },
     detection: {

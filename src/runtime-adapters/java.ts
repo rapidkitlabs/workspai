@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execa } from 'execa';
 import type { CommandResult, RuntimeAdapter } from './types.js';
+import { hasMakefileTarget } from '../utils/lifecycle-makefile.js';
 
 export type JavaCommandRunner = (command: string, args: string[], cwd: string) => Promise<number>;
 type JavaBuildTool = 'maven' | 'gradle';
@@ -638,6 +639,42 @@ export class JavaRuntimeAdapter implements RuntimeAdapter {
       projectPath
     );
     return { exitCode };
+  }
+
+  async runLint(projectPath: string): Promise<CommandResult> {
+    if (hasMakefileTarget(projectPath, 'lint')) {
+      return { exitCode: await this.runCommand('make', ['lint'], projectPath) };
+    }
+
+    const pomPath = path.join(projectPath, 'pom.xml');
+    if (fs.existsSync(pomPath) && fs.readFileSync(pomPath, 'utf-8').includes('checkstyle')) {
+      return this.runBuildTool(projectPath, ['checkstyle:check']);
+    }
+
+    return {
+      exitCode: 1,
+      message:
+        'No Java lint tooling detected. Add a Makefile lint target or configure checkstyle in Maven/Gradle.',
+    };
+  }
+
+  async runFormat(projectPath: string): Promise<CommandResult> {
+    if (hasMakefileTarget(projectPath, 'format')) {
+      return { exitCode: await this.runCommand('make', ['format'], projectPath) };
+    }
+
+    const gradleFiles = ['build.gradle', 'build.gradle.kts']
+      .map((name) => path.join(projectPath, name))
+      .filter((candidate) => fs.existsSync(candidate));
+    if (gradleFiles.some((file) => fs.readFileSync(file, 'utf-8').includes('spotless'))) {
+      return this.runBuildTool(projectPath, ['spotlessApply']);
+    }
+
+    return {
+      exitCode: 1,
+      message:
+        'No Java format tooling detected. Add a Makefile format target or configure spotless in Gradle.',
+    };
   }
 
   async doctorHints(_projectPath: string): Promise<string[]> {

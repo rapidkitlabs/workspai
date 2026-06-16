@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
+import { detectFrontendFrameworkFromProject } from './frontend-framework-contract.js';
+
 export type BackendConfidence = 'high' | 'medium' | 'low';
 export type BackendSupportTier = 'first-class' | 'extended' | 'observed';
 export type BackendRuntimeFamily =
@@ -26,6 +28,17 @@ export type BackendPlatformKey =
   | 'flask'
   | 'python'
   | 'nestjs'
+  | 'nextjs'
+  | 'remix'
+  | 'nuxt'
+  | 'react'
+  | 'vite'
+  | 'vue'
+  | 'sveltekit'
+  | 'svelte'
+  | 'angular'
+  | 'astro'
+  | 'solid'
   | 'express'
   | 'fastify'
   | 'koa'
@@ -61,6 +74,17 @@ export type BackendImportStack =
   | 'django'
   | 'flask'
   | 'nestjs'
+  | 'nextjs'
+  | 'remix'
+  | 'nuxt'
+  | 'react'
+  | 'vite'
+  | 'vue'
+  | 'sveltekit'
+  | 'svelte'
+  | 'angular'
+  | 'astro'
+  | 'solid'
   | 'express'
   | 'koa'
   | 'go'
@@ -130,6 +154,94 @@ const BACKEND_CONTRACTS: Record<BackendPlatformKey, BackendContractDescriptor> =
     aliases: ['nestjs', 'nest'],
     kitPrefixes: ['nestjs'],
   },
+  nextjs: {
+    key: 'nextjs',
+    runtime: 'node',
+    displayName: 'Next.js',
+    supportTier: 'extended',
+    importStack: 'nextjs',
+    aliases: ['nextjs', 'next.js', 'next'],
+  },
+  remix: {
+    key: 'remix',
+    runtime: 'node',
+    displayName: 'Remix',
+    supportTier: 'extended',
+    importStack: 'remix',
+    aliases: ['remix'],
+  },
+  nuxt: {
+    key: 'nuxt',
+    runtime: 'node',
+    displayName: 'Nuxt',
+    supportTier: 'extended',
+    importStack: 'nuxt',
+    aliases: ['nuxt', 'nuxtjs', 'nuxt.js'],
+  },
+  react: {
+    key: 'react',
+    runtime: 'node',
+    displayName: 'React',
+    supportTier: 'extended',
+    importStack: 'react',
+    aliases: ['react'],
+  },
+  vite: {
+    key: 'vite',
+    runtime: 'node',
+    displayName: 'Vite',
+    supportTier: 'extended',
+    importStack: 'vite',
+    aliases: ['vite'],
+  },
+  vue: {
+    key: 'vue',
+    runtime: 'node',
+    displayName: 'Vue',
+    supportTier: 'extended',
+    importStack: 'vue',
+    aliases: ['vue', 'vuejs', 'vue.js'],
+  },
+  sveltekit: {
+    key: 'sveltekit',
+    runtime: 'node',
+    displayName: 'SvelteKit',
+    supportTier: 'extended',
+    importStack: 'sveltekit',
+    aliases: ['sveltekit', 'svelte-kit'],
+  },
+  svelte: {
+    key: 'svelte',
+    runtime: 'node',
+    displayName: 'Svelte',
+    supportTier: 'extended',
+    importStack: 'svelte',
+    aliases: ['svelte'],
+  },
+  angular: {
+    key: 'angular',
+    runtime: 'node',
+    displayName: 'Angular',
+    supportTier: 'extended',
+    importStack: 'angular',
+    aliases: ['angular', '@angular/core'],
+  },
+  astro: {
+    key: 'astro',
+    runtime: 'node',
+    displayName: 'Astro',
+    supportTier: 'extended',
+    importStack: 'astro',
+    aliases: ['astro'],
+  },
+  solid: {
+    key: 'solid',
+    runtime: 'node',
+    displayName: 'Solid',
+    supportTier: 'extended',
+    importStack: 'solid',
+    aliases: ['solid', 'solidjs', 'solid-js'],
+  },
   express: {
     key: 'express',
     runtime: 'node',
@@ -166,7 +278,7 @@ const BACKEND_CONTRACTS: Record<BackendPlatformKey, BackendContractDescriptor> =
     key: 'gofiber',
     runtime: 'go',
     displayName: 'Go/Fiber',
-    supportTier: 'first-class',
+    supportTier: 'extended',
     importStack: 'go',
     aliases: ['gofiber', 'fiber', 'go-fiber', 'go/fiber'],
     kitPrefixes: ['gofiber'],
@@ -175,7 +287,7 @@ const BACKEND_CONTRACTS: Record<BackendPlatformKey, BackendContractDescriptor> =
     key: 'gogin',
     runtime: 'go',
     displayName: 'Go/Gin',
-    supportTier: 'first-class',
+    supportTier: 'extended',
     importStack: 'go',
     aliases: ['gogin', 'gin', 'go-gin', 'go/gin'],
     kitPrefixes: ['gogin'],
@@ -201,7 +313,7 @@ const BACKEND_CONTRACTS: Record<BackendPlatformKey, BackendContractDescriptor> =
     key: 'springboot',
     runtime: 'java',
     displayName: 'Spring Boot',
-    supportTier: 'first-class',
+    supportTier: 'extended',
     importStack: 'springboot',
     aliases: ['springboot', 'spring', 'spring-boot'],
     kitPrefixes: ['springboot'],
@@ -797,6 +909,11 @@ export function detectBackendFrameworkFromProject(
 
   const runtimeCandidates = detectRuntimeCandidatesFromProject(projectPath);
   if (runtimeCandidates.includes('node')) {
+    const frontendDetection = detectFrontendFrameworkFromProject(projectPath, projectJsonData);
+    if (frontendDetection.key !== 'unknown') {
+      return frontendDetection;
+    }
+
     const detection = detectNodeBackendFromProject(projectPath);
     if (detection.key !== 'unknown') {
       return detection;

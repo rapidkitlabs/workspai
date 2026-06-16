@@ -11,6 +11,33 @@ import { areRuntimeAdaptersEnabled, getRuntimeAdapter } from '../runtime-adapter
 const normalizePath = (value: string | undefined): string => (value || '').replace(/\\/g, '/');
 const ORIGINAL_JAVA_HOME = process.env.JAVA_HOME;
 
+function mockNodePackageScripts(
+  projectPath: string,
+  scripts: Record<string, string>,
+  lockfile: 'package-lock.json' | 'pnpm-lock.yaml' | 'yarn.lock' = 'package-lock.json'
+): void {
+  const packageJson = JSON.stringify({ scripts });
+  vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) => {
+    const normalized = normalizePath(String(p));
+    if (normalized.endsWith(`${projectPath}/package.json`)) return true;
+    if (normalized.endsWith(`${projectPath}/${lockfile}`)) return true;
+    if (
+      lockfile !== 'package-lock.json' &&
+      normalized.endsWith(`${projectPath}/package-lock.json`)
+    ) {
+      return false;
+    }
+    return false;
+  });
+  vi.spyOn(fs, 'readFileSync').mockImplementation((p: fs.PathOrFileDescriptor) => {
+    const normalized = normalizePath(String(p));
+    if (normalized.endsWith(`${projectPath}/package.json`)) {
+      return packageJson;
+    }
+    throw new Error(`Unexpected readFileSync path: ${String(p)}`);
+  });
+}
+
 describe('Runtime Adapters', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -1247,9 +1274,7 @@ describe('Runtime Adapters', () => {
     it('uses pnpm when pnpm-lock exists', async () => {
       const run = vi.fn().mockResolvedValue(0);
       const adapter = new NodeRuntimeAdapter(run);
-      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
-        String(p).includes('pnpm-lock.yaml')
-      );
+      mockNodePackageScripts('/tmp/node-project', { dev: 'vite' }, 'pnpm-lock.yaml');
 
       const result = await adapter.runDev('/tmp/node-project');
 
@@ -1260,9 +1285,7 @@ describe('Runtime Adapters', () => {
     it('uses yarn when yarn lock exists', async () => {
       const run = vi.fn().mockResolvedValue(0);
       const adapter = new NodeRuntimeAdapter(run);
-      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
-        String(p).includes('yarn.lock')
-      );
+      mockNodePackageScripts('/tmp/node-project', { build: 'vite build' }, 'yarn.lock');
 
       const result = await adapter.runBuild('/tmp/node-project');
 
@@ -1348,15 +1371,31 @@ describe('Runtime Adapters', () => {
     it('runs test/start scripts through npm adapter branches', async () => {
       const run = vi.fn().mockResolvedValue(0);
       const adapter = new NodeRuntimeAdapter(run);
-      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
-        normalizePath(String(p)).endsWith('/tmp/node-project/package-lock.json')
-      );
+      mockNodePackageScripts('/tmp/node-project', {
+        test: 'vitest',
+        start: 'node dist/index.js',
+      });
 
       await adapter.runTest('/tmp/node-project');
       await adapter.runStart('/tmp/node-project');
 
       expect(run).toHaveBeenCalledWith('npm', ['run', 'test'], '/tmp/node-project');
       expect(run).toHaveBeenCalledWith('npm', ['run', 'start'], '/tmp/node-project');
+    });
+
+    it('resolves vite preview for start lifecycle command', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new NodeRuntimeAdapter(run);
+      mockNodePackageScripts('/tmp/node-project', {
+        dev: 'vite',
+        preview: 'vite preview',
+        build: 'vite build',
+      });
+
+      const result = await adapter.runStart('/tmp/node-project');
+
+      expect(result.exitCode).toBe(0);
+      expect(run).toHaveBeenCalledWith('npm', ['run', 'preview'], '/tmp/node-project');
     });
   });
 

@@ -4,21 +4,23 @@ import path from 'path';
 import chalk from 'chalk';
 import { execa } from 'execa';
 import {
-  getStageCommand,
   detectRuntimeFromMarkers,
   categorizeError,
   validateCommand,
-  resolveStageCommand,
+  applyEnvironmentCommandVariant,
+  resolveWorkspaceStageCommand,
   type RuntimeFamily,
   type ErrorCategory,
+  type EnvironmentVariant,
 } from './framework-registry.js';
+import { readProjectMetadata } from './utils/project-metadata.js';
+import { isWorkspaceStageSupported } from './utils/workspace-stage-capabilities.js';
 import {
   detectBackendFrameworkFromProject,
   detectRuntimeCandidatesFromProject,
   normalizeBackendFrameworkLabel,
   normalizeBackendRuntimeFamily,
   type BackendPlatformKey,
-  type BackendRuntimeFamily,
 } from './utils/backend-framework-contract.js';
 import { discoverWorkspaceProjects as discoverWorkspaceProjectsShared } from './utils/workspace-discovery.js';
 
@@ -27,6 +29,7 @@ export type WorkspaceRunStage = 'init' | 'test' | 'build' | 'start';
 export interface WorkspaceRunOptions {
   workspacePath: string;
   stage: WorkspaceRunStage;
+  scope?: string;
   affected?: boolean;
   blastRadius?: boolean;
   since?: string;
@@ -85,10 +88,12 @@ export interface WorkspaceRunReport {
     continueOnError: boolean;
     strict: boolean;
     enforceGates: boolean;
+    scope: string | null;
   };
   selection: {
     mode: SelectionMode;
     since: string | null;
+    scope: string | null;
     graphStatus: GraphStatus;
     expansionDepth: number;
   };
@@ -145,6 +150,18 @@ function normalizePathForMatch(value: string): string {
   return value.replace(/\\/g, '/');
 }
 
+function normalizeScope(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.startsWith('project:')) {
+    const projectScope = trimmed.slice('project:'.length).trim();
+    return projectScope || null;
+  }
+  return trimmed;
+}
+
 async function discoverWorkspaceProjects(workspacePath: string): Promise<string[]> {
   return discoverWorkspaceProjectsShared(workspacePath, {
     skipDirs: SKIP_DIRS,
@@ -165,6 +182,59 @@ async function discoverWorkspaceProjects(workspacePath: string): Promise<string[
       return detectRuntimeCandidatesFromProject(dirPath).length > 0;
     },
   });
+}
+
+async function readProjectDeclaredName(projectPath: string): Promise<string | null> {
+  for (const relativeConfigPath of [
+    path.join('.rapidkit', 'project.json'),
+    path.join('.rapidkit', 'context.json'),
+  ]) {
+    const configPath = path.join(projectPath, relativeConfigPath);
+    if (!(await pathExists(configPath))) {
+      continue;
+    }
+    try {
+      const payload = await readJsonFile<Record<string, unknown>>(configPath);
+      const name = payload.name ?? payload.projectName ?? payload.slug;
+      if (typeof name === 'string' && name.trim()) {
+        return name.trim();
+      }
+    } catch {
+      // Keep scope resolution resilient; path and basename matching still apply.
+    }
+  }
+  return null;
+}
+
+async function filterProjectsByScope(
+  workspacePath: string,
+  projects: string[],
+  rawScope: string | undefined
+): Promise<{ projects: string[]; normalizedScope: string | null }> {
+  const normalizedScope = normalizeScope(rawScope);
+  if (!normalizedScope) {
+    return { projects, normalizedScope: null };
+  }
+
+  const requested = normalizePathForMatch(normalizedScope).toLowerCase();
+  const matched: string[] = [];
+  for (const projectPath of projects) {
+    const relativePath = normalizePathForMatch(path.relative(workspacePath, projectPath));
+    const basename = path.basename(projectPath);
+    const declaredName = await readProjectDeclaredName(projectPath);
+    const candidates = [relativePath, basename, declaredName]
+      .filter((item): item is string => typeof item === 'string' && item.length > 0)
+      .map((item) => normalizePathForMatch(item).toLowerCase());
+    if (candidates.includes(requested)) {
+      matched.push(projectPath);
+    }
+  }
+
+  if (matched.length === 0) {
+    throw new Error(`Workspace run scope did not match any project: ${rawScope}`);
+  }
+
+  return { projects: matched, normalizedScope };
 }
 
 async function computeAffectedProjects(
@@ -487,7 +557,13 @@ async function runRapidkitSelfCommand(args: string[], cwd: string) {
 }
 
 function isWrapperOwnedRuntime(runtime: RuntimeFamily): boolean {
-  return runtime === 'node' || runtime === 'go' || runtime === 'java' || runtime === 'python';
+  return (
+    runtime === 'node' ||
+    runtime === 'go' ||
+    runtime === 'java' ||
+    runtime === 'python' ||
+    runtime === 'dotnet'
+  );
 }
 
 function isVitestRuntime(): boolean {
@@ -521,6 +597,7 @@ async function detectProjectFramework(projectPath: string): Promise<{
   runtime: RuntimeFamily;
   framework?: string;
   commandOverrides?: Record<string, string>;
+  environmentCommandVariants?: EnvironmentVariant;
   environment?: 'dev' | 'staging' | 'prod';
 }> {
   const toWorkspaceRuntime = (runtime: string | undefined): RuntimeFamily => {
@@ -582,43 +659,45 @@ async function detectProjectFramework(projectPath: string): Promise<{
     return undefined;
   };
 
-  // Check .rapidkit/context.json for explicit metadata
-  const contextPath = path.join(projectPath, '.rapidkit', 'context.json');
-  if (fs.existsSync(contextPath)) {
-    try {
-      const context = JSON.parse(fs.readFileSync(contextPath, 'utf-8')) as Record<string, unknown>;
-      if (typeof context.runtime === 'string') {
-        // Extract command overrides
-        const commandOverrides: Record<string, string> = {};
-        if (context.commands && typeof context.commands === 'object') {
-          for (const [key, val] of Object.entries(context.commands)) {
-            if (typeof val === 'string') {
-              commandOverrides[key] = val;
-            }
-          }
-        }
+  const metadata = readProjectMetadata(projectPath);
+  const detection =
+    metadata?.detection ??
+    detectBackendFrameworkFromProject(projectPath, metadata?.projectJson ?? null);
+  const context = metadata?.contextJson;
+  const runtime = toWorkspaceRuntime(detection.runtime);
+  const framework = toWorkspaceFramework(detection.key);
 
-        return {
-          runtime: toWorkspaceRuntime(context.runtime),
-          framework: toWorkspaceFramework(
-            typeof context.framework === 'string' ? context.framework : undefined
-          ),
-          commandOverrides: Object.keys(commandOverrides).length > 0 ? commandOverrides : undefined,
-          environment:
-            typeof context.environment === 'string'
-              ? (context.environment as 'dev' | 'staging' | 'prod')
-              : undefined,
-        };
+  const commandOverrides: Record<string, string> = {};
+  const stageKeys = new Set(['init', 'test', 'build', 'start']);
+  if (context?.commands && typeof context.commands === 'object') {
+    for (const [key, val] of Object.entries(context.commands as Record<string, unknown>)) {
+      if (typeof val === 'string' && stageKeys.has(key)) {
+        commandOverrides[key] = val;
       }
-    } catch {
-      // Fallback to marker detection
     }
   }
 
-  const detection = detectBackendFrameworkFromProject(projectPath);
-  const runtime = toWorkspaceRuntime(detection.runtime as BackendRuntimeFamily);
-  const framework = toWorkspaceFramework(detection.key);
-  return { runtime, framework };
+  let environmentCommandVariants: EnvironmentVariant | undefined;
+  if (context?.commandEnvironments && typeof context.commandEnvironments === 'object') {
+    const variants = context.commandEnvironments as Record<string, unknown>;
+    environmentCommandVariants = {
+      dev: typeof variants.dev === 'string' ? variants.dev : undefined,
+      staging: typeof variants.staging === 'string' ? variants.staging : undefined,
+      prod: typeof variants.prod === 'string' ? variants.prod : undefined,
+      default: typeof variants.default === 'string' ? variants.default : undefined,
+    };
+  }
+
+  return {
+    runtime,
+    framework,
+    commandOverrides: Object.keys(commandOverrides).length > 0 ? commandOverrides : undefined,
+    environmentCommandVariants,
+    environment:
+      typeof context?.environment === 'string'
+        ? (context.environment as 'dev' | 'staging' | 'prod')
+        : undefined,
+  };
 }
 
 /**
@@ -634,6 +713,7 @@ async function executeStageCommand(
   runtime: RuntimeFamily,
   framework?: string,
   commandOverrides?: Record<string, string>,
+  environmentCommandVariants?: EnvironmentVariant,
   environment?: 'dev' | 'staging' | 'prod'
 ): Promise<{
   exitCode: number;
@@ -654,8 +734,12 @@ async function executeStageCommand(
     // For npm adapters, use 'rapidkit' wrapper
     baseCommand = `rapidkit ${stage}`;
   } else {
-    // Try framework registry
-    baseCommand = getStageCommand(runtime, framework, stage);
+    baseCommand = resolveWorkspaceStageCommand({
+      projectPath,
+      runtime,
+      framework,
+      stage,
+    });
   }
 
   if (!baseCommand) {
@@ -667,8 +751,11 @@ async function executeStageCommand(
     };
   }
 
-  // Resolve environment variants if needed
-  const finalCommand = resolveStageCommand(baseCommand, commandOverrides, environment);
+  const finalCommand = applyEnvironmentCommandVariant(
+    baseCommand,
+    environmentCommandVariants,
+    environment
+  );
   if (!finalCommand) {
     return {
       exitCode: 127,
@@ -679,8 +766,25 @@ async function executeStageCommand(
   }
 
   // Step 1: Preflight validation
+  const nativeStageCommand = resolveWorkspaceStageCommand({
+    projectPath,
+    runtime,
+    framework,
+    stage,
+  });
+
   if (!useRapidkitWrapper) {
     const validation = await validateCommand(finalCommand);
+    if (!validation.valid) {
+      return {
+        exitCode: 127,
+        command: finalCommand,
+        message: validation.reason || 'Command not available',
+        errorCategory: 'setup',
+      };
+    }
+  } else if (nativeStageCommand) {
+    const validation = await validateCommand(nativeStageCommand);
     if (!validation.valid) {
       return {
         exitCode: 127,
@@ -850,13 +954,18 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
   const startedAt = Date.now();
   const workspacePath = path.resolve(options.workspacePath);
   const projectPaths = await discoverWorkspaceProjects(workspacePath);
+  const { projects: scopedProjectPaths, normalizedScope } = await filterProjectsByScope(
+    workspacePath,
+    projectPaths,
+    options.scope
+  );
 
   const affectedOnly = options.affected === true;
   const blastRadius = options.blastRadius === true;
   const since = options.since?.trim() || 'HEAD~1';
   const initialAffectedProjects = affectedOnly
-    ? await computeAffectedProjects(workspacePath, projectPaths, since)
-    : new Set(projectPaths);
+    ? await computeAffectedProjects(workspacePath, scopedProjectPaths, since)
+    : new Set(scopedProjectPaths);
 
   let affectedProjects: Set<string>;
   let graphStatus: GraphStatus = 'not-applicable';
@@ -901,7 +1010,7 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
       ];
   const blockingGate = gateResults.find((gate) => gate.status === 'fail');
 
-  const runTargets = projectPaths.filter((projectPath) => affectedProjects.has(projectPath));
+  const runTargets = scopedProjectPaths.filter((projectPath) => affectedProjects.has(projectPath));
   const continueOnError = options.continueOnError === true || options.stage === 'init';
   const parallel = options.parallel === true;
   const maxWorkers = normalizeWorkers(options.maxWorkers, runTargets.length);
@@ -918,15 +1027,17 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
 
   const executionRows = new Map<string, ProjectExecutionResult>();
   for (const projectPath of projectPaths) {
+    const insideScope = scopedProjectPaths.includes(projectPath);
+    const selected = insideScope && affectedProjects.has(projectPath);
     executionRows.set(projectPath, {
       path: projectPath,
       relativePath: normalizePathForMatch(path.relative(workspacePath, projectPath)),
-      selected: affectedProjects.has(projectPath),
-      affected: affectedProjects.has(projectPath),
-      status: affectedProjects.has(projectPath) ? 'skipped' : 'skipped',
+      selected,
+      affected: selected,
+      status: 'skipped',
       exitCode: null,
       durationMs: 0,
-      reason: affectedProjects.has(projectPath) ? undefined : 'not affected',
+      reason: selected ? undefined : insideScope ? 'not affected' : 'outside scope',
       framework: undefined,
       runtimeDetected: undefined,
       executionCommand: undefined,
@@ -961,10 +1072,20 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
       const started = Date.now();
 
       // Detect framework and runtime for this project (with overrides)
-      const { runtime, framework, commandOverrides, environment } =
+      const { runtime, framework, commandOverrides, environmentCommandVariants, environment } =
         await detectProjectFramework(projectPath);
       row.runtimeDetected = runtime;
       row.framework = framework;
+
+      const stageSupport = isWorkspaceStageSupported(projectPath, options.stage);
+      if (!stageSupport.supported) {
+        row.status = 'skipped';
+        row.reason = stageSupport.reason ?? `stage "${options.stage}" unsupported for project`;
+        row.durationMs = Date.now() - started;
+        row.exitCode = null;
+        completedTargets += 1;
+        return;
+      }
 
       // Execute stage command with enterprise features
       const execResult = await executeStageCommand(
@@ -973,6 +1094,7 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
         runtime,
         framework,
         commandOverrides,
+        environmentCommandVariants,
         environment
       );
       row.executionCommand = execResult.command;
@@ -1105,10 +1227,12 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
       continueOnError,
       strict,
       enforceGates,
+      scope: normalizedScope,
     },
     selection: {
       mode: selectionMode,
       since: affectedOnly ? since : null,
+      scope: normalizedScope,
       graphStatus,
       expansionDepth,
     },

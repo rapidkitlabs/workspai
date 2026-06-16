@@ -21,6 +21,15 @@ async function createProject(workspacePath: string, relPath: string) {
     name: relPath,
     runtime: 'node',
   });
+  await fsExtra.writeJSON(path.join(projectPath, 'package.json'), {
+    scripts: {
+      install: 'node -e "process.exit(0)"',
+      test: 'node -e "process.exit(0)"',
+      build: 'node -e "process.exit(0)"',
+      start: 'node -e "process.exit(0)"',
+      dev: 'node -e "process.exit(0)"',
+    },
+  });
   return projectPath;
 }
 
@@ -347,6 +356,53 @@ describe('workspace-run', () => {
     await fsExtra.remove(workspacePath);
   });
 
+  it('runs only the explicit project scope when --scope project:<name> is set', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
+    await createProject(workspacePath, 'apps/api-a');
+    await createProject(workspacePath, 'apps/api-b');
+    noGateMock({ test: { exitCode: 0, stdout: 'ok' } });
+
+    const report = await runWorkspaceStage({
+      workspacePath,
+      stage: 'test',
+      scope: 'project:api-a',
+      enforceGates: false,
+      json: true,
+    });
+
+    expect(report.options.scope).toBe('api-a');
+    expect(report.selection.scope).toBe('api-a');
+    expect(report.summary.selectedCount).toBe(1);
+    expect(report.projects.find((item) => item.relativePath === 'apps/api-a')).toMatchObject({
+      selected: true,
+      status: 'passed',
+    });
+    expect(report.projects.find((item) => item.relativePath === 'apps/api-b')).toMatchObject({
+      selected: false,
+      status: 'skipped',
+      reason: 'outside scope',
+    });
+
+    await fsExtra.remove(workspacePath);
+  });
+
+  it('rejects a workspace run project scope that matches no project', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
+    await createProject(workspacePath, 'apps/api-a');
+
+    await expect(
+      runWorkspaceStage({
+        workspacePath,
+        stage: 'test',
+        scope: 'project:missing-api',
+        enforceGates: false,
+        json: true,
+      })
+    ).rejects.toThrow('Workspace run scope did not match any project: project:missing-api');
+
+    await fsExtra.remove(workspacePath);
+  });
+
   it('selection provenance: mode=affected when --affected without blast-radius', async () => {
     const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
     await createProject(workspacePath, 'apps/api-a');
@@ -606,7 +662,7 @@ describe('workspace-run', () => {
     await fsExtra.remove(workspacePath);
   });
 
-  it('detects rails from manifests and uses the explicit framework init command without context metadata', async () => {
+  it('detects rails from manifests but skips init when fleet capabilities do not support observed runtimes', async () => {
     const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
     const projectPath = await createProjectWithoutContext(workspacePath, 'apps/rails-api');
     await fsExtra.writeFile(path.join(projectPath, 'Gemfile'), 'gem "rails", "~> 7.1.0"\n');
@@ -634,8 +690,9 @@ describe('workspace-run', () => {
     const projectReport = report.projects.find((item) => item.relativePath === 'apps/rails-api');
     expect(projectReport?.framework).toBe('rails');
     expect(projectReport?.runtimeDetected).toBe('ruby');
-    expect(projectReport?.executionCommand).toBe('bundle install && rails db:prepare');
-    expect(projectReport?.status).toBe('passed');
+    expect(projectReport?.status).toBe('skipped');
+    expect(projectReport?.reason).toMatch(/init/i);
+    expect(projectReport?.executionCommand).toBeUndefined();
 
     await fsExtra.remove(workspacePath);
   });
@@ -702,7 +759,7 @@ describe('workspace-run', () => {
 
     const output = logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
     expect(output).toContain("Reason: Command 'dotnet' not found or not executable");
-    expect(output).toContain('Command: dotnet restore');
+    expect(output).toContain('Command: rapidkit init');
     expect(output).toContain('Hint: Install .NET 8+ SDK');
 
     const projectReport = report.projects[0];

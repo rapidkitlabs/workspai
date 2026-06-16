@@ -2,6 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import type { CommandResult, RuntimeAdapter } from './types.js';
+import { detectBackendFrameworkFromProject } from '../utils/backend-framework-contract.js';
+import {
+  resolveNodeLifecycleScript,
+  type NodeLifecycleCommand,
+} from '../utils/node-lifecycle-scripts.js';
+import { readRapidkitProjectJson } from '../utils/runtime-detection.js';
 
 export type NodeCommandRunner = (command: string, args: string[], cwd: string) => Promise<number>;
 
@@ -175,6 +181,25 @@ export class NodeRuntimeAdapter implements RuntimeAdapter {
     return lastResult;
   }
 
+  private async runLifecycle(
+    projectPath: string,
+    command: NodeLifecycleCommand
+  ): Promise<CommandResult> {
+    const projectJson = readRapidkitProjectJson(projectPath);
+    const detection = detectBackendFrameworkFromProject(projectPath, projectJson);
+    const resolved = resolveNodeLifecycleScript(projectPath, command, {
+      framework: detection.key,
+    });
+    if (!resolved) {
+      return {
+        exitCode: 1,
+        message: `No npm script available for \`${command}\`. Add a "${command}" script to package.json.`,
+      };
+    }
+
+    return this.runScriptWithFallback(projectPath, resolved.scriptName);
+  }
+
   async checkPrereqs(): Promise<CommandResult> {
     return this.run('node', ['--version'], process.cwd());
   }
@@ -207,19 +232,27 @@ export class NodeRuntimeAdapter implements RuntimeAdapter {
   }
 
   async runDev(projectPath: string): Promise<CommandResult> {
-    return this.runScriptWithFallback(projectPath, 'dev');
+    return this.runLifecycle(projectPath, 'dev');
   }
 
   async runTest(projectPath: string): Promise<CommandResult> {
-    return this.runScriptWithFallback(projectPath, 'test');
+    return this.runLifecycle(projectPath, 'test');
   }
 
   async runBuild(projectPath: string): Promise<CommandResult> {
-    return this.runScriptWithFallback(projectPath, 'build');
+    return this.runLifecycle(projectPath, 'build');
   }
 
   async runStart(projectPath: string): Promise<CommandResult> {
-    return this.runScriptWithFallback(projectPath, 'start');
+    return this.runLifecycle(projectPath, 'start');
+  }
+
+  async runLint(projectPath: string): Promise<CommandResult> {
+    return this.runLifecycle(projectPath, 'lint');
+  }
+
+  async runFormat(projectPath: string): Promise<CommandResult> {
+    return this.runLifecycle(projectPath, 'format');
   }
 
   async doctorHints(_projectPath: string): Promise<string[]> {

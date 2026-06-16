@@ -18,17 +18,27 @@ vi.mock('../workspace-marker.js', () => ({
 describe('init scenarios integration (non-regression)', () => {
   let tempDir: string;
   let originalCwd: string;
+  let originalHome: string | undefined;
 
   beforeEach(async () => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
     originalCwd = process.cwd();
+    originalHome = process.env.HOME;
     tempDir = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rapidkit-init-scenarios-'));
+    const isolatedHome = path.join(tempDir, 'home');
+    await fsExtra.ensureDir(isolatedHome);
+    process.env.HOME = isolatedHome;
     delete process.env.RAPIDKIT_ENABLE_RUNTIME_ADAPTERS;
   });
 
   afterEach(async () => {
     process.chdir(originalCwd);
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
     delete process.env.RAPIDKIT_ENABLE_RUNTIME_ADAPTERS;
     await fsExtra.remove(tempDir);
     vi.restoreAllMocks();

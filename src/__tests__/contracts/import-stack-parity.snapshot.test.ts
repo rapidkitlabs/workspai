@@ -9,44 +9,17 @@ import {
   normalizeBackendPlatformKey,
   type BackendImportStack,
 } from '../../utils/backend-framework-contract';
+import {
+  IMPORT_STACK_PARITY_FRAMEWORK_KEYS,
+  IMPORT_STACK_PARITY_RUNTIME_HINT_KEYS,
+  IMPORT_STACK_PARITY_SCHEMA_VERSION,
+} from '../../contracts/import-stack-parity-snapshot';
 
-const PARITY_SCHEMA_VERSION = 'backend-import-stack-parity-v1';
+const PARITY_SCHEMA_VERSION = IMPORT_STACK_PARITY_SCHEMA_VERSION;
 
-const EXPECTED_FRAMEWORK_KEYS = [
-  'fastapi',
-  'django',
-  'flask',
-  'python',
-  'nestjs',
-  'express',
-  'fastify',
-  'koa',
-  'node',
-  'gofiber',
-  'gogin',
-  'echo',
-  'go',
-  'springboot',
-  'java',
-  'rails',
-  'ruby',
-  'dotnet',
-  'unknown',
-] as const;
+const EXPECTED_FRAMEWORK_KEYS = IMPORT_STACK_PARITY_FRAMEWORK_KEYS;
 
-const EXPECTED_RUNTIME_HINT_KEYS = [
-  'python',
-  'node',
-  'nodejs',
-  'typescript',
-  'go',
-  'golang',
-  'java',
-  'ruby',
-  'dotnet',
-  'csharp',
-  'unknown',
-] as const;
+const EXPECTED_RUNTIME_HINT_KEYS = IMPORT_STACK_PARITY_RUNTIME_HINT_KEYS;
 
 type SharedParitySnapshot = {
   schemaVersion: string;

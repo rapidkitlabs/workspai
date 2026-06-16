@@ -14,5 +14,7 @@ export interface RuntimeAdapter {
   runTest(projectPath: string): Promise<CommandResult>;
   runBuild(projectPath: string): Promise<CommandResult>;
   runStart(projectPath: string): Promise<CommandResult>;
+  runLint?(projectPath: string): Promise<CommandResult>;
+  runFormat?(projectPath: string): Promise<CommandResult>;
   doctorHints(projectPath: string): Promise<string[]>;
 }

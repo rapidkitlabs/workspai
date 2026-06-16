@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-06-16
+
+### Added
+
+- Added `rapidkit adopt [path]` for in-place project adoption into a workspace without moving or copying source files.
+- Added adoption metadata at `.rapidkit/adopt.json` and `.rapidkit/adopt-readiness.json`.
+- Added `rapidkit create frontend <id> <name>` with official generators for Next.js, Remix, Vite (React/Vue/Svelte/Solid/Vanilla), Nuxt, Angular, Astro, and SvelteKit.
+- Added frontend generator smoke workflow (`smoke:frontend-generators`) and CI coverage for official scaffold commands.
+- Added workspace intelligence surfaces: `workspace model`, `workspace context`, `workspace snapshot`, `workspace verify`, `workspace diff`, and `workspace impact`.
+- Added workspace intelligence JSON contracts under `contracts/workspace-intelligence/`.
+- Added frontend framework detection contracts and doctor frontend signals (Next.js, React, Vite, Vue, Angular, SvelteKit, Nuxt, Astro, Remix, Solid).
+- Added stack-aware suggested default names for interactive `create project`.
+- Added node lifecycle script resolution, runtime executors, and lifecycle probes for enterprise/polyglot workspaces.
+- Added enterprise lifecycle contract helpers and expanded infra stack catalog/contract coverage.
+- Added generated shared-contracts pipeline (`generate:contracts`, `validate:contracts`).
+- Added Git observation helpers for workspace intelligence snapshots.
+- Expanded runtime command surface and import-stack parity snapshots for frontend kits and adoption flows.
+
+### Changed
+
+- Workspace contract and model discovery now include adopted external projects from the workspace registry.
+- Node project detection prefers concrete frontend framework signals before falling back to generic Node.
+- Doctor project evidence is richer (frontend probes, project kind, lifecycle signals, vulnerability summaries).
+- Project command capabilities matrix reflects frontend vs backend module support accurately.
+- Import readiness and module-support flows align with adopted/imported project metadata.
+- NestJS kit templates use canonical `src/modules/free/` layout and updated Docker/tsconfig paths.
+- README and command ownership matrix document adopt, create frontend, and workspace intelligence workflows.
+
+### Fixed
+
+- Runtime acceptance matrix no longer runs global CLI scenarios from the npm repo root (avoids Vite project false positives).
+- Workspace acceptance matrix creates workspaces under an isolated run directory with `--output .` and unique names.
+- Init-scenario integration tests isolate `HOME` so default workspace slot resolution stays deterministic.
+- Hardened analyze/readiness handling for workspace shell roots that are not analyzable projects.
+
+### Security
+
+- Bumped transitive `js-yaml` to address moderate DoS advisory (GHSA-h67p-54hq-rp68).
+
+### Verification
+
+- Validated with `npm run validate`, `npm run validate:contracts`, `npm run security`, and `npm run test:runtime-matrix:full`.
+
 ## [0.34.0] - 2026-06-14
 
 ### Added

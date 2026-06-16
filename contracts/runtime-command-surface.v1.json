@@ -1,6 +1,15 @@
 {
   "schemaVersion": "rapidkit-runtime-command-surface-v1",
-  "lifecycleCommands": ["init", "dev", "start", "build", "test", "lint", "format", "help"],
+  "lifecycleCommands": [
+    "init",
+    "dev",
+    "start",
+    "build",
+    "test",
+    "lint",
+    "format",
+    "help"
+  ],
   "moduleMutationCommands": [
     "add",
     "modules",
@@ -14,10 +23,42 @@
     "snapshot",
     "optimize"
   ],
-  "globalCommands": ["create", "list", "info", "frameworks", "license"],
-  "universalCommands": ["version", "commands", "doctor", "project"],
-  "moduleSuggestionFrameworks": ["fastapi", "nestjs"],
-  "moduleUnsupportedFrameworks": ["go", "springboot", "dotnet"],
+  "globalCommands": [
+    "create",
+    "list",
+    "info",
+    "frameworks",
+    "license"
+  ],
+  "universalCommands": [
+    "version",
+    "commands",
+    "doctor",
+    "project"
+  ],
+  "coreProjectCommands": [
+    "docs"
+  ],
+  "moduleSuggestionFrameworks": [
+    "fastapi",
+    "nestjs"
+  ],
+  "moduleUnsupportedFrameworks": [
+    "go",
+    "springboot",
+    "dotnet",
+    "nextjs",
+    "remix",
+    "vite-react",
+    "vite-vue",
+    "vite-svelte",
+    "vite-solid",
+    "vite-vanilla",
+    "nuxt",
+    "angular",
+    "astro",
+    "sveltekit"
+  ],
   "scaffoldKits": [
     "fastapi.standard",
     "fastapi.ddd",
@@ -25,7 +66,18 @@
     "gofiber.standard",
     "gogin.standard",
     "springboot.standard",
-    "dotnet.webapi.clean"
+    "dotnet.webapi.clean",
+    "frontend.nextjs",
+    "frontend.remix",
+    "frontend.vite-react",
+    "frontend.vite-vue",
+    "frontend.vite-svelte",
+    "frontend.vite-solid",
+    "frontend.vite-vanilla",
+    "frontend.nuxt",
+    "frontend.angular",
+    "frontend.astro",
+    "frontend.sveltekit"
   ],
   "runtimeMatrix": {
     "python": {
@@ -34,15 +86,33 @@
       "import": true,
       "moduleCommands": true,
       "doctor": "full",
-      "lifecycleCommands": ["init", "dev", "start", "build", "test", "lint", "format", "help"]
+      "lifecycleCommands": [
+        "init",
+        "dev",
+        "start",
+        "build",
+        "test",
+        "lint",
+        "format",
+        "help"
+      ]
     },
     "node": {
-      "tier": "first-class",
+      "tier": "extended",
       "scaffold": true,
       "import": true,
       "moduleCommands": true,
       "doctor": "full",
-      "lifecycleCommands": ["init", "dev", "start", "build", "test", "lint", "format", "help"]
+      "lifecycleCommands": [
+        "init",
+        "dev",
+        "start",
+        "build",
+        "test",
+        "lint",
+        "format",
+        "help"
+      ]
     },
     "go": {
       "tier": "extended",
@@ -50,7 +120,16 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "readiness",
-      "lifecycleCommands": ["init", "dev", "start", "build", "test", "lint", "format", "help"]
+      "lifecycleCommands": [
+        "init",
+        "dev",
+        "start",
+        "build",
+        "test",
+        "lint",
+        "format",
+        "help"
+      ]
     },
     "java": {
       "tier": "extended",
@@ -58,7 +137,16 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "readiness",
-      "lifecycleCommands": ["init", "dev", "start", "build", "test", "lint", "format", "help"]
+      "lifecycleCommands": [
+        "init",
+        "dev",
+        "start",
+        "build",
+        "test",
+        "lint",
+        "format",
+        "help"
+      ]
     },
     "dotnet": {
       "tier": "extended",
@@ -66,7 +154,16 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "readiness",
-      "lifecycleCommands": ["init", "dev", "start", "build", "test", "lint", "format", "help"]
+      "lifecycleCommands": [
+        "init",
+        "dev",
+        "start",
+        "build",
+        "test",
+        "lint",
+        "format",
+        "help"
+      ]
     },
     "php": {
       "tier": "observed",
@@ -74,7 +171,9 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "observed",
-      "lifecycleCommands": ["help"]
+      "lifecycleCommands": [
+        "help"
+      ]
     },
     "ruby": {
       "tier": "observed",
@@ -82,7 +181,9 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "observed",
-      "lifecycleCommands": ["help"]
+      "lifecycleCommands": [
+        "help"
+      ]
     },
     "rust": {
       "tier": "observed",
@@ -90,7 +191,9 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "observed",
-      "lifecycleCommands": ["help"]
+      "lifecycleCommands": [
+        "help"
+      ]
     },
     "elixir": {
       "tier": "observed",
@@ -98,7 +201,9 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "observed",
-      "lifecycleCommands": ["help"]
+      "lifecycleCommands": [
+        "help"
+      ]
     },
     "clojure": {
       "tier": "observed",
@@ -106,7 +211,9 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "observed",
-      "lifecycleCommands": ["help"]
+      "lifecycleCommands": [
+        "help"
+      ]
     },
     "scala": {
       "tier": "observed",
@@ -114,7 +221,9 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "observed",
-      "lifecycleCommands": ["help"]
+      "lifecycleCommands": [
+        "help"
+      ]
     },
     "kotlin": {
       "tier": "observed",
@@ -122,7 +231,9 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "observed",
-      "lifecycleCommands": ["help"]
+      "lifecycleCommands": [
+        "help"
+      ]
     },
     "deno": {
       "tier": "observed",
@@ -130,7 +241,9 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "observed",
-      "lifecycleCommands": ["help"]
+      "lifecycleCommands": [
+        "help"
+      ]
     },
     "bun": {
       "tier": "observed",
@@ -138,7 +251,9 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "observed",
-      "lifecycleCommands": ["help"]
+      "lifecycleCommands": [
+        "help"
+      ]
     },
     "unknown": {
       "tier": "observed",
@@ -146,7 +261,9 @@
       "import": true,
       "moduleCommands": false,
       "doctor": "observed",
-      "lifecycleCommands": ["help"]
+      "lifecycleCommands": [
+        "help"
+      ]
     }
   }
 }

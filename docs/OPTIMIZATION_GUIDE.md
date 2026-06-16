@@ -1,11 +1,8 @@
 # Optimization Guide
 
-> Optimization ideas and implementation patterns for the RapidKit npm CLI codebase.
->
-> For end-user documentation, use:
-> - `../README.md`
-> - `docs/OPEN_SOURCE_USER_SCENARIOS.md`
-> - `docs/AI_QUICKSTART.md`
+Optimization ideas for the RapidKit npm CLI codebase.
+
+**Users:** [../README.md](../README.md) · [OPEN_SOURCE_USER_SCENARIOS.md](./OPEN_SOURCE_USER_SCENARIOS.md) · [Documentation index](./README.md)
 
 ## 1. Performance Optimizations
 

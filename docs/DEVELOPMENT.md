@@ -1,128 +1,73 @@
 # Development Guide
 
-> Maintenance reference for the RapidKit npm CLI.
->
-> If you are an end user (project/workspace usage), use:
-> - `docs/SETUP.md`
-> - `docs/README.md`
-> - top-level `README.md`
+Maintainer reference for the RapidKit npm CLI (Node/TypeScript bridge to Python Core).
 
-This package is the RapidKit npm CLI (Node/TypeScript) that bootstraps and invokes the Python Core.
+**End users:** [../README.md](../README.md) · [README.md](./README.md) · [OPEN_SOURCE_USER_SCENARIOS.md](./OPEN_SOURCE_USER_SCENARIOS.md)
 
-## Prereqs
+## Prerequisites
 
-- Node.js `>=20`
-- npm (official and only supported package manager for this repository)
-
-## Install
+- Node.js `>= 20`
+- npm — see [PACKAGE_MANAGER_POLICY.md](./PACKAGE_MANAGER_POLICY.md)
 
 ```bash
-npm install
+npm ci
+npm run build
 ```
 
 ## Quality checks
 
 ```bash
 npm run validate
-npm run build
+npm run validate:contracts
+npm run test:drift
 ```
+
+Focused suites: [ci-workflows.md](./ci-workflows.md) · [SETUP.md](./SETUP.md)
 
 ## Configuration
 
-### User configuration file
+User defaults: [config-file-guide.md](./config-file-guide.md) (`$HOME/.rapidkitrc.json`, `rapidkit.config.*`).
 
-Create `$HOME/.rapidkitrc.json` to set defaults:
-
-```json
-{
-  "defaultKit": "fastapi.standard",
-  "defaultInstallMethod": "poetry",
-  "pythonVersion": "3.10",
-  "author": "Your Name",
-  "license": "MIT",
-  "skipGit": false
-}
-```
-
-Priority: CLI options > Environment variables > Config file > Defaults.
+Priority: CLI flags > environment variables > config file > defaults.
 
 ### Test mode (local Core)
 
-Use a local RapidKit Core checkout for development/testing:
-
 ```bash
-export RAPIDKIT_DEV_PATH=/path/to/local/rapidkit
-
-# Or add to $HOME/.rapidkitrc.json:
-# { "testRapidKitPath": "/path/to/local/rapidkit" }
-
+export RAPIDKIT_DEV_PATH=/path/to/local/rapidkit-core
 npx rapidkit my-workspace --test-mode
 ```
 
 ## CLI workflows
 
-### 1) Direct project creation (recommended)
-
 ```bash
+# Direct project creation
 npx rapidkit create project fastapi.standard my-api --output .
-npx rapidkit create project nestjs.standard my-api --output .
-```
+npx rapidkit create frontend nextjs my-web --yes
 
-### 2) Workspace mode
-
-```bash
-npx rapidkit my-workspace
+# Workspace mode
+npx rapidkit create workspace my-workspace --yes --profile polyglot
 cd my-workspace
-
-# Run without activation (recommended):
-./rapidkit --help
-
-# Or activate Poetry-managed env (usually in Poetry cache):
-source "$(poetry env info --path)/bin/activate"
-
-# Use the local workspace launcher (`rapidkit`) in this section.
-
-# Interactive mode:
-rapidkit create
-
-# Or non-interactive:
-rapidkit create project fastapi.standard my-api --output .
+npx rapidkit bootstrap --profile polyglot
+npx rapidkit create project
 ```
+
+Full syntax: [commands-reference.md](./commands-reference.md)
 
 ## Testing
 
 ```bash
 npm test
-npm run validate
-```
-
-Focused runs:
-
-```bash
 npm run test:e2e
-npm run test:drift
-```
-
-### Scenario matrix (end-to-end)
-
-```bash
-npm run test:scenarios
 npm run test:scenarios:full
-npm run test:scenarios:docker
+npm run test:runtime-matrix:full
 ```
 
 ## Manual smoke
 
 ```bash
 npm run build
-
 node dist/index.js --help
-node dist/index.js --version
-
-node dist/index.js create project fastapi.standard test-fastapi --output .
-node dist/index.js create project nestjs.standard test-nest --output .
-
-node dist/index.js my-workspace --yes --skip-git --no-update-check
+node dist/index.js create project fastapi.standard test-fastapi --output . --yes --skip-install
 ```
 
 ## Debugging
@@ -131,30 +76,13 @@ node dist/index.js my-workspace --yes --skip-git --no-update-check
 npx rapidkit my-workspace --debug
 ```
 
-## Building
-
-```bash
-npm run build
-npm run dev
-```
-
 ## Environment variables
 
-Bridge + Core integration:
+See [SETUP.md](./SETUP.md#environment-variables) for bridge, scenario, and cache variables.
 
-- `RAPIDKIT_DEV_PATH` - Path to a local RapidKit checkout for workspace bootstrap in dev/test
-- `RAPIDKIT_CORE_PYTHON_PACKAGE` - Override Core install target for the Python bridge (path or package spec)
-- `RAPIDKIT_BRIDGE_FORCE_VENV=1` - Force using the cached bridge venv even if system Python has Core
-- `RAPIDKIT_BRIDGE_UPGRADE_PIP=1` - Upgrade pip inside the bridge venv during bootstrap
-- `XDG_CACHE_HOME` - Cache root used by the bridge (defaults to `$HOME/.cache` on Linux)
+## See also
 
-Scenario script toggles:
-
-- `RAPIDKIT_SCENARIO_FULL_BOOTSTRAP=1` - Enable bootstrap scenarios
-- `RAPIDKIT_SCENARIO_WORKSPACE_CREATE=1` - Enable workspace creation scenario
-
-General:
-
-- `DEBUG` - Enable debug logging (alternative to `--debug`)
-- `NODE_ENV` - Node environment (development/production)
-  npm run build
+- [Documentation index](./README.md)
+- [contracts/README.md](./contracts/README.md)
+- [OPTIMIZATION_GUIDE.md](./OPTIMIZATION_GUIDE.md)
+- [UTILITIES.md](./UTILITIES.md)

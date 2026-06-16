@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-verify.v1.json",
+  "title": "RapidKit Workspace Verify Last Run",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "workspacePath",
+    "mode",
+    "impact",
+    "summary",
+    "steps",
+    "missingEvidence",
+    "blockingReasons",
+    "verificationPlan"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "workspace-verify.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workspacePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "const": "evidence"
+    },
+    "fromImpactRef": { "type": "string" },
+    "scope": { "type": "string" },
+    "impact": {
+      "type": "object",
+      "required": ["changed", "risk", "affectedProjects", "recommendedCommands"],
+      "properties": {
+        "changed": { "type": "boolean" },
+        "risk": {
+          "enum": ["none", "low", "medium", "high", "critical"]
+        },
+        "affectedProjects": { "type": "integer", "minimum": 0 },
+        "recommendedCommands": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "verdict",
+        "exitCode",
+        "stepsPassed",
+        "stepsWarn",
+        "stepsFailed",
+        "stepsMissing",
+        "stepsSkipped"
+      ],
+      "properties": {
+        "verdict": {
+          "enum": ["ready", "needs-attention", "blocked"]
+        },
+        "exitCode": {
+          "enum": [0, 1, 2]
+        },
+        "stepsPassed": { "type": "integer", "minimum": 0 },
+        "stepsWarn": { "type": "integer", "minimum": 0 },
+        "stepsFailed": { "type": "integer", "minimum": 0 },
+        "stepsMissing": { "type": "integer", "minimum": 0 },
+        "stepsSkipped": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "scope", "command", "status", "required", "message"],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "scope": {
+            "enum": ["workspace", "project"]
+          },
+          "project": { "type": "string" },
+          "status": {
+            "enum": ["pass", "warn", "fail", "missing", "skipped"]
+          },
+          "required": { "type": "boolean" },
+          "evidencePath": { "type": "string" },
+          "message": { "type": "string" },
+          "command": { "type": "object", "additionalProperties": true }
+        },
+        "additionalProperties": true
+      }
+    },
+    "missingEvidence": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "blockingReasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "verificationPlan": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    }
+  },
+  "additionalProperties": true
+}

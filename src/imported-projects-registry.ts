@@ -19,7 +19,8 @@ export interface ImportedProjectRegistryEntry {
   supportTier?: BackendSupportTier;
   moduleSupport?: boolean;
   confidence: BackendConfidence;
-  source?: 'local-folder' | 'git-url';
+  source?: 'local-folder' | 'git-url' | 'adopted-local';
+  relationship?: 'imported' | 'adopted';
   importedAt: string;
 }
 

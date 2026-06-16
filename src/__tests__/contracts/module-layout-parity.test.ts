@@ -9,6 +9,7 @@ import {
   MODULE_PATH_PATTERN,
   MODULE_SLUG_PATTERN,
 } from '../../utils/module-layout.js';
+import { buildModuleLayoutContract } from '../../contracts/module-layout-contract';
 
 type ModuleLayoutContract = {
   schemaVersion: string;
@@ -39,5 +40,12 @@ describe('module layout contract parity', () => {
     expect(CANONICAL_MODULE_ROOT).toBe(contract.canonicalModuleRoot);
     expect(MODULE_PATH_PATTERN).toBe(contract.pathPattern);
     expect(MODULE_SLUG_PATTERN).toBe(contract.slugPattern);
+  });
+
+  it('keeps committed module layout aligned with the generator', () => {
+    const contract = JSON.parse(fs.readFileSync(resolveContractPath(), 'utf8')) as ReturnType<
+      typeof buildModuleLayoutContract
+    >;
+    expect(contract).toEqual(buildModuleLayoutContract());
   });
 });

@@ -1,6 +1,8 @@
 # RapidKit Doctor Command
 
-`doctor` checks health for the npm wrapper environment and can run in system, workspace, or project scope.
+`doctor` checks health for the npm wrapper environment in system, workspace, or project scope.
+
+**Related:** [workspace-operations.md](./workspace-operations.md) · [commands-reference.md](./commands-reference.md) · [Documentation index](./README.md)
 
 ## Command Modes
 
@@ -209,6 +211,43 @@ Workspace/project outputs now include:
 - `driftDelta`: change report compared with previous evidence (new/resolved issues, score delta, system status changes)
 
 These fields are designed for release gates and extension timeline cards that must show progression, not only snapshots.
+
+## Workspace scope CI exit codes
+
+- `npx rapidkit doctor workspace --strict` exits `1` when health score reports errors **or** warnings.
+- `npx rapidkit doctor workspace --ci` exits `1` on errors and `2` on warnings only (errors take precedence).
+- Without `--strict` or `--ci`, doctor reports findings but exits `0` (backward compatible).
+
+## Workspace fix behavior
+
+- Reuses cached project scans when valid; refreshes `.rapidkit/reports/doctor-last-run.json`.
+- `--fix` runs interactive remediation; `--plan` prints plan only; `--apply` applies non-interactively.
+- `--plan` cannot be combined with `--fix` or `--apply`.
+- Advisory warnings do not automatically become shell fix commands.
+- Go `go mod tidy` fixes are skipped when the Go toolchain is unavailable.
+
+## Workspace JSON fields (AI/automation)
+
+`npx rapidkit doctor workspace --json` includes per-project metadata: `framework`, `frameworkKey`, `importStack`, `runtimeFamily`, `projectKind`, `supportTier`, `frameworkConfidence`.
+
+## Project scope behavior
+
+- Resolves current or nearest parent project from nested directories.
+- Supports RapidKit and non-RapidKit projects when `.rapidkit` is missing.
+- Evidence: `.rapidkit/reports/doctor-project-last-run.json`.
+- `--fix`, `--plan`, and `--apply` apply only project-scoped fixes.
+
+## Project JSON fields (AI/automation)
+
+`npx rapidkit doctor project --json` includes `scope`, `contract`, `project`, `summary.scopeProvenance`, `driftDelta`, and `scoreBreakdown`.
+
+## Evidence schema compatibility
+
+- Workspace evidence: `doctor-workspace-evidence-v1`
+- Project evidence: `doctor-project-evidence-v1`
+- Workspace scan cache: `doctor-workspace-cache-v1`
+
+Legacy evidence without `schemaVersion` is still accepted. Unknown versions are treated as invalid evidence. `readiness` and `workspace share` share the same validation path.
 
 ## Related Workspace Commands
 

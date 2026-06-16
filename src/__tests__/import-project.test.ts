@@ -49,6 +49,12 @@ describe('import-project', () => {
       dependencies: {
         express: '^4.19.2',
       },
+      scripts: {
+        dev: 'node server.js',
+        start: 'node server.js',
+        test: 'node --test',
+        build: 'node build.js',
+      },
     });
 
     const imported = await importProjectIntoWorkspace({
@@ -74,6 +80,7 @@ describe('import-project', () => {
     expect(projectJson).toMatchObject({
       name: 'edge-api',
       slug: 'edge-api',
+      kind: 'service',
       runtime: 'node',
       framework: 'express',
       kit_name: 'imported.express',
@@ -94,12 +101,14 @@ describe('import-project', () => {
       },
       project: {
         relative_path: 'edge-api',
+        kind: 'service',
         module_support: false,
       },
       detection: {
         framework: 'express',
         framework_display_name: 'Express',
         runtime: 'node',
+        kind: 'service',
       },
       policy: {
         copied_secrets: false,
@@ -122,7 +131,10 @@ describe('import-project', () => {
         moduleCommands: false,
       },
     });
-    expect(readinessJson.commandSupport.lifecycleCommands).toContain('dev');
+    expect(readinessJson.commandSupport.lifecycleCommands).toEqual(
+      expect.arrayContaining(['help', 'init', 'dev'])
+    );
+    expect(readinessJson.commandSupport.unsupportedLifecycleCommands).not.toContain('dev');
 
     const registry = await readImportedProjectsRegistry(workspacePath);
     expect(registry).toEqual([
@@ -217,6 +229,7 @@ describe('import-project', () => {
     expect(projectJson).toMatchObject({
       runtime: 'dotnet',
       framework: 'dotnet',
+      kind: 'service',
       kit_name: 'imported.dotnet',
       module_support: false,
     });
@@ -288,14 +301,14 @@ describe('import-project', () => {
         moduleCommands: false,
       },
     });
-    expect(readinessJson.commandSupport.unsupportedLifecycleCommands).toContain('dev');
+    expect(readinessJson.commandSupport.unsupportedLifecycleCommands).toEqual([]);
 
     const capabilities = resolveProjectCommandCapabilities(imported.path);
     expect(capabilities.runtime).toBe('php');
     expect(capabilities.framework).toBe('laravel');
     expect(capabilities.frameworkSupportTier).toBe('extended');
     expect(capabilities.runtimeSupportTier).toBe('observed');
-    expect(capabilities.commandMap.help).toMatchObject({ status: 'supported', owner: 'runtime' });
+    expect(capabilities.commandMap.help).toMatchObject({ status: 'supported', owner: 'npm' });
     expect(capabilities.commandMap.dev).toMatchObject({ status: 'unsupported', owner: 'runtime' });
     expect(capabilities.commandMap.modules).toMatchObject({ status: 'unsupported', owner: 'none' });
   });

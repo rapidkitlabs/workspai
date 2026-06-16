@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { CommandResult, RuntimeAdapter } from './types.js';
+import { hasMakefileTarget } from '../utils/lifecycle-makefile.js';
 
 export type DotnetCommandRunner = (command: string, args: string[], cwd: string) => Promise<number>;
 
@@ -142,6 +143,52 @@ export class DotnetRuntimeAdapter implements RuntimeAdapter {
       projectFile ? ['run', '--project', projectFile] : ['run'],
       projectPath
     );
+  }
+
+  async runLint(projectPath: string): Promise<CommandResult> {
+    if (hasMakefileTarget(projectPath, 'lint')) {
+      return this.run('make', ['lint'], projectPath);
+    }
+
+    const propsPath = path.join(projectPath, 'Directory.Build.props');
+    if (
+      fs.existsSync(propsPath) &&
+      fs.readFileSync(propsPath, 'utf-8').includes('EnforceCodeStyleInBuild')
+    ) {
+      const prereq = await this.ensureDotnetInstalled(projectPath);
+      if (prereq) return prereq;
+      const projectFile = this.findProjectFile(projectPath);
+      return this.run(
+        'dotnet',
+        projectFile ? ['build', projectFile, '-warnaserror'] : ['build', '-warnaserror'],
+        projectPath
+      );
+    }
+
+    return {
+      exitCode: 1,
+      message:
+        'No .NET lint tooling detected. Add a Makefile lint target or enable EnforceCodeStyleInBuild in Directory.Build.props.',
+    };
+  }
+
+  async runFormat(projectPath: string): Promise<CommandResult> {
+    if (hasMakefileTarget(projectPath, 'format')) {
+      return this.run('make', ['format'], projectPath);
+    }
+
+    const prereq = await this.ensureDotnetInstalled(projectPath);
+    if (prereq) return prereq;
+
+    if (fs.existsSync(path.join(projectPath, '.editorconfig'))) {
+      return this.run('dotnet', ['format', '--verify-no-changes'], projectPath);
+    }
+
+    return {
+      exitCode: 1,
+      message:
+        'No .NET format tooling detected. Add a Makefile format target or an .editorconfig file for dotnet format.',
+    };
   }
 
   async doctorHints(_projectPath: string): Promise<string[]> {

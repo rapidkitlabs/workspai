@@ -3,12 +3,15 @@ import path from 'path';
 
 import { describe, expect, it } from 'vitest';
 
+import { listFrontendGenerators } from '../../frontend-project';
 import { PROJECT_CAPABILITY_COMMANDS } from '../../utils/project-command-capabilities';
 import { getRuntimeSupport } from '../../utils/support-matrix';
+import { buildRuntimeCommandSurfaceContract } from '../../contracts/runtime-command-surface-contract';
 
 type RuntimeSurfaceContract = {
   schemaVersion: string;
   lifecycleCommands: string[];
+  coreProjectCommands: string[];
   moduleMutationCommands: string[];
   globalCommands: string[];
   universalCommands: string[];
@@ -69,6 +72,7 @@ describe('shared runtime command surface contract (npm)', () => {
       sorted([
         ...contract.universalCommands,
         ...contract.lifecycleCommands,
+        ...(contract.coreProjectCommands ?? []),
         ...contract.moduleMutationCommands,
         ...contract.globalCommands,
       ])
@@ -89,10 +93,45 @@ describe('shared runtime command surface contract (npm)', () => {
     }
   });
 
+  it('keeps npm and Front/contracts runtime surfaces semantically aligned', () => {
+    const npmContractPath = path.resolve(
+      process.cwd(),
+      'contracts',
+      'runtime-command-surface.v1.json'
+    );
+    const frontContractPath = path.resolve(
+      process.cwd(),
+      '..',
+      'contracts',
+      'runtime-command-surface.v1.json'
+    );
+
+    if (!fs.existsSync(npmContractPath) || !fs.existsSync(frontContractPath)) {
+      return;
+    }
+
+    const npmContract = JSON.parse(
+      fs.readFileSync(npmContractPath, 'utf8')
+    ) as RuntimeSurfaceContract;
+    const frontContract = JSON.parse(
+      fs.readFileSync(frontContractPath, 'utf8')
+    ) as RuntimeSurfaceContract;
+
+    expect(npmContract).toEqual(frontContract);
+  });
+
   it('keeps module marketplace support restricted to first-class Core-backed frameworks', () => {
     const contract = readContract();
+    const generated = buildRuntimeCommandSurfaceContract();
 
-    expect(contract.moduleSuggestionFrameworks).toEqual(['fastapi', 'nestjs']);
-    expect(contract.moduleUnsupportedFrameworks).toEqual(['go', 'springboot', 'dotnet']);
+    expect(contract.moduleSuggestionFrameworks).toEqual(generated.moduleSuggestionFrameworks);
+    expect(contract.moduleUnsupportedFrameworks).toEqual(generated.moduleUnsupportedFrameworks);
+  });
+
+  it('keeps official frontend generators in the canonical scaffold surface', () => {
+    const contract = readContract();
+    const frontendKits = listFrontendGenerators().map((definition) => definition.kitId);
+
+    expect(contract.scaffoldKits).toEqual(expect.arrayContaining(frontendKits));
   });
 });

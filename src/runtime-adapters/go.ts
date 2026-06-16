@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import type { CommandResult, RuntimeAdapter } from './types.js';
 import { isWindowsPlatform } from '../utils/platform-capabilities.js';
+import { hasMakefileTarget } from '../utils/lifecycle-makefile.js';
 
 export type GoCommandRunner = (command: string, args: string[], cwd: string) => Promise<number>;
 
@@ -194,6 +195,46 @@ export class GoRuntimeAdapter implements RuntimeAdapter {
       if (prereq) return prereq;
 
       return this.run('go', ['run', this.findGoRunTarget(projectPath)], projectPath);
+    });
+  }
+
+  async runLint(projectPath: string): Promise<CommandResult> {
+    return this.withGoCacheEnv(projectPath, async () => {
+      const prereq = await this.ensureGoInstalled(projectPath);
+      if (prereq) return prereq;
+
+      if (hasMakefileTarget(projectPath, 'lint')) {
+        return this.run('make', ['lint'], projectPath);
+      }
+
+      const hasGolangci =
+        fs.existsSync(path.join(projectPath, '.golangci.yml')) ||
+        fs.existsSync(path.join(projectPath, '.golangci.yaml'));
+      if (hasGolangci) {
+        return this.run('golangci-lint', ['run', './...'], projectPath);
+      }
+
+      return {
+        exitCode: 1,
+        message:
+          'No Go lint tooling detected. Add a Makefile lint target or .golangci.yml configuration.',
+      };
+    });
+  }
+
+  async runFormat(projectPath: string): Promise<CommandResult> {
+    return this.withGoCacheEnv(projectPath, async () => {
+      const prereq = await this.ensureGoInstalled(projectPath);
+      if (prereq) return prereq;
+
+      if (hasMakefileTarget(projectPath, 'fmt')) {
+        return this.run('make', ['fmt'], projectPath);
+      }
+      if (hasMakefileTarget(projectPath, 'format')) {
+        return this.run('make', ['format'], projectPath);
+      }
+
+      return this.run('go', ['fmt', './...'], projectPath);
     });
   }
 

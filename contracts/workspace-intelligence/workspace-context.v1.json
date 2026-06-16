@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-context.v1.json",
+  "title": "RapidKit Workspace Agent Context",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "agent",
+    "workspaceSummary",
+    "modelRef",
+    "workspace",
+    "scope",
+    "projects",
+    "safeCommands",
+    "validation"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "workspace-context.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "agent": {
+      "enum": ["generic", "codex", "claude", "cursor", "orca"]
+    },
+    "workspaceSummary": { "type": "string" },
+    "modelRef": { "type": "string" },
+    "workspace": {
+      "type": "object",
+      "required": ["name", "root", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "root": { "type": "string" },
+        "type": { "type": "string" },
+        "profile": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "scope": { "type": "object", "additionalProperties": true },
+    "projects": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "safeCommands": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "validation": {
+      "type": "object",
+      "required": ["status", "errors", "warnings"],
+      "properties": {
+        "status": {
+          "enum": ["passed", "warning", "failed"]
+        },
+        "errors": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

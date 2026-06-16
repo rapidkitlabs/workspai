@@ -159,7 +159,8 @@ const RUNTIME_HINTS = {
 
 const args = parseArgs(process.argv.slice(2));
 const startedAt = new Date();
-const workspaceName = args.workspaceName || 'rapidkit-runtime-acceptance';
+const workspaceName =
+  args.workspaceName || `rapidkit-runtime-acceptance-${startedAt.getTime().toString(36)}`;
 const runRoot =
   args.workspaceDir || fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-runtime-acceptance-'));
 const workspacePath = path.join(runRoot, workspaceName);
@@ -217,12 +218,22 @@ async function main() {
 
   fs.mkdirSync(runRoot, { recursive: true });
 
-  runGlobalCommandScenarios();
+  runGlobalCommandScenarios(runRoot);
 
   runScenario({
     id: 'workspace.create.minimal',
     scope: 'workspace',
-    args: ['create', 'workspace', workspaceName, '--yes', '--profile', 'minimal', '--skip-git'],
+    args: [
+      'create',
+      'workspace',
+      workspaceName,
+      '--yes',
+      '--profile',
+      'minimal',
+      '--skip-git',
+      '--output',
+      '.',
+    ],
     cwd: runRoot,
     expect: 'pass',
   });
@@ -477,13 +488,16 @@ async function main() {
   finalizeAndExit();
 }
 
-function runGlobalCommandScenarios() {
+function runGlobalCommandScenarios(runDirectory) {
+  const globalScenarioCwd = path.join(runDirectory, 'global-cli-cwd');
+  fs.mkdirSync(globalScenarioCwd, { recursive: true });
+
   for (const flag of ['--version', '-v']) {
     runScenario({
       id: `global.${flag.replace(/^-+/, '')}`,
       scope: 'global',
       args: [flag],
-      cwd: repoRoot,
+      cwd: globalScenarioCwd,
       expect: 'pass',
     });
   }
@@ -492,7 +506,7 @@ function runGlobalCommandScenarios() {
     id: 'global.commands.json.contract',
     scope: 'global',
     args: ['commands', '--json'],
-    cwd: repoRoot,
+    cwd: globalScenarioCwd,
     expect: 'passJson',
     validateJson: validateGlobalCommandsPayload,
   });
@@ -510,7 +524,7 @@ function runGlobalCommandScenarios() {
       id: `global.${id}`,
       scope: 'global',
       args: command,
-      cwd: repoRoot,
+      cwd: globalScenarioCwd,
       expect: args.full ? 'pass' : 'passOrActionableRuntimeFailure',
     });
   }
@@ -996,6 +1010,10 @@ function childEnv() {
   const env = { ...process.env };
   delete env.VITEST;
   delete env.VITEST_WORKER_ID;
+  const isolatedHome = path.join(runRoot, 'home');
+  fs.mkdirSync(isolatedHome, { recursive: true });
+  env.HOME = isolatedHome;
+  env.USERPROFILE = isolatedHome;
   // Keep bridge/cache writes inside the acceptance run directory so sandboxed
   // and CI environments never write to the user's home cache.
   env.XDG_CACHE_HOME = path.join(runRoot, '.cache');

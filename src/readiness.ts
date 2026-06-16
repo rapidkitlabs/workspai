@@ -14,7 +14,7 @@ import { findWorkspaceRootUp, isWorkspaceShellDirectory } from './utils/workspac
 
 export type ReadinessGateStatus = 'pass' | 'warn' | 'fail';
 export type ReadinessOverallStatus = 'pass' | 'warn' | 'fail';
-export type LifecycleAction = 'dev' | 'test' | 'build' | 'start';
+export type LifecycleAction = 'dev' | 'test' | 'build' | 'start' | 'lint' | 'format';
 
 export interface ReadinessGateResult {
   gate: 'env' | 'doctor' | 'analyze' | 'verify' | 'dependency';

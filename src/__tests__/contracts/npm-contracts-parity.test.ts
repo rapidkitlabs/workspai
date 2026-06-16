@@ -1,0 +1,34 @@
+import fs from 'fs';
+import path from 'path';
+
+import { describe, expect, it } from 'vitest';
+
+const NPM_CONTRACTS_DIR = path.resolve(process.cwd(), 'contracts');
+const FRONT_CONTRACTS_DIR = path.resolve(process.cwd(), '..', 'contracts');
+
+const MONOREPO_CONTRACT_FILES = [
+  'runtime-command-surface.v1.json',
+  'backend-import-stack-parity.snapshot.json',
+  'module-layout.v1.json',
+  'pipeline-last-run.v1.json',
+  'infra-stack.v1.json',
+];
+
+function readJson(filePath: string): unknown {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
+}
+
+describe('npm monorepo contract parity', () => {
+  it('keeps npm contracts aligned with Front/contracts in monorepo layout', () => {
+    expect(fs.existsSync(FRONT_CONTRACTS_DIR)).toBe(true);
+
+    for (const fileName of MONOREPO_CONTRACT_FILES) {
+      const npmPath = path.join(NPM_CONTRACTS_DIR, fileName);
+      const frontPath = path.join(FRONT_CONTRACTS_DIR, fileName);
+
+      expect(fs.existsSync(npmPath), `${fileName} missing in npm`).toBe(true);
+      expect(fs.existsSync(frontPath), `${fileName} missing in Front/contracts`).toBe(true);
+      expect(readJson(npmPath)).toEqual(readJson(frontPath));
+    }
+  });
+});

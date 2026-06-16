@@ -11,6 +11,7 @@ import {
   writeWorkspaceContract,
   WORKSPACE_CONTRACT_PATH,
 } from '../utils/workspace-contract.js';
+import { upsertImportedProjectsRegistry } from '../imported-projects-registry.js';
 
 describe('workspace contract registry', () => {
   const tempDirs: string[] = [];
@@ -55,6 +56,26 @@ describe('workspace contract registry', () => {
       framework: 'fastapi',
       kit: 'fastapi.standard',
       modules: ['auth/core', 'billing/stripe_payment'],
+    });
+  });
+
+  it('discovers context.json-only projects when building a workspace contract', async () => {
+    const workspacePath = await makeTempDir('rk-contract-context-');
+    await fsExtra.outputJson(path.join(workspacePath, 'web-ui', '.rapidkit', 'context.json'), {
+      name: 'web-ui',
+      runtime: 'node',
+      framework: 'vite',
+      kit: 'vite.standard',
+    });
+
+    const contract = await buildWorkspaceContract({ workspacePath });
+    expect(contract.projects).toHaveLength(1);
+    expect(contract.projects[0]).toMatchObject({
+      slug: 'web-ui',
+      relativePath: 'web-ui',
+      runtime: 'node',
+      framework: 'vite',
+      kit: 'vite.standard',
     });
   });
 
@@ -119,6 +140,54 @@ describe('workspace contract registry', () => {
     expect(orders?.ports[0].port).toBe(8100);
     expect(orders?.contracts.owns).toEqual(['Order']);
     expect(users?.ports[0].port).toBe(8000);
+  });
+
+  it('models adopted external projects with safe contract-relative paths', async () => {
+    const workspacePath = await makeTempDir('rk-contract-adopt-ws-');
+    const externalProjectPath = await makeTempDir('rk-contract-adopt-next-');
+    await fsExtra.outputJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'adopt-ws',
+      profile: 'polyglot',
+    });
+    await fsExtra.outputJson(path.join(externalProjectPath, '.rapidkit', 'project.json'), {
+      name: 'web',
+      runtime: 'node',
+      framework: 'nextjs',
+      kit_name: 'adopted.nextjs',
+      modules: [],
+    });
+    await upsertImportedProjectsRegistry(workspacePath, [
+      {
+        name: 'web',
+        path: externalProjectPath,
+        relativePath: path.relative(workspacePath, externalProjectPath).replace(/\\/g, '/'),
+        relationship: 'adopted',
+        source: 'adopted-local',
+        stack: 'nextjs',
+        runtime: 'node',
+        framework: 'nextjs',
+        frameworkDisplayName: 'Next.js',
+        supportTier: 'extended',
+        moduleSupport: false,
+        confidence: 'high',
+        importedAt: '2026-06-14T00:00:00.000Z',
+      },
+    ]);
+
+    const result = await syncWorkspaceContract({ workspacePath });
+    const web = result.contract.projects.find((project) => project.slug === 'web');
+
+    expect(result.verification.status).toBe('passed');
+    expect(web).toMatchObject({
+      slug: 'web',
+      relativePath: 'external/web',
+      externalPath: externalProjectPath,
+      relationship: 'adopted',
+      source: 'adopted-local',
+      runtime: 'node',
+      framework: 'nextjs',
+      kit: 'adopted.nextjs',
+    });
   });
 
   it('fails verification for colliding ports and unknown dependencies', async () => {

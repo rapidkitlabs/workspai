@@ -1,6 +1,6 @@
 # RapidKit Runtime Support Matrix
 
-Last updated: 2026-06-04
+Last updated: 2026-06-15
 
 This document defines the public support contract for RapidKit npm workspace projects.
 It separates three concerns:
@@ -14,7 +14,7 @@ It separates three concerns:
 | Runtime             | Tier        | Scaffold | Import | Lifecycle Commands                                | Module Commands | Doctor    |
 | ------------------- | ----------- | -------: | -----: | ------------------------------------------------- | --------------: | --------- |
 | Python              | first-class |      yes |    yes | init, dev, start, build, test, lint, format, help |             yes | full      |
-| Node.js             | first-class |      yes |    yes | init, dev, start, build, test, lint, format, help |             yes | full      |
+| Node.js             | extended    |      yes |    yes | init, dev, start, build, test, lint, format, help |             yes | full      |
 | Go                  | extended    |      yes |    yes | init, dev, start, build, test, lint, format, help |              no | readiness |
 | Java / Spring Boot  | extended    |      yes |    yes | init, dev, start, build, test, lint, format, help |              no | readiness |
 | .NET / ASP.NET Core | extended    |      yes |    yes | init, dev, start, build, test, lint, format, help |              no | readiness |
@@ -31,10 +31,12 @@ It separates three concerns:
 
 ## Framework Tiers
 
+> **Runtime vs framework:** Python **runtime** stays first-class (Core-backed modules). Node.js **runtime** is extended; **NestJS** is the first-class Node framework. Frontend stacks (Next.js, Remix, Vite variants, Nuxt, Angular, Astro, SvelteKit) are extended frameworks on the Node runtime.
+
 | Tier        | Frameworks                                                                                                                                                  |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | first-class | FastAPI, NestJS                                                                                                                                              |
-| extended    | Go/Fiber, Go/Gin, Spring Boot, ASP.NET Core, Django, Flask, Express, Fastify, Koa, Echo, Laravel, Symfony, Rails, Sinatra, Actix, Axum, Rocket, Phoenix     |
+| extended    | Go/Fiber, Go/Gin, Spring Boot, ASP.NET Core, Django, Flask, Express, Fastify, Koa, Echo, Laravel, Symfony, Rails, Sinatra, Actix, Axum, Rocket, Phoenix, Next.js, Remix, React, Vue, Svelte, Solid, Nuxt, Angular, Astro, SvelteKit |
 | observed    | Python, Node.js, Go, Java, PHP, Ruby, Rust, Elixir, Unknown/generic projects                                                                                |
 
 ## Import Policy

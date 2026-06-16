@@ -38,7 +38,16 @@ describe('kit registry and runtime adapters', () => {
   it('publishes runtime adapters for imported backend projects beyond first-class kits', () => {
     const runtimes = new Set(listRuntimeAdapters().map((adapter) => adapter.runtime));
 
-    for (const runtime of ['dotnet', 'php', 'ruby', 'rust', 'elixir', 'kotlin']) {
+    for (const runtime of [
+      'dotnet',
+      'php',
+      'ruby',
+      'rust',
+      'elixir',
+      'clojure',
+      'scala',
+      'kotlin',
+    ]) {
       expect(runtimes.has(runtime as never)).toBe(true);
     }
 

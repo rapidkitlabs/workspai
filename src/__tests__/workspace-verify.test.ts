@@ -1,0 +1,161 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
+import fsExtra from 'fs-extra';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import {
+  buildWorkspaceVerify,
+  WORKSPACE_VERIFY_REPORT_PATH,
+  writeWorkspaceVerify,
+  workspaceVerifyExitCode,
+} from '../workspace-verify.js';
+import {
+  buildWorkspaceImpact,
+  buildWorkspaceModelSnapshot,
+  writeWorkspaceImpact,
+  writeWorkspaceModelSnapshot,
+} from '../workspace-intelligence.js';
+
+describe('workspace verify', () => {
+  const tempDirs: string[] = [];
+
+  async function makeTempDir(prefix: string): Promise<string> {
+    const dir = await fsExtra.mkdtemp(path.join(os.tmpdir(), prefix));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(async () => {
+    while (tempDirs.length > 0) {
+      const dir = tempDirs.pop();
+      if (dir) await fsExtra.remove(dir);
+    }
+  });
+
+  it('evaluates baseline gates when no evidence exists', async () => {
+    const workspacePath = await makeTempDir('rk-verify-baseline-');
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {
+      name: 'api',
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+
+    const verify = await buildWorkspaceVerify({
+      workspacePath,
+      now: new Date('2026-06-15T00:00:00.000Z'),
+    });
+    const outputPath = await writeWorkspaceVerify(verify, workspacePath);
+
+    expect(verify.schemaVersion).toBe('workspace-verify.v1');
+    expect(verify.summary.verdict).toBe('blocked');
+    expect(verify.summary.exitCode).toBe(2);
+    expect(verify.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'workspace.doctor',
+          status: 'missing',
+          required: true,
+        }),
+        expect.objectContaining({
+          id: 'workspace.readiness',
+          status: 'missing',
+          required: true,
+        }),
+      ])
+    );
+    expect(verify.missingEvidence.length).toBeGreaterThan(0);
+    expect(outputPath).toBe(path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH));
+    expect(workspaceVerifyExitCode(verify)).toBe(2);
+  });
+
+  it('passes required gates when doctor and readiness evidence are healthy', async () => {
+    const workspacePath = await makeTempDir('rk-verify-pass-');
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {
+      name: 'api',
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
+      {
+        healthScore: { percent: 92, errors: 0 },
+      }
+    );
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
+      {
+        overallStatus: 'pass',
+      }
+    );
+
+    const verify = await buildWorkspaceVerify({ workspacePath });
+
+    expect(verify.summary.verdict).toBe('ready');
+    expect(verify.summary.exitCode).toBe(0);
+    expect(verify.steps.find((step) => step.id === 'workspace.doctor')?.status).toBe('pass');
+    expect(verify.steps.find((step) => step.id === 'workspace.readiness')?.status).toBe('pass');
+    expect(verify.steps.find((step) => step.id === 'workspace.contract.verify')?.status).toBe(
+      'skipped'
+    );
+  });
+
+  it('uses impact verification plan and reports missing project run evidence', async () => {
+    const workspacePath = await makeTempDir('rk-verify-impact-');
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {
+      name: 'api',
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+
+    const before = await buildWorkspaceModelSnapshot({ workspacePath });
+    const beforePath = await writeWorkspaceModelSnapshot(before, workspacePath);
+    await fsExtra.outputJson(path.join(workspacePath, 'web', 'package.json'), {
+      dependencies: { next: '^15.0.0', react: '^19.0.0' },
+      scripts: { build: 'next build', test: 'vitest run' },
+    });
+
+    const impact = await buildWorkspaceImpact({
+      workspacePath,
+      fromPath: beforePath,
+    });
+    const impactPath = await writeWorkspaceImpact(impact, workspacePath);
+    const verify = await buildWorkspaceVerify({
+      workspacePath,
+      fromImpactPath: impactPath,
+    });
+
+    expect(verify.fromImpactRef).toBe('.rapidkit/reports/workspace-impact-last-run.json');
+    expect(verify.impact.changed).toBe(true);
+    expect(verify.verificationPlan).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          display: 'npx rapidkit workspace run test --scope project:web --json',
+        }),
+      ])
+    );
+    expect(verify.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'project.web.test',
+          status: 'missing',
+        }),
+      ])
+    );
+    expect(verify.summary.verdict).toBe('blocked');
+  });
+
+  it('loads verify schema contract file with pinned schema version', () => {
+    const schemaPath = path.resolve(
+      process.cwd(),
+      'contracts',
+      'workspace-intelligence',
+      'workspace-verify.v1.json'
+    );
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8')) as {
+      properties: { schemaVersion: { const: string } };
+    };
+    expect(schema.properties.schemaVersion.const).toBe('workspace-verify.v1');
+  });
+});

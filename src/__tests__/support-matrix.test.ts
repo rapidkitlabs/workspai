@@ -8,12 +8,20 @@ import {
 } from '../utils/support-matrix';
 
 describe('support matrix', () => {
+  it('keeps python runtime first-class and node runtime extended', () => {
+    expect(getRuntimeSupport('python').tier).toBe('first-class');
+    expect(getRuntimeSupport('python').moduleCommands).toBe(true);
+    expect(getRuntimeSupport('node').tier).toBe('extended');
+    expect(getRuntimeSupport('node').moduleCommands).toBe(true);
+    expect(getFrameworkSupportTier('nextjs')).toBe('extended');
+  });
+
   it('classifies current first-class and extended frameworks explicitly', () => {
     expect(getFrameworkSupportTier('fastapi')).toBe('first-class');
     expect(getFrameworkSupportTier('nestjs')).toBe('first-class');
-    expect(getFrameworkSupportTier('gofiber')).toBe('first-class');
-    expect(getFrameworkSupportTier('gogin')).toBe('first-class');
-    expect(getFrameworkSupportTier('springboot')).toBe('first-class');
+    expect(getFrameworkSupportTier('gofiber')).toBe('extended');
+    expect(getFrameworkSupportTier('gogin')).toBe('extended');
+    expect(getFrameworkSupportTier('springboot')).toBe('extended');
     expect(getFrameworkSupportTier('dotnet')).toBe('extended');
     expect(getFrameworkSupportTier('laravel')).toBe('extended');
     expect(getFrameworkSupportTier('unknown')).toBe('observed');

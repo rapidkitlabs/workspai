@@ -56,13 +56,15 @@ export const RUNTIME_SUPPORT_MATRIX: Record<string, RuntimeSupportMatrixEntry> =
   node: {
     runtime: 'node',
     displayName: 'Node.js',
-    tier: 'first-class',
+    tier: 'extended',
     scaffoldSupport: true,
     importSupport: true,
     lifecycleCommands: LIFECYCLE_COMMANDS,
     moduleCommands: true,
     doctorSupport: 'full',
-    notes: ['Node/NestJS projects support npm-owned lifecycle commands and module workflows.'],
+    notes: [
+      'Node projects support npm-owned lifecycle commands; NestJS is the first-class Node framework.',
+    ],
   },
   go: {
     runtime: 'go',
@@ -211,21 +213,29 @@ export const RUNTIME_SUPPORT_MATRIX: Record<string, RuntimeSupportMatrixEntry> =
   },
 };
 
-const FIRST_CLASS_FRAMEWORKS: BackendPlatformKey[] = [
-  'fastapi',
-  'nestjs',
-  'gofiber',
-  'gogin',
-  'springboot',
-];
+const FIRST_CLASS_FRAMEWORKS: BackendPlatformKey[] = ['fastapi', 'nestjs'];
 
 const EXTENDED_FRAMEWORKS: BackendPlatformKey[] = [
   'django',
   'flask',
+  'nextjs',
+  'remix',
+  'nuxt',
+  'react',
+  'vite',
+  'vue',
+  'sveltekit',
+  'svelte',
+  'angular',
+  'astro',
+  'solid',
   'express',
   'fastify',
   'koa',
   'echo',
+  'gofiber',
+  'gogin',
+  'springboot',
   'dotnet',
   'laravel',
   'symfony',

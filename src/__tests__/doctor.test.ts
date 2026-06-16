@@ -699,7 +699,7 @@ describe('Doctor Command', () => {
       const workspaceEvidence = await fsExtra.readJSON(
         path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json')
       );
-      expect(workspaceCache.schemaVersion).toBe('doctor-workspace-cache-v1');
+      expect(workspaceCache.schemaVersion).toBe('doctor-workspace-cache-v2');
       expect(workspaceEvidence.schemaVersion).toBe('doctor-workspace-evidence-v1');
       expect(workspaceEvidence.evidenceType).toBe('workspace');
     } finally {
@@ -879,13 +879,243 @@ describe('Doctor Command', () => {
       expect(payload.projects[0].framework).not.toBe('NestJS');
       expect(payload.projects[0].runtimeFamily).toBe('node');
       expect(payload.projects[0].projectKind).toBe('frontend');
-      expect(payload.projects[0].supportTier).toBe('observed');
+      expect(payload.projects[0].supportTier).toBe('extended');
       expect(payload.projects[0].frameworkConfidence).toBe('high');
       expect(payload.scoreBreakdown[0].policyRuleId).toBeDefined();
       expect(payload.summary.scopeProvenance).toBeDefined();
       expect(payload.summary.scopeProvenance.aggregatedCount).toBeGreaterThan(0);
       expect(payload.driftDelta).toBeDefined();
       expect(payload.driftDelta.baselineAvailable).toBe(false);
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('should include frontend enterprise probes for Next.js doctor project scope', async () => {
+    const tempRoot = await fsExtra.mkdtemp(
+      path.join(os.tmpdir(), 'rapidkit-doctor-nextjs-project-')
+    );
+    const workspacePath = path.join(tempRoot, 'workspace');
+    const projectPath = path.join(workspacePath, 'catalog-api');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit-workspace'), {
+      name: 'workspace',
+      version: '1.0',
+    });
+
+    await fsExtra.ensureDir(path.join(projectPath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(projectPath, '.rapidkit', 'project.json'), {
+      name: 'catalog-api',
+      kit_name: 'frontend.nextjs',
+      framework: 'nextjs',
+      runtime: 'node',
+    });
+    await fsExtra.writeJSON(path.join(projectPath, 'package.json'), {
+      name: 'catalog-api',
+      version: '1.0.0',
+      scripts: {
+        dev: 'next dev',
+        build: 'next build',
+        start: 'next start',
+        lint: 'next lint',
+      },
+      dependencies: {
+        next: '14.2.0',
+      },
+    });
+    await fsExtra.writeJSON(path.join(projectPath, 'package-lock.json'), {});
+    await fsExtra.writeJSON(path.join(projectPath, 'tsconfig.json'), {
+      compilerOptions: { strict: true },
+    });
+    await fsExtra.writeFile(path.join(projectPath, 'next.config.ts'), 'export default {}');
+    await fsExtra.ensureDir(path.join(projectPath, 'node_modules', 'next'));
+    await fsExtra.ensureDir(path.join(projectPath, 'app'));
+    await fsExtra.writeFile(
+      path.join(projectPath, 'app', 'page.tsx'),
+      'export default function Page() { return null; }'
+    );
+    await fsExtra.writeFile(path.join(projectPath, 'eslint.config.mjs'), 'export default []');
+    await fsExtra.ensureDir(path.join(projectPath, 'src', 'components'));
+    await fsExtra.writeFile(
+      path.join(projectPath, 'src', 'components', 'Button.test.tsx'),
+      'export {}'
+    );
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'python3' || cmd === 'python') {
+        if (args?.[0] === '--version') {
+          return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+        }
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx' && args?.[0] === '--version') {
+        return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'npm' && Array.isArray(args) && args[0] === 'audit') {
+        return {
+          stdout: JSON.stringify({
+            metadata: { vulnerabilities: { high: 1, critical: 0, moderate: 1 } },
+          }),
+          stderr: '',
+          exitCode: 0,
+        } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(projectPath);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ project: true, json: true });
+
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string | undefined;
+
+      expect(jsonLine).toBeDefined();
+      const payload = JSON.parse(jsonLine as string);
+      expect(payload.project.framework).toBe('Next.js');
+      expect(payload.project.projectKind).toBe('frontend');
+      expect(payload.project.frameworkKey).toBe('nextjs');
+      expect(payload.project.hasCodeQuality).toBe(true);
+      expect(payload.project.hasTests).toBe(true);
+      const probeIds = (payload.project.probes ?? []).map((probe: { id: string }) => probe.id);
+      expect(probeIds).toEqual(
+        expect.arrayContaining([
+          'frontend-lockfile-integrity',
+          'frontend-typescript-surface',
+          'frontend-framework-config',
+          'frontend-script-dev',
+          'frontend-script-build',
+          'frontend-source-tree',
+        ])
+      );
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('should include adopted external projects from the workspace registry', async () => {
+    const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rapidkit-doctor-adopted-'));
+    const workspacePath = path.join(tempRoot, 'default-workspace');
+    const projectPath = path.join(tempRoot, 'external-next-app');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit-workspace'), {
+      name: 'default-workspace',
+      version: '1.0',
+    });
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit', 'imported-projects.json'), {
+      version: 1,
+      updatedAt: '2026-06-15T00:00:00.000Z',
+      projects: [
+        {
+          name: 'external-next-app',
+          path: projectPath,
+          relativePath: '../external-next-app',
+          relationship: 'adopted',
+          stack: 'nextjs',
+          runtime: 'node',
+          framework: 'nextjs',
+          frameworkDisplayName: 'Next.js',
+          supportTier: 'extended',
+          moduleSupport: false,
+          confidence: 'high',
+          source: 'adopted-local',
+          importedAt: '2026-06-15T00:00:00.000Z',
+        },
+      ],
+    });
+
+    await fsExtra.ensureDir(path.join(projectPath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(projectPath, '.rapidkit', 'project.json'), {
+      name: 'external-next-app',
+      kit_name: 'adopted.nextjs',
+      runtime: 'node',
+      framework: 'nextjs',
+    });
+    await fsExtra.writeJSON(path.join(projectPath, 'package.json'), {
+      name: 'external-next-app',
+      version: '1.0.0',
+      dependencies: {
+        next: '15.0.0',
+        react: '19.0.0',
+      },
+    });
+    await fsExtra.ensureDir(path.join(projectPath, 'node_modules', 'next'));
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'python3' || cmd === 'python') {
+        if (args?.[0] === '--version') {
+          return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+        }
+        if (args?.[0] === '-m' && args?.[1] === 'rapidkit') {
+          return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+        }
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx' && args?.[0] === '--version') {
+        return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'npm' && Array.isArray(args) && args[0] === 'audit') {
+        return {
+          stdout: JSON.stringify({ metadata: { vulnerabilities: { total: 0 } } }),
+          stderr: '',
+          exitCode: 0,
+        } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(workspacePath);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ workspace: true, json: true });
+
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string | undefined;
+
+      expect(jsonLine).toBeDefined();
+      const payload = JSON.parse(jsonLine as string);
+      expect(payload.summary.totalProjects).toBe(1);
+      expect(payload.projects).toEqual([
+        expect.objectContaining({
+          name: 'external-next-app',
+          path: projectPath,
+          framework: 'Next.js',
+          runtimeFamily: 'node',
+          projectKind: 'frontend',
+        }),
+      ]);
+      expect(await fsExtra.pathExists(path.join(workspacePath, '.rapidkit', 'reports'))).toBe(true);
     } finally {
       process.chdir(originalCwd);
       logSpy.mockRestore();

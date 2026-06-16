@@ -307,12 +307,24 @@ export async function registerProjectInWorkspace(
       workspace.projects = [];
     }
 
-    // Add project if not already in list
-    const projectExists = workspace.projects.some(
+    // Upsert project by path first, then by name. Adopted projects can move or be
+    // re-linked, so name-only collisions must refresh the stored path instead of
+    // silently keeping stale registry data.
+    const existingIndex = workspace.projects.findIndex(
       (p) => p.path === normalizedProjectPath || p.name === projectName
     );
+    const nextProject = {
+      name: projectName,
+      path: normalizedProjectPath,
+    };
 
-    if (!projectExists) {
+    if (existingIndex >= 0) {
+      const existing = workspace.projects[existingIndex];
+      if (existing.name !== nextProject.name || existing.path !== nextProject.path) {
+        workspace.projects[existingIndex] = nextProject;
+        await fs.writeFile(registryFile, JSON.stringify(registry, null, 2));
+      }
+    } else {
       workspace.projects.push({
         name: projectName,
         path: normalizedProjectPath,
@@ -774,11 +786,11 @@ cmd_project() {
                     ;;
                 dev)
                     echo -e "\${BLUE}🚀 Starting development server...\${NC}"
-                    $pm run start:dev
+                    $pm run dev
                     ;;
                 start)
                     echo -e "\${BLUE}⚡ Starting production server...\${NC}"
-                    $pm run start:prod
+                    $pm run start
                     ;;
                 build)
                     echo -e "\${BLUE}📦 Building project...\${NC}"
@@ -786,7 +798,7 @@ cmd_project() {
                     ;;
                 test)
                     echo -e "\${BLUE}🧪 Running tests...\${NC}"
-                    $pm test
+                    $pm run test
                     ;;
                 lint)
                     echo -e "\${BLUE}🔧 Running linter...\${NC}"

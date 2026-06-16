@@ -2,13 +2,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
-const targets = [
-  path.join(root, 'README.md'),
-  ...fs
-    .readdirSync(path.join(root, 'docs'))
-    .filter((name) => name.endsWith('.md'))
-    .map((name) => path.join(root, 'docs', name)),
-];
+
+function collectMarkdownFiles(dir, acc = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collectMarkdownFiles(fullPath, acc);
+    } else if (entry.name.endsWith('.md')) {
+      acc.push(fullPath);
+    }
+  }
+  return acc;
+}
+
+const targets = [path.join(root, 'README.md'), ...collectMarkdownFiles(path.join(root, 'docs'))];
 
 const linkRegex = /\[[^\]]+\]\(([^)]+)\)/g;
 const errors = [];
@@ -44,4 +51,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('✅ Markdown local links are valid.');
+console.log(`✅ Markdown local links are valid (${targets.length} files).`);

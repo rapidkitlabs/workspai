@@ -10,7 +10,9 @@
         "src/routing/__init__.py",
         "src/modules/__init__.py"
       ],
-      "moduleMarkerFiles": ["__init__.py"]
+      "moduleMarkerFiles": [
+        "__init__.py"
+      ]
     },
     "nestjs": {
       "moduleCommands": true,
@@ -18,8 +20,15 @@
         "src/app.module.ts",
         "src/modules/index.ts"
       ],
-      "moduleMarkerFiles": ["index.ts", "module.ts"]
+      "moduleMarkerFiles": [
+        "index.ts",
+        "module.ts"
+      ]
     }
   },
-  "unsupportedModuleFrameworks": ["go", "springboot", "dotnet"]
+  "unsupportedModuleFrameworks": [
+    "go",
+    "springboot",
+    "dotnet"
+  ]
 }

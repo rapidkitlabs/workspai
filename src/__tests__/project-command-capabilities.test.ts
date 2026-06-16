@@ -81,7 +81,7 @@ describe('project command capabilities', () => {
 
     expect(goCapabilities.framework).toBe('gogin');
     expect(goCapabilities.runtimeSupportTier).toBe('extended');
-    expect(goCapabilities.frameworkSupportTier).toBe('first-class');
+    expect(goCapabilities.frameworkSupportTier).toBe('extended');
     expect(goCapabilities.runtimeDoctorSupport).toBe('readiness');
     expect(goCapabilities.commandMap.modules).toMatchObject({
       status: 'unsupported',
@@ -94,7 +94,7 @@ describe('project command capabilities', () => {
 
     expect(javaCapabilities.framework).toBe('springboot');
     expect(javaCapabilities.runtimeSupportTier).toBe('extended');
-    expect(javaCapabilities.frameworkSupportTier).toBe('first-class');
+    expect(javaCapabilities.frameworkSupportTier).toBe('extended');
     expect(javaCapabilities.commandMap.rollback).toMatchObject({
       status: 'unsupported',
       owner: 'none',
@@ -149,12 +149,40 @@ describe('project command capabilities', () => {
     expect(capabilities.frameworkSupportTier).toBe('extended');
     expect(capabilities.commandMap.help).toMatchObject({
       status: 'supported',
-      owner: 'runtime',
+      owner: 'npm',
     });
     expect(capabilities.commandMap.dev).toMatchObject({
       status: 'unsupported',
       owner: 'runtime',
     });
+  });
+
+  it('limits node lifecycle commands to resolvable package.json scripts', async () => {
+    const projectRoot = await createProject(
+      {
+        kit_name: 'frontend.nextjs',
+        runtime: 'node',
+        framework: 'nextjs',
+        module_support: false,
+      },
+      {
+        'package.json': JSON.stringify({
+          scripts: {
+            dev: 'next dev',
+            build: 'next build',
+          },
+        }),
+      }
+    );
+
+    const capabilities = resolveProjectCommandCapabilities(projectRoot);
+
+    expect(capabilities.supportedCommands).toEqual(
+      expect.arrayContaining(['dev', 'build', 'help', 'init'])
+    );
+    expect(capabilities.unsupportedCommands).toEqual(
+      expect.arrayContaining(['start', 'test', 'lint', 'format'])
+    );
   });
 
   it('detects capability request forms and unsupported command decisions', async () => {
@@ -192,5 +220,39 @@ describe('project command capabilities', () => {
       status: 'unsupported',
       owner: 'none',
     });
+  });
+
+  it('marks dev as local-only and exposes fleet stages separately from project commands', async () => {
+    const projectRoot = await createProject(
+      {
+        kit_name: 'nestjs.standard',
+        runtime: 'node',
+        module_support: true,
+      },
+      {
+        'package.json': JSON.stringify({
+          scripts: {
+            dev: 'nest start --watch',
+            test: 'jest',
+            build: 'nest build',
+            start: 'node dist/main.js',
+          },
+        }),
+      }
+    );
+
+    const capabilities = resolveProjectCommandCapabilities(projectRoot);
+
+    expect(capabilities.commandMap.dev).toMatchObject({
+      status: 'supported',
+      executionScope: 'local-only',
+      fleetEligible: false,
+    });
+    expect(capabilities.commandMap.test).toMatchObject({
+      status: 'supported',
+      fleetEligible: true,
+    });
+    expect(capabilities.fleetStages).toEqual(expect.arrayContaining(['test', 'build']));
+    expect(capabilities.localOnlyCommands).toEqual(expect.arrayContaining(['dev']));
   });
 });

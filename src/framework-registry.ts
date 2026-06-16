@@ -6,6 +6,11 @@ import {
   detectRuntimeCandidatesFromProject,
   normalizeBackendFrameworkLabel,
 } from './utils/backend-framework-contract.js';
+import {
+  resolveNodeLifecycleScript,
+  type NodeLifecycleCommand,
+} from './utils/node-lifecycle-scripts.js';
+import { formatNodeInstallCommand, formatNodeScriptCommand } from './utils/node-package-manager.js';
 
 /**
  * Framework Registry for Workspace Run
@@ -587,6 +592,44 @@ export function getStageCommand(
   return patterns.length > 0 ? patterns[0] : undefined;
 }
 
+const WORKSPACE_STAGE_TO_NODE_LIFECYCLE: Partial<Record<WorkspaceRunStage, NodeLifecycleCommand>> =
+  {
+    test: 'test',
+    build: 'build',
+    start: 'start',
+  };
+
+/**
+ * Resolve a workspace fleet stage command using project-aware lifecycle contracts.
+ */
+export function resolveWorkspaceStageCommand(input: {
+  projectPath: string;
+  runtime: RuntimeFamily;
+  framework?: string;
+  stage: WorkspaceRunStage;
+}): string | undefined {
+  if (input.stage === 'init') {
+    if (input.runtime === 'node') {
+      return formatNodeInstallCommand(input.projectPath);
+    }
+    return getStageCommand(input.runtime, input.framework, input.stage);
+  }
+
+  if (input.runtime === 'node') {
+    const lifecycle = WORKSPACE_STAGE_TO_NODE_LIFECYCLE[input.stage];
+    if (lifecycle) {
+      const resolved = resolveNodeLifecycleScript(input.projectPath, lifecycle, {
+        framework: input.framework,
+      });
+      if (resolved) {
+        return formatNodeScriptCommand(input.projectPath, resolved.scriptName);
+      }
+    }
+  }
+
+  return getStageCommand(input.runtime, input.framework, input.stage);
+}
+
 /**
  * Detect runtime family from common file markers.
  * Returns all detected runtimes (primary and secondary).
@@ -707,21 +750,43 @@ export function resolveStageCommand(
   overrides?: Record<string, string | EnvironmentVariant>,
   environment?: 'dev' | 'staging' | 'prod'
 ): string | undefined {
-  if (!overrides) {
+  return applyEnvironmentCommandVariant(baseCommand, overrides, environment);
+}
+
+/**
+ * Apply environment-specific command variants without re-reading stage override keys.
+ * Stage overrides must be resolved before calling this helper.
+ */
+export function applyEnvironmentCommandVariant(
+  baseCommand: string | undefined,
+  environmentVariants?: Record<string, string | EnvironmentVariant> | EnvironmentVariant,
+  environment?: 'dev' | 'staging' | 'prod'
+): string | undefined {
+  if (!environmentVariants) {
     return baseCommand;
   }
 
-  // Check for environment-specific override
-  if (environment && typeof overrides[environment] === 'string') {
-    return overrides[environment] as string;
+  const variants: EnvironmentVariant =
+    typeof environmentVariants === 'object' &&
+    !Array.isArray(environmentVariants) &&
+    ('dev' in environmentVariants ||
+      'staging' in environmentVariants ||
+      'prod' in environmentVariants ||
+      'default' in environmentVariants) &&
+    !Object.keys(environmentVariants).some((key) =>
+      ['init', 'test', 'build', 'start'].includes(key)
+    )
+      ? (environmentVariants as EnvironmentVariant)
+      : {};
+
+  if (environment && typeof variants[environment] === 'string') {
+    return variants[environment];
   }
 
-  // Check for simple override
-  if (typeof overrides.default === 'string') {
-    return overrides.default;
+  if (typeof variants.default === 'string') {
+    return variants.default;
   }
 
-  // Fallback to base command
   return baseCommand;
 }
 

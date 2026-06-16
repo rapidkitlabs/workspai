@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Git ref to release (branch, tag, or SHA)"
+        description: 'Git ref to release (branch, tag, or SHA)'
         required: true
-        default: "main"
+        default: 'main'
       dist_tag:
-        description: "npm dist-tag"
+        description: 'npm dist-tag'
         required: true
-        default: "latest"
+        default: 'latest'
       dry_run:
-        description: "Run npm publish --dry-run only"
+        description: 'Run npm publish --dry-run only'
         required: true
         type: boolean
         default: false
@@ -58,7 +58,8 @@ jobs:
               'Security Audit',
               'Bridge Regression Smoke',
               'Workspace E2E Matrix',
-              'Windows Bridge E2E'
+              'Windows Bridge E2E',
+              'Frontend Generator Smoke'
             ];
 
             const { owner, repo } = context.repo;

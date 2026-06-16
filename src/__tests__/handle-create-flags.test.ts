@@ -9,13 +9,28 @@ import inquirer from 'inquirer';
 
 describe('handleCreateOrFallback - wrapper flags handling', () => {
   let tmpDir: string;
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+
   beforeEach(async () => {
     tmpDir = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-test-'));
     process.chdir(tmpDir);
+    process.env.HOME = tmpDir;
+    process.env.USERPROFILE = tmpDir;
     vi.restoreAllMocks();
   });
 
   afterEach(async () => {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
+    }
     try {
       process.chdir('/');
       await fsExtra.remove(tmpDir);
@@ -144,6 +159,7 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
           dryRun: false,
           profile: undefined,
           yes: false,
+          parentDirectory: path.join(tmpDir, 'rapidkit', 'workspaces'),
         })
       );
       expect(runSpy).not.toHaveBeenCalled();
@@ -248,5 +264,46 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
     expect(goCode).toBe(1);
     expect(runSpy).not.toHaveBeenCalled();
     expect(stderrSpy).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['create frontend nextjs', ['create', 'frontend', 'nextjs', 'my-web']],
+    ['create project frontend.nextjs', ['create', 'project', 'frontend.nextjs', 'my-web']],
+  ])(
+    'routes %s to the frontend generator contract without Python core',
+    async (_label, baseArgs) => {
+      const resolveSpy = vi.spyOn(coreExec, 'resolveRapidkitPython').mockResolvedValue();
+      const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
+
+      const code = await index.handleCreateOrFallback([
+        ...baseArgs,
+        '--dry-run',
+        '--no-workspace',
+        '--skip-install',
+      ]);
+
+      expect(code).toBe(0);
+      expect(resolveSpy).not.toHaveBeenCalled();
+      expect(runSpy).not.toHaveBeenCalled();
+      expect(await fsExtra.pathExists(path.join(tmpDir, 'my-web'))).toBe(false);
+    }
+  );
+
+  it('rejects unknown frontend generators before core forwarding', async () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
+
+    const code = await index.handleCreateOrFallback([
+      'create',
+      'frontend',
+      'unknown-stack',
+      'my-web',
+      '--dry-run',
+      '--no-workspace',
+    ]);
+
+    expect(code).toBe(1);
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown frontend generator'));
   });
 });

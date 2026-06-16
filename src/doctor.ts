@@ -4,6 +4,7 @@ import fsExtra from 'fs-extra';
 import path from 'path';
 import { logger } from './logger.js';
 import inquirer from 'inquirer';
+import { readImportedProjectsRegistry } from './imported-projects-registry.js';
 import {
   getPythonCommandCandidates,
   getRapidkitLocalScriptCandidates,
@@ -20,10 +21,18 @@ import {
   type BackendImportStack,
   type BackendRuntimeFamily,
 } from './utils/backend-framework-contract.js';
+import { detectFrontendFrameworkFromProject } from './utils/frontend-framework-contract.js';
+import {
+  assessFrontendSourceTree,
+  buildFrontendDoctorProbes,
+  detectNodeEslintConfigured,
+  detectNodeTestSurface,
+} from './utils/doctor-frontend-signals.js';
 import {
   resolveProjectCommandCapabilities,
   type ProjectCommandCapabilities,
 } from './utils/project-command-capabilities.js';
+import { getFrameworkSupportTier } from './utils/support-matrix.js';
 import {
   DOCTOR_PROJECT_EVIDENCE_SCHEMA,
   DOCTOR_WORKSPACE_EVIDENCE_SCHEMA,
@@ -130,11 +139,16 @@ type DetectedFramework =
   | 'Python'
   | 'NestJS'
   | 'Next.js'
+  | 'Remix'
   | 'Nuxt'
   | 'React'
   | 'Vue'
   | 'Angular'
   | 'SvelteKit'
+  | 'Svelte'
+  | 'Vite'
+  | 'Astro'
+  | 'Solid'
   | 'Express'
   | 'Fastify'
   | 'Koa'
@@ -337,7 +351,7 @@ function countProjectAdvisoryWarnings(projects: ProjectHealth[]): number {
 }
 
 interface DoctorWorkspaceCacheEntry {
-  schemaVersion: 'doctor-workspace-cache-v1';
+  schemaVersion: 'doctor-workspace-cache-v2';
   signature: string;
   generatedAt: string;
   projects: ProjectHealth[];
@@ -363,7 +377,7 @@ type DoctorEvidenceLike = {
 };
 
 const DOCTOR_PROJECT_SCAN_SCHEMA = 'doctor-project-scan-v2';
-const DOCTOR_WORKSPACE_CACHE_SCHEMA = 'doctor-workspace-cache-v1';
+const DOCTOR_WORKSPACE_CACHE_SCHEMA = 'doctor-workspace-cache-v2';
 const DOCTOR_CONTRACT_METADATA: DoctorContractMetadata = Object.freeze({
   version: 'doctor-evidence-v1',
   scoringPolicyVersion: 'doctor-score-policy-v1',
@@ -625,15 +639,7 @@ function buildEnvCopyFixCommand(projectPath: string): string {
 }
 
 function supportTierForFramework(framework: DetectedFramework): FrameworkSupportTier {
-  if (
-    framework === 'FastAPI' ||
-    framework === 'NestJS' ||
-    framework === 'Go/Fiber' ||
-    framework === 'Go/Gin' ||
-    framework === 'Spring Boot' ||
-    framework === 'Rust' ||
-    framework === 'Phoenix'
-  ) {
+  if (framework === 'FastAPI' || framework === 'NestJS') {
     return 'first-class';
   }
 
@@ -643,6 +649,11 @@ function supportTierForFramework(framework: DetectedFramework): FrameworkSupport
     framework === 'Express' ||
     framework === 'Fastify' ||
     framework === 'Koa' ||
+    framework === 'Go/Fiber' ||
+    framework === 'Go/Gin' ||
+    framework === 'Spring Boot' ||
+    framework === 'Rust' ||
+    framework === 'Phoenix' ||
     framework === 'Elixir' ||
     framework === 'Clojure' ||
     framework === 'Scala' ||
@@ -664,11 +675,16 @@ function supportTierForFramework(framework: DetectedFramework): FrameworkSupport
 function kindForFramework(framework: DetectedFramework): ProjectKind {
   if (
     framework === 'Next.js' ||
+    framework === 'Remix' ||
     framework === 'Nuxt' ||
     framework === 'React' ||
     framework === 'Vue' ||
     framework === 'Angular' ||
-    framework === 'SvelteKit'
+    framework === 'SvelteKit' ||
+    framework === 'Svelte' ||
+    framework === 'Vite' ||
+    framework === 'Astro' ||
+    framework === 'Solid'
   ) {
     return 'frontend';
   }
@@ -684,11 +700,16 @@ function runtimeForFramework(framework: DetectedFramework): ProjectRuntimeFamily
   if (
     framework === 'NestJS' ||
     framework === 'Next.js' ||
+    framework === 'Remix' ||
     framework === 'Nuxt' ||
     framework === 'React' ||
     framework === 'Vue' ||
     framework === 'Angular' ||
     framework === 'SvelteKit' ||
+    framework === 'Svelte' ||
+    framework === 'Vite' ||
+    framework === 'Astro' ||
+    framework === 'Solid' ||
     framework === 'Bun' ||
     framework === 'Express' ||
     framework === 'Fastify' ||
@@ -746,14 +767,23 @@ function runtimeForFramework(framework: DetectedFramework): ProjectRuntimeFamily
   return 'unknown';
 }
 
+function applyCommandCapabilities(projectHealth: ProjectHealth, projectPath: string): void {
+  const capabilities = resolveProjectCommandCapabilities(projectPath);
+  projectHealth.commandCapabilities = capabilities;
+  projectHealth.supportTier = capabilities.frameworkSupportTier;
+}
+
 function applyFrameworkMetadata(
   health: ProjectHealth,
   framework: DetectedFramework,
-  confidence: FrameworkConfidence
+  confidence: FrameworkConfidence,
+  frameworkKey?: BackendPlatformKey
 ): void {
   health.framework = framework;
   health.frameworkConfidence = confidence;
-  health.supportTier = supportTierForFramework(framework);
+  health.supportTier = frameworkKey
+    ? getFrameworkSupportTier(frameworkKey)
+    : supportTierForFramework(framework);
   health.projectKind = kindForFramework(framework);
   health.runtimeFamily = runtimeForFramework(framework);
 }
@@ -785,6 +815,28 @@ function toDoctorFramework(detection: BackendFrameworkDetection): DetectedFramew
       return 'Python';
     case 'nestjs':
       return 'NestJS';
+    case 'nextjs':
+      return 'Next.js';
+    case 'remix':
+      return 'Remix';
+    case 'nuxt':
+      return 'Nuxt';
+    case 'react':
+      return 'React';
+    case 'vite':
+      return 'Vite';
+    case 'vue':
+      return 'Vue';
+    case 'sveltekit':
+      return 'SvelteKit';
+    case 'svelte':
+      return 'Svelte';
+    case 'angular':
+      return 'Angular';
+    case 'astro':
+      return 'Astro';
+    case 'solid':
+      return 'Solid';
     case 'express':
       return 'Express';
     case 'fastify':
@@ -861,6 +913,19 @@ function isGenericBackendDetection(detection: BackendFrameworkDetection): boolea
     detection.key === 'bun' ||
     detection.key === 'unknown'
   );
+}
+
+function applyFrontendFrameworkDetection(
+  health: ProjectHealth,
+  detection: BackendFrameworkDetection
+): void {
+  health.framework = toDoctorFramework(detection);
+  health.frameworkKey = detection.key;
+  health.importStack = detection.importStack;
+  health.frameworkConfidence = detection.confidence;
+  health.supportTier = detection.supportTier;
+  health.projectKind = 'frontend';
+  health.runtimeFamily = toDoctorRuntimeFamily(detection.runtime);
 }
 
 function applyBackendFrameworkDetection(
@@ -967,6 +1032,16 @@ async function collectWorkspaceProjectPaths(workspacePath: string): Promise<stri
       projectPaths.add(workspacePath);
     }
 
+    const importedProjects = await readImportedProjectsRegistry(workspacePath);
+    for (const importedProject of importedProjects) {
+      const projectPath = path.isAbsolute(importedProject.path)
+        ? importedProject.path
+        : path.join(workspacePath, importedProject.path);
+      if (await hasRapidkitProjectMarkers(projectPath)) {
+        projectPaths.add(projectPath);
+      }
+    }
+
     const scanDirs = async (basePath: string, depth: number) => {
       if (depth < 0) return;
       const dirNames = await listDirectories(basePath);
@@ -1004,6 +1079,7 @@ async function buildWorkspaceProjectSignature(
   const workspacePaths = [
     path.join(workspacePath, '.rapidkit-workspace'),
     path.join(workspacePath, '.rapidkit', 'workspace.json'),
+    path.join(workspacePath, '.rapidkit', 'imported-projects.json'),
     path.join(workspacePath, '.rapidkit', 'policies.yml'),
     path.join(workspacePath, '.rapidkit', 'toolchain.lock'),
     path.join(workspacePath, '.rapidkit', 'cache-config.yml'),
@@ -1459,7 +1535,11 @@ async function checkRapidKitCore(): Promise<HealthCheckResult> {
   };
 }
 
-async function performCommonChecks(projectPath: string, health: ProjectHealth): Promise<void> {
+async function performCommonChecks(
+  projectPath: string,
+  health: ProjectHealth,
+  packageJsonData?: Record<string, unknown> | null
+): Promise<void> {
   // Docker check
   const dockerfilePath = path.join(projectPath, 'Dockerfile');
   health.hasDocker = await fsExtra.pathExists(dockerfilePath);
@@ -1522,14 +1602,13 @@ async function performCommonChecks(projectPath: string, health: ProjectHealth): 
   }
 
   health.hasTests = hasTestDir || hasGoTests;
+  if (health.runtimeFamily === 'node' && !health.hasTests) {
+    health.hasTests = await detectNodeTestSurface(projectPath, packageJsonData);
+  }
 
   // Code Quality checks
   if (health.runtimeFamily === 'node') {
-    // ESLint for Node frameworks
-    const eslintPath = path.join(projectPath, '.eslintrc.js');
-    const eslintJsonPath = path.join(projectPath, '.eslintrc.json');
-    health.hasCodeQuality =
-      (await fsExtra.pathExists(eslintPath)) || (await fsExtra.pathExists(eslintJsonPath));
+    health.hasCodeQuality = await detectNodeEslintConfigured(projectPath, packageJsonData);
   } else if (health.framework === 'Go/Fiber' || health.framework === 'Go/Gin') {
     // golangci-lint config or Makefile with lint target
     const golangciPath = path.join(projectPath, '.golangci.yml');
@@ -1953,6 +2032,23 @@ async function appendBuiltInBackendProbes(
   });
 
   await appendRuntimeAdapterProbes(projectPath, health);
+}
+
+async function appendBuiltInFrontendProbes(
+  projectPath: string,
+  health: ProjectHealth,
+  packageJsonData: Record<string, unknown> | null,
+  detection: BackendFrameworkDetection
+): Promise<void> {
+  const probes = await buildFrontendDoctorProbes({
+    projectPath,
+    detection,
+    packageJsonData,
+  });
+
+  for (const probe of probes) {
+    pushProjectProbe(health, probe);
+  }
 }
 
 type CustomDoctorProbeConfig = {
@@ -2524,6 +2620,7 @@ async function checkProject(
           ? (projectJsonData.kit as string).toLowerCase()
           : '';
 
+    const frontendDetection = detectFrontendFrameworkFromProject(projectPath, projectJsonData);
     const nodeDetection = detectNodeFrameworkFromManifest({
       dependencies,
       scripts,
@@ -2536,12 +2633,17 @@ async function checkProject(
         projectPath,
         projectJsonData ?? null
       );
-      if (
+      const explicitBackendNodeFramework =
         backendDetection.key === 'nestjs' ||
         backendDetection.key === 'express' ||
         backendDetection.key === 'fastify' ||
-        backendDetection.key === 'koa'
-      ) {
+        backendDetection.key === 'koa';
+
+      if (explicitBackendNodeFramework) {
+        applyBackendFrameworkDetection(health, backendDetection);
+      } else if (frontendDetection.key !== 'unknown') {
+        applyFrontendFrameworkDetection(health, frontendDetection);
+      } else if (backendDetection.key !== 'unknown' && backendDetection.key !== 'node') {
         applyBackendFrameworkDetection(health, backendDetection);
       } else {
         applyFrameworkMetadata(health, nodeDetection.framework, nodeDetection.confidence);
@@ -2611,24 +2713,38 @@ async function checkProject(
       }
     }
 
-    // Check for TypeScript modules (src/)
-    const srcPath = path.join(projectPath, 'src');
-    health.modulesHealthy = true;
-    health.missingModules = [];
+    if (health.projectKind === 'frontend') {
+      health.modulesHealthy = await assessFrontendSourceTree(projectPath);
+      health.missingModules = [];
+    } else {
+      const srcPath = path.join(projectPath, 'src');
+      health.modulesHealthy = true;
+      health.missingModules = [];
 
-    if (await fsExtra.pathExists(srcPath)) {
-      try {
-        const modules = await fsExtra.readdir(srcPath);
-        // Basic check - if src exists and has files, consider it healthy
-        health.modulesHealthy = modules.length > 0;
-      } catch {
-        health.modulesHealthy = false;
+      if (await fsExtra.pathExists(srcPath)) {
+        try {
+          const modules = await fsExtra.readdir(srcPath);
+          health.modulesHealthy = modules.length > 0;
+        } catch {
+          health.modulesHealthy = false;
+        }
       }
     }
 
     // Common checks for both Node.js and Python
-    await performCommonChecks(projectPath, health);
-    await appendBuiltInBackendProbes(projectPath, health);
+    await performCommonChecks(projectPath, health, packageJsonData);
+    if (health.projectKind === 'frontend') {
+      await appendBuiltInFrontendProbes(
+        projectPath,
+        health,
+        packageJsonData,
+        frontendDetection.key !== 'unknown'
+          ? frontendDetection
+          : detectFrontendFrameworkFromProject(projectPath, projectJsonData)
+      );
+    } else {
+      await appendBuiltInBackendProbes(projectPath, health);
+    }
     await appendCustomConfiguredProbes(projectPath, health);
 
     return health;
@@ -3296,7 +3412,7 @@ async function getWorkspaceHealth(
   if (cached) {
     health.projects = cached.projects;
     for (const projectHealth of health.projects) {
-      projectHealth.commandCapabilities = resolveProjectCommandCapabilities(projectHealth.path);
+      applyCommandCapabilities(projectHealth, projectHealth.path);
     }
     health.projectScanCached = true;
     logger.debug(`Workspace project health cache hit: ${cachePath}`);
@@ -3306,7 +3422,7 @@ async function getWorkspaceHealth(
         projectPaths.map((projectPath) => checkProject(projectPath))
       );
       for (const projectHealth of projectHealthResults) {
-        projectHealth.commandCapabilities = resolveProjectCommandCapabilities(projectHealth.path);
+        applyCommandCapabilities(projectHealth, projectHealth.path);
       }
       health.projects = projectHealthResults;
       health.projectScanCached = false;
@@ -3363,6 +3479,38 @@ async function getWorkspaceHealth(
   return health;
 }
 
+function serializeDoctorProjectForOutput(project: ProjectHealth): Record<string, unknown> {
+  return {
+    name: project.name,
+    path: project.path,
+    framework: project.framework,
+    frameworkKey: project.frameworkKey,
+    importStack: project.importStack,
+    runtimeFamily: project.runtimeFamily,
+    projectKind: project.projectKind,
+    supportTier: project.supportTier,
+    frameworkConfidence: project.frameworkConfidence,
+    kit: project.kit,
+    venvActive: project.venvActive,
+    depsInstalled: project.depsInstalled,
+    hasEnvFile: project.hasEnvFile,
+    modulesHealthy: project.modulesHealthy,
+    missingModules: project.missingModules,
+    hasTests: project.hasTests,
+    hasDocker: project.hasDocker,
+    hasCodeQuality: project.hasCodeQuality,
+    vulnerabilities: project.vulnerabilities,
+    coreInstalled: project.coreInstalled,
+    coreVersion: project.coreVersion,
+    lastModified: project.lastModified,
+    stats: project.stats,
+    issues: project.issues,
+    fixCommands: project.fixCommands,
+    probes: project.probes,
+    commandCapabilities: project.commandCapabilities,
+  };
+}
+
 async function writeProjectDoctorEvidence(
   workspacePath: string | undefined,
   envelope: ProjectHealthEnvelope
@@ -3414,7 +3562,7 @@ async function getProjectHealthEnvelope(projectPath: string): Promise<ProjectHea
   const workspacePath = await findWorkspace(projectPath);
   const systemHealth = await collectSystemChecks();
   const projectHealth = await checkProject(projectPath, { allowNonRapidkit: true });
-  projectHealth.commandCapabilities = resolveProjectCommandCapabilities(projectPath);
+  applyCommandCapabilities(projectHealth, projectPath);
   const healthScore = calculateHealthScore(
     [
       systemHealth.python,
@@ -3503,9 +3651,11 @@ function renderProjectHealth(project: ProjectHealth): void {
         ? '🐍'
         : project.framework === 'NestJS'
           ? '🦅'
-          : project.framework === 'Next.js' || project.framework === 'Nuxt'
+          : project.framework === 'Next.js' ||
+              project.framework === 'Nuxt' ||
+              project.framework === 'Remix'
             ? '▲'
-            : project.framework === 'React'
+            : project.framework === 'React' || project.framework === 'Vite'
               ? '⚛️'
               : project.framework === 'Vue'
                 ? '🟢'
@@ -3603,14 +3753,17 @@ function renderProjectHealth(project: ProjectHealth): void {
     }
   }
 
-  // Module health check
+  // Module / source tree health check
   if (project.modulesHealthy !== undefined) {
+    const healthLabel = project.projectKind === 'frontend' ? 'Source tree' : 'Modules';
     if (project.modulesHealthy) {
-      console.log(`   ✅ Modules: ${chalk.green('Healthy')}`);
+      console.log(`   ✅ ${healthLabel}: ${chalk.green('Healthy')}`);
     } else if (project.missingModules && project.missingModules.length > 0) {
       console.log(
-        `   ⚠️  Modules: ${chalk.yellow(`Missing ${project.missingModules.length} init file(s)`)}`
+        `   ⚠️  ${healthLabel}: ${chalk.yellow(`Missing ${project.missingModules.length} init file(s)`)}`
       );
+    } else if (project.projectKind === 'frontend') {
+      console.log(`   ⚠️  ${healthLabel}: ${chalk.yellow('No application directories detected')}`);
     }
   }
 
@@ -4451,27 +4604,7 @@ export async function runDoctor(
             npm: health.npmVersion,
           },
         },
-        projects: health.projects.map((p) => ({
-          name: p.name,
-          path: p.path,
-          framework: p.framework,
-          frameworkKey: p.frameworkKey,
-          importStack: p.importStack,
-          runtimeFamily: p.runtimeFamily,
-          projectKind: p.projectKind,
-          supportTier: p.supportTier,
-          frameworkConfidence: p.frameworkConfidence,
-          venvActive: p.venvActive,
-          depsInstalled: p.depsInstalled,
-          hasEnvFile: p.hasEnvFile,
-          vulnerabilities: p.vulnerabilities,
-          coreInstalled: p.coreInstalled,
-          coreVersion: p.coreVersion,
-          issues: p.issues,
-          fixCommands: p.fixCommands,
-          probes: p.probes,
-          commandCapabilities: p.commandCapabilities,
-        })),
+        projects: health.projects.map((project) => serializeDoctorProjectForOutput(project)),
         summary: {
           totalProjects: health.projects.length,
           totalIssues: health.projects.reduce((sum, p) => sum + p.issues.length, 0),
@@ -4648,25 +4781,8 @@ export async function runDoctor(
             }
           : null,
         project: {
-          name: envelope.project.name,
+          ...serializeDoctorProjectForOutput(envelope.project),
           path: reportedProjectPath,
-          framework: envelope.project.framework,
-          frameworkKey: envelope.project.frameworkKey,
-          importStack: envelope.project.importStack,
-          runtimeFamily: envelope.project.runtimeFamily,
-          projectKind: envelope.project.projectKind,
-          supportTier: envelope.project.supportTier,
-          frameworkConfidence: envelope.project.frameworkConfidence,
-          venvActive: envelope.project.venvActive,
-          depsInstalled: envelope.project.depsInstalled,
-          hasEnvFile: envelope.project.hasEnvFile,
-          vulnerabilities: envelope.project.vulnerabilities,
-          coreInstalled: envelope.project.coreInstalled,
-          coreVersion: envelope.project.coreVersion,
-          issues: envelope.project.issues,
-          fixCommands: envelope.project.fixCommands,
-          probes: envelope.project.probes,
-          commandCapabilities: envelope.project.commandCapabilities,
         },
         evidencePath: envelope.evidencePath,
         healthScore: envelope.healthScore,

@@ -7,6 +7,21 @@ export const MODULE_PATH_PATTERN = 'src/modules/free/{category}/{module}';
 export const MODULE_SLUG_PATTERN = 'free/{category}/{module}';
 export const MODULE_SLUG_PREFIX = 'free/';
 
+export const MODULE_LAYOUT_FRAMEWORKS = {
+  fastapi: {
+    moduleCommands: true,
+    injectAnchors: ['src/routing/__init__.py', 'src/modules/__init__.py'],
+    moduleMarkerFiles: ['__init__.py'],
+  },
+  nestjs: {
+    moduleCommands: true,
+    injectAnchors: ['src/app.module.ts', 'src/modules/index.ts'],
+    moduleMarkerFiles: ['index.ts', 'module.ts'],
+  },
+} as const;
+
+export const MODULE_UNSUPPORTED_MODULE_FRAMEWORKS = ['go', 'springboot', 'dotnet'] as const;
+
 export interface RegistryInstalledModule {
   slug?: string;
   name?: string;

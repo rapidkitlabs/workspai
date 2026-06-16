@@ -72,6 +72,12 @@ describe('Phase 3 command contract handlers', () => {
 
   describe('bootstrap', () => {
     it('rewrites bootstrap command to init and preserves trailing args', async () => {
+      const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-bootstrap-init-args-'));
+      const projectDir = path.join(workspaceRoot, 'apps', 'api');
+      await mkdir(path.join(projectDir, '.rapidkit'), { recursive: true });
+      await writeFile(path.join(projectDir, 'package.json'), '{"name":"api"}', 'utf-8');
+      process.chdir(workspaceRoot);
+
       const index = await import('../index.js');
       const initRunner = vi.fn().mockResolvedValue(0);
 
@@ -79,15 +85,43 @@ describe('Phase 3 command contract handlers', () => {
 
       expect(initRunner).toHaveBeenCalledWith(['init', './apps/api']);
       expect(code).toBe(0);
+
+      await cleanupWorkspaceDir(workspaceRoot);
     });
 
     it('propagates init runner exit code', async () => {
+      const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-bootstrap-exit-code-'));
+      const rapidkitDir = path.join(workspaceRoot, '.rapidkit');
+      await mkdir(rapidkitDir, { recursive: true });
+      await writeFile(path.join(workspaceRoot, '.rapidkit-workspace'), '{}', 'utf-8');
+      await writeFile(
+        path.join(rapidkitDir, 'workspace.json'),
+        JSON.stringify({ profile: 'minimal' }, null, 2),
+        'utf-8'
+      );
+      await writeFile(
+        path.join(rapidkitDir, 'policies.yml'),
+        [
+          'version: "1.0"',
+          'mode: warn',
+          'rules:',
+          '  enforce_workspace_marker: false',
+          '  enforce_toolchain_lock: false',
+          '  disallow_untrusted_tool_sources: false',
+          '',
+        ].join('\n'),
+        'utf-8'
+      );
+      process.chdir(workspaceRoot);
+
       const index = await import('../index.js');
       const initRunner = vi.fn().mockResolvedValue(1);
 
       const code = await index.handleBootstrapCommand(['bootstrap'], initRunner);
 
       expect(code).toBe(1);
+
+      await cleanupWorkspaceDir(workspaceRoot);
     });
 
     it('auto-syncs missing workspace foundation files for legacy workspaces', async () => {
@@ -1693,8 +1727,9 @@ describe('Phase 3 command contract handlers', () => {
         await expect(index.shouldForwardToCore([command])).resolves.toBe(false);
       }
 
-      await expect(index.shouldForwardToCore(['lint'])).resolves.toBe(true);
-      await expect(index.shouldForwardToCore(['format'])).resolves.toBe(true);
+      // lint/format stay on npm wrapper when cwd has resolvable Node scripts (this repo does).
+      await expect(index.shouldForwardToCore(['lint'])).resolves.toBe(false);
+      await expect(index.shouldForwardToCore(['format'])).resolves.toBe(false);
       await expect(index.shouldForwardToCore(['docs'])).resolves.toBe(true);
     });
 

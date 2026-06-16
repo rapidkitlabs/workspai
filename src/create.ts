@@ -333,6 +333,40 @@ export async function syncWorkspaceFoundationFiles(
 
 type InstallMethod = 'poetry' | 'venv' | 'pipx';
 
+export const PYTHON_FREE_WORKSPACE_PROFILES = new Set([
+  'go-only',
+  'java-only',
+  'dotnet-only',
+  'node-only',
+  'minimal',
+]);
+
+const PYTHON_PROFILE_FALLBACK_CHAIN: Record<string, string> = {
+  'python-only': 'minimal',
+  polyglot: 'node-only',
+  enterprise: 'polyglot',
+};
+
+/** Follow fallback chain until a Python-free bootstrap profile is reached. */
+export function resolvePythonFreeFallbackProfile(profile: string): string {
+  let current = profile;
+  const visited = new Set<string>();
+
+  while (!PYTHON_FREE_WORKSPACE_PROFILES.has(current)) {
+    if (visited.has(current)) {
+      return 'minimal';
+    }
+    visited.add(current);
+    const next = PYTHON_PROFILE_FALLBACK_CHAIN[current];
+    if (!next) {
+      return 'minimal';
+    }
+    current = next;
+  }
+
+  return current;
+}
+
 const MIN_SUPPORTED_PYTHON = '3.10';
 const BASELINE_SUPPORTED_PYTHON_VERSIONS = ['3.10', '3.11', '3.12'] as const;
 
@@ -806,6 +840,8 @@ interface CreateProjectOptions {
   installMethod?: InstallMethod;
   /** Bootstrap profile written into .rapidkit/workspace.json (e.g. 'python-only', 'go-only'). */
   profile?: string;
+  /** Parent directory for workspace creation. Defaults to process.cwd(). */
+  parentDirectory?: string;
 }
 
 export async function createProject(
@@ -825,11 +861,14 @@ export async function createProject(
     userConfig = {},
     installMethod: providedInstallMethod,
     profile,
+    parentDirectory,
   } = options;
 
   // Default to 'rapidkit' directory
   const name = projectName || 'rapidkit';
-  const projectPath = path.resolve(process.cwd(), name);
+  const projectPath = parentDirectory
+    ? path.resolve(parentDirectory, name)
+    : path.resolve(process.cwd(), name);
 
   // Check if directory exists
   if (await fsExtra.pathExists(projectPath)) {
@@ -1030,13 +1069,7 @@ export async function createProject(
   // node-only / minimal use
   // nestjs.standard which depends on rapidkit-core (Python), so they follow
   // the full Python install path.
-  const PYTHON_FREE_PROFILES = new Set([
-    'go-only',
-    'java-only',
-    'dotnet-only',
-    'node-only',
-    'minimal',
-  ]);
+  const PYTHON_FREE_PROFILES = PYTHON_FREE_WORKSPACE_PROFILES;
 
   if (PYTHON_FREE_PROFILES.has(resolvedProfile)) {
     const spinner2 = ora('Creating workspace').start();
@@ -1233,14 +1266,8 @@ export async function createProject(
     }
 
     if (!pythonAvailable) {
-      // Smart fallback profiles: if Python is not available, suggest alternatives
-      const fallbackProfile: Record<string, string> = {
-        'python-only': 'minimal', // python-only → minimal (no Python needed)
-        polyglot: 'node-only', // polyglot → node-only (drop Python, keep Node)
-        enterprise: 'polyglot', // enterprise → polyglot (drop governance features)
-      };
-
-      const fallback = fallbackProfile[resolvedProfile];
+      const originalProfile = resolvedProfile;
+      const fallback = resolvePythonFreeFallbackProfile(resolvedProfile);
       const isInteractive = needsPythonPrompts && !yes; // User was prompted before
 
       if (isInteractive) {
@@ -1301,15 +1328,6 @@ export async function createProject(
             chalk.green(`\n✅ Switching to "${fallback}" profile (no Python required).\n`)
           );
           resolvedProfile = fallback;
-          // Restart with fallback profile in PYTHON_FREE_PROFILES path
-          // We'll return early and restart the creation with the fallback profile
-          const PYTHON_FREE_PROFILES = new Set([
-            'go-only',
-            'java-only',
-            'dotnet-only',
-            'node-only',
-            'minimal',
-          ]);
           if (PYTHON_FREE_PROFILES.has(fallback)) {
             const spinner2 = ora('Creating workspace').start();
             try {
@@ -1330,7 +1348,7 @@ export async function createProject(
               };
               await fsExtra.outputFile(
                 path.join(projectPath, 'README.md'),
-                `# ${name}\n\nRapidKit **${profileLabel[fallback]}** workspace (switched from ${resolvedProfile} due to missing Python).\n\n` +
+                `# ${name}\n\nRapidKit **${profileLabel[fallback]}** workspace (switched from ${originalProfile} due to missing Python).\n\n` +
                   `## Quick start\n\n` +
                   `\`\`\`bash\n` +
                   (fallback === 'go-only'
@@ -1394,7 +1412,7 @@ export async function createProject(
               console.log(chalk.cyan('💡 To use Python later:\n'));
               console.log(chalk.gray('   1. Install Python 3.10+'));
               console.log(
-                chalk.gray(`   2. Run: rapidkit bootstrap --profile ${resolvedProfile}\n`)
+                chalk.gray(`   2. Run: rapidkit bootstrap --profile ${originalProfile}\n`)
               );
               console.log('');
               return; // Exit successfully with fallback profile
@@ -1414,14 +1432,6 @@ export async function createProject(
         );
         resolvedProfile = fallback;
 
-        // Immediately restart with fallback profile
-        const PYTHON_FREE_PROFILES = new Set([
-          'go-only',
-          'java-only',
-          'dotnet-only',
-          'node-only',
-          'minimal',
-        ]);
         if (PYTHON_FREE_PROFILES.has(fallback)) {
           const spinner2 = ora('Creating workspace').start();
           try {
@@ -1463,7 +1473,7 @@ export async function createProject(
             console.log(chalk.cyan('📦 Profile:'), chalk.yellow(fallback));
             console.log(
               chalk.cyan('💡 Reason:'),
-              chalk.gray('Python not detected; switched from ' + resolvedProfile)
+              chalk.gray(`Python not detected; switched from ${originalProfile}`)
             );
             console.log(chalk.cyan('\n🚀 Get started:\n'));
             console.log(chalk.white(`   cd ${name}`));
@@ -1475,7 +1485,7 @@ export async function createProject(
             console.log(chalk.gray('   1. Install Python 3.10+'));
             console.log(
               chalk.gray(
-                `   2. Run: cd ${name} && rapidkit bootstrap --profile ${resolvedProfile}\n`
+                `   2. Run: cd ${name} && rapidkit bootstrap --profile ${originalProfile}\n`
               )
             );
             console.log('');

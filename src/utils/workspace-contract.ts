@@ -2,6 +2,10 @@ import path from 'path';
 import fsExtra from 'fs-extra';
 
 import { auditWorkspaceModulePaths } from './module-layout.js';
+import {
+  readImportedProjectsRegistry,
+  type ImportedProjectRegistryEntry,
+} from '../imported-projects-registry.js';
 
 export const WORKSPACE_CONTRACT_PATH = '.rapidkit/workspace.contract.json';
 export const WORKSPACE_CONTRACT_SCHEMA_VERSION = 1;
@@ -20,6 +24,9 @@ export interface WorkspaceContractApi {
 export interface WorkspaceContractProject {
   slug: string;
   relativePath: string;
+  source?: 'workspace' | 'local-folder' | 'git-url' | 'adopted-local';
+  relationship?: 'imported' | 'adopted';
+  externalPath?: string;
   runtime?: string;
   framework?: string;
   kit?: string;
@@ -66,6 +73,9 @@ export interface WorkspaceContractGraphNode {
   id: string;
   label: string;
   relativePath: string;
+  source?: WorkspaceContractProject['source'];
+  relationship?: WorkspaceContractProject['relationship'];
+  externalPath?: string;
   runtime?: string;
   framework?: string;
   kit?: string;
@@ -117,6 +127,17 @@ function isSafeContractRelativePath(inputPath: string): boolean {
     .some((segment) => segment === '..' || segment === '.');
 }
 
+function normalizeProjectSlug(raw: string, fallback: string): string {
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-_.]+|[-_.]+$/g, '')
+    .slice(0, 80);
+  return normalized || fallback;
+}
+
 function normalizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
@@ -164,8 +185,9 @@ export async function discoverProjectJsonFiles(workspacePath: string): Promise<s
     visited.add(current);
 
     const projectJson = path.join(current, '.rapidkit', 'project.json');
-    if (await fsExtra.pathExists(projectJson)) {
-      results.push(projectJson);
+    const contextJson = path.join(current, '.rapidkit', 'context.json');
+    if ((await fsExtra.pathExists(projectJson)) || (await fsExtra.pathExists(contextJson))) {
+      results.push((await fsExtra.pathExists(projectJson)) ? projectJson : contextJson);
       continue;
     }
 
@@ -245,7 +267,13 @@ function mergeProjectContract(
     ...discovered,
     ...existing,
     slug: existing?.slug || discovered.slug,
-    relativePath: existing?.relativePath || discovered.relativePath,
+    relativePath:
+      existing?.relativePath && isSafeContractRelativePath(existing.relativePath)
+        ? existing.relativePath
+        : discovered.relativePath,
+    source: existing?.source || discovered.source,
+    relationship: existing?.relationship || discovered.relationship,
+    externalPath: existing?.externalPath || discovered.externalPath,
     runtime: existing?.runtime || discovered.runtime,
     framework: existing?.framework || discovered.framework,
     kit: existing?.kit || discovered.kit,
@@ -272,11 +300,49 @@ export async function buildWorkspaceContract(input: {
   const workspacePath = path.resolve(input.workspacePath);
   const workspace = await readWorkspaceMetadata(workspacePath);
   const projectJsonFiles = await discoverProjectJsonFiles(workspacePath);
+  const importedProjects = await readImportedProjectsRegistry(workspacePath);
+  const externalProjectJsonFiles: Array<{
+    projectJsonPath: string;
+    registryEntry: ImportedProjectRegistryEntry;
+  }> = [];
+  for (const project of importedProjects) {
+    const projectPath = path.resolve(project.path);
+    const projectJsonPath = path.join(projectPath, '.rapidkit', 'project.json');
+    const contextJsonPath = path.join(projectPath, '.rapidkit', 'context.json');
+    const metadataPath = (await fsExtra.pathExists(projectJsonPath))
+      ? projectJsonPath
+      : (await fsExtra.pathExists(contextJsonPath))
+        ? contextJsonPath
+        : null;
+    if (
+      !metadataPath ||
+      projectJsonFiles.some((item) => path.resolve(item) === path.resolve(metadataPath))
+    ) {
+      continue;
+    }
+    externalProjectJsonFiles.push({ projectJsonPath: metadataPath, registryEntry: project });
+  }
   const projects: WorkspaceContractProject[] = [];
+  const projectInputs: Array<{
+    projectJsonPath: string;
+    registryEntry?: ImportedProjectRegistryEntry;
+  }> = [
+    ...projectJsonFiles.map((projectJsonPath) => ({ projectJsonPath })),
+    ...externalProjectJsonFiles,
+  ];
 
-  for (const projectJsonPath of projectJsonFiles) {
+  for (const { projectJsonPath, registryEntry } of projectInputs) {
     const projectPath = path.dirname(path.dirname(projectJsonPath));
-    const relativePath = toPosixPath(path.relative(workspacePath, projectPath));
+    const discoveredRelativePath = toPosixPath(path.relative(workspacePath, projectPath));
+    const isExternalProject =
+      registryEntry !== undefined && !isSafeContractRelativePath(discoveredRelativePath);
+    const contractSlug = normalizeProjectSlug(
+      registryEntry?.name || path.basename(projectPath),
+      path.basename(projectPath)
+    );
+    const relativePath = isExternalProject
+      ? `external/${contractSlug}`
+      : discoveredRelativePath || contractSlug;
     const payload = (await fsExtra.readJson(projectJsonPath)) as Record<string, unknown>;
     const kit =
       (typeof payload.kit_name === 'string' && payload.kit_name) ||
@@ -286,8 +352,11 @@ export async function buildWorkspaceContract(input: {
       (typeof payload.framework === 'string' && payload.framework) || projectKindFromKit(kit);
 
     projects.push({
-      slug: relativePath || path.basename(projectPath),
+      slug: registryEntry?.name || relativePath || path.basename(projectPath),
       relativePath,
+      source: registryEntry?.source ?? 'workspace',
+      relationship: registryEntry?.relationship,
+      externalPath: isExternalProject ? projectPath : undefined,
       runtime: typeof payload.runtime === 'string' ? payload.runtime : undefined,
       framework,
       kit,
@@ -416,6 +485,9 @@ export async function buildWorkspaceContractGraph(input: {
     id: project.slug,
     label: project.slug,
     relativePath: project.relativePath,
+    source: project.source,
+    relationship: project.relationship,
+    externalPath: project.externalPath,
     runtime: project.runtime,
     framework: project.framework,
     kit: project.kit,
@@ -525,6 +597,21 @@ export async function verifyWorkspaceContract(input: {
       violations.push(
         `Project ${project.slug} declares unsafe relativePath: ${project.relativePath}.`
       );
+    }
+    if (project.externalPath) {
+      const externalSource =
+        project.relationship === 'adopted' ||
+        project.source === 'adopted-local' ||
+        project.source === 'local-folder' ||
+        project.source === 'git-url';
+      if (!externalSource) {
+        violations.push(
+          `Project ${project.slug} declares externalPath without imported/adopted provenance.`
+        );
+      }
+      if (!path.isAbsolute(project.externalPath)) {
+        violations.push(`Project ${project.slug} declares non-absolute externalPath.`);
+      }
     }
     for (const port of project.ports || []) {
       if (!Number.isInteger(port.port) || port.port < 1 || port.port > 65535) {
