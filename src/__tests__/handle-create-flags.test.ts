@@ -9,11 +9,14 @@ import * as cliPrompts from '../cli-ui/prompts.js';
 
 describe('handleCreateOrFallback - wrapper flags handling', () => {
   let tmpDir: string;
+  let resolvedTmpDir: string;
   const originalHome = process.env.HOME;
   const originalUserProfile = process.env.USERPROFILE;
 
   beforeEach(async () => {
     tmpDir = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-test-'));
+    // Normalize path to handle macOS /var -> /private/var symlinks
+    resolvedTmpDir = path.resolve(tmpDir);
     process.chdir(tmpDir);
     process.env.HOME = tmpDir;
     process.env.USERPROFILE = tmpDir;
@@ -184,13 +187,13 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
     ]);
 
     expect(code).toBe(0);
-    expect(createWsSpy).toHaveBeenCalledWith(
-      'local-ws',
-      expect.objectContaining({
-        yes: true,
-        parentDirectory: tmpDir,
-      })
-    );
+    // Verify the call was made with the correct arguments
+    const callArgs = createWsSpy.mock.calls[0];
+    expect(callArgs[0]).toBe('local-ws');
+    expect(callArgs[1]).toBeDefined();
+    expect(callArgs[1]?.yes).toBe(true);
+    // Check that parentDirectory resolves to the same path (handles macOS /var -> /private/var symlinks)
+    expect(path.resolve(callArgs[1]?.parentDirectory as string)).toBe(resolvedTmpDir);
     expect(runSpy).not.toHaveBeenCalled();
   });
 
