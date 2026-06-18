@@ -5,10 +5,8 @@ const promptMock = vi.hoisted(() => vi.fn());
 const setUserConfigMock = vi.hoisted(() => vi.fn());
 const getUserConfigMock = vi.hoisted(() => vi.fn());
 
-vi.mock('inquirer', () => ({
-  default: {
-    prompt: promptMock,
-  },
+vi.mock('../../cli-ui/prompts.js', () => ({
+  prompt: promptMock,
 }));
 
 vi.mock('../../config/user-config.js', () => ({

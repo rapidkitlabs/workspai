@@ -11,6 +11,38 @@ import { checkRapidkitCoreVersionCompatible } from '../core-bridge/pythonRapidki
 vi.mock('fs-extra');
 vi.mock('execa');
 vi.mock('inquirer');
+vi.mock('../cli-ui/index.js', async () => {
+  const inquirerModule = await import('inquirer');
+  return {
+    prompt: inquirerModule.default.prompt,
+    showIntro: vi.fn(),
+    showOutro: vi.fn(),
+    showCancel: vi.fn(),
+    ui: {
+      info: vi.fn(),
+      success: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      step: vi.fn(),
+      stepNumbered: vi.fn(),
+      note: vi.fn(),
+      message: vi.fn(),
+      dim: vi.fn(),
+      plain: vi.fn(),
+      nextSteps: vi.fn(),
+    },
+  };
+});
+vi.mock('../cli-ui/spinner.js', () => ({
+  createUiSpinner: vi.fn(() => ({
+    start: vi.fn().mockReturnThis(),
+    succeed: vi.fn().mockReturnThis(),
+    fail: vi.fn().mockReturnThis(),
+    warn: vi.fn().mockReturnThis(),
+    stop: vi.fn().mockReturnThis(),
+    text: '',
+  })),
+}));
 vi.mock('../core-bridge/pythonRapidkitExec.js', () => ({
   checkRapidkitCoreVersionCompatible: vi.fn().mockResolvedValue({
     isCompatible: false,
@@ -28,6 +60,26 @@ vi.mock('ora', () => ({
     text: '',
   })),
 }));
+vi.mock('../cli-ui/index.js', async () => {
+  const inquirerModule = await import('inquirer');
+  return {
+    prompt: inquirerModule.default.prompt,
+    showIntro: vi.fn(),
+    ui: {
+      info: vi.fn(),
+      success: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      step: vi.fn(),
+      stepNumbered: vi.fn(),
+      note: vi.fn(),
+      message: vi.fn(),
+      dim: vi.fn(),
+      plain: vi.fn(),
+      nextSteps: vi.fn(),
+    },
+  };
+});
 
 describe('Create Module - Internal Functions', () => {
   beforeEach(() => {
@@ -1195,15 +1247,16 @@ describe('Create Module - Internal Functions', () => {
         return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 }) as any;
       });
 
-      const { default: ora } = await import('ora');
+      const { createUiSpinner } = await import('../cli-ui/spinner.js');
       const spinnerMock = {
         start: vi.fn().mockReturnThis(),
         succeed: vi.fn().mockReturnThis(),
         fail: vi.fn().mockReturnThis(),
         warn: vi.fn().mockReturnThis(),
+        stop: vi.fn().mockReturnThis(),
         text: '',
       };
-      vi.mocked(ora).mockReturnValue(spinnerMock as any);
+      vi.mocked(createUiSpinner).mockReturnValue(spinnerMock as any);
 
       // demoMode: true + skipGit: false → git block runs → git fails → should warn, not throw
       await expect(

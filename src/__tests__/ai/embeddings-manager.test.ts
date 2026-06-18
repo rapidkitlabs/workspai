@@ -12,17 +12,18 @@ const generateEmbeddingsMock = vi.hoisted(() => vi.fn());
 const isInitializedMock = vi.hoisted(() => vi.fn());
 const isMockModeMock = vi.hoisted(() => vi.fn());
 
-vi.mock('inquirer', () => ({
-  default: {
-    prompt: promptMock,
-  },
+vi.mock('../../cli-ui/prompts.js', () => ({
+  prompt: promptMock,
 }));
 
-vi.mock('ora', () => ({
-  default: () => ({
+vi.mock('../../cli-ui/spinner.js', () => ({
+  createUiSpinner: () => ({
     start: oraStartMock.mockReturnThis(),
     succeed: oraSucceedMock,
     fail: oraFailMock,
+    warn: vi.fn(),
+    stop: vi.fn(),
+    text: '',
   }),
 }));
 

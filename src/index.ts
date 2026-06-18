@@ -2,12 +2,18 @@
 
 import { Command, Option } from 'commander';
 import chalk from 'chalk';
-import inquirer, { type Question } from 'inquirer';
+import { prompt, showIntro } from './cli-ui/index.js';
+import { buildKitPickerChoices } from './cli-ui/kit-picker-choices.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { logger } from './logger.js';
 import { checkForUpdates, getVersion } from './update-checker.js';
+import {
+  finalizeCliRunContext,
+  initializeCliRunContext,
+  installCliProcessExitHook,
+} from './observability/cli-run-context.js';
 import { loadUserConfig, loadRapidKitConfig, mergeConfigs } from './config.js';
 import { validateProjectName } from './validation.js';
 import { RapidKitError } from './errors.js';
@@ -52,6 +58,10 @@ import {
 } from './utils/cli-lifecycle-contract.js';
 import { findRapidkitProjectRoot } from './utils/project-command-capabilities.js';
 import { findWorkspaceRootUp } from './utils/workspace-root.js';
+import {
+  resolveGovernanceRunId,
+  withGovernanceRunMetadata,
+} from './utils/governance-report-metadata.js';
 import { hasNpmRuntimeExecutor } from './utils/runtime-executors.js';
 
 export { PROJECT_COMMANDS_CORE_FALLBACK } from './utils/cli-lifecycle-contract.js';
@@ -63,7 +73,6 @@ import {
 } from './utils/project-command-capabilities.js';
 import {
   isNpmBackedKit,
-  listInteractiveKits,
   normalizeKitId,
   resolveKitDefinition,
   runNpmKitGenerator,
@@ -82,7 +91,6 @@ import {
   createFrontendProject,
   frontendCreateUsage,
   isFrontendProjectKit,
-  listFrontendGenerators,
   normalizeCreateFrontendArgs,
   resolveFrontendGenerator,
 } from './frontend-project.js';
@@ -103,8 +111,12 @@ import {
   getCanonicalWorkspacesDirectory,
   resolveAvailableWorkspaceSlot,
   resolveManagedDefaultImportWorkspacePath,
-  resolveNewWorkspacePath,
 } from './utils/workspace-paths.js';
+import {
+  formatWorkspaceCdCommand,
+  resolveWorkspaceOutputParent,
+  resolveWorkspaceTargetPath,
+} from './utils/workspace-create-location.js';
 import { createNpmWorkspaceMarker, writeWorkspaceMarker } from './workspace-marker.js';
 import {
   archiveWorkspaceProject,
@@ -673,6 +685,8 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
     '--no-update-check',
     '--create-workspace',
     '--no-workspace',
+    '--here',
+    '--output',
   ]);
 
   if (args[0] === 'create' && (!args[1] || args[1].startsWith('-'))) {
@@ -688,7 +702,10 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
         );
       }
     } else {
-      const answers = (await inquirer.prompt([
+      if (process.stdin.isTTY) {
+        showIntro('create');
+      }
+      const answers = (await prompt([
         {
           type: 'rawlist',
           name: 'createTarget',
@@ -697,7 +714,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
             { name: 'workspace', value: 'workspace' },
             { name: 'project', value: 'project' },
           ],
-        } as Question<{ createTarget: 'workspace' | 'project' }>,
+        },
       ])) as { createTarget: 'workspace' | 'project' };
 
       createTarget = answers.createTarget;
@@ -731,20 +748,25 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
           ? profileRaw
           : undefined;
 
-      const workspaceName = providedName
-        ? providedName
-        : hasYes
-          ? 'my-workspace'
-          : (
-              (await inquirer.prompt([
-                {
-                  type: 'input',
-                  name: 'workspaceName',
-                  message: 'Workspace name:',
-                  default: 'my-workspace',
-                } as Question<{ workspaceName: string }>,
-              ])) as { workspaceName: string }
-            ).workspaceName;
+      let workspaceName = providedName;
+      if (!workspaceName) {
+        if (hasYes) {
+          workspaceName = 'my-workspace';
+        } else {
+          if (process.stdin.isTTY) {
+            showIntro('create workspace');
+          }
+          const workspaceAnswers = (await prompt([
+            {
+              type: 'input',
+              name: 'workspaceName',
+              message: 'Workspace name:',
+              default: 'my-workspace',
+            },
+          ])) as { workspaceName: string };
+          workspaceName = workspaceAnswers.workspaceName;
+        }
+      }
 
       if (!workspaceName || !workspaceName.trim()) {
         process.stderr.write('Workspace name is required.\n');
@@ -761,9 +783,10 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
         throw error;
       }
 
-      const outputDir = readFlagValue(args, '--output');
-      const targetPath = resolveNewWorkspacePath(workspaceName.trim(), {
-        outputDir: outputDir || undefined,
+      const outputParent = await resolveWorkspaceOutputParent(args, { hasYes });
+      const targetPath = resolveWorkspaceTargetPath(workspaceName.trim(), {
+        argv: args,
+        outputParent,
       });
 
       if (!hasDryRun) {
@@ -787,13 +810,13 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
       let author = userConfig.author || process.env.USER || 'RapidKit User';
 
       if (!hasYes) {
-        const answers = (await inquirer.prompt([
+        const answers = (await prompt([
           {
             type: 'input',
             name: 'author',
             message: 'Author name:',
             default: author,
-          } as Question<{ author: string }>,
+          },
         ])) as { author: string };
 
         if (answers.author?.trim()) {
@@ -817,6 +840,11 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
 
       if (!hasDryRun) {
         console.log(chalk.gray(`ℹ️  Workspace root: ${targetPath}`));
+        console.log(
+          chalk.gray(
+            `   Next: ${formatWorkspaceCdCommand(targetPath)} && npx rapidkit create project`
+          )
+        );
       }
       return 0;
     } catch (e) {
@@ -845,35 +873,28 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
 
       // No kit specified — show npm-level interactive selector for npm-backed kits
       if (!args[2] || args[2].startsWith('-')) {
-        console.log(chalk.bold('\n🚀 RapidKit\n'));
-        const { kitChoice } = (await inquirer.prompt([
+        if (process.stdin.isTTY) {
+          showIntro('create project');
+        }
+        const { kitChoice } = (await prompt([
           {
             type: 'rawlist',
             name: 'kitChoice',
             message: 'Select a kit to scaffold:',
-            choices: [
-              ...listInteractiveKits().map((kit) => ({
-                name: kit.label,
-                value: kit.id,
-              })),
-              ...listFrontendGenerators().map((generator) => ({
-                name: `frontend — ${generator.displayName} (official generator)`,
-                value: generator.kitId,
-              })),
-            ],
-          } as Question<{ kitChoice: string }>,
+            choices: buildKitPickerChoices(),
+          },
         ])) as { kitChoice: string };
 
         if (isNpmBackedKit(kitChoice) || isFrontendProjectKit(kitChoice)) {
           const defaultProjectName = suggestProjectNameForKit(kitChoice);
-          const { projectName } = (await inquirer.prompt([
+          const { projectName } = (await prompt([
             {
               type: 'input',
               name: 'projectName',
               message: 'Project name:',
               default: defaultProjectName,
               validate: (v: string) => v.trim().length > 0 || 'Project name is required',
-            } as Question<{ projectName: string }>,
+            },
           ])) as { projectName: string };
           const flags = args.slice(2).filter((a) => a.startsWith('-'));
           const normalizedArgs = ['create', 'project', kitChoice, projectName.trim(), ...flags];
@@ -888,14 +909,14 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
         }
 
         const defaultProjectName = suggestProjectNameForKit(kitChoice);
-        const { projectName } = (await inquirer.prompt([
+        const { projectName } = (await prompt([
           {
             type: 'input',
             name: 'projectName',
             message: 'Project name:',
             default: defaultProjectName,
             validate: (v: string) => v.trim().length > 0 || 'Project name is required',
-          } as Question<{ projectName: string }>,
+          },
         ])) as { projectName: string };
 
         // Inject selected kit so Python core skips its own kit-selection prompt
@@ -1012,14 +1033,14 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
               userConfig: await loadUserConfig(),
             });
           } else {
-            const { createWs } = (await inquirer.prompt([
+            const { createWs } = (await prompt([
               {
                 type: 'confirm',
                 name: 'createWs',
                 message:
                   'This project will be created outside a RapidKit workspace. Create and register a workspace here?',
                 default: true,
-              } as Question<{ createWs: boolean }>,
+              },
             ])) as { createWs: boolean };
 
             if (createWs) {
@@ -2408,6 +2429,28 @@ async function handleJavaCommand(
   return reportRuntimeCommandResult(result);
 }
 
+function enrichBootstrapComplianceReport(
+  report: Record<string, unknown>,
+  exitCode: number,
+  checks: Array<{ status?: string; id?: string; message?: string }>
+): Record<string, unknown> {
+  const blockers = checks
+    .filter((check) => check.status === 'failed')
+    .map((check) => {
+      const label = check.id || 'check';
+      return check.message ? `${label}: ${check.message}` : label;
+    })
+    .slice(0, 12);
+
+  return withGovernanceRunMetadata(report, {
+    commandId: 'bootstrap',
+    exitCode,
+    generatedAt: typeof report.timestamp === 'string' ? report.timestamp : new Date().toISOString(),
+    blockers,
+    runId: resolveGovernanceRunId(),
+  });
+}
+
 export async function handleBootstrapCommand(
   args: string[],
   initRunner: (nextArgs: string[]) => Promise<number> = handleInitCommand
@@ -2636,7 +2679,7 @@ export async function handleBootstrapCommand(
 
     if (shouldPromptProfile) {
       const currentProfile = workspaceProfile || 'minimal';
-      const { chosenProfile } = (await inquirer.prompt([
+      const { chosenProfile } = (await prompt([
         {
           type: 'rawlist',
           name: 'chosenProfile',
@@ -3070,11 +3113,15 @@ export async function handleBootstrapCommand(
     };
 
     if (strictViolation) {
-      const report = {
-        ...baseReport,
-        result: 'blocked',
-        initExitCode: null,
-      };
+      const report = enrichBootstrapComplianceReport(
+        {
+          ...baseReport,
+          result: 'blocked',
+          initExitCode: null,
+        },
+        1,
+        checks
+      );
 
       await fsExtra.ensureDir(reportDir);
       await writeJsonFile(reportPath, report);
@@ -3099,12 +3146,17 @@ export async function handleBootstrapCommand(
     const failedCheckCount = checks.filter((c) => c.status === 'failed').length;
     const resultValue =
       initExitCode !== 0 ? 'failed' : failedCheckCount > 0 ? 'ok_with_warnings' : 'ok';
-    const report = {
-      ...baseReport,
-      result: resultValue,
-      initExitCode,
-      complianceOnly: jsonMode && complianceOnly,
-    };
+    const exitCode = initExitCode !== 0 ? initExitCode : failedCheckCount > 0 ? 1 : 0;
+    const report = enrichBootstrapComplianceReport(
+      {
+        ...baseReport,
+        result: resultValue,
+        initExitCode,
+        complianceOnly: jsonMode && complianceOnly,
+      },
+      exitCode,
+      checks
+    );
 
     await fsExtra.ensureDir(reportDir);
     await writeJsonFile(reportPath, report);
@@ -4741,6 +4793,8 @@ const quickStartInitDevNpx = isWindowsPlatform()
   ? 'npx rapidkit init; npx rapidkit dev'
   : 'npx rapidkit init && npx rapidkit dev';
 
+const managedWorkspaceQuickStartPath = path.join(getCanonicalWorkspacesDirectory(), 'my-workspace');
+
 // Add consistent help headings expected by the tests and UX consumers.
 program.addHelpText(
   'beforeAll',
@@ -4767,6 +4821,10 @@ Workspace Setup Commands
   rapidkit mirror            Manage registry mirrors   (mirror status --json | sync | verify | rotate)
   rapidkit cache             Manage package cache      (cache status | clear | prune | repair)
 
+Observability:
+  --log-format json          Emit structured NDJSON log events on stderr (or RAPIDKIT_LOG_FORMAT=json)
+  --log-json                 Alias for --log-format json
+
 Project Commands
   rapidkit create            Scaffold a new project    (rapidkit create project)
   rapidkit init              Install project dependencies
@@ -4775,12 +4833,16 @@ Project Commands
   rapidkit test              Run tests
 
 Quick start:
-  npx rapidkit my-workspace              # Create + bootstrap workspace
-  cd my-workspace
+  npx rapidkit my-workspace              # Create workspace in ~/rapidkit/workspaces
+  npx rapidkit my-workspace --here       # Create workspace in the current directory
+  npx rapidkit create workspace --output .
+  cd ${managedWorkspaceQuickStartPath}   # Or cd my-workspace when using --here
   npx rapidkit create project            # Interactive kit picker
   ${quickStartInitDevNpx}  # Install deps + run
 
 Notes:
+  --here                     Create workspace in the current directory (alias for --output .)
+  --output <dir>             Parent directory for the new workspace folder
   --skip-install (npm wrapper) enables fast-path for lock/dependency steps.
   It is different from core --skip-essentials (essential module installation).
 
@@ -4799,6 +4861,8 @@ program
   )
   .option('-y, --yes', 'Skip prompts and use defaults')
   .option('--author <name>', 'Author/team name for workspace metadata')
+  .option('--here', 'Create workspace in the current directory (same as --output .)')
+  .option('--output <dir>', 'Parent directory for the new workspace folder')
   .addOption(new Option('--skip-git', 'Skip git initialization').hideHelp())
   .addOption(
     new Option('--skip-install', 'Legacy: skip installing dependencies (template mode)').hideHelp()
@@ -4869,7 +4933,7 @@ program
         await checkForUpdates();
       }
 
-      console.log(chalk.blue.bold('\n🚀 Welcome to RapidKit NPM CLI!\n'));
+      showIntro('workspace');
 
       // If no name provided, show help
       if (!name) {
@@ -4892,9 +4956,22 @@ program
       }
 
       const isProjectMode = !!options.template;
+      let outputParent: string | undefined;
+      if (!isProjectMode) {
+        if (options.here) {
+          outputParent = process.cwd();
+        } else if (options.output) {
+          outputParent = path.resolve(options.output);
+        } else {
+          outputParent = await resolveWorkspaceOutputParent([], {
+            hasYes: options.yes,
+          });
+        }
+      }
+
       const targetPath = isProjectMode
         ? path.resolve(process.cwd(), name)
-        : resolveNewWorkspacePath(name);
+        : resolveWorkspaceTargetPath(name, { outputParent });
       currentProjectPath = targetPath;
 
       // Check if directory already exists
@@ -4937,7 +5014,7 @@ program
       // Get details
       if (!options.yes && !isProjectMode) {
         // Workspace prompts (provisioning mode only)
-        await inquirer.prompt([
+        await prompt([
           {
             type: 'input',
             name: 'author',
@@ -4993,14 +5070,14 @@ program
                 userConfig,
               });
             } else {
-              const { createWs } = (await inquirer.prompt([
+              const { createWs } = (await prompt([
                 {
                   type: 'confirm',
                   name: 'createWs',
                   message:
                     'This project will be created outside a RapidKit workspace. Create and register a workspace here?',
                   default: true,
-                } as Question<{ createWs: boolean }>,
+                },
               ])) as { createWs: boolean };
 
               if (createWs) {
@@ -5105,6 +5182,11 @@ program
           parentDirectory: path.dirname(targetPath),
         });
         console.log(chalk.gray(`ℹ️  Workspace root: ${targetPath}`));
+        console.log(
+          chalk.gray(
+            `   Next: ${formatWorkspaceCdCommand(targetPath)} && npx rapidkit create project`
+          )
+        );
       }
     } catch (error) {
       if (error instanceof RapidKitError) {
@@ -5299,6 +5381,11 @@ program
     'Autopilot mode when stage is enabled: audit | safe-fix | enforce',
     'audit'
   )
+  .option('--no-agent-sync', 'Skip cross-tool agent grounding sync after pipeline evidence write')
+  .option(
+    '--agent-sync',
+    'Force agent grounding sync after pipeline (default when report is written)'
+  )
   .action(
     async (options: {
       json?: boolean;
@@ -5307,6 +5394,8 @@ program
       skipAnalyze?: boolean;
       skipAutopilot?: boolean;
       autopilotMode?: string;
+      noAgentSync?: boolean;
+      agentSync?: boolean;
     }) => {
       const autopilotMode = String(options.autopilotMode || 'audit')
         .trim()
@@ -5324,6 +5413,8 @@ program
         skipAnalyze: options.skipAnalyze === true,
         skipAutopilot: options.skipAutopilot === true,
         autopilotMode: autopilotMode as 'audit' | 'safe-fix' | 'enforce',
+        noAgentSync: options.noAgentSync === true,
+        agentSync: options.agentSync === true ? true : options.noAgentSync ? false : undefined,
       });
     }
   );
@@ -5905,11 +5996,22 @@ program
   .option('--include-evidence', 'Read status metadata from referenced evidence reports')
   .option('--scan-depth <count>', 'Observable project discovery depth for large monorepos')
   .option('--for-agent [agent]', 'Build an agent-ready workspace context pack')
+  .option(
+    '--agent-sync',
+    'After --write on context, sync cross-tool agent grounding files (AGENTS.md, Copilot, Cursor, Claude)'
+  )
+  .option('--no-agent-sync', 'Skip automatic agent grounding sync after context --write')
+  .option(
+    '--target <targets>',
+    'Agent grounding targets for agent-sync (all|agents,copilot,cursor,claude,codex,orca)'
+  )
+  .option('--refresh-context', 'Rebuild workspace-context-agent.json during agent-sync')
   .option('--scope <scope>', 'Scope workspace intelligence output, e.g. project:<name>')
   .option('--no-doctor', 'Exclude doctor evidence in workspace share bundle')
   .option('--no-blueprint', 'Exclude reproducibility blueprint from workspace share bundle')
   .option('--include-env', 'Include .env/private key files in workspace export archive')
   .option('--force', 'Overwrite an existing hydrate output directory')
+  .option('--refresh', 'Publish workspace registry summary before reading status')
   .option('--dry-run', 'Preview hydrate without writing files')
   .option('--affected', 'Run only affected projects (requires git diff context)')
   .option('--blast-radius', 'Include downstream dependents from workspace dependency graph')
@@ -5937,11 +6039,16 @@ program
       includeEvidence?: boolean;
       scanDepth?: string;
       forAgent?: string | boolean;
+      agentSync?: boolean;
+      noAgentSync?: boolean;
+      target?: string;
+      refreshContext?: boolean;
       scope?: string;
       doctor?: boolean;
       blueprint?: boolean;
       includeEnv?: boolean;
       force?: boolean;
+      refresh?: boolean;
       dryRun?: boolean;
       affected?: boolean;
       blastRadius?: boolean;
@@ -6033,6 +6140,56 @@ program
       if (strictFailed) {
         process.exit(1);
       }
+    } else if (action === 'agent-sync') {
+      const workspacePath = requireWorkspaceRootForAction('agent-sync');
+      const { syncWorkspaceAgentGrounding, parseAgentGroundingTargets } = await import(
+        './workspace-agent-sync.js'
+      );
+      const strictRequested = actionOptions.strict === true || hasRawFlag('--strict');
+      const writeRequested = actionOptions.write === true || hasRawFlag('--write');
+      const dryRun = hasRawFlag('--dry-run');
+      const result = await syncWorkspaceAgentGrounding({
+        workspacePath,
+        scope: actionOptions.scope,
+        agent: actionOptions.forAgent,
+        write: writeRequested && !dryRun,
+        dryRun,
+        strict: strictRequested,
+        refreshContext:
+          actionOptions.refreshContext === true ||
+          hasRawFlag('--refresh-context') ||
+          hasRawFlag('--refresh'),
+        targets: parseAgentGroundingTargets(actionOptions.target),
+        staleAfterHours: 24,
+      });
+
+      if (actionOptions.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(
+          chalk.green(`✔ Agent grounding ${writeRequested && !dryRun ? 'synced' : 'planned'}`)
+        );
+        console.log(chalk.gray(`   Index: ${result.indexPath}`));
+        if (result.contextPath) {
+          console.log(chalk.gray(`   Context: ${result.contextPath}`));
+        }
+        if (result.blockers.length > 0) {
+          console.log(chalk.yellow(`   Blockers: ${result.blockers.slice(0, 3).join(' · ')}`));
+        }
+        const files = writeRequested && !dryRun ? result.writtenFiles : result.skippedFiles;
+        if (files.length > 0) {
+          console.log(chalk.gray(`   Files: ${files.join(', ')}`));
+        }
+        if (result.strictViolations.length > 0) {
+          for (const violation of result.strictViolations) {
+            console.log(chalk.red(`❌ ${violation}`));
+          }
+        }
+      }
+
+      if (strictRequested && result.strictViolations.length > 0) {
+        process.exit(1);
+      }
     } else if (action === 'context') {
       const workspacePath = requireWorkspaceRootForAction('context');
       if (
@@ -6061,12 +6218,59 @@ program
         strict: strictRequested && !actionOptions.json,
       });
       let outputPath: string | undefined;
+      let agentGroundingSync:
+        | Awaited<
+            ReturnType<typeof import('./workspace-agent-sync.js').syncWorkspaceAgentGrounding>
+          >
+        | undefined;
       if (actionOptions.write === true || hasRawFlag('--write')) {
         outputPath = await writeWorkspaceAgentContext(context, workspacePath);
+        const shouldSyncGrounding =
+          (actionOptions.agentSync === true ||
+            hasRawFlag('--agent-sync') ||
+            actionOptions.noAgentSync !== true) &&
+          !hasRawFlag('--no-agent-sync');
+        if (shouldSyncGrounding) {
+          const { syncWorkspaceAgentGrounding, parseAgentGroundingTargets } = await import(
+            './workspace-agent-sync.js'
+          );
+          agentGroundingSync = await syncWorkspaceAgentGrounding({
+            workspacePath,
+            scope: actionOptions.scope,
+            agent: context.agent,
+            write: true,
+            refreshContext: false,
+            strict: strictRequested,
+            targets: parseAgentGroundingTargets(actionOptions.target),
+          });
+          if (!actionOptions.json) {
+            console.log(
+              chalk.gray(
+                `   Agent grounding synced: ${agentGroundingSync.writtenFiles.length} file(s) updated`
+              )
+            );
+          }
+          if (strictRequested && agentGroundingSync.strictViolations.length > 0) {
+            for (const violation of agentGroundingSync.strictViolations) {
+              console.log(chalk.red(`❌ ${violation}`));
+            }
+            process.exit(1);
+          }
+        }
       }
       const strictFailed = strictRequested && context.validation.status !== 'passed';
       if (actionOptions.json) {
-        console.log(JSON.stringify({ ...context, ...(outputPath ? { outputPath } : {}) }, null, 2));
+        console.log(
+          JSON.stringify(
+            {
+              ...context,
+              ...(outputPath ? { outputPath } : {}),
+              ...(agentGroundingSync ? { agentGroundingSync } : {}),
+            },
+            null,
+            2
+          )
+        );
         if (strictFailed) {
           process.exit(1);
         }
@@ -6122,6 +6326,16 @@ program
         console.log(
           chalk.gray(
             '   npx rapidkit workspace diff --from .rapidkit/reports/workspace-model-snapshot.json --json'
+          )
+        );
+        console.log(
+          chalk.gray(
+            '   npx rapidkit workspace diff --from .rapidkit/reports/workspace-model.json --json'
+          )
+        );
+        console.log(
+          chalk.gray(
+            '   npx rapidkit workspace impact --from .rapidkit/reports/workspace-model-diff-last-run.json --json'
           )
         );
         console.log(
@@ -6276,6 +6490,10 @@ program
       await syncWorkspaceContractAfterProjectChange(workspacePath, {
         silent: actionOptions.json === true,
       });
+      const { readWorkspaceRegistrySummary } = await import(
+        './utils/workspace-registry-summary.js'
+      );
+      const registrySummary = await readWorkspaceRegistrySummary(workspacePath);
       if (actionOptions.json) {
         console.log(
           JSON.stringify(
@@ -6284,10 +6502,47 @@ program
               workspacePath,
               registry: syncResult,
               contractSynced: true,
+              registrySummary,
             },
             null,
             2
           )
+        );
+      }
+    } else if (action === 'registry') {
+      const workspacePath = requireWorkspaceRootForAction('registry');
+      const registryAction = subaction || 'status';
+      if (registryAction !== 'status') {
+        console.log(chalk.red(`❌ Unknown workspace registry action: ${registryAction}`));
+        console.log(chalk.gray('   npx rapidkit workspace registry status [--refresh] [--json]'));
+        process.exit(1);
+      }
+      const {
+        publishWorkspaceRegistrySummary,
+        readWorkspaceRegistrySummary,
+        resolveWorkspaceRegisteredProjects,
+      } = await import('./utils/workspace-registry-summary.js');
+      const refresh =
+        actionOptions.refresh === true ||
+        hasRawFlag('--refresh') ||
+        actionOptions.force === true ||
+        hasRawFlag('--force');
+      const summary = refresh
+        ? await publishWorkspaceRegistrySummary(workspacePath)
+        : (await readWorkspaceRegistrySummary(workspacePath)) ||
+          (await publishWorkspaceRegistrySummary(workspacePath));
+      if (actionOptions.json) {
+        console.log(JSON.stringify(summary, null, 2));
+        return;
+      }
+      const resolved = await resolveWorkspaceRegisteredProjects(workspacePath);
+      console.log(chalk.cyan('Workspace registry'));
+      console.log(chalk.gray(`   Authority: ${summary.authority}`));
+      console.log(chalk.gray(`   Projects: ${summary.projectCount}`));
+      console.log(chalk.gray(`   Summary: ${summary.registrySummaryPath}`));
+      if (resolved.summary.projectCount === 0) {
+        console.log(
+          chalk.yellow('   No registered projects — run workspace sync after adding projects.')
         );
       }
     } else if (action === 'foundation') {
@@ -6743,7 +6998,14 @@ function printHelp() {
     chalk.cyan('  npx rapidkit my-workspace            ') +
       chalk.gray('# Create workspace (interactive profile picker)')
   );
-  console.log(chalk.cyan('  cd my-workspace'));
+  console.log(
+    chalk.cyan(`  cd ${path.join(getCanonicalWorkspacesDirectory(), 'my-workspace')}`) +
+      chalk.gray('  # default managed location')
+  );
+  console.log(
+    chalk.cyan('  npx rapidkit my-workspace --here       ') +
+      chalk.gray('# Create in current directory, then cd my-workspace')
+  );
   console.log(
     chalk.cyan('  npx rapidkit bootstrap                   ') +
       chalk.gray('# Bootstrap all runtime toolchains')
@@ -6793,7 +7055,12 @@ function printHelp() {
   );
   console.log(
     chalk.gray(
-      '  npx rapidkit workspace context --for-agent --json  Build agent-ready context pack'
+      '  npx rapidkit workspace context --for-agent --json --write  Build agent context + sync grounding'
+    )
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit workspace agent-sync --write --refresh-context  Sync AGENTS.md, Copilot, Cursor, Claude hooks'
     )
   );
   console.log(
@@ -6821,6 +7088,11 @@ function printHelp() {
   );
   console.log(
     chalk.gray('  npx rapidkit workspace sync [--json]      Sync registry + contract from projects')
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit workspace registry status [--refresh] [--json]  Canonical project registry summary'
+    )
   );
   console.log(
     chalk.gray(
@@ -6987,6 +7259,7 @@ if (!signalRegistry[SIGNAL_HANDLER_REGISTRY_KEY]) {
       }
     }
 
+    finalizeCliRunContext(130, 'Interrupted by user');
     process.exit(130);
   });
 
@@ -7005,6 +7278,7 @@ if (!signalRegistry[SIGNAL_HANDLER_REGISTRY_KEY]) {
       }
     }
 
+    finalizeCliRunContext(143, 'Terminated');
     process.exit(143);
   });
 }
@@ -7047,6 +7321,7 @@ function forceBlockingCliOutput(): void {
 }
 
 async function exitAfterOutputFlush(code: number): Promise<never> {
+  finalizeCliRunContext(code);
   await new Promise<void>((resolve) => setImmediate(resolve));
   await new Promise<void>((resolve) => setTimeout(resolve, 25));
   await Promise.all(
@@ -7063,6 +7338,12 @@ async function exitAfterOutputFlush(code: number): Promise<never> {
 // Delegate to local CLI if inside a RapidKit project
 if (shouldBootstrapCli) {
   forceBlockingCliOutput();
+  installCliProcessExitHook();
+  initializeCliRunContext({
+    argv: process.argv,
+    cwd: process.cwd(),
+    rapidkitVersion: getVersion(),
+  });
 
   const preArgs = process.argv.slice(2);
   const preFirst = preArgs[0];
@@ -7080,7 +7361,7 @@ if (shouldBootstrapCli) {
     (preArgs.length === 1 && (preFirst === '--help' || preFirst === '-h' || preFirst === 'help'));
 
   if (shouldRenderCustomRootHelp) {
-    console.log(chalk.blue.bold('\n🚀 Welcome to RapidKit NPM CLI!\n'));
+    showIntro('npm cli');
     printHelp();
     process.exit(0);
   }

@@ -13,12 +13,24 @@ const NPM_CANONICAL_CONTRACT_FILES = [
   'module-layout.v1.json',
   'pipeline-last-run.v1.json',
   'infra-stack.v1.json',
+  'workspace-registry.v1.json',
+  'release-readiness.v1.json',
+  'workspace-run-last.v1.json',
+  'doctor-workspace-evidence.v1.json',
+  'doctor-project-evidence.v1.json',
+  'analyze-last-run.v1.json',
 ];
 
 const VSCODE_MIRROR_FILES = [
   'runtime-command-surface.v1.json',
   'backend-import-stack-parity.snapshot.json',
   'module-support.v1.json',
+  'workspace-registry.v1.json',
+  'release-readiness.v1.json',
+  'workspace-run-last.v1.json',
+  'doctor-workspace-evidence.v1.json',
+  'doctor-project-evidence.v1.json',
+  'analyze-last-run.v1.json',
 ];
 
 const args = new Set(process.argv.slice(2));

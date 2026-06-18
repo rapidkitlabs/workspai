@@ -88,27 +88,80 @@ describe('autopilot-release', () => {
     runWorkspaceStageMock.mockImplementation(async ({ stage }: { stage: string }) => {
       if (stage === 'test') {
         return {
+          schemaVersion: '1.0',
+          workspacePath: workspace,
           stage: 'test',
-          affectedOnly: true,
-          strict: false,
-          completedAt: new Date().toISOString(),
-          summary: { total: 1, passed: 1, failed: 0, skipped: 0 },
+          generatedAt: new Date().toISOString(),
+          durationMs: 1,
+          options: {
+            affected: true,
+            blastRadius: false,
+            since: null,
+            parallel: false,
+            maxWorkers: 1,
+            continueOnError: false,
+            strict: false,
+            enforceGates: false,
+            scope: null,
+          },
+          selection: {
+            mode: 'affected',
+            since: null,
+            scope: null,
+            graphStatus: 'not-applicable',
+            expansionDepth: 0,
+          },
+          summary: {
+            projectCount: 1,
+            selectedCount: 1,
+            passed: 1,
+            failed: 0,
+            skipped: 0,
+            exitCode: 0,
+          },
           projects: [],
           gates: {
-            enabled: true,
-            results: [{ name: 'test-warn', status: 'warn', message: 'test gate warning' }],
+            enforced: false,
+            results: [{ gate: 'test-warn', status: 'warn', summary: 'test gate warning' }],
+            blocked: false,
           },
         };
       }
 
       return {
+        schemaVersion: '1.0',
+        workspacePath: workspace,
         stage: 'build',
-        affectedOnly: true,
-        strict: false,
-        completedAt: new Date().toISOString(),
-        summary: { total: 1, passed: 1, failed: 0, skipped: 0 },
+        generatedAt: new Date().toISOString(),
+        durationMs: 1,
+        options: {
+          affected: true,
+          blastRadius: false,
+          since: null,
+          parallel: false,
+          maxWorkers: 1,
+          continueOnError: false,
+          strict: false,
+          enforceGates: false,
+          scope: null,
+        },
+        selection: {
+          mode: 'affected',
+          since: null,
+          scope: null,
+          graphStatus: 'not-applicable',
+          expansionDepth: 0,
+        },
+        summary: {
+          projectCount: 1,
+          selectedCount: 1,
+          passed: 1,
+          failed: 0,
+          skipped: 0,
+          exitCode: 0,
+        },
         projects: [],
-        gates: { enabled: true, results: [] },
+        gates: { enforced: false, results: [], blocked: false },
       };
     });
 
@@ -130,19 +183,190 @@ describe('autopilot-release', () => {
     );
   });
 
+  it('blocks workspace run test stage when a workspace-run gate fails with no project failures', async () => {
+    const workspace = await makeWorkspace();
+
+    const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
+    execaMock.mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args.includes('doctor') && args.includes('--plan')) {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ remediationPlan: { totalSteps: 0 } }),
+          stderr: '',
+        };
+      }
+      if (args.includes('doctor') && args.includes('--json')) {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ healthScore: { errors: 0, warnings: 0 } }),
+          stderr: '',
+        };
+      }
+      if (args.includes('readiness')) {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ overallStatus: 'pass' }),
+          stderr: '',
+        };
+      }
+      if (args.includes('diff')) {
+        return { exitCode: 0, stdout: 'services/api/package.json', stderr: '' };
+      }
+      return { exitCode: 0, stdout: '{}', stderr: '' };
+    });
+
+    const runWorkspaceStageMock = runWorkspaceStage as unknown as ReturnType<typeof vi.fn>;
+    runWorkspaceStageMock.mockImplementation(async ({ stage }: { stage: string }) => {
+      if (stage === 'test') {
+        return {
+          schemaVersion: '1.0',
+          workspacePath: workspace,
+          stage: 'test',
+          generatedAt: new Date().toISOString(),
+          durationMs: 1,
+          options: {
+            affected: true,
+            blastRadius: false,
+            since: null,
+            parallel: false,
+            maxWorkers: 1,
+            continueOnError: false,
+            strict: true,
+            enforceGates: false,
+            scope: null,
+          },
+          selection: {
+            mode: 'affected',
+            since: null,
+            scope: null,
+            graphStatus: 'not-applicable',
+            expansionDepth: 0,
+          },
+          summary: {
+            projectCount: 1,
+            selectedCount: 1,
+            passed: 0,
+            failed: 0,
+            skipped: 1,
+            exitCode: 1,
+          },
+          projects: [
+            {
+              path: path.join(workspace, 'services/api'),
+              relativePath: 'services/api',
+              selected: false,
+              affected: false,
+              status: 'skipped',
+              exitCode: null,
+              durationMs: 0,
+              reason: 'blocked by readiness',
+            },
+          ],
+          gates: {
+            enforced: false,
+            results: [
+              {
+                gate: 'readiness',
+                status: 'fail',
+                summary: 'readiness blocked workspace run',
+              },
+            ],
+            blocked: true,
+            blockingGate: 'readiness',
+          },
+        };
+      }
+
+      return {
+        schemaVersion: '1.0',
+        workspacePath: workspace,
+        stage: 'build',
+        generatedAt: new Date().toISOString(),
+        durationMs: 1,
+        options: {
+          affected: true,
+          blastRadius: false,
+          since: null,
+          parallel: false,
+          maxWorkers: 1,
+          continueOnError: false,
+          strict: true,
+          enforceGates: false,
+          scope: null,
+        },
+        selection: {
+          mode: 'affected',
+          since: null,
+          scope: null,
+          graphStatus: 'not-applicable',
+          expansionDepth: 0,
+        },
+        summary: {
+          projectCount: 1,
+          selectedCount: 1,
+          passed: 1,
+          failed: 0,
+          skipped: 0,
+          exitCode: 0,
+        },
+        projects: [],
+        gates: { enforced: false, results: [], blocked: false },
+      };
+    });
+
+    const report = await runAutopilotRelease({
+      workspacePath: workspace,
+      mode: 'audit',
+      json: true,
+    });
+
+    expect(report.summary.verdict).toBe('blocked');
+    expect(report.summary.exitCode).toBe(1);
+    expect(report.blockingReasons).toContain('workspace run test failed for selected projects');
+    expect(report.stages.find((stage) => stage.name === 'workspace-run-test-build')?.status).toBe(
+      'fail'
+    );
+  });
+
   it('returns approved verdict in audit mode for healthy workspace', async () => {
     const workspace = await makeWorkspace();
 
     const runWorkspaceStageMock = runWorkspaceStage as unknown as ReturnType<typeof vi.fn>;
-    runWorkspaceStageMock.mockResolvedValue({
-      stage: 'test',
-      affectedOnly: true,
-      strict: false,
-      completedAt: new Date().toISOString(),
-      summary: { total: 1, passed: 1, failed: 0, skipped: 0 },
+    runWorkspaceStageMock.mockImplementation(async ({ stage }: { stage: string }) => ({
+      schemaVersion: '1.0',
+      workspacePath: workspace,
+      stage,
+      generatedAt: new Date().toISOString(),
+      durationMs: 1,
+      options: {
+        affected: true,
+        blastRadius: false,
+        since: null,
+        parallel: false,
+        maxWorkers: 1,
+        continueOnError: false,
+        strict: true,
+        enforceGates: false,
+        scope: null,
+      },
+      selection: {
+        mode: 'affected',
+        since: null,
+        scope: null,
+        graphStatus: 'not-applicable',
+        expansionDepth: 0,
+      },
+      gates: { enforced: false, results: [], blocked: false },
+      summary: {
+        projectCount: 1,
+        selectedCount: 1,
+        passed: 1,
+        failed: 0,
+        skipped: 0,
+        exitCode: 0,
+      },
       projects: [],
-      gates: { enabled: true, results: [] },
-    });
+    }));
 
     const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
     execaMock.mockImplementation(async (_cmd: string, args: string[]) => {
@@ -185,8 +409,9 @@ describe('autopilot-release', () => {
     expect(report.summary.verdict).toBe('approved');
     expect(report.summary.exitCode).toBe(0);
     expect(report.summary.blockers).toBe(0);
-    expect(report.artifacts.workspaceRunTestPath).toContain('autopilot-workspace-run-test.json');
-    expect(report.artifacts.workspaceRunBuildPath).toContain('autopilot-workspace-run-build.json');
+    expect(report.artifacts.workspaceRunEvidencePath).toContain('workspace-run-last.json');
+    expect(report.artifacts.workspaceRunTestPath).toContain('workspace-run-last.json');
+    expect(report.artifacts.workspaceRunBuildPath).toContain('workspace-run-last.json');
 
     const reportPath = path.join(
       workspace,
@@ -194,19 +419,24 @@ describe('autopilot-release', () => {
       'reports',
       'autopilot-release-last-run.json'
     );
-    const testArtifactPath = path.join(
+    const workspaceRunEvidencePath = path.join(
       workspace,
       '.rapidkit',
       'reports',
-      'autopilot-workspace-run-test.json'
-    );
-    const buildArtifactPath = path.join(
-      workspace,
-      '.rapidkit',
-      'reports',
-      'autopilot-workspace-run-build.json'
+      'workspace-run-last.json'
     );
     expect(await fsExtra.pathExists(reportPath)).toBe(true);
+    expect(await fsExtra.pathExists(workspaceRunEvidencePath)).toBe(true);
+
+    const workspaceRunEvidence = await fsExtra.readJson(workspaceRunEvidencePath);
+    expect(workspaceRunEvidence.schemaVersion).toBe('workspace-run-v1');
+    expect(workspaceRunEvidence.stages.test).toBeTruthy();
+    expect(workspaceRunEvidence.stages.build).toBeTruthy();
+    expect(
+      await fsExtra.pathExists(
+        path.join(workspace, '.rapidkit', 'reports', 'autopilot-workspace-run-test.json')
+      )
+    ).toBe(false);
     const aliasPath = path.join(
       workspace,
       '.rapidkit',
@@ -220,8 +450,6 @@ describe('autopilot-release', () => {
     expect(report.enterpriseControls?.aliasEvidencePath).toBe(
       `.rapidkit/reports/${AUTOPILOT_RELEASE_ALIAS_FILENAME}`
     );
-    expect(await fsExtra.pathExists(testArtifactPath)).toBe(true);
-    expect(await fsExtra.pathExists(buildArtifactPath)).toBe(true);
   });
 
   it('blocks in enforce mode when readiness is warn', async () => {

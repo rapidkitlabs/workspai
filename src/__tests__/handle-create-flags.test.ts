@@ -5,7 +5,7 @@ import * as coreExec from '../core-bridge/pythonRapidkitExec.js';
 import * as fsExtra from 'fs-extra';
 import os from 'os';
 import path from 'path';
-import inquirer from 'inquirer';
+import * as cliPrompts from '../cli-ui/prompts.js';
 
 describe('handleCreateOrFallback - wrapper flags handling', () => {
   let tmpDir: string;
@@ -61,7 +61,7 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
   });
 
   it('prompts interactively when no flags provided and respects user answer', async () => {
-    const promptSpy = vi.spyOn(inquirer, 'prompt').mockResolvedValue({ createWs: false });
+    const promptSpy = vi.spyOn(cliPrompts, 'prompt').mockResolvedValue({ createWs: false });
     const registerSpy = vi.spyOn(create, 'registerWorkspaceAtPath').mockResolvedValue();
     const resolveSpy = vi.spyOn(coreExec, 'resolveRapidkitPython').mockResolvedValue();
     const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
@@ -106,7 +106,7 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
   });
 
   it('prompts for target on `create` and supports choosing project', async () => {
-    vi.spyOn(inquirer, 'prompt')
+    vi.spyOn(cliPrompts, 'prompt')
       .mockResolvedValueOnce({ createTarget: 'project' })
       .mockResolvedValueOnce({ kitChoice: 'fastapi.standard' })
       .mockResolvedValueOnce({ projectName: 'demo' });
@@ -136,9 +136,10 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
   });
 
   it('prompts for target on `create` and supports choosing workspace', async () => {
-    vi.spyOn(inquirer, 'prompt')
+    vi.spyOn(cliPrompts, 'prompt')
       .mockResolvedValueOnce({ createTarget: 'workspace' })
       .mockResolvedValueOnce({ workspaceName: 'my-workspace' })
+      .mockResolvedValueOnce({ location: 'managed' })
       .mockResolvedValueOnce({ author: 'RapidKit User' });
 
     const createWsSpy = vi.spyOn(create, 'createProject').mockResolvedValue(undefined as never);
@@ -168,6 +169,29 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
         Object.defineProperty(process.stdin, 'isTTY', stdinIsTty);
       }
     }
+  });
+
+  it('creates workspace in cwd when --here is provided', async () => {
+    const createWsSpy = vi.spyOn(create, 'createProject').mockResolvedValue(undefined as never);
+    const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
+
+    const code = await index.handleCreateOrFallback([
+      'create',
+      'workspace',
+      'local-ws',
+      '--here',
+      '--yes',
+    ]);
+
+    expect(code).toBe(0);
+    expect(createWsSpy).toHaveBeenCalledWith(
+      'local-ws',
+      expect.objectContaining({
+        yes: true,
+        parentDirectory: tmpDir,
+      })
+    );
+    expect(runSpy).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -206,7 +230,7 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
   );
 
   it('uses npm-owned generators when interactive project selection chooses Go or Java kits', async () => {
-    vi.spyOn(inquirer, 'prompt')
+    vi.spyOn(cliPrompts, 'prompt')
       .mockResolvedValueOnce({ createTarget: 'project' })
       .mockResolvedValueOnce({ kitChoice: 'gogin.standard' })
       .mockResolvedValueOnce({ projectName: 'interactive-gin-api' });

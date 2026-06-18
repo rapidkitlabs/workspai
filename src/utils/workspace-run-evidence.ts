@@ -1,0 +1,170 @@
+import fs from 'fs';
+import path from 'path';
+
+import type { WorkspaceRunReport, WorkspaceRunStage } from '../workspace-run.js';
+
+export const WORKSPACE_RUN_EVIDENCE_SCHEMA_VERSION = 'workspace-run-v1';
+export const WORKSPACE_RUN_LAST_REPORT_FILENAME = 'workspace-run-last.json';
+export const WORKSPACE_RUN_LAST_REPORT_RELATIVE_PATH = `.rapidkit/reports/${WORKSPACE_RUN_LAST_REPORT_FILENAME}`;
+
+/** @deprecated Autopilot no longer writes separate stage files; use workspace-run-last.json stages map. */
+export const LEGACY_AUTOPILOT_WORKSPACE_RUN_TEST_FILENAME = 'autopilot-workspace-run-test.json';
+/** @deprecated Autopilot no longer writes separate stage files; use workspace-run-last.json stages map. */
+export const LEGACY_AUTOPILOT_WORKSPACE_RUN_BUILD_FILENAME = 'autopilot-workspace-run-build.json';
+
+export interface WorkspaceRunEvidence {
+  schemaVersion: typeof WORKSPACE_RUN_EVIDENCE_SCHEMA_VERSION;
+  generatedAt: string;
+  workspacePath: string;
+  latestStage: WorkspaceRunStage;
+  stages: Partial<Record<WorkspaceRunStage, WorkspaceRunReport>>;
+  enterpriseControls: {
+    jsonReady: boolean;
+    evidencePath: string;
+  };
+}
+
+const STAGE_SET: ReadonlySet<WorkspaceRunStage> = new Set(['init', 'test', 'build', 'start']);
+
+function isWorkspaceRunStage(value: string): value is WorkspaceRunStage {
+  return STAGE_SET.has(value as WorkspaceRunStage);
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.promises.access(targetPath, fs.constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readJsonFile<T>(filePath: string): Promise<T | null> {
+  try {
+    const raw = await fs.promises.readFile(filePath, 'utf-8');
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function writeJsonFile(filePath: string, payload: unknown): Promise<void> {
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function isWorkspaceRunStageReport(payload: Record<string, unknown>): boolean {
+  const stage = payload.stage;
+  return typeof stage === 'string' && isWorkspaceRunStage(stage) && Array.isArray(payload.projects);
+}
+
+export function isLegacyWorkspaceRunStageReport(payload: unknown): payload is WorkspaceRunReport {
+  const record = asRecord(payload);
+  if (!record) {
+    return false;
+  }
+  if (record.schemaVersion === WORKSPACE_RUN_EVIDENCE_SCHEMA_VERSION) {
+    return false;
+  }
+  return isWorkspaceRunStageReport(record);
+}
+
+export function isWorkspaceRunEvidenceAggregate(payload: unknown): payload is WorkspaceRunEvidence {
+  const record = asRecord(payload);
+  if (!record) {
+    return false;
+  }
+  return record.schemaVersion === WORKSPACE_RUN_EVIDENCE_SCHEMA_VERSION && record.stages != null;
+}
+
+export function normalizeWorkspaceRunEvidence(payload: unknown): WorkspaceRunEvidence | null {
+  if (isWorkspaceRunEvidenceAggregate(payload)) {
+    return payload;
+  }
+  if (isLegacyWorkspaceRunStageReport(payload)) {
+    const stage = payload.stage;
+    return {
+      schemaVersion: WORKSPACE_RUN_EVIDENCE_SCHEMA_VERSION,
+      generatedAt: payload.generatedAt,
+      workspacePath: payload.workspacePath,
+      latestStage: stage,
+      stages: { [stage]: payload },
+      enterpriseControls: payload.enterpriseControls ?? {
+        jsonReady: true,
+        evidencePath: WORKSPACE_RUN_LAST_REPORT_RELATIVE_PATH,
+      },
+    };
+  }
+  return null;
+}
+
+export function resolveWorkspaceRunStageReport(
+  payload: unknown,
+  stage?: WorkspaceRunStage
+): WorkspaceRunReport | null {
+  const aggregate = normalizeWorkspaceRunEvidence(payload);
+  if (!aggregate) {
+    return null;
+  }
+  const targetStage = stage ?? aggregate.latestStage;
+  const report = aggregate.stages[targetStage];
+  return report ?? null;
+}
+
+export async function readWorkspaceRunEvidence(
+  workspacePath: string
+): Promise<WorkspaceRunEvidence | null> {
+  const reportPath = path.join(
+    path.resolve(workspacePath),
+    '.rapidkit',
+    'reports',
+    WORKSPACE_RUN_LAST_REPORT_FILENAME
+  );
+  if (!(await pathExists(reportPath))) {
+    return null;
+  }
+  const raw = await readJsonFile<unknown>(reportPath);
+  return normalizeWorkspaceRunEvidence(raw);
+}
+
+export async function publishWorkspaceRunStageReport(
+  workspacePath: string,
+  stageReport: WorkspaceRunReport
+): Promise<WorkspaceRunEvidence> {
+  const resolvedWorkspacePath = path.resolve(workspacePath);
+  const reportPath = path.join(
+    resolvedWorkspacePath,
+    '.rapidkit',
+    'reports',
+    WORKSPACE_RUN_LAST_REPORT_FILENAME
+  );
+  const existing = await readJsonFile<unknown>(reportPath);
+  const normalized = normalizeWorkspaceRunEvidence(existing);
+  const stages: Partial<Record<WorkspaceRunStage, WorkspaceRunReport>> = normalized
+    ? { ...normalized.stages }
+    : {};
+
+  stages[stageReport.stage] = stageReport;
+
+  const evidence: WorkspaceRunEvidence = {
+    schemaVersion: WORKSPACE_RUN_EVIDENCE_SCHEMA_VERSION,
+    generatedAt: stageReport.generatedAt,
+    workspacePath: stageReport.workspacePath,
+    latestStage: stageReport.stage,
+    stages,
+    enterpriseControls: {
+      jsonReady: true,
+      evidencePath: WORKSPACE_RUN_LAST_REPORT_RELATIVE_PATH,
+    },
+  };
+
+  await writeJsonFile(reportPath, evidence);
+  return evidence;
+}

@@ -7,6 +7,10 @@ import { runDoctor } from './doctor.js';
 import { evaluateReleaseReadiness } from './readiness.js';
 import { syncWorkspaceProjects, type SyncWorkspaceResult } from './workspace.js';
 import { findWorkspaceRootUp } from './utils/workspace-root.js';
+import {
+  resolveGovernanceRunId,
+  withGovernanceRunMetadata,
+} from './utils/governance-report-metadata.js';
 
 export type PipelineStageStatus = 'pass' | 'warn' | 'fail' | 'skipped';
 
@@ -38,6 +42,11 @@ export interface PipelineReport {
     readinessEvidencePath?: string;
     autopilotEvidencePath?: string;
   };
+  agentGrounding?: {
+    indexPath: string;
+    writtenFiles: string[];
+    blockers: string[];
+  };
 }
 
 export interface PipelineOptions {
@@ -49,6 +58,9 @@ export interface PipelineOptions {
   skipAutopilot?: boolean;
   autopilotMode?: 'audit' | 'safe-fix' | 'enforce';
   writeReport?: boolean;
+  /** Sync cross-tool agent grounding files after writing pipeline evidence (default: true). */
+  agentSync?: boolean;
+  noAgentSync?: boolean;
 }
 
 function stageFromExit(exitCode: number): PipelineStageStatus {
@@ -345,7 +357,39 @@ export async function runPipeline(options: PipelineOptions = {}): Promise<Pipeli
 
   if (options.writeReport !== false) {
     await fsExtra.ensureDir(path.dirname(reportPath));
-    await fsExtra.writeJSON(reportPath, report, { spaces: 2 });
+    const enriched = withGovernanceRunMetadata(report as unknown as Record<string, unknown>, {
+      commandId: 'workspacePipeline',
+      exitCode,
+      generatedAt: report.generatedAt,
+      blockers: report.blockingReasons,
+      runId: resolveGovernanceRunId(),
+    });
+    await fsExtra.writeJSON(reportPath, enriched, { spaces: 2 });
+  }
+
+  const shouldSyncAgentGrounding =
+    options.writeReport !== false &&
+    options.noAgentSync !== true &&
+    process.env.RAPIDKIT_NO_AGENT_SYNC !== '1' &&
+    options.agentSync !== false;
+
+  if (shouldSyncAgentGrounding) {
+    try {
+      const { syncWorkspaceAgentGrounding } = await import('./workspace-agent-sync.js');
+      const syncResult = await syncWorkspaceAgentGrounding({
+        workspacePath,
+        write: true,
+        refreshContext: true,
+        strict: false,
+      });
+      report.agentGrounding = {
+        indexPath: syncResult.indexPath,
+        writtenFiles: syncResult.writtenFiles,
+        blockers: syncResult.blockers,
+      };
+    } catch {
+      // Agent grounding sync is best-effort; pipeline verdict remains authoritative.
+    }
   }
 
   return report;
@@ -404,6 +448,13 @@ export async function runPipelineCommand(options: PipelineOptions): Promise<void
       }
     }
     console.log(chalk.gray(`\nEvidence: ${report.artifacts.reportPath}`));
+    if (report.agentGrounding?.writtenFiles.length) {
+      console.log(
+        chalk.gray(
+          `Agent grounding: ${report.agentGrounding.writtenFiles.length} file(s) synced (INDEX + AGENTS.md + Copilot/Cursor/Claude hooks)`
+        )
+      );
+    }
   }
 
   if (report.summary.exitCode !== 0) {

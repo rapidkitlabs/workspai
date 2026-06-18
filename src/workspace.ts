@@ -80,6 +80,20 @@ function normalizeRegistry(registry: WorkspaceRegistry): WorkspaceRegistry {
   return { workspaces: normalized };
 }
 
+async function readWorkspaceRegistryFile(registryFile: string): Promise<WorkspaceRegistry> {
+  try {
+    const content = await fs.readFile(registryFile, 'utf8');
+    const parsed = JSON.parse(content) as WorkspaceRegistry;
+    if (parsed && Array.isArray(parsed.workspaces)) {
+      return normalizeRegistry(parsed);
+    }
+  } catch (_error) {
+    // File doesn't exist or is invalid, start fresh
+  }
+
+  return { workspaces: [] };
+}
+
 /**
  * Register workspace in shared registry (~/.rapidkit/workspaces.json)
  * This enables VS Code Extension to discover workspaces created via npm
@@ -94,30 +108,30 @@ export async function registerWorkspace(workspacePath: string, name: string): Pr
     // Ensure directory exists
     await fs.mkdir(registryDir, { recursive: true });
 
-    // Read existing workspaces
-    let registry: WorkspaceRegistry = { workspaces: [] };
-    try {
-      const content = await fs.readFile(registryFile, 'utf8');
-      const parsed = JSON.parse(content) as WorkspaceRegistry;
-      if (parsed && Array.isArray(parsed.workspaces)) {
-        registry = normalizeRegistry(parsed);
+    const entry: WorkspaceEntry = {
+      name,
+      path: normalizedWorkspacePath,
+      mode: 'full',
+      projects: [],
+    };
+
+    // Re-read before each write so concurrent CLI/extension updates are merged instead of lost.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const registry = await readWorkspaceRegistryFile(registryFile);
+      if (registry.workspaces.some((w) => w.path === normalizedWorkspacePath)) {
+        return;
       }
-    } catch (_error) {
-      // File doesn't exist or is invalid, start fresh
-    }
 
-    // Add workspace if not already registered
-    const exists = registry.workspaces.some((w) => w.path === normalizedWorkspacePath);
-    if (!exists) {
-      registry.workspaces.push({
-        name,
-        path: normalizedWorkspacePath,
-        mode: 'full',
-        projects: [],
-      });
-
+      registry.workspaces.push(entry);
       await fs.writeFile(registryFile, JSON.stringify(registry, null, 2));
+
+      const verified = await readWorkspaceRegistryFile(registryFile);
+      if (verified.workspaces.some((w) => w.path === normalizedWorkspacePath)) {
+        return;
+      }
     }
+
+    console.warn(chalk.gray('Note: Could not register workspace in shared registry'));
   } catch (_error) {
     // Silent fail - registry is optional
     console.warn(chalk.gray('Note: Could not register workspace in shared registry'));
@@ -368,6 +382,11 @@ export async function createWorkspace(
       writeGitignore: false,
       onlyIfMissing: true,
     });
+
+    const { publishWorkspaceRegistrySummary } = await import(
+      './utils/workspace-registry-summary.js'
+    );
+    await publishWorkspaceRegistrySummary(workspacePath);
 
     // Create the main rapidkit CLI script
     const cliScript = generateCLIScript();

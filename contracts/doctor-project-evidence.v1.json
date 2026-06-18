@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/doctor-project-evidence.v1.json",
+  "title": "RapidKit Doctor Project Evidence",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "evidenceType",
+    "generatedAt",
+    "projectPath",
+    "projectName",
+    "summary"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "doctor-project-evidence-v1"
+    },
+    "evidenceType": {
+      "const": "project"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workspacePath": { "type": ["string", "null"] },
+    "projectPath": { "type": "string", "minLength": 1 },
+    "projectName": { "type": "string", "minLength": 1 },
+    "healthScore": { "type": "object", "additionalProperties": true },
+    "system": { "type": "object", "additionalProperties": true },
+    "project": { "type": "object", "additionalProperties": true },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "scopeProvenance": { "type": "object", "additionalProperties": true }
+      },
+      "additionalProperties": true
+    },
+    "driftDelta": { "type": "object", "additionalProperties": true },
+    "scoreBreakdown": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "contract": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": true
+}

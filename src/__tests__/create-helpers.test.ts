@@ -11,12 +11,33 @@ import { createProject } from '../create';
 vi.mock('fs-extra');
 vi.mock('execa');
 vi.mock('inquirer');
-vi.mock('ora', () => ({
-  default: vi.fn(() => ({
+vi.mock('../cli-ui/index.js', async () => {
+  const inquirerModule = await import('inquirer');
+  return {
+    prompt: inquirerModule.default.prompt,
+    showIntro: vi.fn(),
+    ui: {
+      info: vi.fn(),
+      success: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      step: vi.fn(),
+      stepNumbered: vi.fn(),
+      note: vi.fn(),
+      message: vi.fn(),
+      dim: vi.fn(),
+      plain: vi.fn(),
+      nextSteps: vi.fn(),
+    },
+  };
+});
+vi.mock('../cli-ui/spinner.js', () => ({
+  createUiSpinner: vi.fn(() => ({
     start: vi.fn().mockReturnThis(),
     succeed: vi.fn().mockReturnThis(),
     fail: vi.fn().mockReturnThis(),
     warn: vi.fn().mockReturnThis(),
+    stop: vi.fn().mockReturnThis(),
     text: '',
   })),
 }));

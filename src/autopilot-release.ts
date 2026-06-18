@@ -4,6 +4,10 @@ import path from 'path';
 import { execa } from 'execa';
 import { runWorkspaceStage, type WorkspaceRunReport } from './workspace-run.js';
 import { findWorkspaceRootUp } from './utils/workspace-root.js';
+import {
+  publishWorkspaceRunStageReport,
+  WORKSPACE_RUN_LAST_REPORT_FILENAME,
+} from './utils/workspace-run-evidence.js';
 
 export type AutopilotReleaseMode = 'audit' | 'safe-fix' | 'enforce';
 export type AutopilotStageStatus = 'pass' | 'warn' | 'fail' | 'skipped';
@@ -55,6 +59,8 @@ export interface AutopilotReleaseReport {
     aliasEvidencePath: string;
     analyzeEvidencePath?: string;
     readinessEvidencePath?: string;
+    /** Canonical multi-stage workspace run evidence (test + build stages). */
+    workspaceRunEvidencePath?: string;
     workspaceRunTestPath?: string;
     workspaceRunBuildPath?: string;
   };
@@ -139,6 +145,7 @@ function stageStatusFromReadiness(readinessStatus: string): AutopilotStageStatus
 
 function stageStatusFromWorkspaceRun(report: WorkspaceRunReport): AutopilotStageStatus {
   if (report.summary.failed > 0) return 'fail';
+  if (report.gates.results.some((gate) => gate.status === 'fail')) return 'fail';
   if (report.gates.results.some((gate) => gate.status === 'warn')) return 'warn';
   return 'pass';
 }
@@ -202,6 +209,7 @@ export async function runAutopilotRelease(
   const blockingReasons: string[] = [];
   let readinessEvidencePath: string | undefined;
   let analyzeEvidencePath: string | undefined;
+  let workspaceRunEvidencePath: string | undefined;
   let workspaceRunTestPath: string | undefined;
   let workspaceRunBuildPath: string | undefined;
   let safeFixesApplied = 0;
@@ -587,13 +595,14 @@ export async function runAutopilotRelease(
       json: true,
       enforceGates: false,
     });
-    workspaceRunTestPath = path.join(
+    workspaceRunEvidencePath = path.join(
       workspacePath,
       '.rapidkit',
       'reports',
-      'autopilot-workspace-run-test.json'
+      WORKSPACE_RUN_LAST_REPORT_FILENAME
     );
-    await writeJsonFile(workspaceRunTestPath, testReport);
+    await publishWorkspaceRunStageReport(workspacePath, testReport);
+    workspaceRunTestPath = workspaceRunEvidencePath;
 
     const testStatus = stageStatusFromWorkspaceRun(testReport);
     if (testStatus === 'fail') {
@@ -620,13 +629,8 @@ export async function runAutopilotRelease(
         json: true,
         enforceGates: false,
       });
-      workspaceRunBuildPath = path.join(
-        workspacePath,
-        '.rapidkit',
-        'reports',
-        'autopilot-workspace-run-build.json'
-      );
-      await writeJsonFile(workspaceRunBuildPath, buildReport);
+      await publishWorkspaceRunStageReport(workspacePath, buildReport);
+      workspaceRunBuildPath = workspaceRunEvidencePath;
 
       const buildStatus = stageStatusFromWorkspaceRun(buildReport);
       if (buildStatus === 'fail') {
@@ -719,6 +723,7 @@ export async function runAutopilotRelease(
       aliasEvidencePath,
       analyzeEvidencePath,
       readinessEvidencePath,
+      workspaceRunEvidencePath,
       workspaceRunTestPath,
       workspaceRunBuildPath,
     },

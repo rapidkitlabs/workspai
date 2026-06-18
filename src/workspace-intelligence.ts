@@ -237,6 +237,12 @@ async function readModelFromPath(
     return { model, hash: hashModel(model) };
   }
 
+  if (record.schemaVersion === WORKSPACE_MODEL_DIFF_SCHEMA_VERSION) {
+    throw new Error(
+      `workspace diff --from received a diff report (${path.basename(filePath)}). Use a workspace model snapshot or model report as baseline, e.g. ${WORKSPACE_MODEL_SNAPSHOT_REPORT_PATH}. To analyze an existing diff report, run: npx rapidkit workspace impact --from ${path.basename(filePath)} --json`
+    );
+  }
+
   throw new Error(`Unsupported workspace model input schema: ${String(record.schemaVersion)}`);
 }
 

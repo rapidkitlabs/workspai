@@ -23,6 +23,11 @@ import {
   type BackendPlatformKey,
 } from './utils/backend-framework-contract.js';
 import { discoverWorkspaceProjects as discoverWorkspaceProjectsShared } from './utils/workspace-discovery.js';
+import {
+  publishWorkspaceRunStageReport,
+  WORKSPACE_RUN_LAST_REPORT_FILENAME,
+  WORKSPACE_RUN_LAST_REPORT_RELATIVE_PATH,
+} from './utils/workspace-run-evidence.js';
 
 export type WorkspaceRunStage = 'init' | 'test' | 'build' | 'start';
 
@@ -118,7 +123,7 @@ export interface WorkspaceRunReport {
   };
 }
 
-export const WORKSPACE_RUN_LAST_REPORT_FILENAME = 'workspace-run-last.json';
+export { WORKSPACE_RUN_LAST_REPORT_FILENAME } from './utils/workspace-run-evidence.js';
 
 const STAGE_SET: Set<WorkspaceRunStage> = new Set(['init', 'test', 'build', 'start']);
 
@@ -142,14 +147,33 @@ async function pathExists(targetPath: string): Promise<boolean> {
   }
 }
 
+/**
+ * Preflight for wrapper-owned runtimes (rapidkit init/test/build/start).
+ * Python projects keep pytest in .venv — global `which pytest` is a false negative.
+ */
+async function validateWrapperStagePreflight(
+  projectPath: string,
+  runtime: RuntimeFamily,
+  nativeStageCommand: string
+): Promise<{ valid: boolean; reason?: string }> {
+  if (runtime === 'python') {
+    const cliPy = path.join(projectPath, '.rapidkit', 'cli.py');
+    if (await pathExists(cliPy)) {
+      return { valid: true };
+    }
+    return {
+      valid: false,
+      reason:
+        'Project-local .rapidkit/cli.py is missing. Run `rapidkit init` in this project first.',
+    };
+  }
+
+  return validateCommand(nativeStageCommand);
+}
+
 async function readJsonFile<T>(filePath: string): Promise<T> {
   const raw = await fs.promises.readFile(filePath, 'utf-8');
   return JSON.parse(raw) as T;
-}
-
-async function writeJsonFile(filePath: string, payload: unknown): Promise<void> {
-  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.promises.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
 }
 
 function normalizePathForMatch(value: string): string {
@@ -790,7 +814,9 @@ async function executeStageCommand(
       };
     }
   } else if (nativeStageCommand) {
-    const validation = await validateCommand(nativeStageCommand);
+    const validation = useRapidkitWrapper
+      ? await validateWrapperStagePreflight(projectPath, runtime, nativeStageCommand)
+      : await validateCommand(nativeStageCommand);
     if (!validation.valid) {
       return {
         exitCode: 127,
@@ -1262,7 +1288,7 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
     projects: rows,
     enterpriseControls: {
       jsonReady: true,
-      evidencePath: `.rapidkit/reports/${WORKSPACE_RUN_LAST_REPORT_FILENAME}`,
+      evidencePath: WORKSPACE_RUN_LAST_REPORT_RELATIVE_PATH,
     },
   };
 
@@ -1272,7 +1298,7 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
     'reports',
     WORKSPACE_RUN_LAST_REPORT_FILENAME
   );
-  await writeJsonFile(reportPath, report);
+  await publishWorkspaceRunStageReport(workspacePath, report);
 
   if (!options.json) {
     if (blockingGate) {

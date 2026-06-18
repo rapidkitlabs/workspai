@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/doctor-workspace-evidence.v1.json",
+  "title": "RapidKit Doctor Workspace Evidence",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "evidenceType",
+    "generatedAt",
+    "workspacePath",
+    "summary",
+    "projects"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "doctor-workspace-evidence-v1"
+    },
+    "evidenceType": {
+      "const": "workspace"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workspacePath": { "type": "string", "minLength": 1 },
+    "workspaceName": { "type": "string" },
+    "projectScanCached": { "type": "boolean" },
+    "projectScanSignature": { "type": "string" },
+    "cachePath": { "type": ["string", "null"] },
+    "healthScore": { "type": "object", "additionalProperties": true },
+    "system": { "type": "object", "additionalProperties": true },
+    "projects": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["totalProjects", "totalIssues", "hasSystemErrors"],
+      "properties": {
+        "totalProjects": { "type": "integer", "minimum": 0 },
+        "totalIssues": { "type": "integer", "minimum": 0 },
+        "projectAdvisoryWarningProjects": { "type": "integer", "minimum": 0 },
+        "projectAdvisoryWarnings": { "type": "integer", "minimum": 0 },
+        "hasSystemErrors": { "type": "boolean" },
+        "scopeProvenance": { "type": "object", "additionalProperties": true }
+      },
+      "additionalProperties": true
+    },
+    "driftDelta": { "type": "object", "additionalProperties": true },
+    "scoreBreakdown": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "contract": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": true
+}

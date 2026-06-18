@@ -50,4 +50,34 @@ describe('pipeline governance chain', () => {
     expect(report.stages.find((stage) => stage.name === 'analyze')?.status).toBe('skipped');
     expect(report.stages.find((stage) => stage.name === 'autopilot')?.status).toBe('skipped');
   });
+
+  it('syncs agent grounding artifacts when pipeline report is written', async () => {
+    const workspacePath = await makeWorkspace();
+    const report = await runPipeline({
+      workspacePath,
+      skipAnalyze: true,
+      skipAutopilot: true,
+      writeReport: true,
+    });
+
+    expect(report.agentGrounding?.writtenFiles.length).toBeGreaterThan(0);
+    expect(await fs.pathExists(path.join(workspacePath, '.rapidkit/reports/INDEX.json'))).toBe(
+      true
+    );
+    expect(await fs.pathExists(path.join(workspacePath, 'AGENTS.md'))).toBe(true);
+  });
+
+  it('skips agent grounding when noAgentSync is set', async () => {
+    const workspacePath = await makeWorkspace();
+    const report = await runPipeline({
+      workspacePath,
+      skipAnalyze: true,
+      skipAutopilot: true,
+      writeReport: true,
+      noAgentSync: true,
+    });
+
+    expect(report.agentGrounding).toBeUndefined();
+    expect(await fs.pathExists(path.join(workspacePath, 'AGENTS.md'))).toBe(false);
+  });
 });

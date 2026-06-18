@@ -1,16 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
-// Dynamic import for inquirer to reduce initial bundle size
-import type Inquirer from 'inquirer';
+import { prompt } from '../cli-ui/prompts.js';
 import { getOpenAIKey, isAIEnabled } from '../config/user-config.js';
-
-/**
- * Lazy load inquirer module
- */
-async function loadInquirer(): Promise<typeof Inquirer> {
-  const module = await import('inquirer');
-  return module.default;
-}
 import { initOpenAI, enableMockMode } from '../ai/openai-client.js';
 import { recommendModules } from '../ai/recommender.js';
 import {
@@ -99,8 +90,7 @@ export function registerAICommands(program: Command): void {
         // Get query from user if not provided
         let userQuery = query;
         if (!userQuery) {
-          const inquirer = await loadInquirer();
-          const answers = await inquirer.prompt([
+          const answers = await prompt([
             {
               type: 'input',
               name: 'query',
@@ -204,8 +194,7 @@ export function registerAICommands(program: Command): void {
         console.log(chalk.white(`   rapidkit add module ${topModules.join(' ')}\n`));
 
         // Ask if user wants to install
-        const inquirerModule = await loadInquirer();
-        const { shouldInstall } = await inquirerModule.prompt([
+        const { shouldInstall } = await prompt([
           {
             type: 'confirm',
             name: 'shouldInstall',
@@ -215,7 +204,7 @@ export function registerAICommands(program: Command): void {
         ]);
 
         if (shouldInstall) {
-          const { selectedModules } = await inquirerModule.prompt([
+          const { selectedModules } = await prompt([
             {
               type: 'checkbox',
               name: 'selectedModules',
@@ -228,9 +217,10 @@ export function registerAICommands(program: Command): void {
             },
           ]);
 
-          if (selectedModules.length > 0) {
-            console.log(chalk.blue(`\n📦 Installing ${selectedModules.length} modules...\n`));
-            console.log(chalk.gray(`Command: rapidkit add module ${selectedModules.join(' ')}`));
+          const modules = selectedModules as string[];
+          if (modules.length > 0) {
+            console.log(chalk.blue(`\n📦 Installing ${modules.length} modules...\n`));
+            console.log(chalk.gray(`Command: rapidkit add module ${modules.join(' ')}`));
 
             const projectJson = readRapidkitProjectJson(process.cwd());
             if (projectJson?.module_support === false) {
@@ -248,12 +238,9 @@ export function registerAICommands(program: Command): void {
               return;
             }
 
-            const installExitCode = await runCoreRapidkitStreamed(
-              ['add', 'module', ...selectedModules],
-              {
-                cwd: process.cwd(),
-              }
-            );
+            const installExitCode = await runCoreRapidkitStreamed(['add', 'module', ...modules], {
+              cwd: process.cwd(),
+            });
 
             if (installExitCode === 0) {
               console.log(chalk.green('\n✅ Selected modules installed successfully\n'));

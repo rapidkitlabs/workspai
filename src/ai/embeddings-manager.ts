@@ -7,22 +7,13 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
-import ora from 'ora';
-// Dynamic import for inquirer to reduce initial bundle size
-import type Inquirer from 'inquirer';
+import { prompt } from '../cli-ui/prompts.js';
+import { createUiSpinner } from '../cli-ui/spinner.js';
 import { getModuleCatalog } from './module-catalog.js';
 import { generateEmbeddings, isInitialized, isMockMode } from './openai-client.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-/**
- * Lazy load inquirer module
- */
-async function loadInquirer(): Promise<typeof Inquirer> {
-  const module = await import('inquirer');
-  return module.default;
-}
 
 export interface EmbeddingsInfo {
   exists: boolean;
@@ -110,8 +101,7 @@ export async function generateModuleEmbeddings(
 
     // Confirm if interactive
     if (interactive) {
-      const inquirer = await loadInquirer();
-      const { confirm } = await inquirer.prompt([
+      const { confirm } = await prompt([
         {
           type: 'confirm',
           name: 'confirm',
@@ -131,7 +121,10 @@ export async function generateModuleEmbeddings(
       return `${module.name}. ${module.description}. ${module.longDescription}. Keywords: ${module.keywords.join(', ')}. Use cases: ${module.useCases.join(', ')}.`;
     });
 
-    const spinner = ora(`Generating embeddings for ${modules.length} modules...`).start();
+    const spinner = createUiSpinner(`Generating embeddings for ${modules.length} modules...`, {
+      component: 'ai',
+      phase: 'embeddings.generate',
+    });
 
     try {
       // Generate embeddings (batch operation)
@@ -215,8 +208,7 @@ export async function ensureEmbeddings(interactive: boolean = true): Promise<boo
     return false;
   }
 
-  const inquirer = await loadInquirer();
-  const { action } = await inquirer.prompt([
+  const { action } = await prompt([
     {
       type: 'list',
       name: 'action',

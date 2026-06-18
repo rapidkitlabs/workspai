@@ -7,6 +7,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-06-17
+
+### Added
+
+- **CLI Observability & Logging Infrastructure**
+  - New `src/observability/` module for structured CLI logging and progress tracking.
+  - `cli-log-event.ts` — Standardized log event capture and formatting.
+  - `cli-log-format.ts` — Consistent CLI output formatting.
+  - `cli-progress.ts` — Progress indicators for long-running operations.
+  - `cli-run-context.ts` — Runtime context tracking for observability.
+  - `src/contracts/cli-log-event-contract.ts` — Log event schema contract.
+  - New contract schema `contracts/cli-log-event.v1.json`.
+
+- **CLI UI Components & Theme**
+  - New `src/cli-ui/` module for unified user interface.
+  - `brand.ts` — Brand and version information.
+  - `kit-picker-choices.ts` — Kit selection UI with enhanced choices.
+  - `messages.ts` — Centralized CLI messages and prompts.
+  - `prompts.ts` — Interactive prompt utilities.
+  - `spinner.ts` — Loading spinners and progress indicators.
+  - `theme.ts` — Color and formatting themes.
+
+- **Workspace Registry & Governance**
+  - `src/utils/workspace-registry-summary.ts` — Registry project enumeration and summarization.
+  - `src/utils/governance-report-metadata.ts` — Governance artifact metadata extraction.
+  - `src/utils/managed-agent-markers.ts` — Managed agent identification and tracking.
+  - New contract schemas:
+    - `contracts/workspace-registry.v1.json` — Registry structure and validation.
+    - `contracts/release-readiness.v1.json` — Release readiness criteria.
+    - `contracts/analyze-last-run.v1.json` — Analyze command evidence schema.
+    - `contracts/doctor-project-evidence.v1.json` — Project health evidence.
+    - `contracts/doctor-workspace-evidence.v1.json` — Workspace health evidence.
+    - `contracts/workspace-run-last.v1.json` — Workspace run execution evidence.
+
+- **Workspace Management & Agent Sync**
+  - `src/workspace-agent-sync.ts` — Workspace synchronization with managed agents.
+  - `src/utils/workspace-create-location.ts` — Workspace creation location resolver.
+  - `src/utils/workspace-onboarding.ts` — Workspace onboarding utilities.
+  - `src/utils/workspace-run-evidence.ts` — Workspace run evidence collection and reporting.
+
+- **Documentation & Examples**
+  - `docs/contracts/ARTIFACT_CATALOG.md` — Complete artifact schema catalog.
+  - `docs/examples/ci-agent-grounding.yml` — CI/CD agent integration examples.
+  - New comprehensive test coverage for governance, contracts, and workspace features.
+
+- **Test Coverage**
+  - `src/__tests__/cli-observability.test.ts` — CLI logging and observability tests.
+  - `src/__tests__/cli-prompts.test.ts` — Interactive prompt tests.
+  - `src/__tests__/contracts/governance-artifact-schemas.test.ts` — Governance schema validation.
+  - `src/__tests__/contracts/release-readiness-schema.test.ts` — Release readiness validation.
+  - `src/__tests__/governance-report-metadata.test.ts` — Governance metadata handling.
+  - `src/__tests__/kit-picker-choices.test.ts` — Kit picker UI tests.
+  - `src/__tests__/workspace-agent-sync.test.ts` — Agent sync functionality.
+  - `src/__tests__/workspace-create-location.test.ts` — Workspace location resolution.
+  - `src/__tests__/workspace-create-registry.integration.test.ts` — Registry integration.
+  - `src/__tests__/workspace-registry-summary.test.ts` — Registry summarization.
+  - `src/__tests__/workspace-run-evidence.test.ts` — Evidence collection and reporting.
+
+### Changed
+
+- Enhanced `src/commands/ai.ts` with improved type safety and module selection.
+- Enhanced `src/commands/config.ts` with governance and lifecycle support.
+- Updated `src/ai/embeddings-manager.ts` with better module recommendations.
+- Improved `src/analyze.ts` with enhanced readiness checks.
+- Enhanced `src/autopilot-release.ts` with governance-aware release candidate evaluation.
+- Improved `src/create.ts` with location awareness and registry integration.
+- Updated `src/doctor.ts` with comprehensive workspace and project evidence.
+- Enhanced `src/index.ts` with observability context initialization.
+- Improved `src/logger.ts` with structured logging integration.
+- Updated `src/pipeline.ts` with governance gates.
+- Enhanced `src/readiness.ts` with release-readiness evaluation.
+- Improved `src/workspace-context.ts` with extended context information.
+- Enhanced `src/workspace-intelligence.ts` with governance signals.
+- Updated `src/workspace-run.ts` with evidence collection and reporting.
+- Improved `src/workspace-verify.ts` with enhanced verification.
+- Updated `src/workspace.ts` with registry and onboarding integration.
+- Enhanced `vitest.config.ts` with improved test configuration.
+- Updated `src/utils/workspace-contract.ts` with additional validation.
+- Updated `src/utils/workspace-foundation.ts` with extended utilities.
+
+- Documentation improvements:
+  - Enhanced `docs/ci-workflows.md` with agent integration examples.
+  - Updated `docs/commands-reference.md` with new commands and flags.
+  - Enhanced `docs/contracts/README.md` with catalog references.
+
+- Package updates:
+  - Updated dependencies and dev dependencies.
+  - Updated npm lock file.
+
+### Fixed
+
+- Fixed TypeScript compilation errors in `src/commands/ai.ts`: added type assertion for `selectedModules` from prompt result (type unknown → string[]).
+- Fixed unused variable warnings in `src/utils/workspace-registry-summary.ts`: removed unused `registrySummaryPath` and `legacyWorkspaceJsonPath` variables.
+- Fixed unused function warning in `src/workspace-run.ts`: removed unused `writeJsonFile` async function.
+
+### Verification
+
+- `npm run quality` passes with zero TypeScript compilation errors.
+- Full test suite passes with new coverage for observability, governance, and workspace features.
+- Contract schema validation passes for all governance artifacts.
+- Integration tests validate workspace registry, agent sync, and evidence collection workflows.
+
 ## [0.36.0] - 2026-06-16
 
 ### Added

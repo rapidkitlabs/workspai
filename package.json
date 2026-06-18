@@ -1,6 +1,6 @@
 {
   "name": "rapidkit",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "type": "module",
   "description": "Official CLI for RapidKit — workspace-first platform to create, adopt, govern, and operate polyglot projects (Python, Node, Go, Java, .NET, frontend) with shared evidence for CI, Workspai, and AI agents.",
   "keywords": [
@@ -111,6 +111,7 @@
     "release:major": "bash scripts/release.sh major"
   },
   "dependencies": {
+    "@clack/prompts": "^0.9.1",
     "chalk": "^5.3.0",
     "cli-progress": "^3.12.0",
     "commander": "^12.1.0",

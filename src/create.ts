@@ -1,11 +1,14 @@
 import { promises as fsPromises } from 'fs';
 import * as fsExtra from 'fs-extra';
 import path from 'path';
-import inquirer from 'inquirer';
+import { prompt } from './cli-ui/index.js';
+import { formatWorkspaceCdCommand } from './utils/workspace-create-location.js';
+import { finalizeWorkspaceOnboarding } from './utils/workspace-onboarding.js';
 import chalk from 'chalk';
-import ora, { type Ora } from 'ora';
+import type { CliSpinnerHandle } from './observability/cli-progress.js';
 import { execa } from 'execa';
 import { logger } from './logger.js';
+import { createCliSpinner, emitCliInstallProgress } from './observability/cli-progress.js';
 import { UserConfig, getTestRapidKitPath } from './config.js';
 import { getVersion } from './update-checker.js';
 import {
@@ -425,7 +428,7 @@ function ensureUserLocalBinOnPath(): void {
   process.env.PATH = nextParts.join(path.delimiter);
 }
 
-async function ensurePipxAvailable(spinner: Ora, yes: boolean): Promise<PipxInvoker> {
+async function ensurePipxAvailable(spinner: CliSpinnerHandle, yes: boolean): Promise<PipxInvoker> {
   ensureUserLocalBinOnPath();
 
   spinner.start('Checking pipx installation');
@@ -451,10 +454,10 @@ async function ensurePipxAvailable(spinner: Ora, yes: boolean): Promise<PipxInvo
   }
 
   // Prevent spinner redraw from interfering with interactive prompt rendering.
-  // Some mocked Ora instances in tests do not implement `stop`.
+  // Some mocked CliSpinnerHandle instances in tests do not implement `stop`.
   (spinner as unknown as { stop?: () => void }).stop?.();
 
-  const { installPipx } = (await inquirer.prompt([
+  const { installPipx } = (await prompt([
     {
       type: 'confirm',
       name: 'installPipx',
@@ -655,7 +658,7 @@ function resolveInteractiveInstallMethodDefault(
   return 'venv';
 }
 
-async function ensurePoetryAvailable(spinner: Ora, yes: boolean): Promise<void> {
+async function ensurePoetryAvailable(spinner: CliSpinnerHandle, yes: boolean): Promise<void> {
   ensureUserLocalBinOnPath();
 
   spinner.start('Checking Poetry installation');
@@ -671,7 +674,7 @@ async function ensurePoetryAvailable(spinner: Ora, yes: boolean): Promise<void> 
     throw new PoetryNotFoundError();
   }
 
-  const { installPoetry } = (await inquirer.prompt([
+  const { installPoetry } = (await prompt([
     {
       type: 'confirm',
       name: 'installPoetry',
@@ -911,7 +914,7 @@ export async function createProject(
   let resolvedProfile: string = profile || '';
 
   if (!yes && !profile) {
-    const { selectedProfile } = (await inquirer.prompt([
+    const { selectedProfile } = (await prompt([
       {
         type: 'rawlist',
         name: 'selectedProfile',
@@ -1004,7 +1007,7 @@ export async function createProject(
 
   // Step 1: Choose Python version and install method (or auto-select with --yes / non-Python profile)
   const pythonAnswers: { pythonVersion: string; installMethod: InstallMethod } = needsPythonPrompts
-    ? ((await inquirer.prompt([
+    ? ((await prompt([
         {
           type: 'rawlist',
           name: 'pythonVersion',
@@ -1078,7 +1081,10 @@ export async function createProject(
   const PYTHON_FREE_PROFILES = PYTHON_FREE_WORKSPACE_PROFILES;
 
   if (PYTHON_FREE_PROFILES.has(resolvedProfile)) {
-    const spinner2 = ora('Creating workspace').start();
+    const spinner2 = createCliSpinner('Creating workspace', {
+      component: 'create',
+      phase: 'workspace.python-free',
+    });
     try {
       await fsExtra.ensureDir(projectPath);
       spinner2.succeed('Directory created');
@@ -1148,19 +1154,16 @@ export async function createProject(
         }
       }
 
-      // Register in shared registry for VS Code Extension
-      try {
-        const { registerWorkspace } = await import('./workspace.js');
-        await registerWorkspace(projectPath, name);
-      } catch {
-        /* silent — registry is optional */
-      }
+      await finalizeWorkspaceOnboarding(projectPath, {
+        workspaceName: name,
+        silent: testMode,
+      });
 
       // Profile-specific success message
       console.log(chalk.green('\n✨ Workspace created!\n'));
       console.log(chalk.cyan('📂 Location:'), chalk.white(projectPath));
       console.log(chalk.cyan('\n🚀 Get started:\n'));
-      console.log(chalk.white(`   cd ${name}`));
+      console.log(chalk.white(`   ${formatWorkspaceCdCommand(projectPath)}`));
 
       if (resolvedProfile === 'go-only') {
         console.log(chalk.white('   npx rapidkit create project gofiber.standard my-api'));
@@ -1281,7 +1284,7 @@ export async function createProject(
         console.log(chalk.yellow(`\n⚠️  Python 3.10+ is not detected on this system.\n`));
         console.log(chalk.cyan('You have 3 options:\n'));
 
-        const { pythonAction } = (await inquirer.prompt([
+        const { pythonAction } = (await prompt([
           {
             type: 'rawlist',
             name: 'pythonAction',
@@ -1335,7 +1338,10 @@ export async function createProject(
           );
           resolvedProfile = fallback;
           if (PYTHON_FREE_PROFILES.has(fallback)) {
-            const spinner2 = ora('Creating workspace').start();
+            const spinner2 = createCliSpinner('Creating workspace', {
+              component: 'create',
+              phase: 'workspace.python-free',
+            });
             try {
               await fsExtra.ensureDir(projectPath);
               spinner2.succeed('Directory created');
@@ -1403,17 +1409,15 @@ export async function createProject(
                 }
               }
 
-              try {
-                const { registerWorkspace } = await import('./workspace.js');
-                await registerWorkspace(projectPath, name);
-              } catch {
-                /* silent */
-              }
+              await finalizeWorkspaceOnboarding(projectPath, {
+                workspaceName: name,
+                silent: testMode,
+              });
 
               console.log(chalk.green('\n✨ Workspace created with fallback profile!\n'));
               console.log(chalk.cyan('📂 Location:'), chalk.white(projectPath));
               console.log(chalk.cyan('\n🚀 Get started:\n'));
-              console.log(chalk.white(`   cd ${name}`));
+              console.log(chalk.white(`   ${formatWorkspaceCdCommand(projectPath)}`));
               console.log(chalk.white('   npx rapidkit create project'));
               console.log(chalk.white('   cd <project-name>'));
               console.log(chalk.white('   npx rapidkit init'));
@@ -1442,7 +1446,10 @@ export async function createProject(
         resolvedProfile = fallback;
 
         if (PYTHON_FREE_PROFILES.has(fallback)) {
-          const spinner2 = ora('Creating workspace').start();
+          const spinner2 = createCliSpinner('Creating workspace', {
+            component: 'create',
+            phase: 'workspace.python-free',
+          });
           try {
             await fsExtra.ensureDir(projectPath);
             spinner2.succeed('Directory created');
@@ -1473,12 +1480,10 @@ export async function createProject(
               }
             }
 
-            try {
-              const { registerWorkspace } = await import('./workspace.js');
-              await registerWorkspace(projectPath, name);
-            } catch {
-              /* silent */
-            }
+            await finalizeWorkspaceOnboarding(projectPath, {
+              workspaceName: name,
+              silent: testMode,
+            });
 
             console.log(chalk.green('\n✨ Workspace created (auto-fallback profile)!\n'));
             console.log(chalk.cyan('📂 Location:'), chalk.white(projectPath));
@@ -1488,7 +1493,7 @@ export async function createProject(
               chalk.gray(`Python not detected; switched from ${originalProfile}`)
             );
             console.log(chalk.cyan('\n🚀 Get started:\n'));
-            console.log(chalk.white(`   cd ${name}`));
+            console.log(chalk.white(`   ${formatWorkspaceCdCommand(projectPath)}`));
             console.log(chalk.white('   npx rapidkit create project'));
             console.log(chalk.white('   cd <project-name>'));
             console.log(chalk.white('   npx rapidkit init'));
@@ -1497,7 +1502,7 @@ export async function createProject(
             console.log(chalk.gray('   1. Install Python 3.10+'));
             console.log(
               chalk.gray(
-                `   2. Run: cd ${name} && rapidkit bootstrap --profile ${originalProfile}\n`
+                `   2. Run: ${formatWorkspaceCdCommand(projectPath)} && rapidkit bootstrap --profile ${originalProfile}\n`
               )
             );
             console.log('');
@@ -1514,7 +1519,10 @@ export async function createProject(
 
   // ── Python-required profiles (python-only / polyglot / enterprise) ──────────
   logger.step(1, 3, 'Setting up RapidKit environment');
-  const spinner = ora('Creating directory').start();
+  const spinner = createCliSpinner('Creating directory', {
+    component: 'create',
+    phase: 'workspace.directory',
+  });
 
   try {
     // Create directory
@@ -1658,14 +1666,10 @@ export async function createProject(
       }
     }
 
-    // Register workspace in shared registry for Extension compatibility
-    try {
-      const { registerWorkspace } = await import('./workspace.js');
-      await registerWorkspace(projectPath, name);
-    } catch (_err) {
-      // Silent fail - registry is optional, but log warning
-      console.warn(chalk.gray('Note: Could not register workspace in shared registry'));
-    }
+    await finalizeWorkspaceOnboarding(projectPath, {
+      workspaceName: name,
+      silent: testMode,
+    });
 
     // Success message
     console.log(chalk.green('\n✨ RapidKit environment created successfully!\n'));
@@ -1675,7 +1679,7 @@ export async function createProject(
     console.log(chalk.gray(`  • Python: ${pythonAnswers.pythonVersion}`));
     console.log(chalk.gray(`  • Install method: ${pythonAnswers.installMethod}`));
     console.log(chalk.cyan('\n🚀 Get started:\n'));
-    console.log(chalk.white(`   cd ${name}`));
+    console.log(chalk.white(`   ${formatWorkspaceCdCommand(projectPath)}`));
 
     if (pythonAnswers.installMethod === 'poetry') {
       // Check Poetry version for activation command
@@ -1832,7 +1836,7 @@ async function findRealPython(pythonVersion: string): Promise<string | null> {
 async function installWithPoetry(
   projectPath: string,
   pythonVersion: string,
-  spinner: Ora,
+  spinner: CliSpinnerHandle,
   testMode?: boolean,
   userConfig?: UserConfig,
   _yes = false
@@ -1977,11 +1981,29 @@ async function installWithPoetry(
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
+        if (!hasLocalRapidKitPath) {
+          emitCliInstallProgress({
+            status: 'started',
+            message: 'Installing RapidKit from PyPI',
+            installMethod: 'poetry',
+            attempt,
+            maxAttempts: 3,
+          });
+        }
         await execa(venvPythonBin, ['-m', 'pip', 'install', installTarget, '--quiet'], {
           cwd: projectPath,
           timeout: 180000,
         });
         installSuccess = true;
+        if (!hasLocalRapidKitPath) {
+          emitCliInstallProgress({
+            status: 'succeeded',
+            message: 'RapidKit installed from PyPI',
+            installMethod: 'poetry',
+            attempt,
+            maxAttempts: 3,
+          });
+        }
         break;
       } catch (err) {
         lastPipError = err;
@@ -2054,11 +2076,25 @@ async function installWithPoetry(
       // Try up to 3 times with increasing timeouts
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
+          emitCliInstallProgress({
+            status: 'started',
+            message: 'Installing RapidKit from PyPI',
+            installMethod: 'poetry',
+            attempt,
+            maxAttempts: 3,
+          });
           await execa('poetry', ['add', 'rapidkit-core'], {
             cwd: projectPath,
             timeout: 60000 * attempt, // 60s, 120s, 180s
           });
           installSuccess = true;
+          emitCliInstallProgress({
+            status: 'succeeded',
+            message: 'RapidKit installed from PyPI',
+            installMethod: 'poetry',
+            attempt,
+            maxAttempts: 3,
+          });
           break;
         } catch (error) {
           lastError = error;
@@ -2129,7 +2165,7 @@ async function installWithPoetry(
 async function installWithVenv(
   projectPath: string,
   pythonVersion: string,
-  spinner: Ora,
+  spinner: CliSpinnerHandle,
   testMode?: boolean,
   userConfig?: UserConfig,
   _yes = false
@@ -2223,11 +2259,25 @@ async function installWithVenv(
     // Try up to 3 times with increasing timeouts
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
+        emitCliInstallProgress({
+          status: 'started',
+          message: 'Installing RapidKit from PyPI',
+          installMethod: 'venv',
+          attempt,
+          maxAttempts: 3,
+        });
         await execa(venvPython, ['-m', 'pip', 'install', 'rapidkit-core'], {
           cwd: projectPath,
           timeout: 60000 * attempt, // 60s, 120s, 180s
         });
         installSuccess = true;
+        emitCliInstallProgress({
+          status: 'succeeded',
+          message: 'RapidKit installed from PyPI',
+          installMethod: 'venv',
+          attempt,
+          maxAttempts: 3,
+        });
         break;
       } catch (error) {
         lastError = error;
@@ -2295,7 +2345,7 @@ async function installWithVenv(
 // Install RapidKit with pipx (global)
 async function installWithPipx(
   projectPath: string,
-  spinner: Ora,
+  spinner: CliSpinnerHandle,
   testMode?: boolean,
   userConfig?: UserConfig,
   yes = false
@@ -2355,13 +2405,28 @@ async function installWithPipx(
   } else {
     // Production: Install from PyPI
     spinner.text = 'Installing RapidKit from PyPI';
+    emitCliInstallProgress({
+      status: 'started',
+      message: 'Installing RapidKit from PyPI',
+      installMethod: 'pipx',
+    });
     try {
       await execaPipx(pipx, ['install', 'rapidkit-core']);
+      emitCliInstallProgress({
+        status: 'succeeded',
+        message: 'RapidKit installed from PyPI',
+        installMethod: 'pipx',
+      });
     } catch (installError) {
       // If already installed, upgrade to ensure expected version/range compatibility.
       try {
         spinner.text = 'RapidKit already installed globally, upgrading to match expected version';
         await execaPipx(pipx, ['upgrade', 'rapidkit-core']);
+        emitCliInstallProgress({
+          status: 'succeeded',
+          message: 'RapidKit upgraded from PyPI',
+          installMethod: 'pipx',
+        });
       } catch (_upgradeError) {
         logger.debug(
           `pipx install/upgrade failed: install=${installError}, upgrade=${_upgradeError}`
@@ -2434,7 +2499,10 @@ export async function registerWorkspaceAtPath(
     options?.profile
   );
 
-  const spinner = ora('Registering workspace').start();
+  const spinner = createCliSpinner('Registering workspace', {
+    component: 'create',
+    phase: 'workspace.register',
+  });
 
   try {
     if (resolvedMethod === 'poetry') {
@@ -2452,13 +2520,10 @@ export async function registerWorkspaceAtPath(
 
     spinner.succeed('Workspace registered');
 
-    // Register in shared registry for Extension compatibility
-    try {
-      const { registerWorkspace } = await import('./workspace.js');
-      await registerWorkspace(workspacePath, path.basename(workspacePath));
-    } catch (_err) {
-      // Silent fail - registry is optional
-    }
+    await finalizeWorkspaceOnboarding(workspacePath, {
+      workspaceName: path.basename(workspacePath),
+      silent: testMode,
+    });
 
     if (!skipGit) {
       spinner.start('Initializing git repository');
@@ -2613,7 +2678,10 @@ async function createDemoWorkspace(
   name: string,
   skipGit: boolean
 ): Promise<void> {
-  const spinner = ora('Creating demo workspace').start();
+  const spinner = createCliSpinner('Creating demo workspace', {
+    component: 'create',
+    phase: 'workspace.demo',
+  });
 
   try {
     // Create directory
@@ -3167,7 +3235,7 @@ ${name}/
     console.log(chalk.green('\n✨ Demo workspace created successfully!\n'));
     console.log(chalk.cyan('📂 Location:'), chalk.white(projectPath));
     console.log(chalk.cyan('🚀 Get started:\n'));
-    console.log(chalk.white(`   cd ${name}`));
+    console.log(chalk.white(`   ${formatWorkspaceCdCommand(projectPath)}`));
     console.log(chalk.white('   node generate-demo.js my-api'));
     console.log(chalk.white('   cd my-api'));
     console.log(chalk.white('   rapidkit init'));
@@ -3258,7 +3326,7 @@ async function showDryRun(
     }
 
     console.log(chalk.white('\n🚀 Next steps:'));
-    console.log(chalk.gray('  1. cd ' + name));
+    console.log(chalk.gray(`  1. ${formatWorkspaceCdCommand(projectPath)}`));
     console.log(chalk.gray('  2. npx rapidkit create project'));
     console.log(chalk.gray('  3. npx rapidkit init'));
     console.log(chalk.gray('  4. npx rapidkit dev'));

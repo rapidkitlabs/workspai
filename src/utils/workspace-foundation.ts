@@ -48,6 +48,9 @@ export async function ensureWorkspaceFoundation(
     onlyIfMissing: !options?.force,
   });
 
+  const { publishWorkspaceRegistrySummary } = await import('./workspace-registry-summary.js');
+  await publishWorkspaceRegistrySummary(workspacePath);
+
   return {
     workspacePath,
     created,

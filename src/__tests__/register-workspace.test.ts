@@ -5,12 +5,13 @@ import { execa } from 'execa';
 
 vi.mock('fs-extra');
 vi.mock('execa');
-vi.mock('ora', () => ({
-  default: vi.fn(() => ({
+vi.mock('../cli-ui/spinner.js', () => ({
+  createUiSpinner: vi.fn(() => ({
     start: vi.fn().mockReturnThis(),
     succeed: vi.fn().mockReturnThis(),
     fail: vi.fn().mockReturnThis(),
     warn: vi.fn().mockReturnThis(),
+    stop: vi.fn().mockReturnThis(),
     text: '',
   })),
 }));
@@ -120,7 +121,7 @@ describe('registerWorkspaceAtPath', () => {
       return Promise.resolve({ stdout: '', stderr: '', exitCode: 0 }) as any;
     });
 
-    const { default: ora } = await import('ora');
+    const { createUiSpinner } = await import('../cli-ui/spinner.js');
     const spinnerMock = {
       start: vi.fn().mockReturnThis(),
       succeed: vi.fn().mockReturnThis(),
@@ -128,7 +129,7 @@ describe('registerWorkspaceAtPath', () => {
       warn: vi.fn().mockReturnThis(),
       text: '',
     };
-    vi.mocked(ora).mockReturnValue(spinnerMock as any);
+    vi.mocked(createUiSpinner).mockReturnValue(spinnerMock as any);
 
     // skipGit: false so git block IS entered
     await expect(
@@ -190,7 +191,7 @@ describe('registerWorkspaceAtPath', () => {
       return Promise.reject(installError) as any;
     });
 
-    const { default: ora } = await import('ora');
+    const { createUiSpinner } = await import('../cli-ui/spinner.js');
     const spinnerMock = {
       start: vi.fn().mockReturnThis(),
       succeed: vi.fn().mockReturnThis(),
@@ -198,7 +199,7 @@ describe('registerWorkspaceAtPath', () => {
       warn: vi.fn().mockReturnThis(),
       text: '',
     };
-    vi.mocked(ora).mockReturnValue(spinnerMock as any);
+    vi.mocked(createUiSpinner).mockReturnValue(spinnerMock as any);
 
     await expect(
       registerWorkspaceAtPath('/tmp/my-ws-fail', { skipGit: true, installMethod: 'poetry' })
@@ -211,7 +212,7 @@ describe('registerWorkspaceAtPath', () => {
   it('should initialize git repo and call spinner.succeed when git succeeds', async () => {
     mockExecaSuccess();
 
-    const { default: ora } = await import('ora');
+    const { createUiSpinner } = await import('../cli-ui/spinner.js');
     const spinnerMock = {
       start: vi.fn().mockReturnThis(),
       succeed: vi.fn().mockReturnThis(),
@@ -219,7 +220,7 @@ describe('registerWorkspaceAtPath', () => {
       warn: vi.fn().mockReturnThis(),
       text: '',
     };
-    vi.mocked(ora).mockReturnValue(spinnerMock as any);
+    vi.mocked(createUiSpinner).mockReturnValue(spinnerMock as any);
 
     await registerWorkspaceAtPath('/tmp/my-ws-git-ok', {
       skipGit: false,

@@ -3,7 +3,7 @@ import { execa } from 'execa';
 import fsExtra from 'fs-extra';
 import path from 'path';
 import { logger } from './logger.js';
-import inquirer from 'inquirer';
+import { prompt } from './cli-ui/prompts.js';
 import { readImportedProjectsRegistry } from './imported-projects-registry.js';
 import {
   getPythonCommandCandidates,
@@ -38,6 +38,10 @@ import {
   DOCTOR_WORKSPACE_EVIDENCE_SCHEMA,
   isDoctorEvidencePayloadCompatible,
 } from './utils/doctor-evidence-contract.js';
+import {
+  resolveGovernanceRunId,
+  withGovernanceRunMetadata,
+} from './utils/governance-report-metadata.js';
 import { getProbeTimeoutMs } from './utils/command-timeouts.js';
 
 function uniquePaths(paths: string[]): string[] {
@@ -1165,42 +1169,67 @@ async function writeDoctorEvidence(
   const evidencePath = path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json');
   try {
     await fsExtra.ensureDir(path.dirname(evidencePath));
+    const blockers: string[] = [];
+    for (const project of health.projects) {
+      for (const issue of project.issues ?? []) {
+        if (typeof issue === 'string' && issue.trim()) {
+          blockers.push(`${project.name}: ${issue.trim()}`);
+        }
+      }
+    }
+    for (const [label, check] of [
+      ['python', health.python],
+      ['rapidkitCore', health.rapidkitCore],
+    ] as const) {
+      if (check?.status === 'error') {
+        const message = typeof check.message === 'string' ? check.message : `${label} check failed`;
+        blockers.push(`${label}: ${message}`);
+      }
+    }
     await fsExtra.writeJSON(
       evidencePath,
-      {
-        schemaVersion: DOCTOR_WORKSPACE_EVIDENCE_SCHEMA,
-        evidenceType: 'workspace',
-        generatedAt: new Date().toISOString(),
-        contract: getDoctorContractMetadata(),
-        workspacePath,
-        workspaceName: health.workspaceName,
-        projectScanCached: health.projectScanCached ?? false,
-        projectScanSignature: health.projectScanSignature,
-        cachePath,
-        healthScore: health.healthScore,
-        system: {
-          python: health.python,
-          poetry: health.poetry,
-          pipx: health.pipx,
-          go: health.go,
-          rapidkitCore: health.rapidkitCore,
-          versions: {
-            core: health.coreVersion,
-            npm: health.npmVersion,
+      withGovernanceRunMetadata(
+        {
+          schemaVersion: DOCTOR_WORKSPACE_EVIDENCE_SCHEMA,
+          evidenceType: 'workspace',
+          contract: getDoctorContractMetadata(),
+          workspacePath,
+          workspaceName: health.workspaceName,
+          projectScanCached: health.projectScanCached ?? false,
+          projectScanSignature: health.projectScanSignature,
+          cachePath,
+          healthScore: health.healthScore,
+          system: {
+            python: health.python,
+            poetry: health.poetry,
+            pipx: health.pipx,
+            go: health.go,
+            rapidkitCore: health.rapidkitCore,
+            versions: {
+              core: health.coreVersion,
+              npm: health.npmVersion,
+            },
           },
+          projects: health.projects,
+          summary: {
+            totalProjects: health.projects.length,
+            totalIssues: health.projects.reduce((sum, p) => sum + p.issues.length, 0),
+            projectAdvisoryWarningProjects: countProjectAdvisoryWarningProjects(health.projects),
+            projectAdvisoryWarnings: countProjectAdvisoryWarnings(health.projects),
+            hasSystemErrors: [health.python, health.rapidkitCore].some((c) => c.status === 'error'),
+            scopeProvenance: health.scopeProvenance,
+          },
+          driftDelta: health.driftDelta,
+          scoreBreakdown: health.scoreBreakdown ?? [],
         },
-        projects: health.projects,
-        summary: {
-          totalProjects: health.projects.length,
-          totalIssues: health.projects.reduce((sum, p) => sum + p.issues.length, 0),
-          projectAdvisoryWarningProjects: countProjectAdvisoryWarningProjects(health.projects),
-          projectAdvisoryWarnings: countProjectAdvisoryWarnings(health.projects),
-          hasSystemErrors: [health.python, health.rapidkitCore].some((c) => c.status === 'error'),
-          scopeProvenance: health.scopeProvenance,
-        },
-        driftDelta: health.driftDelta,
-        scoreBreakdown: health.scoreBreakdown ?? [],
-      },
+        {
+          commandId: 'checkWorkspaceHealth',
+          exitCode: computeDoctorGateExitCode(health.healthScore, {}),
+          generatedAt: new Date().toISOString(),
+          blockers: blockers.slice(0, 12),
+          runId: resolveGovernanceRunId(),
+        }
+      ),
       { spaces: 2 }
     );
     return evidencePath;
@@ -3525,31 +3554,42 @@ async function writeProjectDoctorEvidence(
 
   try {
     await fsExtra.ensureDir(path.dirname(evidencePath));
+    const blockers = envelope.project.issues
+      .filter((issue): issue is string => typeof issue === 'string' && issue.trim().length > 0)
+      .slice(0, 12);
     await fsExtra.writeJSON(
       evidencePath,
-      {
-        schemaVersion: DOCTOR_PROJECT_EVIDENCE_SCHEMA,
-        evidenceType: 'project',
-        generatedAt: new Date().toISOString(),
-        contract: getDoctorContractMetadata(),
-        workspacePath: workspacePath || null,
-        projectPath: envelope.projectPath,
-        projectName: envelope.projectName,
-        healthScore: envelope.healthScore,
-        system: {
-          python: envelope.python,
-          poetry: envelope.poetry,
-          pipx: envelope.pipx,
-          go: envelope.go,
-          rapidkitCore: envelope.rapidkitCore,
+      withGovernanceRunMetadata(
+        {
+          schemaVersion: DOCTOR_PROJECT_EVIDENCE_SCHEMA,
+          evidenceType: 'project',
+          contract: getDoctorContractMetadata(),
+          workspacePath: workspacePath || null,
+          projectPath: envelope.projectPath,
+          projectName: envelope.projectName,
+          healthScore: envelope.healthScore,
+          system: {
+            python: envelope.python,
+            poetry: envelope.poetry,
+            pipx: envelope.pipx,
+            go: envelope.go,
+            rapidkitCore: envelope.rapidkitCore,
+          },
+          project: envelope.project,
+          driftDelta: envelope.driftDelta,
+          summary: {
+            scopeProvenance: envelope.scopeProvenance,
+          },
+          scoreBreakdown: envelope.scoreBreakdown ?? [],
         },
-        project: envelope.project,
-        driftDelta: envelope.driftDelta,
-        summary: {
-          scopeProvenance: envelope.scopeProvenance,
-        },
-        scoreBreakdown: envelope.scoreBreakdown ?? [],
-      },
+        {
+          commandId: 'projectDoctor',
+          exitCode: computeDoctorGateExitCode(envelope.healthScore, {}),
+          generatedAt: new Date().toISOString(),
+          blockers,
+          runId: resolveGovernanceRunId(),
+        }
+      ),
       { spaces: 2 }
     );
     return evidencePath;
@@ -4294,7 +4334,7 @@ async function executeFixCommands(
 
   if (!options.skipConfirmation) {
     // Confirm before proceeding
-    const { confirm } = await inquirer.prompt([
+    const { confirm } = await prompt([
       {
         type: 'confirm',
         name: 'confirm',

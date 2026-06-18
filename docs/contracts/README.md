@@ -20,6 +20,7 @@ Workflow: change code → `npm run generate:contracts` → `npm run sync:parity-
 
 | File | Purpose |
 | --- | --- |
+| [ARTIFACT_CATALOG.md](./ARTIFACT_CATALOG.md) | On-disk artifact paths, schema versions, and consumer rules |
 | [COMMAND_OWNERSHIP_MATRIX.md](./COMMAND_OWNERSHIP_MATRIX.md) | Which commands the npm wrapper owns vs Python Core |
 | [RUNTIME_SUPPORT_MATRIX.md](./RUNTIME_SUPPORT_MATRIX.md) | Scaffold, import, lifecycle, and module support tiers |
 | [RUNTIME_ACCEPTANCE_MATRIX.md](./RUNTIME_ACCEPTANCE_MATRIX.md) | Runtime acceptance matrix expectations |
@@ -27,7 +28,16 @@ Workflow: change code → `npm run generate:contracts` → `npm run sync:parity-
 
 ## Workspace intelligence schemas
 
-Published under `../contracts/workspace-intelligence/` (not duplicated in this folder):
+Published under `../contracts/` (not duplicated in this folder):
+
+- `workspace-registry.v1.json` — canonical project registry summary (see [ARTIFACT_CATALOG.md](./ARTIFACT_CATALOG.md))
+- `release-readiness.v1.json` — release readiness gate evidence
+- `workspace-run-last.v1.json` — multi-stage workspace run evidence
+- `doctor-workspace-evidence.v1.json` / `doctor-project-evidence.v1.json` — doctor evidence
+- `analyze-last-run.v1.json` — analyze evidence
+- `pipeline-last-run.v1.json` — governance pipeline orchestration
+
+Workspace intelligence (`../contracts/workspace-intelligence/`):
 
 - `workspace-model.v1.json`
 - `workspace-context.v1.json`

@@ -12,6 +12,12 @@ const MONOREPO_CONTRACT_FILES = [
   'module-layout.v1.json',
   'pipeline-last-run.v1.json',
   'infra-stack.v1.json',
+  'workspace-registry.v1.json',
+  'release-readiness.v1.json',
+  'workspace-run-last.v1.json',
+  'doctor-workspace-evidence.v1.json',
+  'doctor-project-evidence.v1.json',
+  'analyze-last-run.v1.json',
 ];
 
 function readJson(filePath: string): unknown {

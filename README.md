@@ -35,7 +35,7 @@ For the visual experience, install the [Workspai VS Code extension](https://mark
 | A folder or repo to copy into a workspace | [`import`](docs/workspace-operations.md#import-and-adoption) | Copy/clone with rollback-safe sync |
 | A new project from a kit | `create workspace` + `create project` / `create frontend` | Scaffold + governance evidence |
 | CI or release gates | `pipeline --json --strict` | Full governance loop in one command |
-| Agent-ready context | `workspace model` + `workspace context` | Canonical facts and context packs |
+| Agent-ready context | `workspace model` + `workspace context` + `workspace agent-sync` | Canonical facts, context packs, and cross-tool grounding |
 
 ### Adopt in place
 
@@ -84,13 +84,51 @@ Every tool gets the same answers: what projects exist, what stack they use, whic
 | Command | Purpose |
 | --- | --- |
 | `workspace model --json` | Canonical workspace model |
-| `workspace context --for-agent --json` | Agent-ready context pack |
+| `workspace context --for-agent --json --write` | Agent-ready context pack + auto agent grounding sync |
+| `workspace agent-sync --write` | Cross-tool grounding (AGENTS.md, Copilot, Cursor, Claude, INDEX) |
 | `workspace snapshot --json` | Persist model snapshot |
 | `workspace diff --from <file\|git[:ref]> --json` | Diff against snapshot or git |
 | `workspace impact --from <file> --json` | Blast-radius evidence |
 | `workspace verify [--strict] --json` | Impact verification gate |
 
 JSON schemas: `contracts/workspace-intelligence/`. Details: [commands-reference.md](docs/commands-reference.md).
+
+### Agent grounding (CLI-only, no extension required)
+
+RapidKit can sync **cross-tool instruction files** so Copilot, Cursor, Claude Code, Codex, Grok, and other agents read the same evidence before guessing:
+
+```bash
+# Full sync: refresh context pack + INDEX + AGENTS.md + Copilot/Cursor/Claude hooks
+npx rapidkit workspace agent-sync --write --refresh-context
+
+# Context pack write also syncs grounding by default
+npx rapidkit workspace context --for-agent --json --write
+
+# CI strict gate (fail if required reports missing/stale)
+npx rapidkit workspace agent-sync --write --strict --json
+```
+
+| Artifact / file | Purpose |
+| --- | --- |
+| `.rapidkit/reports/INDEX.json` | Read order, blockers, report timestamps |
+| `.rapidkit/reports/workspace-context-agent.json` | Canonical agent context pack |
+| `.rapidkit/AGENT-GROUNDING.md` | Tool-agnostic grounding doc |
+| `AGENTS.md` | Open standard for all agents (managed RapidKit section) |
+| `.github/copilot-instructions.md` | GitHub Copilot / VS Code Chat always-on rules |
+| `.github/instructions/rapidkit-evidence.instructions.md` | Copilot scoped rules for `.rapidkit/**` |
+| `.github/prompts/rapidkit-diagnose.prompt.md` | Copilot reusable diagnose prompt |
+| `.github/skills/rapidkit-grounding/SKILL.md` | Copilot agent skill workflow |
+| `.cursor/rules/rapidkit-grounding.mdc` | Cursor always-on project rule |
+| `CLAUDE.md` | Claude Code entry (`@AGENTS.md` + managed notes) |
+| `.claude/rules/rapidkit-evidence.md` | Claude Code scoped evidence rules |
+
+Agents cannot be **forced** probabilistically — but this stack maximizes the chance they read reports first, even when the user talks to Copilot directly without Workspai.
+
+Skip auto-sync after context write: `--no-agent-sync`. Target specific ecosystems: `--target copilot,cursor,claude`.
+
+After `pipeline`, grounding syncs automatically (refresh context + INDEX + hooks). Disable with `--no-agent-sync` or `RAPIDKIT_NO_AGENT_SYNC=1`.
+
+CI template: [docs/examples/ci-agent-grounding.yml](docs/examples/ci-agent-grounding.yml).
 
 ## Requirements
 
@@ -155,6 +193,7 @@ Common workspace commands:
 
 ```bash
 npx rapidkit doctor workspace
+npx rapidkit workspace agent-sync --write --refresh-context
 npx rapidkit setup <python|node|go|java|dotnet> [--warm-deps]
 npx rapidkit workspace list
 npx rapidkit cache <status|clear|prune|repair>
@@ -180,6 +219,7 @@ Search **Workspai** in the marketplace or `ext install rapidkit.rapidkit-vscode`
 | --- | --- | --- |
 | Create / adopt / import | Yes | Guided wizards |
 | Workspace model / context | Yes | Dashboard + AI scope |
+| Cross-tool agent grounding | Yes (`workspace agent-sync`) | Send-to-Copilot / Ask Studio UX |
 | Enterprise evidence loop | Partial | Full dashboard |
 | Module catalog (FastAPI/NestJS) | Limited | Browser UI |
 
@@ -222,6 +262,8 @@ Contributors: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), [docs/ci-workflows.md]
 | `npm audit fix --force` downgrades tsup | `package.json` | Do not use `--force`; keep `tsup@^8.5.1` |
 | Security audit fails on esbuild | `npm audit --audit-level=moderate` | Keep `esbuild` override in `package.json` |
 | Doctor output stale | Report timestamps | Re-run `doctor workspace` or `doctor project` |
+| Copilot ignores workspace evidence | Missing grounding files | `workspace agent-sync --write --refresh-context` |
+| Agent grounding strict CI failed | Stale/missing reports | Run governance chain then re-sync |
 | Affected run scope wrong | Git ref | Use `--since <ref>` explicitly |
 
 ## License

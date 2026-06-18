@@ -1,44 +1,78 @@
 # Release Notes
 
-## Latest Release: v0.36.0 (June 16, 2026)
+## Latest Release: v0.37.0 (June 17, 2026)
 
-### Empty-Workspace Evidence Parity and Governance Hardening
+### CLI Observability, Governance, and Workspace Management
 
-This patch release aligns CLI evidence with Workspai dashboard expectations: empty workspaces stay actionable instead of blocked, autopilot and workspace-run artifacts use stable paths, and mirror/intelligence reports carry the metadata extensions need to render governance cards without gaps.
+This release introduces comprehensive CLI observability infrastructure, governance artifacts, workspace agent synchronization, and enhanced UI components. It provides the foundation for enterprise-grade workspace management with structured logging, contract-based governance, and improved user interaction patterns.
 
-**What's New:**
+**Major Additions:**
 
-- 🚀 **Autopilot evidence alias**
-  - Writes `autopilot-release-last-run.json` (canonical) and `autopilot-release.json` (dashboard/`--output` alias).
-  - Adds `enterpriseControls` and `artifacts.aliasEvidencePath`.
+- 📊 **CLI Observability**
+  - New observability module (`src/observability/`) for structured logging and progress tracking.
+  - Standardized log event capture with `cli-log-event-contract`.
+  - Progress indicators and runtime context tracking.
+  - CLI log event schema contract (`contracts/cli-log-event.v1.json`).
 
-- 🏃 **Workspace run evidence**
-  - `enterpriseControls.evidencePath` on `workspace-run-last.json`.
+- 🎨 **CLI UI Components**
+  - New UI module (`src/cli-ui/`) with brand, theme, and interactive components.
+  - Enhanced kit picker with improved choices and formatting.
+  - Centralized messages and prompts for consistent UX.
+  - Brand and version information management.
 
-- 📋 **Bootstrap transparency**
-  - `profile_requested` and `bootstrap_note` in `workspace.json` when create falls back from Python-dependent profiles.
+- 🏛️ **Workspace Governance & Registry**
+  - Workspace registry summarization and project enumeration.
+  - Governance report metadata extraction and tracking.
+  - Managed agent identification and lifecycle markers.
+  - New governance contracts:
+    - `contracts/workspace-registry.v1.json`
+    - `contracts/release-readiness.v1.json`
+    - `contracts/analyze-last-run.v1.json`
+    - `contracts/doctor-project-evidence.v1.json`
+    - `contracts/doctor-workspace-evidence.v1.json`
+    - `contracts/workspace-run-last.v1.json`
 
-- 🪞 **Mirror inventory**
-  - `mirror-ops.latest.json` payloads include config/lock/artifact counts.
+- 🤖 **Workspace Agent Sync**
+  - `workspace-agent-sync` command for managed agent synchronization.
+  - Workspace creation location resolver for intelligent placement.
+  - Workspace onboarding utilities and workflows.
+  - Enhanced workspace run evidence collection.
+
+- 📚 **Documentation & Examples**
+  - `docs/contracts/ARTIFACT_CATALOG.md` with complete artifact schemas.
+  - `docs/examples/ci-agent-grounding.yml` for CI/CD integration.
+  - Enhanced workflow and command reference documentation.
+
+- ✅ **Test Coverage**
+  - 10+ new test files covering observability, governance, contracts, and workspace features.
+  - Comprehensive integration tests for registry and agent sync workflows.
+  - Contract schema validation tests.
 
 **Improvements:**
 
-- **Analyze** — zero projects → warn, not fail; scaffold-first next actions.
-- **Impact** — empty-workspace git/validation noise softened across profiles.
-- **Readiness** — workspace-scoped Python env gate when no projects registered.
-- **Workspace run** — `--strict` respects skipped gates; empty runs exit cleanly.
+- Enhanced type safety across AI commands and workspace utilities.
+- Improved structured logging throughout the CLI.
+- Better governance signal integration in workspace intelligence.
+- More intelligent workspace creation location selection.
+- Consistent UI/UX with brand and theme management.
+
+**Code Quality:**
+
+- Zero TypeScript compilation errors.
+- Full test suite passes with enhanced coverage.
+- All quality checks pass (typecheck, lint, format, test, size-check).
 
 **Upgrade:**
 
 ```bash
-npm install -g rapidkit@0.36.0
+npm install -g rapidkit@0.37.0
 ```
 
-[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.36.0.md)
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.37.0.md)
 
 ---
 
-## Previous Release: v0.35.0 (June 16, 2026)
+## Previous Release: v0.36.0 (June 16, 2026)
 
 ### Adoption, Frontend Scaffold, and Workspace Intelligence
 

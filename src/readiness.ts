@@ -11,6 +11,10 @@ import {
 } from './utils/runtime-detection.js';
 import { isDoctorEvidencePayloadCompatible } from './utils/doctor-evidence-contract.js';
 import { findWorkspaceRootUp, isWorkspaceShellDirectory } from './utils/workspace-root.js';
+import {
+  resolveGovernanceRunId,
+  withGovernanceRunMetadata,
+} from './utils/governance-report-metadata.js';
 
 export type ReadinessGateStatus = 'pass' | 'warn' | 'fail';
 export type ReadinessOverallStatus = 'pass' | 'warn' | 'fail';
@@ -24,8 +28,10 @@ export interface ReadinessGateResult {
   evidencePath?: string;
 }
 
+export const RELEASE_READINESS_SCHEMA_VERSION = 'release-readiness-v1';
+
 export interface ReleaseReadinessContract {
-  schemaVersion: 'v1';
+  schemaVersion: typeof RELEASE_READINESS_SCHEMA_VERSION | 'v1';
   generatedAt: string;
   workspacePath: string;
   projectPath: string;
@@ -123,26 +129,16 @@ function toObjectRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
-function countRegisteredWorkspaceProjects(workspacePath: string): number {
-  const contractPath = path.join(workspacePath, '.rapidkit', 'workspace.contract.json');
-  if (fs.existsSync(contractPath)) {
-    try {
-      const contract = JSON.parse(fs.readFileSync(contractPath, 'utf-8')) as Record<
-        string,
-        unknown
-      >;
-      const projects = Array.isArray(contract.projects) ? contract.projects : [];
-      if (projects.length > 0) {
-        return projects.length;
-      }
-    } catch {
-      // Fall through to doctor evidence.
-    }
+async function resolveRegisteredWorkspaceProjectCount(workspacePath: string): Promise<number> {
+  const { readWorkspaceRegistrySummary, resolveWorkspaceRegisteredProjects } = await import(
+    './utils/workspace-registry-summary.js'
+  );
+  const summary = await readWorkspaceRegistrySummary(workspacePath);
+  if (summary) {
+    return summary.projectCount;
   }
-
-  const doctor = loadDoctorPayload(workspacePath);
-  const doctorProjects = Array.isArray(doctor.payload?.projects) ? doctor.payload.projects : [];
-  return doctorProjects.length;
+  const resolved = await resolveWorkspaceRegisteredProjects(workspacePath);
+  return resolved.summary.projectCount;
 }
 
 function buildEnvGate(
@@ -597,7 +593,7 @@ export async function evaluateReleaseReadiness(
   const workspacePath = findWorkspaceRootUp(startPath) ?? startPath;
   const projectPath = resolveReadinessProjectPath(startPath, workspacePath);
   const projectRuntime = detectProjectRuntime(projectPath);
-  const hasRegisteredProjects = countRegisteredWorkspaceProjects(workspacePath) > 0;
+  const hasRegisteredProjects = (await resolveRegisteredWorkspaceProjectCount(workspacePath)) > 0;
 
   const envGate = buildEnvGate(workspacePath, projectRuntime, { hasRegisteredProjects });
   const doctor = buildDoctorGate(workspacePath);
@@ -609,7 +605,7 @@ export async function evaluateReleaseReadiness(
   const overallStatus = computeOverallStatus(gates);
 
   const contract: ReleaseReadinessContract = {
-    schemaVersion: 'v1',
+    schemaVersion: RELEASE_READINESS_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
     workspacePath,
     projectPath,
@@ -623,7 +619,14 @@ export async function evaluateReleaseReadiness(
   };
 
   if (options.writeReport !== false) {
-    contract.evidencePath = await writeReadinessEvidence(workspacePath, contract);
+    const enriched = withGovernanceRunMetadata(contract as unknown as Record<string, unknown>, {
+      commandId: 'workspaceReadiness',
+      exitCode: overallStatus === 'fail' ? 2 : overallStatus === 'warn' ? 1 : 0,
+      generatedAt: contract.generatedAt,
+      blockers: contract.blockingReasons,
+      runId: resolveGovernanceRunId(),
+    }) as unknown as ReleaseReadinessContract;
+    contract.evidencePath = await writeReadinessEvidence(workspacePath, enriched);
   }
 
   return contract;

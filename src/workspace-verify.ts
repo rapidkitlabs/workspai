@@ -12,6 +12,7 @@ import {
   type WorkspaceImpactCommand,
   type WorkspaceImpactRisk,
 } from './workspace-intelligence.js';
+import { resolveWorkspaceRunStageReport } from './utils/workspace-run-evidence.js';
 import { buildWorkspaceModel, type BuildWorkspaceModelOptions } from './workspace-model.js';
 
 export const WORKSPACE_VERIFY_SCHEMA_VERSION = 'workspace-verify.v1';
@@ -233,17 +234,27 @@ function evaluateWorkspaceRunEvidence(
     : command.id.endsWith('.test')
       ? 'test'
       : null;
-  const reportStage = typeof payload.stage === 'string' ? payload.stage : undefined;
-  if (stage && reportStage && reportStage !== stage) {
+  const stageReport = resolveWorkspaceRunStageReport(
+    payload,
+    stage as 'init' | 'test' | 'build' | 'start' | undefined
+  );
+  if (!stageReport) {
+    return {
+      status: 'missing',
+      message: 'Workspace run evidence is missing or unreadable.',
+    };
+  }
+  const reportStage = stageReport.stage;
+  if (stage && reportStage !== stage) {
     return {
       status: 'missing',
       message: `Workspace run evidence is for stage "${reportStage}", expected "${stage}".`,
     };
   }
-  const summary = asRecord(payload.summary);
+  const summary = asRecord(stageReport.summary as unknown);
   const failed = typeof summary?.failed === 'number' ? summary.failed : 0;
   const exitCode = typeof summary?.exitCode === 'number' ? summary.exitCode : 0;
-  const projects = Array.isArray(payload.projects) ? payload.projects : [];
+  const projects = Array.isArray(stageReport.projects) ? stageReport.projects : [];
   const projectName = command.project?.toLowerCase();
   const projectRow = projects.find((entry) => {
     const record = asRecord(entry);

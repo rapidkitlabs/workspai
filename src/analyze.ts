@@ -8,6 +8,10 @@ import {
 } from './utils/backend-framework-contract.js';
 import { discoverWorkspaceProjects } from './utils/workspace-discovery.js';
 import { findWorkspaceRootUp, isWorkspaceShellDirectory } from './utils/workspace-root.js';
+import {
+  resolveGovernanceRunId,
+  withGovernanceRunMetadata,
+} from './utils/governance-report-metadata.js';
 
 export type AnalyzeSeverity = 'info' | 'warn' | 'fail';
 
@@ -663,7 +667,22 @@ export async function runAnalyze(options: AnalyzeOptions = {}): Promise<AnalyzeR
   if (!options.output && workspaceDetected) {
     const evidencePath = path.join(workspacePath, '.rapidkit', 'reports', 'analyze-last-run.json');
     await fs.promises.mkdir(path.dirname(evidencePath), { recursive: true });
-    await fs.promises.writeFile(evidencePath, `${JSON.stringify(report, null, 2)}\n`);
+    const enriched = withGovernanceRunMetadata(report as unknown as Record<string, unknown>, {
+      commandId: 'workspaceAnalyze',
+      exitCode:
+        report.summary.verdict === 'blocked'
+          ? 2
+          : report.summary.verdict === 'needs-attention'
+            ? 1
+            : 0,
+      generatedAt: report.generatedAt,
+      blockers: report.findings
+        .filter((finding) => finding.severity === 'fail')
+        .map((finding) => finding.title)
+        .slice(0, 12),
+      runId: resolveGovernanceRunId(),
+    });
+    await fs.promises.writeFile(evidencePath, `${JSON.stringify(enriched, null, 2)}\n`);
   }
 
   return report;

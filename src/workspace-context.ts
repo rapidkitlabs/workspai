@@ -344,11 +344,13 @@ export async function buildWorkspaceAgentContext(
     },
     validation,
     agentInstructions: [
+      'Read `.rapidkit/reports/INDEX.json` first, then this context pack and linked evidence reports.',
       'Use this context as the workspace source of truth before inspecting random files.',
       'Prefer workspace-level evidence over generic framework assumptions.',
       'Use `display` commands when explaining steps to a human.',
       'Use `execute` commands when launching commands from automation or tooling.',
       'Keep project-scoped advice tied to the active project scope.',
+      'Regenerate stale grounding with `npx rapidkit workspace agent-sync --write --refresh-context`.',
     ],
     unsafeAssumptions: unsafeAssumptions(model),
     humanSummary: [

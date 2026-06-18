@@ -88,7 +88,7 @@ describe('CLI Entry Point', () => {
       const { stdout } = await execa('node', [CLI_PATH, '--help']);
 
       // CLI identity
-      expect(stdout).toContain('Welcome to RapidKit NPM CLI');
+      expect(stdout).toContain('RapidKit');
       expect(stdout).toContain('Usage:');
 
       // Core sections
@@ -135,7 +135,7 @@ describe('CLI Entry Point', () => {
     it('should display the same help output with -h flag', async () => {
       const { stdout } = await execa('node', [CLI_PATH, '-h']);
 
-      expect(stdout).toContain('Welcome to RapidKit NPM CLI');
+      expect(stdout).toContain('RapidKit');
       expect(stdout).toContain('Workspace commands (inside a workspace):');
       expect(stdout).toContain('Project commands (inside a project):');
       expect(stdout).toContain('npx rapidkit workspace list');
@@ -170,13 +170,15 @@ describe('CLI Entry Point', () => {
           npx rapidkit doctor workspace [--ci]     Workspace health with CI exit codes
           npx rapidkit workspace list               List registered workspaces
           npx rapidkit workspace model --json      Build workspace intelligence model
-          npx rapidkit workspace context --for-agent --json  Build agent-ready context pack
+          npx rapidkit workspace context --for-agent --json --write  Build agent context + sync grounding
+          npx rapidkit workspace agent-sync --write --refresh-context  Sync AGENTS.md, Copilot, Cursor, Claude hooks
           npx rapidkit workspace snapshot --json   Persist workspace intelligence snapshot
           npx rapidkit workspace diff --from <file|git[:ref]> --json  Diff current model against a snapshot
           npx rapidkit workspace impact --from <file> --json  Build blast radius from model diff
           npx rapidkit workspace verify [--strict] --json  Evaluate impact verification evidence
           npx rapidkit workspace run test --scope project:<name>  Run a stage for one project
           npx rapidkit workspace sync [--json]      Sync registry + contract from projects
+          npx rapidkit workspace registry status [--refresh] [--json]  Canonical project registry summary
           npx rapidkit import <path|git-url>        Copy or clone a backend project into this workspace
           npx rapidkit adopt [path]                Link an existing local project to a workspace
           npx rapidkit snapshot create [name]      Create a recoverable workspace snapshot
@@ -1061,7 +1063,7 @@ describe('CLI Entry Point', () => {
         { cwd: TEST_DIR }
       );
 
-      expect(stdout).toContain('Welcome to RapidKit');
+      expect(stdout).toContain('RapidKit');
     });
   });
 

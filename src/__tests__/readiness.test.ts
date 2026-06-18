@@ -108,6 +108,64 @@ describe('release readiness', () => {
     expect(readiness.gates.find((gate) => gate.gate === 'env')?.status).toBe('pass');
   });
 
+  it('prefers workspace-registry.v1.json for registered project count', async () => {
+    const workspace = await makeWorkspace();
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'workspace.json'), {
+      schema_version: '1.0',
+      profile: 'polyglot',
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'workspace.contract.json'), {
+      projects: [{ slug: 'api', relativePath: 'api' }],
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'workspace-registry.v1.json'), {
+      schemaVersion: 'workspace-registry.v1',
+      kind: 'rapidkit.workspace.registry',
+      generatedAt: '2026-06-16T00:00:00.000Z',
+      workspacePath: workspace,
+      workspaceName: 'readiness-test',
+      profile: 'polyglot',
+      projectCount: 2,
+      authority: 'workspace.contract.json',
+      contractPath: '.rapidkit/workspace.contract.json',
+      registrySummaryPath: '.rapidkit/workspace-registry.v1.json',
+      projects: [
+        { slug: 'api', relativePath: 'api' },
+        { slug: 'nest', relativePath: 'nest' },
+      ],
+      sources: {
+        contract: { exists: true, projectCount: 1 },
+        globalRegistry: { exists: false, projectCount: 0 },
+        legacyWorkspaceJson: { exists: true, projectCount: 0 },
+      },
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'toolchain.lock'), {
+      runtime: { node: { version: '20.12.0' } },
+    });
+    await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'reports', 'doctor-last-run.json'), {
+      schemaVersion: 'doctor-workspace-evidence-v1',
+      evidenceType: 'workspace',
+      summary: { totalIssues: 0, hasSystemErrors: false },
+      projects: [],
+    });
+    await fsExtra.writeJSON(
+      path.join(workspace, '.rapidkit', 'reports', 'workspace-verify-pack-contract.json'),
+      {
+        schemaVersion: 'v1',
+        status: 'pass',
+        summary: { failedChecks: 0 },
+      }
+    );
+    await writeAnalyzeEvidence(workspace);
+
+    const readiness = await evaluateReleaseReadiness({ startPath: workspace, writeReport: true });
+    expect(readiness.schemaVersion).toBe('release-readiness-v1');
+    expect(readiness.overallStatus).not.toBe('fail');
+    const written = await fsExtra.readJSON(
+      path.join(workspace, '.rapidkit', 'reports', 'release-readiness-last-run.json')
+    );
+    expect(written.schemaVersion).toBe('release-readiness-v1');
+  });
+
   it('returns pass when env/doctor/verify/dependency checks are healthy', async () => {
     const workspace = await makeWorkspace();
 

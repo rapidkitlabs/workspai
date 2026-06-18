@@ -10,11 +10,13 @@ import {
   diffWorkspaceModel,
   WORKSPACE_IMPACT_REPORT_PATH,
   WORKSPACE_MODEL_DIFF_REPORT_PATH,
+  WORKSPACE_MODEL_DIFF_SCHEMA_VERSION,
   WORKSPACE_MODEL_SNAPSHOT_REPORT_PATH,
   writeWorkspaceImpact,
   writeWorkspaceModelDiff,
   writeWorkspaceModelSnapshot,
 } from '../workspace-intelligence.js';
+import { WORKSPACE_MODEL_REPORT_PATH, WORKSPACE_MODEL_SCHEMA_VERSION } from '../workspace-model.js';
 
 describe('workspace intelligence snapshots and diffs', () => {
   const tempDirs: string[] = [];
@@ -425,5 +427,46 @@ describe('workspace intelligence snapshots and diffs', () => {
     expect(impact.summary.changed).toBe(true);
     expect(impact.summary.affectedProjects).toBe(0);
     expect(impact.summary.risk).toBe('low');
+  });
+
+  it('rejects diff reports as workspace diff baselines with actionable guidance', async () => {
+    const workspacePath = await makeTempDir('rk-intel-diff-from-diff-');
+    const diffPath = path.join(workspacePath, WORKSPACE_MODEL_DIFF_REPORT_PATH);
+    await fsExtra.ensureDir(path.dirname(diffPath));
+    await fsExtra.writeJson(diffPath, {
+      schemaVersion: WORKSPACE_MODEL_DIFF_SCHEMA_VERSION,
+      generatedAt: '2026-06-14T00:00:00.000Z',
+      fromRef: '.rapidkit/reports/workspace-model-snapshot.json',
+      toRef: WORKSPACE_MODEL_REPORT_PATH,
+      fromHash: 'abc',
+      toHash: 'def',
+      summary: {
+        changed: false,
+        addedProjects: 0,
+        removedProjects: 0,
+        changedProjects: 0,
+        workspaceChanges: 0,
+        validationChanges: 0,
+        gitChangedFiles: 0,
+      },
+      git: { available: false, dirty: false, changedFiles: 0, untrackedFiles: 0, deletedFiles: 0 },
+      changes: [],
+      currentModel: {
+        schemaVersion: WORKSPACE_MODEL_SCHEMA_VERSION,
+        generatedAt: '2026-06-14T00:00:00.000Z',
+        workspace: { path: workspacePath, name: 'ws' },
+        identity: { workspaceType: 'empty' },
+        summary: { projectCount: 0 },
+        projects: [],
+        validation: { status: 'passed', issues: [] },
+      },
+    });
+
+    await expect(
+      diffWorkspaceModel({
+        workspacePath,
+        fromPath: WORKSPACE_MODEL_DIFF_REPORT_PATH,
+      })
+    ).rejects.toThrow(/workspace impact --from/);
   });
 });

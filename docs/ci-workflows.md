@@ -13,6 +13,21 @@ Map of GitHub Actions workflows in this repository. Use this when editing CI to 
 | Frontend generator smoke | `.github/workflows/frontend-generator-smoke.yml` | Official frontend generator drift gate |
 | Security | `.github/workflows/security.yml` | Security scanning and policy checks |
 
+## Consumer workspace: agent grounding CI
+
+For RapidKit **consumer workspaces** (not this CLI repo), use the copy-paste template:
+
+- [examples/ci-agent-grounding.yml](./examples/ci-agent-grounding.yml)
+
+Minimal job:
+
+```yaml
+- run: npx rapidkit pipeline --json --strict
+- run: npx rapidkit workspace agent-sync --write --refresh-context --strict --json
+```
+
+`pipeline` writes governance evidence and **auto-syncs** agent hooks (`AGENTS.md`, Copilot, Cursor, Claude) unless `RAPIDKIT_NO_AGENT_SYNC=1` or `--no-agent-sync`.
+
 ## Local validation scripts
 
 | Script | Command |

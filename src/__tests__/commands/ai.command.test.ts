@@ -11,10 +11,8 @@ const generateModuleEmbeddingsMock = vi.hoisted(() => vi.fn());
 const updateEmbeddingsMock = vi.hoisted(() => vi.fn());
 const readRapidkitProjectJsonMock = vi.hoisted(() => vi.fn());
 
-vi.mock('inquirer', () => ({
-  default: {
-    prompt: promptMock,
-  },
+vi.mock('../../cli-ui/prompts.js', () => ({
+  prompt: promptMock,
 }));
 
 vi.mock('../../config/user-config.js', () => ({

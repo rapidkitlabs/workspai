@@ -88,9 +88,10 @@ describe('init scenarios integration (non-regression)', () => {
 
     const index = await import('../index.js');
     const code = await index.handleInitCommand(['init']);
-    const report = await fsExtra.readJSON(
+    const evidence = await fsExtra.readJSON(
       path.join(workspaceRoot, '.rapidkit', 'reports', 'workspace-run-last.json')
     );
+    const report = evidence.schemaVersion === 'workspace-run-v1' ? evidence.stages?.init : evidence;
 
     expect(code).toBe(0);
     expect(report.stage).toBe('init');

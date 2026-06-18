@@ -409,6 +409,8 @@ export async function writeWorkspaceContract(input: {
   };
   await fsExtra.ensureDir(path.dirname(contractPath));
   await fsExtra.writeJson(contractPath, contract, { spaces: 2 });
+  const { publishWorkspaceRegistrySummary } = await import('./workspace-registry-summary.js');
+  await publishWorkspaceRegistrySummary(input.workspacePath, { now: input.now });
   return { contractPath, contract };
 }
 
@@ -462,6 +464,8 @@ export async function syncWorkspaceContract(input: {
   await fsExtra.ensureDir(path.dirname(contractPath));
   await fsExtra.writeJson(contractPath, contract, { spaces: 2 });
   const verification = await verifyWorkspaceContract({ workspacePath });
+  const { publishWorkspaceRegistrySummary } = await import('./workspace-registry-summary.js');
+  await publishWorkspaceRegistrySummary(workspacePath, { now: input.now });
   return { contractPath, contract, addedProjects, updatedProjects, verification };
 }
 

@@ -98,6 +98,9 @@ describe('workspace-run', () => {
 
     const reportPath = path.join(workspacePath, '.rapidkit', 'reports', 'workspace-run-last.json');
     expect(await fsExtra.pathExists(reportPath)).toBe(true);
+    const aggregate = await fsExtra.readJson(reportPath);
+    expect(aggregate.schemaVersion).toBe('workspace-run-v1');
+    expect(aggregate.stages.test?.summary?.passed).toBe(1);
     expect(report.enterpriseControls).toEqual({
       jsonReady: true,
       evidencePath: '.rapidkit/reports/workspace-run-last.json',
@@ -813,6 +816,50 @@ describe('workspace-run', () => {
     expect(projectReport?.relativePath).toBe('dotnet-api');
     expect(projectReport?.status).toBe('failed');
     expect(projectReport?.errorCategory).toBe('setup');
+
+    await fsExtra.remove(workspacePath);
+  });
+
+  it('runs python wrapper test when pytest exists only in the project venv', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
+    const projectPath = path.join(workspacePath, 'atlas-api');
+    await fsExtra.ensureDir(path.join(projectPath, '.rapidkit'));
+    await fsExtra.writeFile(
+      path.join(projectPath, '.rapidkit', 'cli.py'),
+      '#!/usr/bin/env python3\n'
+    );
+    await fsExtra.writeJSON(path.join(projectPath, '.rapidkit', 'context.json'), {
+      name: 'atlas-api',
+      runtime: 'python',
+      framework: 'fastapi',
+    });
+    await fsExtra.writeFile(
+      path.join(projectPath, 'pyproject.toml'),
+      '[project]\nname = "atlas-api"\n'
+    );
+
+    const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
+    execaMock.mockImplementation(async (cmd: string, args: string[]) => {
+      if ((cmd === 'which' || cmd === 'where') && args[0] === 'pytest') {
+        return { exitCode: 1, stdout: '', stderr: '' };
+      }
+      if (args.includes('test')) {
+        return { exitCode: 0, stdout: 'ok', stderr: '' };
+      }
+      return { exitCode: 0, stdout: '{}', stderr: '' };
+    });
+
+    const report = await runWorkspaceStage({
+      workspacePath,
+      stage: 'test',
+      enforceGates: false,
+      json: true,
+    });
+
+    const projectReport = report.projects.find((item) => item.relativePath === 'atlas-api');
+    expect(projectReport?.runtimeDetected).toBe('python');
+    expect(projectReport?.executionCommand).toBe('rapidkit test');
+    expect(projectReport?.status).toBe('passed');
 
     await fsExtra.remove(workspacePath);
   });
