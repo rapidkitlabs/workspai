@@ -1,24 +1,141 @@
-# RapidKit NPM CLI
+# RapidKit
 
-> Workspace-first open-source platform that gives teams, tools, and AI agents a shared understanding of software systems.
+### Open-Source Workspace Intelligence for Software Systems
 
-RapidKit turns scattered projects into a governed workspace that CI, Workspai, and AI agents can understand.
+> AI agents understand files.
+> RapidKit helps developers, CI, and AI agents share the same understanding of the workspace.
+
+RapidKit is an open-source workspace platform that turns scattered projects into a governed, agent-ready workspace.
+
+Build, adopt, and operate polyglot software systems with a shared understanding for developers, CI pipelines, and AI agents.
+
+Instead of every tool rebuilding its own understanding of your system, RapidKit provides a shared source of truth.
+
+## Quick start in 5 minutes
+
+### Install the CLI
+
+```bash
+npm install -g rapidkit
+```
+
+### Create a new workspace and project
+
+```bash
+npx rapidkit create workspace platform --yes --profile polyglot
+
+cd platform
+
+npx rapidkit bootstrap --profile polyglot
+
+npx rapidkit create project
+npx rapidkit create frontend nextjs my-web --yes
+
+npx rapidkit workspace model
+npx rapidkit workspace context --for-agent --write
+npx rapidkit pipeline --strict
+```
+
+### Adopt an existing project
+
+```bash
+npx rapidkit adopt /path/to/project --workspace /path/to/workspace
+
+npx rapidkit workspace model
+npx rapidkit workspace context --for-agent --write
+npx rapidkit pipeline --strict
+```
+
+### What RapidKit gives you
+
+* Adopt existing projects without migration
+* Create and manage polyglot workspaces
+* Generate agent-ready context and workspace models
+* Analyze impact before changes ship
+* Verify release readiness with evidence-backed gates
+* Keep developers, CI, and AI agents aligned
+
+### Workspace Intelligence
+
+Most AI tools understand:
+
+* Files
+* Functions
+* Repositories
+
+Production systems require understanding:
+
+* Ownership
+* Architecture
+* Dependencies
+* Operational context
+* Verification requirements
+* Change impact
+
+RapidKit adds the missing layer:
+
+**Workspace Intelligence.**
+
+**One workspace. One truth.**
+
+A shared understanding of software systems for developers, CI pipelines, IDEs, and AI agents.
+
+### From Code to Shared Understanding
+How RapidKit transforms projects and repositories into workspace intelligence for developers, CI, and AI agents.
+
+```mermaid
+flowchart TB
+
+    Code["Code & Repositories"]
+    Projects["Projects"]
+    Workspace["Workspace"]
+
+    Code --> Projects
+    Projects --> Workspace
+
+    subgraph Intelligence["Workspace Intelligence"]
+        Model["Workspace Model"]
+        Context["Agent Context"]
+        Impact["Impact Analysis"]
+        Verify["Verification"]
+    end
+
+    Workspace --> Model
+    Workspace --> Context
+    Workspace --> Impact
+    Workspace --> Verify
+
+    Model --> Dev["Developers"]
+    Model --> CI["CI"]
+    Model --> Agents["AI Agents"]
+
+    Context --> Agents
+
+    Impact --> Dev
+    Impact --> CI
+
+    Verify --> CI
+    Verify --> Agents
+```
+
+RapidKit provides the workspace engine, governance model, evidence chain, and operational intelligence.
+
+Workspai provides the VS Code experience on top of that foundation.
+
+For the visual experience, install the [Workspai VS Code extension](https://marketplace.visualstudio.com/items?itemName=rapidkit.rapidkit-vscode). 
 
 [![npm version](https://img.shields.io/npm/v/rapidkit.svg?style=flat-square)](https://www.npmjs.com/package/rapidkit)
 [![Downloads](https://img.shields.io/npm/dm/rapidkit.svg?style=flat-square)](https://www.npmjs.com/package/rapidkit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![GitHub Stars](https://img.shields.io/github/stars/rapidkitlabs/rapidkit-npm.svg?style=flat-square)](https://github.com/rapidkitlabs/rapidkit-npm/stargazers)
 [![Built by RapidKit](https://img.shields.io/badge/Built%20by-RapidKit-0f172a?logo=github)](https://www.getrapidkit.com)
-
-For the visual experience, install the [Workspai VS Code extension](https://marketplace.visualstudio.com/items?itemName=rapidkit.rapidkit-vscode). The extension calls this CLI for discovery, commands, evidence, and AI context — install `rapidkit@latest` globally or link locally for scaffold/adopt flows.
 
 ## Table of contents
 
-- [Start here](#start-here)
+- [Typical workflows](#typical-workflows)
 - [Mental model](#mental-model)
-- [Workspace intelligence](#workspace-intelligence)
+- [Workspace Intelligence Commands](#workspace-intelligence-commands)
 - [Requirements & install](#requirements)
-- [Quickstarts](#quickstarts)
+- [Project workflows](#project-workflows)
 - [CI & evidence](#ci--evidence)
 - [Workspai ecosystem](#workspai-ecosystem)
 - [VS Code extension](#vs-code-extension)
@@ -27,15 +144,39 @@ For the visual experience, install the [Workspai VS Code extension](https://mark
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
 
-## Start here
+## Typical workflows
 
-| If you have... | Use | What you get |
-| --- | --- | --- |
-| An existing project to keep in place | [`adopt`](docs/workspace-operations.md#import-and-adoption) | Links project, detects stack, writes metadata |
-| A folder or repo to copy into a workspace | [`import`](docs/workspace-operations.md#import-and-adoption) | Copy/clone with rollback-safe sync |
-| A new project from a kit | `create workspace` + `create project` / `create frontend` | Scaffold + governance evidence |
-| CI or release gates | `pipeline --json --strict` | Full governance loop in one command |
-| Agent-ready context | `workspace model` + `workspace context` + `workspace agent-sync` | Canonical facts, context packs, and cross-tool grounding |
+| Question                                      | Command                                        |
+| --------------------------------------------- | ---------------------------------------------- |
+| What projects exist in this workspace?        | `workspace model --json`                       |
+| What context should AI agents receive?        | `workspace context --for-agent --json --write` |
+| What breaks if I change this?                 | `workspace impact --from <snapshot>`           |
+| Can I safely release?                         | `pipeline --json --strict`                     |
+| How do I align AI tools and CI?               | `workspace agent-sync --write`                 |
+| How do I onboard an existing project?         | `adopt`                                        |
+| How do I bring repositories into a workspace? | `import`                                       |
+
+
+### Existing project
+
+```bash
+npx rapidkit adopt /path/to/project --workspace /path/to/workspace
+npx rapidkit workspace model --json
+```
+
+### Agent-ready workspace
+
+```bash
+npx rapidkit workspace context --for-agent --json --write
+npx rapidkit workspace agent-sync --write --refresh-context
+```
+
+### Release verification
+
+```bash
+npx rapidkit pipeline --json --strict
+```
+
 
 ### Adopt in place
 
@@ -55,14 +196,15 @@ npx rapidkit adopt --json   # from inside the project folder
 
 New workspaces go under `~/rapidkit/workspaces/<name>`. Legacy `~/Workspai/rapidkits/*` paths remain registered. Use `--output <parent-dir>` for a custom parent.
 
+
+## Mental model
+
 ### Two-layer model
 
 ```text
 First-class engine kits  →  FastAPI and NestJS (modules + deep generation)
 Workspace intelligence   →  frontend apps, Go, Spring, .NET, adopted/imported repos
 ```
-
-## Mental model
 
 RapidKit treats the **workspace** as the operating boundary: policy, registry, evidence, contracts, and release readiness. Projects can live inside the workspace or be **adopted** from outside.
 
@@ -79,7 +221,8 @@ external-project/
 
 Every tool gets the same answers: what projects exist, what stack they use, which commands are safe, what evidence exists, and what context agents should receive.
 
-## Workspace intelligence
+## Workspace Intelligence Commands
+Workspace Intelligence provides a shared understanding of projects, dependencies, operational context, and release readiness for developers, CI pipelines, and AI agents.
 
 | Command | Purpose |
 | --- | --- |
@@ -144,7 +287,7 @@ npm install -g rapidkit
 npx rapidkit --help
 ```
 
-## Quickstarts
+## Project workflows
 
 ### I already have a project
 
@@ -204,6 +347,12 @@ Full syntax: [docs/commands-reference.md](docs/commands-reference.md). CI workfl
 
 ## Workspai ecosystem
 
+RapidKit and Workspai form a single workspace intelligence platform.
+
+RapidKit provides the workspace engine, governance model, evidence chain, and operational intelligence.
+
+Workspai provides the VS Code experience, dashboards, AI workflows, and developer-facing workspace operations.
+
 | Component | Repository | Role |
 | --- | --- | --- |
 | CLI | [rapidkit-npm](https://github.com/rapidkitlabs/rapidkit-npm) | Commands, governance, adoption, CI evidence |
@@ -212,8 +361,10 @@ Full syntax: [docs/commands-reference.md](docs/commands-reference.md). CI workfl
 | Examples | [rapidkit-examples](https://github.com/rapidkitlabs/rapidkit-examples) | Starter workspaces |
 
 ## VS Code extension
+Workspai is the VS Code experience for RapidKit workspace intelligence.
 
-Search **Workspai** in the marketplace or `ext install rapidkit.rapidkit-vscode`.
+Search **Workspai** in the marketplace or install via:
+`ext install rapidkit.rapidkit-vscode`.
 
 | Feature | CLI | Extension |
 | --- | --- | --- |
@@ -238,7 +389,6 @@ The extension invokes this npm CLI. For the latest `adopt` and `create frontend`
 | [docs/SETUP.md](docs/SETUP.md) | Maintainer setup |
 | [docs/SECURITY.md](docs/SECURITY.md) | Security policy |
 | [docs/config-file-guide.md](docs/config-file-guide.md) | User configuration |
-| [docs/README.md](docs/README.md) | Full documentation index |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 
 ## Development
