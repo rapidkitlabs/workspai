@@ -3,6 +3,7 @@ import * as index from '../index.js';
 import * as create from '../create.js';
 import * as coreExec from '../core-bridge/pythonRapidkitExec.js';
 import * as fsExtra from 'fs-extra';
+import * as fs from 'fs';
 import os from 'os';
 import path from 'path';
 import * as cliPrompts from '../cli-ui/prompts.js';
@@ -16,7 +17,7 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
   beforeEach(async () => {
     tmpDir = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-test-'));
     // Normalize path to handle macOS /var -> /private/var symlinks
-    resolvedTmpDir = path.resolve(tmpDir);
+    resolvedTmpDir = fs.realpathSync(tmpDir);
     process.chdir(tmpDir);
     process.env.HOME = tmpDir;
     process.env.USERPROFILE = tmpDir;

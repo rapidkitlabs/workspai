@@ -36,7 +36,7 @@ describe('workspace-create-location', () => {
       })
     ).toBe(expectedManaged);
 
-    const expectedCustom = path.join('/tmp/custom', 'my-ws');
+    const expectedCustom = path.resolve('/tmp/custom', 'my-ws');
     expect(
       resolveWorkspaceTargetPath('my-ws', {
         outputParent: '/tmp/custom',
