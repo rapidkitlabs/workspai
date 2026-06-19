@@ -10,8 +10,11 @@ function cliEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env = { ...process.env };
   delete env.NODE_ENV;
   delete env.NODE_OPTIONS;
-  delete env.VITEST;
-  delete env.VITEST_WORKER_ID;
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('VITEST')) {
+      delete env[key];
+    }
+  }
   const merged = {
     ...env,
     ...overrides,

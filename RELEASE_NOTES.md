@@ -1,6 +1,70 @@
 # Release Notes
 
-## Latest Release: v0.37.0 (June 17, 2026)
+## Latest Release: v0.37.1 (June 19, 2026)
+
+### Workspace Intelligence Verification and npm README Hardening
+
+This patch release tightens the Workspace Intelligence evidence gate and improves
+the npm package presentation surface. It keeps the current feature set stable
+while making `workspace verify`, agent context packs, and npm README assets more
+reliable for enterprise workflows.
+
+**What's Fixed and Improved:**
+
+- 🧠 **Workspace verify evidence correctness**
+  - Project-scoped verification now requires `workspace-run-last.json` evidence
+    to match the affected project by name, relative path, or project path.
+  - Evidence from another project no longer satisfies a required project gate.
+
+- ⏱️ **Freshness-aware release gates**
+  - `workspace verify` now treats evidence generated before the current impact
+    report as stale and blocking.
+  - Prevents old passing test/build reports from being reused for newer impact
+    decisions.
+
+- 🤖 **Agent and IDE alignment**
+  - Workspace agent context packs now include `workspace verify --json` as a
+    safe command so agents can evaluate the official evidence gate before
+    release or apply recommendations.
+
+- 📦 **npm README and package surface**
+  - Replaced the npm README Mermaid diagram with a raw GitHub image URL for npm
+    rendering compatibility.
+  - Preserved the Mermaid source in internal docs for GitHub readers.
+  - Published the full `docs/` folder in the npm package so README-linked docs
+    and assets are included.
+  - Updated npm package metadata to align with the Workspace Intelligence
+    positioning.
+
+- ✅ **Regression coverage**
+  - Added tests for project-specific evidence matching, stale evidence blocking,
+    agent safe commands, README image asset publishing, and README-linked docs
+    packaging.
+  - Hardened CLI process integration tests to avoid leaking Vitest environment
+    variables into child CLI executions.
+
+**Verification:**
+
+- `node node_modules/vitest/vitest.mjs run src/__tests__/workspace-context.test.ts src/__tests__/workspace-verify.test.ts src/__tests__/workspace-intelligence.test.ts src/__tests__/workspace-intelligence-cli-chain.test.ts src/__tests__/contracts src/__tests__/package-publish-contract.test.ts`
+- `node node_modules/typescript/bin/tsc --noEmit`
+- `node node_modules/eslint/bin/eslint.js src --ext .ts`
+- `node scripts/check-markdown-links.mjs`
+- `node scripts/docs-drift-guard.mjs`
+- `node node_modules/tsup/dist/cli-default.js`
+- `node scripts/verify-package-cli.mjs`
+- `node scripts/smoke-readme-commands.mjs`
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.37.1
+```
+
+[📖 Full Release Notes](./releases/RELEASE_NOTES_v0.37.1.md)
+
+---
+
+## Previous Release: v0.37.0 (June 17, 2026)
 
 ### CLI Observability, Governance, and Workspace Management
 

@@ -164,6 +164,12 @@ function buildSafeCommands(
       args: 'workspace contract verify --json',
       description: 'Verify workspace contract and dependency edges.',
     }),
+    command({
+      id: 'workspace.verify',
+      scope: 'workspace',
+      args: 'workspace verify --json',
+      description: 'Evaluate evidence freshness and verification gates before release decisions.',
+    }),
   ];
 
   const scopedProjects = activeProject ? [activeProject] : model.projects;

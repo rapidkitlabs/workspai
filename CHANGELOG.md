@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.1] - 2026-06-19
+
+### Changed
+
+- Updated npm package metadata to align with the Open-Source Workspace Intelligence positioning.
+- Published the full `docs/` directory in the npm package so README-linked documentation and image assets are included.
+- Replaced the npm README Mermaid diagram with a raw GitHub image URL and moved the Mermaid source into internal documentation.
+- Added `workspace verify --json` to workspace agent context safe commands so agents and IDE surfaces can evaluate the official evidence gate.
+- Documented freshness rules for `workspace verify` evidence in workspace operations docs.
+
+### Fixed
+
+- `workspace verify` now requires project-scoped `workspace-run-last.json` evidence to match the affected project by project name, relative path, or project path.
+- `workspace verify` now blocks stale evidence generated before the current impact report.
+- Project evidence from another project can no longer satisfy a required affected-project verification step.
+- CLI process integration tests now strip Vitest environment variables from child CLI executions.
+
+### Verification
+
+- `node node_modules/vitest/vitest.mjs run src/__tests__/workspace-context.test.ts src/__tests__/workspace-verify.test.ts src/__tests__/workspace-intelligence.test.ts src/__tests__/workspace-intelligence-cli-chain.test.ts src/__tests__/contracts src/__tests__/package-publish-contract.test.ts`
+- `node node_modules/typescript/bin/tsc --noEmit`
+- `node node_modules/eslint/bin/eslint.js src --ext .ts`
+- `node scripts/check-markdown-links.mjs`
+- `node scripts/docs-drift-guard.mjs`
+- `node node_modules/tsup/dist/cli-default.js`
+- `node scripts/verify-package-cli.mjs`
+- `node scripts/smoke-readme-commands.mjs`
+
 ## [0.37.0] - 2026-06-17
 
 ### Added

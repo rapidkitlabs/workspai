@@ -17,6 +17,8 @@ import {
   writeWorkspaceImpact,
   writeWorkspaceModelSnapshot,
 } from '../workspace-intelligence.js';
+import { publishWorkspaceRunStageReport } from '../utils/workspace-run-evidence.js';
+import type { WorkspaceRunReport } from '../workspace-run.js';
 
 describe('workspace verify', () => {
   const tempDirs: string[] = [];
@@ -143,6 +145,208 @@ describe('workspace verify', () => {
         }),
       ])
     );
+    expect(verify.summary.verdict).toBe('blocked');
+  });
+
+  it('does not accept workspace run evidence from a different project', async () => {
+    const workspacePath = await makeTempDir('rk-verify-project-evidence-');
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {
+      name: 'api',
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+
+    const before = await buildWorkspaceModelSnapshot({ workspacePath });
+    const beforePath = await writeWorkspaceModelSnapshot(before, workspacePath);
+    await fsExtra.outputJson(path.join(workspacePath, 'web', 'package.json'), {
+      dependencies: { react: '^19.0.0', vite: '^6.0.0' },
+      scripts: { test: 'vitest run' },
+    });
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
+      {
+        healthScore: { percent: 95, errors: 0 },
+      }
+    );
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
+      {
+        overallStatus: 'pass',
+      }
+    );
+
+    const impact = await buildWorkspaceImpact({
+      workspacePath,
+      fromPath: beforePath,
+    });
+    const impactPath = await writeWorkspaceImpact(impact, workspacePath);
+    await publishWorkspaceRunStageReport(workspacePath, {
+      schemaVersion: '1.0',
+      workspacePath,
+      stage: 'test',
+      generatedAt: '2026-06-15T00:01:00.000Z',
+      durationMs: 25,
+      options: {
+        affected: false,
+        blastRadius: false,
+        since: null,
+        parallel: false,
+        maxWorkers: 1,
+        continueOnError: false,
+        strict: false,
+        enforceGates: false,
+        scope: 'project:api',
+      },
+      selection: {
+        mode: 'all',
+        since: null,
+        scope: 'project:api',
+        graphStatus: 'not-applicable',
+        expansionDepth: 0,
+      },
+      gates: {
+        enforced: false,
+        results: [],
+        blocked: false,
+      },
+      summary: {
+        projectCount: 1,
+        selectedCount: 1,
+        passed: 1,
+        failed: 0,
+        skipped: 0,
+        exitCode: 0,
+      },
+      projects: [
+        {
+          path: path.join(workspacePath, 'api'),
+          relativePath: 'api',
+          selected: true,
+          affected: false,
+          status: 'passed',
+          exitCode: 0,
+          durationMs: 25,
+        },
+      ],
+    } satisfies WorkspaceRunReport);
+
+    const verify = await buildWorkspaceVerify({
+      workspacePath,
+      fromImpactPath: impactPath,
+    });
+    const webTestStep = verify.steps.find((step) => step.id === 'project.web.test');
+
+    expect(webTestStep).toMatchObject({
+      status: 'missing',
+      required: true,
+      message: 'Workspace run evidence does not include project web.',
+    });
+    expect(verify.summary.verdict).toBe('blocked');
+    expect(verify.blockingReasons).toContain(
+      'project.web.test: Workspace run evidence does not include project web.'
+    );
+  });
+
+  it('blocks stale project run evidence generated before the impact report', async () => {
+    const workspacePath = await makeTempDir('rk-verify-stale-project-evidence-');
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {
+      name: 'api',
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+
+    const before = await buildWorkspaceModelSnapshot({
+      workspacePath,
+      now: new Date('2026-06-15T00:00:00.000Z'),
+    });
+    const beforePath = await writeWorkspaceModelSnapshot(before, workspacePath);
+    await fsExtra.outputJson(path.join(workspacePath, 'web', 'package.json'), {
+      dependencies: { react: '^19.0.0', vite: '^6.0.0' },
+      scripts: { test: 'vitest run' },
+    });
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
+      {
+        generatedAt: '2026-06-15T00:03:00.000Z',
+        healthScore: { percent: 95, errors: 0 },
+      }
+    );
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
+      {
+        generatedAt: '2026-06-15T00:03:00.000Z',
+        overallStatus: 'pass',
+      }
+    );
+
+    const impact = await buildWorkspaceImpact({
+      workspacePath,
+      fromPath: beforePath,
+      now: new Date('2026-06-15T00:02:00.000Z'),
+    });
+    const impactPath = await writeWorkspaceImpact(impact, workspacePath);
+    await publishWorkspaceRunStageReport(workspacePath, {
+      schemaVersion: '1.0',
+      workspacePath,
+      stage: 'test',
+      generatedAt: '2026-06-15T00:01:00.000Z',
+      durationMs: 25,
+      options: {
+        affected: false,
+        blastRadius: false,
+        since: null,
+        parallel: false,
+        maxWorkers: 1,
+        continueOnError: false,
+        strict: false,
+        enforceGates: false,
+        scope: 'project:web',
+      },
+      selection: {
+        mode: 'all',
+        since: null,
+        scope: 'project:web',
+        graphStatus: 'not-applicable',
+        expansionDepth: 0,
+      },
+      gates: {
+        enforced: false,
+        results: [],
+        blocked: false,
+      },
+      summary: {
+        projectCount: 1,
+        selectedCount: 1,
+        passed: 1,
+        failed: 0,
+        skipped: 0,
+        exitCode: 0,
+      },
+      projects: [
+        {
+          path: path.join(workspacePath, 'web'),
+          relativePath: 'web',
+          selected: true,
+          affected: false,
+          status: 'passed',
+          exitCode: 0,
+          durationMs: 25,
+        },
+      ],
+    } satisfies WorkspaceRunReport);
+
+    const verify = await buildWorkspaceVerify({
+      workspacePath,
+      fromImpactPath: impactPath,
+    });
+    const webTestStep = verify.steps.find((step) => step.id === 'project.web.test');
+
+    expect(webTestStep).toMatchObject({
+      status: 'fail',
+      required: true,
+      message:
+        'Workspace run evidence for web is stale: generated at 2026-06-15T00:01:00.000Z, before impact 2026-06-15T00:02:00.000Z.',
+    });
     expect(verify.summary.verdict).toBe('blocked');
   });
 

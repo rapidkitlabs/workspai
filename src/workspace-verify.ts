@@ -227,7 +227,8 @@ function evaluatePipelineEvidence(payload: Record<string, unknown>): EvidenceEva
 
 function evaluateWorkspaceRunEvidence(
   payload: Record<string, unknown>,
-  command: WorkspaceImpactCommand
+  command: WorkspaceImpactCommand,
+  minGeneratedAt?: string
 ): EvidenceEvaluation {
   const stage = command.id.endsWith('.build')
     ? 'build'
@@ -251,24 +252,40 @@ function evaluateWorkspaceRunEvidence(
       message: `Workspace run evidence is for stage "${reportStage}", expected "${stage}".`,
     };
   }
-  const summary = asRecord(stageReport.summary as unknown);
-  const failed = typeof summary?.failed === 'number' ? summary.failed : 0;
-  const exitCode = typeof summary?.exitCode === 'number' ? summary.exitCode : 0;
   const projects = Array.isArray(stageReport.projects) ? stageReport.projects : [];
   const projectName = command.project?.toLowerCase();
+  if (!projectName) {
+    return {
+      status: 'missing',
+      message: 'Project-scoped workspace run evidence is missing a project identifier.',
+    };
+  }
   const projectRow = projects.find((entry) => {
     const record = asRecord(entry);
-    if (!record || !projectName) {
+    if (!record) {
       return false;
     }
     const name = typeof record.projectName === 'string' ? record.projectName.toLowerCase() : '';
-    const projectPath =
-      typeof record.projectPath === 'string' ? record.projectPath.toLowerCase() : '';
+    const projectPathCandidates = ['projectPath', 'relativePath', 'path']
+      .map((key) => record[key])
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .map((value) => value.replace(/\\/g, '/').toLowerCase());
     return (
-      name === projectName || projectPath.endsWith(`/${projectName}`) || projectPath === projectName
+      name === projectName ||
+      projectPathCandidates.some(
+        (projectPath) => projectPath.endsWith(`/${projectName}`) || projectPath === projectName
+      )
     );
   });
   if (projectRow) {
+    const staleMessage = staleEvidenceMessage(
+      stageReport.generatedAt,
+      minGeneratedAt,
+      `Workspace run evidence for ${command.project ?? command.id}`
+    );
+    if (staleMessage) {
+      return { status: 'fail', message: staleMessage };
+    }
     const record = asRecord(projectRow);
     const status = typeof record?.status === 'string' ? record.status : 'unknown';
     if (status === 'failed') {
@@ -280,17 +297,41 @@ function evaluateWorkspaceRunEvidence(
     if (status === 'skipped') {
       return { status: 'warn', message: `Workspace run evidence skipped for ${command.project}.` };
     }
+    return {
+      status: 'warn',
+      message: `Workspace run evidence status is ${status} for ${command.project}.`,
+    };
   }
-  if (failed > 0 || exitCode !== 0) {
-    return { status: 'fail', message: 'Workspace run evidence reports failures.' };
+  return {
+    status: 'missing',
+    message: `Workspace run evidence does not include project ${command.project}.`,
+  };
+}
+
+function staleEvidenceMessage(
+  evidenceGeneratedAt: unknown,
+  minGeneratedAt: string | undefined,
+  label: string
+): string | null {
+  if (typeof evidenceGeneratedAt !== 'string' || !minGeneratedAt) {
+    return null;
   }
-  return { status: 'pass', message: 'Workspace run evidence is present.' };
+  const evidenceTime = Date.parse(evidenceGeneratedAt);
+  const minTime = Date.parse(minGeneratedAt);
+  if (!Number.isFinite(evidenceTime) || !Number.isFinite(minTime)) {
+    return null;
+  }
+  if (evidenceTime < minTime) {
+    return `${label} is stale: generated at ${evidenceGeneratedAt}, before impact ${minGeneratedAt}.`;
+  }
+  return null;
 }
 
 async function evaluateCommandEvidence(
   command: WorkspaceImpactCommand,
   workspacePath: string,
-  hasWorkspaceContract: boolean
+  hasWorkspaceContract: boolean,
+  minGeneratedAt?: string
 ): Promise<WorkspaceVerifyStep> {
   const evidencePath = evidencePathForCommand(command, workspacePath);
   const relativeEvidencePath = evidencePath
@@ -343,19 +384,73 @@ async function evaluateCommandEvidence(
 
   let evaluation: EvidenceEvaluation;
   if (command.id === 'workspace.doctor') {
-    evaluation = evaluateDoctorEvidence(payload);
+    const staleMessage = staleEvidenceMessage(
+      payload.generatedAt,
+      minGeneratedAt,
+      'Doctor evidence'
+    );
+    if (staleMessage) {
+      evaluation = { status: 'fail', message: staleMessage };
+    } else {
+      evaluation = evaluateDoctorEvidence(payload);
+    }
   } else if (command.id === 'workspace.readiness') {
-    evaluation = evaluateReadinessEvidence(payload);
+    const staleMessage = staleEvidenceMessage(
+      payload.generatedAt,
+      minGeneratedAt,
+      'Release readiness evidence'
+    );
+    if (staleMessage) {
+      evaluation = { status: 'fail', message: staleMessage };
+    } else {
+      evaluation = evaluateReadinessEvidence(payload);
+    }
   } else if (command.id === 'workspace.contract.verify') {
-    evaluation = evaluateContractVerifyEvidence(payload);
+    const staleMessage = staleEvidenceMessage(
+      payload.generatedAt,
+      minGeneratedAt,
+      'Workspace contract verify evidence'
+    );
+    if (staleMessage) {
+      evaluation = { status: 'fail', message: staleMessage };
+    } else {
+      evaluation = evaluateContractVerifyEvidence(payload);
+    }
   } else if (command.id === 'workspace.analyze') {
-    evaluation = evaluateAnalyzeEvidence(payload);
+    const staleMessage = staleEvidenceMessage(
+      payload.generatedAt,
+      minGeneratedAt,
+      'Analyze evidence'
+    );
+    if (staleMessage) {
+      evaluation = { status: 'fail', message: staleMessage };
+    } else {
+      evaluation = evaluateAnalyzeEvidence(payload);
+    }
   } else if (command.id === 'workspace.pipeline') {
-    evaluation = evaluatePipelineEvidence(payload);
+    const staleMessage = staleEvidenceMessage(
+      payload.generatedAt,
+      minGeneratedAt,
+      'Pipeline evidence'
+    );
+    if (staleMessage) {
+      evaluation = { status: 'fail', message: staleMessage };
+    } else {
+      evaluation = evaluatePipelineEvidence(payload);
+    }
   } else if (command.id.startsWith('project.')) {
-    evaluation = evaluateWorkspaceRunEvidence(payload, command);
+    evaluation = evaluateWorkspaceRunEvidence(payload, command, minGeneratedAt);
   } else {
-    evaluation = { status: 'pass', message: 'Evidence report is present.' };
+    const staleMessage = staleEvidenceMessage(
+      payload.generatedAt,
+      minGeneratedAt,
+      'Evidence report'
+    );
+    if (staleMessage) {
+      evaluation = { status: 'fail', message: staleMessage };
+    } else {
+      evaluation = { status: 'pass', message: 'Evidence report is present.' };
+    }
   }
 
   return {
@@ -518,7 +613,12 @@ export async function buildWorkspaceVerify(
   const steps: WorkspaceVerifyStep[] = [];
   for (const command of verificationPlan) {
     steps.push(
-      await evaluateCommandEvidence(command, workspacePath, model.contracts.exists === true)
+      await evaluateCommandEvidence(
+        command,
+        workspacePath,
+        model.contracts.exists === true,
+        impact.generatedAt
+      )
     );
   }
 

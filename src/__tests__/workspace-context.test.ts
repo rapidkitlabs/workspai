@@ -83,6 +83,10 @@ describe('workspace agent context', () => {
       display: 'npx rapidkit doctor workspace --json',
       execute: 'npx --yes --package rapidkit rapidkit doctor workspace --json',
     });
+    expect(context.safeCommands.find((item) => item.id === 'workspace.verify')).toMatchObject({
+      display: 'npx rapidkit workspace verify --json',
+      execute: 'npx --yes --package rapidkit rapidkit workspace verify --json',
+    });
   });
 
   it('narrows context to an explicit project scope', async () => {

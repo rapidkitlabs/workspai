@@ -18,6 +18,7 @@ Hub for user and contributor documentation. Start with the [main README](../READ
 | [commands-reference.md](./commands-reference.md) | Full CLI syntax, profiles, and policy keys |
 | [workspace-operations.md](./workspace-operations.md) | Import, adopt, snapshots, archives, contracts, infra |
 | [workspace-run.md](./workspace-run.md) | Polyglot fleet orchestration (`workspace run`) |
+| [from-code-to-shared-understanding.md](./from-code-to-shared-understanding.md) | GitHub-rendered Workspace Intelligence diagram |
 | [OPEN_SOURCE_USER_SCENARIOS.md](./OPEN_SOURCE_USER_SCENARIOS.md) | Role-based workflows (junior → enterprise) |
 | [doctor-command.md](./doctor-command.md) | Doctor scopes, CI exit codes, JSON evidence |
 | [config-file-guide.md](./config-file-guide.md) | User config file (`~/.rapidkitrc.json`, `rapidkit.config.*`) |

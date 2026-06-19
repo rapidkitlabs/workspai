@@ -143,6 +143,14 @@ Artifacts:
 | `workspace run` | Workspace orchestrator | Fleet stage execution |
 | `infra` | Workspace sidecar | Contract-driven local dependencies |
 
+## Verification evidence freshness
+
+`workspace verify` treats evidence as release-gate material, not just as a file
+presence check. Required project evidence must match the affected project in
+`workspace-run-last.json`, and evidence generated before the current impact
+report is treated as stale and blocking. Re-run the recommended commands from
+`workspace impact --json` before using `workspace verify --strict` in CI.
+
 For doctor CI exit codes and JSON evidence fields, see [doctor-command.md](./doctor-command.md).
 
 ## See also

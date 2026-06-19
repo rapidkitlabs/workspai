@@ -9,6 +9,18 @@ describe('E2E Tests', () => {
   let tempDir: string;
   let cliPath: string;
 
+  function cliEnv(): NodeJS.ProcessEnv {
+    const env = { ...process.env };
+    delete env.NODE_ENV;
+    delete env.NODE_OPTIONS;
+    for (const key of Object.keys(env)) {
+      if (key.startsWith('VITEST')) {
+        delete env[key];
+      }
+    }
+    return env;
+  }
+
   beforeEach(async () => {
     cliPath = ensureDistBuilt('E2E tests');
     tempDir = await mkdtemp(join(tmpdir(), 'rapidkit-e2e-'));
@@ -86,6 +98,7 @@ describe('E2E Tests', () => {
       await expect(
         execa('node', [cliPath, invalidName, '--template', 'fastapi', '--skip-git'], {
           cwd: tempDir,
+          env: cliEnv(),
           reject: false,
         })
       ).resolves.toHaveProperty('exitCode', 1);
@@ -100,6 +113,7 @@ describe('E2E Tests', () => {
       [cliPath, projectName, '--template', 'fastapi', '--dry-run'],
       {
         cwd: tempDir,
+        env: cliEnv(),
       }
     );
 
@@ -116,6 +130,7 @@ describe('E2E Tests', () => {
 
     const { stdout } = await execa('node', [cliPath, workspaceName, '--dry-run'], {
       cwd: tempDir,
+      env: cliEnv(),
     });
 
     expect(stdout).toContain('Dry-run mode');
@@ -127,13 +142,13 @@ describe('E2E Tests', () => {
   }, 15000);
 
   it('shows version correctly', async () => {
-    const { stdout } = await execa('node', [cliPath, '--version']);
+    const { stdout } = await execa('node', [cliPath, '--version'], { env: cliEnv() });
 
     expect(stdout).toMatch(/\d+\.\d+\.\d+/);
   }, 5000);
 
   it('shows help correctly', async () => {
-    const { stdout } = await execa('node', [cliPath, '--help']);
+    const { stdout } = await execa('node', [cliPath, '--help'], { env: cliEnv() });
 
     expect(stdout).toContain('rapidkit');
     // Accept either npm wrapper help (--skip-git) or Core help (create/add/version)

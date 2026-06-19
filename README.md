@@ -3,13 +3,15 @@
 ### Open-Source Workspace Intelligence for Software Systems
 
 > AI agents understand files.
-> RapidKit helps developers, CI, and AI agents share the same understanding of the workspace.
+> RapidKit helps developers, CI, IDEs, and AI agents share the same understanding of the workspace.
 
-RapidKit is an open-source workspace platform that turns scattered projects into a governed, agent-ready workspace.
+**One workspace. One truth. Humans and AI aligned.**
 
-Build, adopt, and operate polyglot software systems with a shared understanding for developers, CI pipelines, and AI agents.
+RapidKit is the open-source workspace intelligence engine that turns scattered projects into a governed, agent-ready software system.
 
-Instead of every tool rebuilding its own understanding of your system, RapidKit provides a shared source of truth.
+Build, adopt, and operate polyglot software systems with a shared, evidence-backed understanding for developers, CI pipelines, IDEs, and AI agents.
+
+Instead of every tool rebuilding its own view of your system from files alone, RapidKit provides a shared source of truth: a workspace model, agent context, impact analysis, verification evidence, and release gates that all surfaces can consume.
 
 ## Quick start in 5 minutes
 
@@ -50,10 +52,10 @@ npx rapidkit pipeline --strict
 
 * Adopt existing projects without migration
 * Create and manage polyglot workspaces
-* Generate agent-ready context and workspace models
+* Generate canonical workspace models and agent-ready context
 * Analyze impact before changes ship
 * Verify release readiness with evidence-backed gates
-* Keep developers, CI, and AI agents aligned
+* Keep developers, CI, IDEs, and AI agents aligned on the same workspace truth
 
 ### Workspace Intelligence
 
@@ -76,49 +78,26 @@ RapidKit adds the missing layer:
 
 **Workspace Intelligence.**
 
-**One workspace. One truth.**
+**One workspace. One truth. Humans and AI aligned.**
 
-A shared understanding of software systems for developers, CI pipelines, IDEs, and AI agents.
+A shared, evidence-backed understanding of software systems for developers, CI pipelines, IDEs, and AI agents.
+
+In RapidKit, Workspace Intelligence is not a chat feature. It is the deterministic workspace layer behind the CLI:
+
+* **Model** — what projects, runtimes, frameworks, commands, policies, contracts, and evidence exist
+* **Context** — what AI agents and IDEs should know before giving advice
+* **Impact** — what changed and which projects, commands, and release gates are affected
+* **Verify** — which evidence proves the workspace is ready, blocked, or needs attention
+* **Sync** — how developers, CI, Workspai, and AI agents stay grounded in the same truth
 
 ### From Code to Shared Understanding
 How RapidKit transforms projects and repositories into workspace intelligence for developers, CI, and AI agents.
 
-```mermaid
-flowchart TB
+![From Code to Shared Understanding](https://raw.githubusercontent.com/rapidkitlabs/rapidkit-npm/main/docs/From%20Code%20to%20Shared%20Understanding.png)
 
-    Code["Code & Repositories"]
-    Projects["Projects"]
-    Workspace["Workspace"]
+Mermaid source for GitHub docs: [from-code-to-shared-understanding.md](docs/from-code-to-shared-understanding.md).
 
-    Code --> Projects
-    Projects --> Workspace
-
-    subgraph Intelligence["Workspace Intelligence"]
-        Model["Workspace Model"]
-        Context["Agent Context"]
-        Impact["Impact Analysis"]
-        Verify["Verification"]
-    end
-
-    Workspace --> Model
-    Workspace --> Context
-    Workspace --> Impact
-    Workspace --> Verify
-
-    Model --> Dev["Developers"]
-    Model --> CI["CI"]
-    Model --> Agents["AI Agents"]
-
-    Context --> Agents
-
-    Impact --> Dev
-    Impact --> CI
-
-    Verify --> CI
-    Verify --> Agents
-```
-
-RapidKit provides the workspace engine, governance model, evidence chain, and operational intelligence.
+RapidKit provides the workspace intelligence engine: model, context, impact, verification, evidence, contracts, and governance.
 
 Workspai provides the VS Code experience on top of that foundation.
 
@@ -349,9 +328,9 @@ Full syntax: [docs/commands-reference.md](docs/commands-reference.md). CI workfl
 
 RapidKit and Workspai form a single workspace intelligence platform.
 
-RapidKit provides the workspace engine, governance model, evidence chain, and operational intelligence.
+RapidKit provides the workspace intelligence engine: model, context, impact, verification, evidence, contracts, and governance.
 
-Workspai provides the VS Code experience, dashboards, AI workflows, and developer-facing workspace operations.
+Workspai — Workspace + Intelligence — provides the VS Code surface: dashboard, sidebar, Incident Studio, AI workflows, and developer-facing workspace operations.
 
 | Component | Repository | Role |
 | --- | --- | --- |

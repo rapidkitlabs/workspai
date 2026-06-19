@@ -1,8 +1,8 @@
 {
   "name": "rapidkit",
-  "version": "0.37.0",
+  "version": "0.37.1",
   "type": "module",
-  "description": "Official CLI for RapidKit — workspace-first platform to create, adopt, govern, and operate polyglot projects (Python, Node, Go, Java, .NET, frontend) with shared evidence for CI, Workspai, and AI agents.",
+  "description": "Open-source workspace intelligence CLI for software systems: create, adopt, govern, verify, and align polyglot workspaces for humans, CI, IDEs, and AI agents.",
   "keywords": [
     "rapidkit",
     "workspai",
@@ -40,6 +40,7 @@
   "files": [
     "dist",
     "contracts",
+    "docs",
     "data/modules-embeddings.json",
     "scripts/enforce-package-manager.cjs",
     "scripts/check-cli-resolution.cjs"
