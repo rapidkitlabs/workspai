@@ -31,7 +31,10 @@ export interface FrontendGeneratorDefinition {
   defaultPort: number;
   minNodeMajor?: number;
   minNodeMessage?: string;
-  commandDisplay: (projectName: string) => string;
+  commandDisplay: (
+    projectName: string,
+    options?: { skipGit: boolean; skipInstall: boolean }
+  ) => string;
   commandExec: (
     projectName: string,
     options: { skipGit: boolean; skipInstall: boolean }
@@ -206,14 +209,20 @@ const FRONTEND_GENERATORS: FrontendGeneratorDefinition[] = [
     displayName: 'Nuxt',
     framework: 'nuxt',
     defaultPort: 3000,
-    commandDisplay: (name) => `npx nuxi@latest init ${name}`,
+    commandDisplay: (name, options) =>
+      `npx create-nuxt@latest ${name} -- --template minimal --packageManager npm --no-git${options?.skipInstall ? ' --no-install' : ''}`,
     commandExec: (name, options) => ({
       command: 'npx',
       args: [
         '--yes',
-        'nuxi@latest',
-        'init',
+        'create-nuxt@latest',
         name,
+        '--',
+        '--template',
+        'minimal',
+        '--packageManager',
+        'npm',
+        '--no-git',
         ...(options.skipInstall ? ['--no-install'] : []),
       ],
     }),
@@ -364,7 +373,7 @@ export async function createFrontendProject(
   const skipInstall = args.includes('--skip-install');
   const skipGit = args.includes('--skip-git') || args.includes('--no-git');
   const commandPlan = definition.commandExec(projectName, { skipGit, skipInstall });
-  const commandDisplay = definition.commandDisplay(projectName);
+  const commandDisplay = definition.commandDisplay(projectName, { skipGit, skipInstall });
 
   if (await fsExtra.pathExists(projectPath)) {
     throw new Error(`Directory "${projectPath}" already exists`);

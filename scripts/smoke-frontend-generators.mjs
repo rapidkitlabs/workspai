@@ -30,7 +30,7 @@ const bundleTokens = {
   'vite-svelte': ['frontend.vite-svelte', 'svelte-ts'],
   'vite-solid': ['frontend.vite-solid', 'solid-ts'],
   'vite-vanilla': ['frontend.vite-vanilla', 'vanilla-ts'],
-  nuxt: ['frontend.nuxt', 'nuxi@latest'],
+  nuxt: ['frontend.nuxt', 'create-nuxt@latest'],
   angular: ['frontend.angular', '@angular/cli@19'],
   astro: ['frontend.astro', 'create astro@4'],
   sveltekit: ['frontend.sveltekit', 'sv@latest'],

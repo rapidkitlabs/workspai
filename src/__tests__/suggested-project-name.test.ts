@@ -79,7 +79,18 @@ describe('frontend generator commands', () => {
     const nuxt = resolveFrontendGenerator('frontend.nuxt');
     expect(nuxt?.commandExec('demo-app', { skipGit: true, skipInstall: true })).toEqual({
       command: 'npx',
-      args: ['--yes', 'nuxi@latest', 'init', 'demo-app', '--no-install'],
+      args: [
+        '--yes',
+        'create-nuxt@latest',
+        'demo-app',
+        '--',
+        '--template',
+        'minimal',
+        '--packageManager',
+        'npm',
+        '--no-git',
+        '--no-install',
+      ],
     });
 
     const astro = resolveFrontendGenerator('frontend.astro');
