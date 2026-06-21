@@ -210,19 +210,21 @@ const FRONTEND_GENERATORS: FrontendGeneratorDefinition[] = [
     framework: 'nuxt',
     defaultPort: 3000,
     commandDisplay: (name, options) =>
-      `npx create-nuxt@latest ${name} -- --template minimal --packageManager npm --no-git${options?.skipInstall ? ' --no-install' : ''}`,
+      `npx create-nuxt@latest ${name} --template minimal --packageManager npm --gitInit ${
+        options?.skipGit ? 'false' : 'true'
+      }${options?.skipInstall ? ' --no-install' : ''}`,
     commandExec: (name, options) => ({
       command: 'npx',
       args: [
         '--yes',
         'create-nuxt@latest',
         name,
-        '--',
         '--template',
         'minimal',
         '--packageManager',
         'npm',
-        '--no-git',
+        '--gitInit',
+        options.skipGit ? 'false' : 'true',
         ...(options.skipInstall ? ['--no-install'] : []),
       ],
     }),
