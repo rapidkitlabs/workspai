@@ -77,6 +77,11 @@ import {
   resolveKitDefinition,
   runNpmKitGenerator,
 } from './utils/kit-registry.js';
+import {
+  resolveCreatePlannerCapability,
+  shouldBlockUnsupportedNativeCreate,
+  type CreatePlannerCapability,
+} from './utils/create-planner-capabilities.js';
 import { suggestProjectNameForKit } from './utils/suggested-project-name.js';
 import { evaluateReleaseReadiness, runReleaseReadinessCommand } from './readiness.js';
 import { runMirrorLifecycle } from './utils/mirror.js';
@@ -657,6 +662,29 @@ async function runCreateFallback(args: string[], reasonCode: BridgeFailureCode):
   }
 }
 
+function printUnsupportedNativeCreate(capability: CreatePlannerCapability): void {
+  const requested = capability.requested || 'requested stack';
+  process.stderr.write(
+    `${chalk.yellow('RapidKit native create is not available for this request yet.')}\n`
+  );
+  process.stderr.write(chalk.gray(`Requested: ${requested}\n`));
+  process.stderr.write(chalk.gray(`Lane: ${capability.lane} (${capability.status})\n`));
+  process.stderr.write(chalk.gray(`Reason: ${capability.reason}\n`));
+
+  if (capability.officialCommands?.length) {
+    process.stderr.write(chalk.gray('External generator candidates:\n'));
+    for (const command of capability.officialCommands) {
+      process.stderr.write(chalk.gray(`  - ${command}\n`));
+    }
+  }
+
+  process.stderr.write(
+    chalk.gray(
+      'Use an external generator if needed, then run `npx rapidkit adopt <project-path>` to add Workspace Intelligence.\n'
+    )
+  );
+}
+
 export async function handleCreateOrFallback(args: string[]): Promise<number> {
   const wasFrontendCreate = args[0] === 'create' && args[1] === 'frontend';
   const normalizedFrontendArgs = normalizeCreateFrontendArgs(args);
@@ -921,6 +949,17 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
 
         // Inject selected kit so Python core skips its own kit-selection prompt
         args.splice(2, 0, kitChoice, projectName.trim());
+      }
+
+      const requestedKit = args[2];
+      const capability = resolveCreatePlannerCapability({
+        kitId: requestedKit,
+        framework: requestedKit,
+        runtime: requestedKit,
+      });
+      if (shouldBlockUnsupportedNativeCreate(capability)) {
+        printUnsupportedNativeCreate(capability);
+        return 1;
       }
 
       // Profile enforcement: if inside a workspace, check if the kit type is allowed

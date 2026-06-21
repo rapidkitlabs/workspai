@@ -62,6 +62,13 @@ describe('workspace agent context', () => {
       },
     });
     expect(context.projects.map((project) => project.name).sort()).toEqual(['api', 'web']);
+    expect(
+      context.projects.find((project) => project.name === 'api')?.createCapability
+    ).toMatchObject({
+      lane: 'native-create',
+      canExecuteCreate: true,
+      resolved: 'fastapi.standard',
+    });
     expect(context.projects.find((project) => project.name === 'web')?.safeCommands).toEqual([]);
     expect(context.workspaceSummary).toContain('full-stack-workspace');
     expect(context.agentInstructions.join('\n')).toContain('Use `display` commands');
@@ -174,6 +181,11 @@ describe('workspace agent context', () => {
         id: 'vite-react',
         kit: 'frontend.vite-react',
         source: 'official-generator',
+      },
+      createCapability: {
+        lane: 'native-create',
+        canExecuteCreate: true,
+        resolved: 'frontend.vite-react',
       },
     });
   });

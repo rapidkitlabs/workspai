@@ -1,6 +1,70 @@
 # Release Notes
 
-## Latest Release: v0.37.1 (June 19, 2026)
+## Latest Release: v0.38.0 (June 21, 2026)
+
+### Create Planner Capability Contract and Agent-Ready Scaffold Guardrails
+
+This minor release introduces the Create Planner capability contract: a shared
+source of truth for deciding which stacks RapidKit can scaffold natively, which
+external ecosystems should flow through create-then-adopt, and which projects
+should enter Workspace Intelligence through adopt-only governance.
+
+The goal is to prevent AI and IDE surfaces from guessing the wrong native stack
+while keeping RapidKit open to polyglot, external, and existing-project
+workflows.
+
+**What's New:**
+
+- **Create Planner capability lanes**
+  - Added `native-create`, `external-create-adopt`, and `adopt-only` lanes.
+  - Native create covers RapidKit-owned backend and frontend scaffold contracts.
+  - External create-adopt is now modeled for planned ecosystems such as
+    WordPress, Laravel, Symfony, and Rails.
+  - Adopt-only covers runtimes such as PHP, Ruby, Rust, Elixir, Clojure, Scala,
+    and Kotlin when RapidKit should govern rather than scaffold.
+
+- **Generated contract artifact**
+  - Added `contracts/create-planner-capabilities.v1.json`.
+  - Added the create planner summary to
+    `contracts/runtime-command-surface.v1.json`.
+  - Extended generated contract checks and parity checks so CI, docs, VS Code,
+    and AI surfaces consume the same planner contract.
+
+- **CLI guardrails**
+  - `rapidkit create project` now blocks unsupported native-create attempts
+    before delegation to the underlying scaffolder.
+  - WordPress, Laravel, generic PHP, and similar unsupported native-create
+    requests are routed to explicit external/adopt guidance instead of falling
+    through to the wrong RapidKit kit.
+
+- **Workspace Intelligence propagation**
+  - Workspace model and workspace context project summaries now include
+    `createCapability`.
+  - Agents and IDEs can inspect whether a project belongs to native create,
+    planned external create-adopt, or adopt-only governance.
+
+- **Documentation and release contract**
+  - Added create planner documentation under `docs/`.
+  - Updated the contract catalog and contract README with the new artifact.
+  - Mirrored the contract for downstream VS Code and monorepo consumers.
+
+**Verification:**
+
+- `./node_modules/.bin/vitest run src/__tests__/create-planner-capabilities.test.ts src/__tests__/handle-create-flags.test.ts src/__tests__/contracts/generated-contracts.test.ts src/__tests__/contracts/npm-contracts-parity.test.ts src/__tests__/workspace-model.test.ts src/__tests__/workspace-context.test.ts`
+- `./node_modules/.bin/tsc --noEmit`
+- `./node_modules/.bin/prettier --check src/utils/create-planner-capabilities.ts src/contracts/create-planner-capabilities-contract.ts src/contracts/runtime-command-surface-contract.ts src/workspace-model.ts src/workspace-context.ts src/__tests__/create-planner-capabilities.test.ts src/__tests__/handle-create-flags.test.ts src/__tests__/contracts/generated-contracts.test.ts src/__tests__/contracts/npm-contracts-parity.test.ts src/__tests__/workspace-model.test.ts src/__tests__/workspace-context.test.ts docs/create-planner-capabilities.md docs/contracts/README.md docs/contracts/ARTIFACT_CATALOG.md`
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.38.0
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.38.0.md)
+
+---
+
+## Previous Release: v0.37.1 (June 19, 2026)
 
 ### Workspace Intelligence Verification and npm README Hardening
 

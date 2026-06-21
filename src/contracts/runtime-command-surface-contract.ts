@@ -1,4 +1,8 @@
 import { listFrontendGenerators } from '../frontend-project.js';
+import {
+  buildCreatePlannerCapabilitiesContract,
+  type CreatePlannerCapabilitiesContract,
+} from './create-planner-capabilities-contract.js';
 import { KIT_REGISTRY } from '../utils/kit-registry.js';
 import {
   RUNTIME_SURFACE_CORE_PROJECT_COMMANDS,
@@ -21,6 +25,12 @@ export type RuntimeCommandSurfaceContract = {
   moduleSuggestionFrameworks: string[];
   moduleUnsupportedFrameworks: string[];
   scaffoldKits: string[];
+  createPlanner: {
+    lanes: CreatePlannerCapabilitiesContract['lanes'];
+    nativeCreateKits: string[];
+    externalCreateAdopt: string[];
+    adoptOnlyRuntimes: string[];
+  };
   runtimeMatrix: Record<
     string,
     {
@@ -113,6 +123,7 @@ function buildRuntimeMatrix(): RuntimeCommandSurfaceContract['runtimeMatrix'] {
 }
 
 export function buildRuntimeCommandSurfaceContract(): RuntimeCommandSurfaceContract {
+  const createPlanner = buildCreatePlannerCapabilitiesContract();
   return {
     schemaVersion: RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION,
     lifecycleCommands: [...RUNTIME_SURFACE_LIFECYCLE_COMMANDS],
@@ -123,6 +134,12 @@ export function buildRuntimeCommandSurfaceContract(): RuntimeCommandSurfaceContr
     moduleSuggestionFrameworks: buildModuleSuggestionFrameworks(),
     moduleUnsupportedFrameworks: buildModuleUnsupportedFrameworks(),
     scaffoldKits: buildScaffoldKits(),
+    createPlanner: {
+      lanes: createPlanner.lanes,
+      nativeCreateKits: createPlanner.nativeCreate.map((entry) => entry.id),
+      externalCreateAdopt: createPlanner.externalCreateAdopt.map((entry) => entry.id),
+      adoptOnlyRuntimes: [...createPlanner.adoptOnlyRuntimes],
+    },
     runtimeMatrix: buildRuntimeMatrix(),
   };
 }

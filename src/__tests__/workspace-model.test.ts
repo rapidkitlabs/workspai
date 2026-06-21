@@ -104,6 +104,11 @@ describe('workspace intelligence model', () => {
       supportTier: 'first-class',
       moduleSupport: true,
       kit: 'fastapi.standard',
+      createCapability: {
+        lane: 'native-create',
+        canExecuteCreate: true,
+        resolved: 'fastapi.standard',
+      },
       evidence: {
         doctor: {
           path: 'orders-api/.rapidkit/reports/doctor-last-run.json',
@@ -241,6 +246,43 @@ describe('workspace intelligence model', () => {
         displayName: 'React',
         source: 'official-generator',
         commandDisplay: 'npm create vite@latest web -- --template react-ts',
+      },
+      createCapability: {
+        lane: 'native-create',
+        canExecuteCreate: true,
+        resolved: 'frontend.vite-react',
+      },
+    });
+  });
+
+  it('keeps observed PHP projects in adopt-only create capability', async () => {
+    const workspacePath = await makeTempDir('rk-model-php-');
+    await fsExtra.outputJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      name: 'content-platform',
+      profile: 'polyglot',
+    });
+    await fsExtra.outputJson(path.join(workspacePath, 'cms', 'composer.json'), {
+      require: {
+        php: '^8.2',
+        'laravel/framework': '^11.0',
+      },
+    });
+
+    const model = await buildWorkspaceModel({
+      workspacePath,
+      now: new Date('2026-06-14T00:00:00.000Z'),
+    });
+
+    expect(model.projects[0]).toMatchObject({
+      name: 'cms',
+      runtime: 'php',
+      framework: 'laravel',
+      createCapability: {
+        lane: 'external-create-adopt',
+        status: 'planned',
+        canExecuteCreate: false,
+        resolved: 'laravel',
+        fallbackLane: 'adopt-only',
       },
     });
   });

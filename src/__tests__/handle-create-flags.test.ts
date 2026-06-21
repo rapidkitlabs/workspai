@@ -139,6 +139,42 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
     }
   });
 
+  it('blocks planned external create/adopt ecosystems before core delegation', async () => {
+    const resolveSpy = vi.spyOn(coreExec, 'resolveRapidkitPython').mockResolvedValue();
+    const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    const code = await index.handleCreateOrFallback([
+      'create',
+      'project',
+      'wordpress',
+      'marketing-site',
+    ]);
+
+    expect(code).toBe(1);
+    expect(resolveSpy).not.toHaveBeenCalled();
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(stderrSpy.mock.calls.map((call) => String(call[0])).join('')).toContain(
+      'external-create-adopt'
+    );
+    expect(stderrSpy.mock.calls.map((call) => String(call[0])).join('')).toContain(
+      'npx rapidkit adopt <project-path>'
+    );
+  });
+
+  it('routes generic non-native runtimes to adopt-only instead of guessing a native kit', async () => {
+    const resolveSpy = vi.spyOn(coreExec, 'resolveRapidkitPython').mockResolvedValue();
+    const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    const code = await index.handleCreateOrFallback(['create', 'project', 'php', 'portal']);
+
+    expect(code).toBe(1);
+    expect(resolveSpy).not.toHaveBeenCalled();
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(stderrSpy.mock.calls.map((call) => String(call[0])).join('')).toContain('adopt-only');
+  });
+
   it('prompts for target on `create` and supports choosing workspace', async () => {
     vi.spyOn(cliPrompts, 'prompt')
       .mockResolvedValueOnce({ createTarget: 'workspace' })

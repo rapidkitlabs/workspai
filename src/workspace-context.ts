@@ -30,6 +30,7 @@ export type WorkspaceContextProjectSummary = {
   runtime: string;
   framework: string;
   generator?: WorkspaceModelProject['generator'];
+  createCapability: WorkspaceModelProject['createCapability'];
   supportTier: string;
   safeCommands: string[];
   importantFiles: string[];
@@ -314,6 +315,7 @@ export async function buildWorkspaceAgentContext(
     runtime: project.runtime,
     framework: project.frameworkDisplayName,
     ...(project.generator ? { generator: project.generator } : {}),
+    createCapability: project.createCapability,
     supportTier: project.supportTier,
     safeCommands: summarizeProjectSafeCommands(project),
     importantFiles: project.importantFiles,

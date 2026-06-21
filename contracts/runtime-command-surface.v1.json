@@ -79,6 +79,58 @@
     "frontend.astro",
     "frontend.sveltekit"
   ],
+  "createPlanner": {
+    "lanes": {
+      "native-create": {
+        "status": "available",
+        "meaning": "RapidKit owns the scaffold contract, marker, registry, doctor, bootstrap, and workspace model path."
+      },
+      "external-create-adopt": {
+        "status": "planned",
+        "meaning": "A stable ecosystem generator exists, but RapidKit does not yet own the post-create contract."
+      },
+      "adopt-only": {
+        "status": "available",
+        "meaning": "The project enters Workspace Intelligence through import/adopt, not native create."
+      }
+    },
+    "nativeCreateKits": [
+      "fastapi.standard",
+      "fastapi.ddd",
+      "nestjs.standard",
+      "springboot.standard",
+      "gofiber.standard",
+      "gogin.standard",
+      "dotnet.webapi.clean",
+      "frontend.nextjs",
+      "frontend.remix",
+      "frontend.vite-react",
+      "frontend.vite-vue",
+      "frontend.vite-svelte",
+      "frontend.vite-solid",
+      "frontend.vite-vanilla",
+      "frontend.nuxt",
+      "frontend.angular",
+      "frontend.astro",
+      "frontend.sveltekit"
+    ],
+    "externalCreateAdopt": [
+      "wordpress-site",
+      "wordpress-block",
+      "laravel",
+      "symfony",
+      "rails"
+    ],
+    "adoptOnlyRuntimes": [
+      "php",
+      "ruby",
+      "rust",
+      "elixir",
+      "clojure",
+      "scala",
+      "kotlin"
+    ]
+  },
   "runtimeMatrix": {
     "python": {
       "tier": "first-class",

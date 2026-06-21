@@ -15,6 +15,10 @@ import {
 } from './utils/project-command-capabilities.js';
 import type { WorkspaceRunStageName } from './utils/cli-lifecycle-contract.js';
 import { inferWorkspaceProjectKind, type WorkspaceProjectKind } from './utils/project-kind.js';
+import {
+  resolveCreatePlannerCapability,
+  type CreatePlannerCapability,
+} from './utils/create-planner-capabilities.js';
 import { readRapidkitProjectJson } from './utils/runtime-detection.js';
 import { getRuntimeSupport } from './utils/support-matrix.js';
 import { discoverWorkspaceProjects } from './utils/workspace-discovery.js';
@@ -54,6 +58,7 @@ export type WorkspaceModelProject = {
     source: 'official-generator' | 'metadata';
     commandDisplay?: string;
   };
+  createCapability: CreatePlannerCapability;
   commands: {
     supported: string[];
     unsupported: string[];
@@ -435,6 +440,11 @@ async function buildProjectModel(
         ? capabilities.engine
         : undefined;
   const generator = resolveGeneratorIdentity(projectJson, kit, detection.displayName);
+  const createCapability = resolveCreatePlannerCapability({
+    kitId: kit,
+    framework: detection.key,
+    runtime: detection.runtime,
+  });
 
   return {
     name: projectName,
@@ -454,6 +464,7 @@ async function buildProjectModel(
     ...(kit ? { kit } : {}),
     ...(engine ? { engine } : {}),
     ...(generator ? { generator } : {}),
+    createCapability,
     commands: {
       supported: capabilities.supportedCommands,
       unsupported: capabilities.unsupportedCommands,
@@ -469,6 +480,7 @@ async function buildProjectModel(
       runtime: detection.source,
       framework: detection.source,
       commands: 'project command capability matrix',
+      createCapability: 'create planner capability contract',
       evidence: 'project .rapidkit/reports',
     },
   };

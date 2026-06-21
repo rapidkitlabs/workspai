@@ -3,6 +3,7 @@ import path from 'path';
 
 import { describe, expect, it } from 'vitest';
 
+import { buildCreatePlannerCapabilitiesContract } from '../../contracts/create-planner-capabilities-contract';
 import { buildImportStackParitySnapshot } from '../../contracts/import-stack-parity-snapshot';
 import { buildInfraStackContract } from '../../contracts/infra-stack-contract';
 import { buildModuleLayoutContract } from '../../contracts/module-layout-contract';
@@ -17,6 +18,12 @@ describe('generated shared contracts (Wave B + C)', () => {
   it('keeps committed runtime command surface aligned with the generator', () => {
     expect(readJsonContract('runtime-command-surface.v1.json')).toEqual(
       buildRuntimeCommandSurfaceContract()
+    );
+  });
+
+  it('keeps committed create planner capabilities aligned with the generator', () => {
+    expect(readJsonContract('create-planner-capabilities.v1.json')).toEqual(
+      buildCreatePlannerCapabilitiesContract()
     );
   });
 

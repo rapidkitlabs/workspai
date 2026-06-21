@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { buildImportStackParitySnapshot } from '../src/contracts/import-stack-parity-snapshot.js';
+import { buildCreatePlannerCapabilitiesContract } from '../src/contracts/create-planner-capabilities-contract.js';
 import { buildInfraStackContract } from '../src/contracts/infra-stack-contract.js';
 import { buildModuleLayoutContract } from '../src/contracts/module-layout-contract.js';
 import { buildRuntimeCommandSurfaceContract } from '../src/contracts/runtime-command-surface-contract.js';
@@ -16,6 +17,7 @@ function writeJson(fileName: string, value: unknown) {
 }
 
 writeJson('runtime-command-surface.v1.json', buildRuntimeCommandSurfaceContract());
+writeJson('create-planner-capabilities.v1.json', buildCreatePlannerCapabilitiesContract());
 writeJson('backend-import-stack-parity.snapshot.json', buildImportStackParitySnapshot());
 writeJson('module-layout.v1.json', buildModuleLayoutContract());
 writeJson('infra-stack.v1.json', buildInfraStackContract());

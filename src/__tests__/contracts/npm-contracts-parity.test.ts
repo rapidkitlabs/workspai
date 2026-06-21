@@ -8,6 +8,7 @@ const FRONT_CONTRACTS_DIR = path.resolve(process.cwd(), '..', 'contracts');
 
 const MONOREPO_CONTRACT_FILES = [
   'runtime-command-surface.v1.json',
+  'create-planner-capabilities.v1.json',
   'backend-import-stack-parity.snapshot.json',
   'module-layout.v1.json',
   'pipeline-last-run.v1.json',

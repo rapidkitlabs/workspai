@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-06-21
+
+### Added
+
+- Added the Create Planner capability contract at
+  `contracts/create-planner-capabilities.v1.json`.
+- Added `native-create`, `external-create-adopt`, and `adopt-only` capability
+  lanes for scaffold planning.
+- Added planned external create-adopt modeling for WordPress, Laravel, Symfony,
+  and Rails.
+- Added adopt-only runtime modeling for PHP, Ruby, Rust, Elixir, Clojure,
+  Scala, and Kotlin.
+- Added create planner documentation under `docs/create-planner-capabilities.md`.
+- Added generated-contract and parity coverage for the create planner contract.
+- Added `createCapability` to workspace model and workspace context project
+  summaries.
+
+### Changed
+
+- Extended `contracts/runtime-command-surface.v1.json` with a create planner
+  summary so downstream IDE and AI surfaces can consume the same capability
+  lanes.
+- Updated contract generation and parity sync scripts to include
+  `create-planner-capabilities.v1.json`.
+- Updated contract documentation and the artifact catalog with the new create
+  planner artifact.
+
+### Fixed
+
+- `rapidkit create project` now blocks unsupported native-create attempts before
+  delegating to the underlying scaffolder.
+- WordPress, Laravel, generic PHP, and other unsupported native-create requests
+  no longer fall through to an incorrect RapidKit native kit.
+
+### Verification
+
+- `./node_modules/.bin/vitest run src/__tests__/create-planner-capabilities.test.ts src/__tests__/handle-create-flags.test.ts src/__tests__/contracts/generated-contracts.test.ts src/__tests__/contracts/npm-contracts-parity.test.ts src/__tests__/workspace-model.test.ts src/__tests__/workspace-context.test.ts`
+- `./node_modules/.bin/tsc --noEmit`
+- `./node_modules/.bin/prettier --check src/utils/create-planner-capabilities.ts src/contracts/create-planner-capabilities-contract.ts src/contracts/runtime-command-surface-contract.ts src/workspace-model.ts src/workspace-context.ts src/__tests__/create-planner-capabilities.test.ts src/__tests__/handle-create-flags.test.ts src/__tests__/contracts/generated-contracts.test.ts src/__tests__/contracts/npm-contracts-parity.test.ts src/__tests__/workspace-model.test.ts src/__tests__/workspace-context.test.ts docs/create-planner-capabilities.md docs/contracts/README.md docs/contracts/ARTIFACT_CATALOG.md`
+
 ## [0.37.1] - 2026-06-19
 
 ### Changed

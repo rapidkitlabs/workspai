@@ -7,6 +7,7 @@ const contractsDir = path.resolve(npmRoot, 'contracts');
 
 const GENERATED_FILES = [
   'runtime-command-surface.v1.json',
+  'create-planner-capabilities.v1.json',
   'backend-import-stack-parity.snapshot.json',
   'module-layout.v1.json',
   'infra-stack.v1.json',
