@@ -13,6 +13,7 @@ import {
   finalizeCliRunContext,
   initializeCliRunContext,
   installCliProcessExitHook,
+  normalizeObservabilityInvocation,
 } from './observability/cli-run-context.js';
 import { loadUserConfig, loadRapidKitConfig, mergeConfigs } from './config.js';
 import { validateProjectName } from './validation.js';
@@ -71,6 +72,15 @@ import {
   isProjectCapabilityRequest,
   resolveProjectCommandCapabilities,
 } from './utils/project-command-capabilities.js';
+import {
+  isWorkspaceIntelligenceSubcommand,
+  WORKSPACE_INTELLIGENCE_SUBCOMMANDS,
+  WORKSPACE_SUBCOMMANDS,
+} from './utils/workspace-command-surface.js';
+import { emitWorkspacePhase } from './observability/cli-progress.js';
+import { RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION } from './contracts/runtime-command-surface-contract.js';
+import { CLI_LOG_EVENT_SCHEMA_VERSION } from './contracts/cli-log-event-contract.js';
+import { FRESHNESS_METADATA_SCHEMA_VERSION } from './contracts/freshness-metadata-contract.js';
 import {
   isNpmBackedKit,
   normalizeKitId,
@@ -1361,6 +1371,43 @@ function printProjectCommandCapabilities(options: { json?: boolean } = {}): void
   console.log(chalk.red(`Unsupported: ${capabilities.unsupportedCommands.join(', ') || 'none'}`));
 }
 
+export const COMMAND_CAPABILITIES_SCHEMA_VERSION = 'rapidkit-command-capabilities-v1';
+export const VERSION_CONTRACT_SCHEMA_VERSION = 'rapidkit-version-v1';
+
+/**
+ * Versioned downstream contracts this CLI publishes for IDE/CI consumers.
+ *
+ * Single source of truth shared by `commands --json` and `--version --json` so the
+ * advertised versions can never drift between the two surfaces. The envelope schema
+ * versions (command-capabilities, version) live on their own `schemaVersion` field.
+ */
+export function getPublishedContractVersions() {
+  return {
+    runtimeCommandSurface: RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION,
+    cliLogEvent: CLI_LOG_EVENT_SCHEMA_VERSION,
+    freshnessMetadata: FRESHNESS_METADATA_SCHEMA_VERSION,
+  };
+}
+
+/**
+ * Machine-readable version contract emitted by `rapidkit --version --json`.
+ *
+ * Lets the extension perform its version gate (`MIN_RAPIDKIT_CLI_VERSION`) and
+ * contract-compatibility checks from one structured payload instead of parsing the
+ * bare version string and probing capabilities separately.
+ */
+export function getVersionContract() {
+  return {
+    schemaVersion: VERSION_CONTRACT_SCHEMA_VERSION,
+    cli: 'rapidkit-npm',
+    version: getVersion(),
+    node: process.version,
+    platform: process.platform,
+    capabilitiesSchemaVersion: COMMAND_CAPABILITIES_SCHEMA_VERSION,
+    contracts: getPublishedContractVersions(),
+  };
+}
+
 export function getGlobalCommandCapabilities() {
   const npmOwned = [...NPM_ONLY_TOP_LEVEL_COMMANDS, 'project'];
   const coreBacked = [
@@ -1382,16 +1429,28 @@ export function getGlobalCommandCapabilities() {
     'modules',
   ];
   const projectScoped = ['init', 'dev', 'start', 'build', 'test', 'lint', 'format', 'help'];
+  const workspaceSubcommands = [...WORKSPACE_SUBCOMMANDS];
+  const workspaceIntelligenceSubcommands = [...WORKSPACE_INTELLIGENCE_SUBCOMMANDS];
 
   return {
+    schemaVersion: COMMAND_CAPABILITIES_SCHEMA_VERSION,
     scope: 'global',
     cli: 'rapidkit-npm',
     version: getVersion(),
     cwd: process.cwd(),
+    // Versioned contracts this CLI publishes. Consumers (Workspai/CI) discover the
+    // machine-readable surfaces here instead of hard-coding versions, so capability
+    // detection stays aligned with `runtime-command-surface.v1` and the log stream.
+    contracts: getPublishedContractVersions(),
     commands: {
       npmOwned,
       coreBacked,
       projectScoped,
+    },
+    workspace: {
+      command: 'workspace',
+      subcommands: workspaceSubcommands,
+      intelligenceSubcommands: workspaceIntelligenceSubcommands,
     },
     commandMap: Object.fromEntries([
       ...npmOwned.map((command) => [
@@ -1439,6 +1498,11 @@ function printGlobalCommandCapabilities(options: { json?: boolean } = {}): void 
   console.log(chalk.green(`npm wrapper: ${capabilities.commands.npmOwned.join(', ')}`));
   console.log(chalk.cyan(`Python core: ${capabilities.commands.coreBacked.join(', ')}`));
   console.log(chalk.yellow(`Project runtime: ${capabilities.commands.projectScoped.join(', ')}`));
+  console.log(
+    chalk.magenta(
+      `Workspace intelligence: ${capabilities.workspace.intelligenceSubcommands.join(', ')}`
+    )
+  );
   console.log('');
   console.log(chalk.gray('Tip: run `rapidkit project commands --json` inside a project.'));
 }
@@ -6034,6 +6098,12 @@ program
   .option('--write', 'Write workspace intelligence artifact to .rapidkit/reports')
   .option('--include-evidence', 'Read status metadata from referenced evidence reports')
   .option('--scan-depth <count>', 'Observable project discovery depth for large monorepos')
+  .option('--cache', 'Reuse cached workspace model when inputs are unchanged (keyed by inputsHash)')
+  .option(
+    '--incremental',
+    'Rebuild only changed projects and re-infer only their incident graph edges (graph-aware)'
+  )
+  .option('--once', 'For workspace watch: do the initial in-memory build and exit (no watcher)')
   .option('--for-agent [agent]', 'Build an agent-ready workspace context pack')
   .option(
     '--agent-sync',
@@ -6098,6 +6168,9 @@ program
       json?: boolean;
       strict?: boolean;
       gates?: boolean;
+      cache?: boolean;
+      incremental?: boolean;
+      once?: boolean;
     };
 
     const requireWorkspaceRootForAction = (actionName: string): string => {
@@ -6134,19 +6207,48 @@ program
       return Number.isFinite(parsed) ? parsed : undefined;
     };
 
+    // Emit a deterministic `progress` start event for every workspace intelligence
+    // command so IDE/CI consumers track phases via `cli-log-event.v1` on stderr.
+    // The terminal outcome is guaranteed by the run lifecycle (run.completed/failed).
+    if (isWorkspaceIntelligenceSubcommand(action)) {
+      emitWorkspacePhase({
+        action,
+        status: 'started',
+        message: `workspace ${action} started`,
+        metadata: {
+          json: actionOptions.json === true || hasRawFlag('--json'),
+          strict: actionOptions.strict === true || hasRawFlag('--strict'),
+        },
+      });
+    }
+
     if (action === 'list') {
       const { listWorkspaces } = await import('./workspace.js');
       await listWorkspaces();
     } else if (action === 'model') {
       const workspacePath = requireWorkspaceRootForAction('model');
-      const { buildWorkspaceModel, writeWorkspaceModel } = await import('./workspace-model.js');
-      const model = await buildWorkspaceModel({
+      const { buildWorkspaceModelCached, buildWorkspaceModelIncremental, writeWorkspaceModel } =
+        await import('./workspace-model.js');
+      const useIncremental = actionOptions.incremental === true || hasRawFlag('--incremental');
+      const useCache = actionOptions.cache === true || hasRawFlag('--cache') || useIncremental;
+      const modelBuildOptions = {
         workspacePath,
         includeAbsolutePaths: actionOptions.includePaths === true || hasRawFlag('--include-paths'),
         includeEvidence: actionOptions.includeEvidence === true || hasRawFlag('--include-evidence'),
         observableScanDepth: workspaceModelScanDepth(),
         strict: actionOptions.strict === true || hasRawFlag('--strict'),
-      });
+      };
+      let model: Awaited<ReturnType<typeof buildWorkspaceModelCached>>['model'];
+      let cacheStatus: string;
+      if (useIncremental) {
+        const incremental = await buildWorkspaceModelIncremental(modelBuildOptions);
+        model = incremental.model;
+        cacheStatus = incremental.mode;
+      } else {
+        const cached = await buildWorkspaceModelCached({ ...modelBuildOptions, cache: useCache });
+        model = cached.model;
+        cacheStatus = cached.cache;
+      }
       let outputPath: string | undefined;
       if (actionOptions.write === true || hasRawFlag('--write')) {
         outputPath = await writeWorkspaceModel(model, workspacePath);
@@ -6162,6 +6264,11 @@ program
         return;
       }
       console.log(chalk.green(`✔ Workspace model: ${model.workspace.name}`));
+      if (useIncremental) {
+        console.log(chalk.gray(`   Build: ${cacheStatus} (incremental)`));
+      } else if (useCache) {
+        console.log(chalk.gray(`   Cache: ${cacheStatus}`));
+      }
       console.log(chalk.gray(`   Projects: ${model.summary.projectCount}`));
       console.log(chalk.gray(`   Runtimes: ${model.summary.runtimes.join(', ') || 'none'}`));
       console.log(chalk.gray(`   Frameworks: ${model.summary.frameworks.join(', ') || 'none'}`));
@@ -6473,9 +6580,8 @@ program
       console.log(chalk.gray(`   Written: ${outputPath}`));
     } else if (action === 'verify') {
       const workspacePath = requireWorkspaceRootForAction('verify');
-      const { buildWorkspaceVerify, writeWorkspaceVerify, workspaceVerifyExitCode } = await import(
-        './workspace-verify.js'
-      );
+      const { buildWorkspaceVerify, writeWorkspaceVerify, evaluateWorkspaceVerifyGate } =
+        await import('./workspace-verify.js');
       const verify = await buildWorkspaceVerify({
         workspacePath,
         fromImpactPath: actionOptions.fromImpact || subaction,
@@ -6485,11 +6591,16 @@ program
         observableScanDepth: workspaceModelScanDepth(),
       });
       const outputPath = await writeWorkspaceVerify(verify, workspacePath);
-      const exitCode = workspaceVerifyExitCode(verify, {
+      const gate = evaluateWorkspaceVerifyGate(verify, {
         strict: actionOptions.strict === true || hasRawFlag('--strict'),
       });
+      const exitCode = gate.exitCode;
+      const { recordWorkspaceHistory, historyEntryFromVerify } = await import(
+        './workspace-history.js'
+      );
+      await recordWorkspaceHistory(workspacePath, historyEntryFromVerify(verify, gate.passed));
       if (actionOptions.json) {
-        console.log(JSON.stringify({ ...verify, outputPath }, null, 2));
+        console.log(JSON.stringify({ ...verify, gate, outputPath }, null, 2));
         if (exitCode !== 0) {
           process.exit(exitCode);
         }
@@ -6502,6 +6613,7 @@ program
             ? chalk.yellow
             : chalk.red;
       console.log(color(`✔ Workspace verify: ${verify.summary.verdict}`));
+      console.log(chalk.gray(`   Freshness: ${verify.freshness.verdict}`));
       console.log(chalk.gray(`   Impact risk: ${verify.impact.risk}`));
       console.log(chalk.gray(`   Steps: ${verify.steps.length}`));
       console.log(
@@ -6515,10 +6627,191 @@ program
       if (verify.steps.length > 10) {
         console.log(chalk.gray(`   … ${verify.steps.length - 10} more step(s)`));
       }
+      if (verify.policyViolations.length > 0) {
+        console.log(
+          chalk.gray(
+            `   Policy (${verify.policyMode}): ${verify.policyViolations.length} violation(s)`
+          )
+        );
+        for (const violation of verify.policyViolations.slice(0, 5)) {
+          const mark = violation.severity === 'error' ? chalk.red('✗') : chalk.yellow('!');
+          console.log(`   ${mark} [${violation.source}] ${violation.code}: ${violation.message}`);
+        }
+      }
+      console.log(chalk.gray(`   Gate (${gate.mode}): ${gate.passed ? 'passed' : 'blocked'}`));
+      for (const reason of gate.reasons.slice(0, 5)) {
+        console.log(chalk.red(`   ✗ ${reason}`));
+      }
       console.log(chalk.gray(`   Written: ${outputPath}`));
       if (exitCode !== 0) {
         process.exit(exitCode);
       }
+    } else if (action === 'graph') {
+      const workspacePath = requireWorkspaceRootForAction('graph');
+      const { buildWorkspaceModel } = await import('./workspace-model.js');
+      const { buildGraphEmit, renderGraphDot, renderGraphMermaid, explainGraphNode } = await import(
+        './workspace-graph.js'
+      );
+      const model = await buildWorkspaceModel({
+        workspacePath,
+        includeAbsolutePaths: actionOptions.includePaths === true || hasRawFlag('--include-paths'),
+        includeEvidence: actionOptions.includeEvidence === true || hasRawFlag('--include-evidence'),
+        observableScanDepth: workspaceModelScanDepth(),
+      });
+      const graph = model.graph;
+      if (!graph) {
+        console.log(chalk.red('❌ Workspace model did not produce a dependency graph.'));
+        process.exit(1);
+      }
+      const mode = (subaction || 'emit').toLowerCase();
+
+      if (mode === 'dot') {
+        console.log(renderGraphDot(graph));
+        return;
+      }
+      if (mode === 'mermaid') {
+        console.log(renderGraphMermaid(graph));
+        return;
+      }
+      if (mode === 'explain') {
+        const project = (actionOptions.scope?.replace(/^project:/, '') || key || '').trim();
+        if (!project) {
+          console.log(chalk.red('❌ workspace graph explain requires a project.'));
+          console.log(chalk.gray('   npx rapidkit workspace graph explain <project> --json'));
+          console.log(chalk.gray('   npx rapidkit workspace graph explain --scope project:<name>'));
+          process.exit(1);
+        }
+        const explain = explainGraphNode(graph, project);
+        if (actionOptions.json) {
+          console.log(JSON.stringify(explain, null, 2));
+          if (!explain.found) {
+            process.exit(1);
+          }
+          return;
+        }
+        if (!explain.found) {
+          console.log(chalk.red(`❌ Project not found in dependency graph: ${project}`));
+          process.exit(1);
+        }
+        console.log(chalk.green(`✔ Graph explain: ${explain.project}`));
+        if (explain.centrality) {
+          console.log(
+            chalk.gray(
+              `   Centrality: fanIn ${explain.centrality.fanIn}, fanOut ${explain.centrality.fanOut}, reach ${explain.centrality.reach}, betweenness ${explain.centrality.betweenness}${explain.centrality.isHotspot ? ' (hotspot)' : ''}`
+            )
+          );
+        }
+        console.log(
+          chalk.gray(`   Direct dependents: ${explain.directDependents.join(', ') || 'none'}`)
+        );
+        console.log(
+          chalk.gray(`   Direct dependencies: ${explain.directDependencies.join(', ') || 'none'}`)
+        );
+        console.log(
+          chalk.gray(
+            `   Blast radius (transitive dependents): ${explain.transitiveDependents.length}`
+          )
+        );
+        for (const item of explain.transitiveDependents.slice(0, 10)) {
+          console.log(chalk.gray(`   • ${item.id} (d${item.distance}, via ${item.via ?? '—'})`));
+        }
+        return;
+      }
+
+      const emit = buildGraphEmit(graph);
+      if (actionOptions.json) {
+        console.log(JSON.stringify(emit, null, 2));
+        return;
+      }
+      console.log(chalk.green('✔ Workspace dependency graph'));
+      console.log(chalk.gray(`   Nodes: ${emit.graph.stats.nodeCount}`));
+      console.log(
+        chalk.gray(
+          `   Edges: ${emit.graph.stats.edgeCount} (inferred ${emit.graph.stats.inferredEdges}, contract ${emit.graph.stats.contractEdges}, manual ${emit.graph.stats.manualEdges})`
+        )
+      );
+      console.log(
+        chalk.gray(
+          `   Integrity: ${emit.integrity.ok ? 'ok' : 'issues'} (cycles ${emit.integrity.stats.cycleCount}, dangling ${emit.integrity.stats.danglingCount}, orphans ${emit.integrity.stats.orphanCount})`
+        )
+      );
+      console.log(chalk.gray(`   Hotspots: ${emit.hotspots.join(', ') || 'none'}`));
+      console.log(chalk.gray('   Render: workspace graph dot | workspace graph mermaid'));
+    } else if (action === 'watch') {
+      const workspacePath = requireWorkspaceRootForAction('watch');
+      const { runWorkspaceWatch } = await import('./workspace-watch.js');
+      const once = actionOptions.once === true || hasRawFlag('--once');
+      const emitJson = actionOptions.json === true;
+      const controller = new AbortController();
+      const onSigint = (): void => controller.abort();
+      process.once('SIGINT', onSigint);
+      process.once('SIGTERM', onSigint);
+
+      if (!emitJson) {
+        console.log(chalk.green('✔ Workspace watch (model + graph kept in memory)'));
+      }
+
+      await runWorkspaceWatch({
+        workspacePath,
+        once,
+        signal: controller.signal,
+        buildOptions: {
+          workspacePath,
+          observableScanDepth: workspaceModelScanDepth(),
+        },
+        onProgress: (message) => {
+          if (!emitJson) {
+            console.error(chalk.gray(`   ${message}`));
+          }
+        },
+        emit: (event) => {
+          if (emitJson) {
+            console.log(JSON.stringify(event));
+            return;
+          }
+          if (event.kind === 'ready') {
+            console.log(
+              chalk.gray(
+                `   Ready: ${event.graph.nodeCount} nodes, ${event.graph.edgeCount} edges (hash ${event.modelHash.slice(0, 12)})`
+              )
+            );
+            return;
+          }
+          if (event.kind === 'error') {
+            console.error(chalk.red(`   ✗ Rebuild failed: ${event.error ?? 'unknown error'}`));
+            return;
+          }
+          if (event.kind === 'unchanged') {
+            console.log(
+              chalk.gray(`   No structural change (${event.mode}, ${event.durationMs}ms)`)
+            );
+            return;
+          }
+          const parts: string[] = [];
+          if (event.changedProjects.length > 0)
+            parts.push(`changed: ${event.changedProjects.join(', ')}`);
+          if (event.addedProjects.length > 0)
+            parts.push(`added: ${event.addedProjects.join(', ')}`);
+          if (event.removedProjects.length > 0)
+            parts.push(`removed: ${event.removedProjects.join(', ')}`);
+          if (event.graph.edgesAdded.length > 0)
+            parts.push(`+${event.graph.edgesAdded.length} edges`);
+          if (event.graph.edgesRemoved.length > 0)
+            parts.push(`-${event.graph.edgesRemoved.length} edges`);
+          console.log(
+            chalk.cyan(
+              `   ↻ Changed (${event.mode}, ${event.durationMs}ms): ${parts.join('; ') || 'structure updated'}`
+            )
+          );
+        },
+      });
+
+      process.removeListener('SIGINT', onSigint);
+      process.removeListener('SIGTERM', onSigint);
+      if (!emitJson && !once) {
+        console.log(chalk.gray('   Watch stopped.'));
+      }
+      return;
     } else if (action === 'sync') {
       const workspacePath = requireWorkspaceRootForAction('sync');
       const { syncWorkspaceProjects } = await import('./workspace.js');
@@ -7015,11 +7308,7 @@ program
       }
     } else {
       console.log(chalk.red(`Unknown workspace action: ${action}`));
-      console.log(
-        chalk.gray(
-          'Available: list, model, context, snapshot, diff, impact, sync, policy, share, export, hydrate, import, run'
-        )
-      );
+      console.log(chalk.gray(`Available: ${WORKSPACE_SUBCOMMANDS.join(', ')}`));
       process.exit(1);
     }
   });
@@ -7384,6 +7673,11 @@ if (shouldBootstrapCli) {
     rapidkitVersion: getVersion(),
   });
 
+  // Make `--log-format json`/`--log-json` sticky via env and strip them from argv
+  // so commander-parsed commands (e.g. `workspace`) don't reject them as unknown
+  // options before the structured log stream can run.
+  normalizeObservabilityInvocation(process.argv);
+
   const preArgs = process.argv.slice(2);
   const preFirst = preArgs[0];
   const preCwd = process.cwd();
@@ -7409,7 +7703,11 @@ if (shouldBootstrapCli) {
     preArgs.some((arg) => arg === '--version' || arg === '-V' || arg === '-v') &&
     !preArgs.some((arg) => arg === '--help' || arg === '-h' || arg === 'help')
   ) {
-    console.log(getVersion());
+    if (preArgs.includes('--json')) {
+      console.log(JSON.stringify(getVersionContract(), null, 2));
+    } else {
+      console.log(getVersion());
+    }
     process.exit(0);
   }
 

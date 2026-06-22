@@ -9,18 +9,29 @@ function read(relativePath: string): string {
 }
 
 describe('shared contracts workflow (Wave A + B)', () => {
-  it('uses rapidkit-npm/contracts as canonical with generate + validate scripts', () => {
+  it('uses one npm-owned script to generate, sync, and validate shared extension contracts', () => {
     const npmPackage = JSON.parse(read('package.json'));
-    const syncScript = read('scripts/sync-import-stack-parity-snapshot.mjs');
+    const syncScript = read('scripts/sync-shared-contracts.mjs');
     const preCommit = read('.husky/pre-commit');
 
-    expect(npmPackage.scripts['validate:contracts']).toContain('check:generated-contracts');
-    expect(npmPackage.scripts['validate:contracts']).toContain('check:parity-snapshot');
+    expect(npmPackage.scripts['sync:shared-contracts']).toContain('sync-shared-contracts');
+    expect(npmPackage.scripts['check:shared-contracts']).toContain('sync-shared-contracts');
+    expect(npmPackage.scripts['validate:contracts']).toContain('check:shared-contracts');
+    expect(npmPackage.scripts['sync:parity-snapshot']).toBe(
+      npmPackage.scripts['sync:shared-contracts']
+    );
+    expect(npmPackage.scripts['check:parity-snapshot']).toBe(
+      npmPackage.scripts['check:shared-contracts']
+    );
     expect(npmPackage.scripts['generate:contracts']).toContain('generate-shared-contracts');
-    expect(syncScript).toContain('Canonical shared contracts live in rapidkit-npm/contracts/');
+    expect(syncScript).toContain('Canonical contracts live in rapidkit-npm/contracts/');
+    expect(syncScript).toContain('runGenerator()');
+    expect(syncScript).toContain('rapidkit-vscode/contracts');
+    expect(syncScript).toContain('rapidkit-vscode/src/contracts');
+    expect(syncScript).toContain('listJsonContracts');
     expect(syncScript).toContain('module-layout.v1.json');
     expect(syncScript).toContain('infra-stack.v1.json');
+    expect(preCommit).toContain('npm run sync:shared-contracts');
     expect(preCommit).toContain('npm run validate:contracts');
-    expect(preCommit).toContain('rapidkit-npm/contracts/');
   });
 });

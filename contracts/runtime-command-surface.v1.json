@@ -39,6 +39,39 @@
   "coreProjectCommands": [
     "docs"
   ],
+  "workspaceSubcommands": [
+    "list",
+    "sync",
+    "registry",
+    "foundation",
+    "model",
+    "snapshot",
+    "diff",
+    "impact",
+    "verify",
+    "graph",
+    "watch",
+    "context",
+    "agent-sync",
+    "policy",
+    "contract",
+    "share",
+    "export",
+    "archive",
+    "hydrate",
+    "import",
+    "run",
+    "init"
+  ],
+  "workspaceIntelligenceSubcommands": [
+    "model",
+    "snapshot",
+    "diff",
+    "impact",
+    "verify",
+    "context",
+    "agent-sync"
+  ],
   "moduleSuggestionFrameworks": [
     "fastapi",
     "nestjs"

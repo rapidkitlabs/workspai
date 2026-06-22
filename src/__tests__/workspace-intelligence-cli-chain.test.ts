@@ -226,6 +226,12 @@ describe('workspace intelligence CLI chain', () => {
         schemaVersion: string;
         summary: { verdict: string; exitCode: number };
         steps: Array<{ id: string; status: string }>;
+        gate: { passed: boolean; mode: string; exitCode: number; reasons: string[] };
+        freshness: { verdict: string; baseline: string; projectHashes: Record<string, string> };
+        policyMode: string;
+        policyViolations: Array<{ source: string; severity: string; code: string }>;
+        graphIntegrity: { ok: boolean };
+        affectedSubgraph: { directlyChanged: string[]; transitiveDependents: string[] };
       }>(verify.output);
       expect(verifyJson.schemaVersion).toBe('workspace-verify.v1');
       expect(verifyJson.summary.verdict).toBe('blocked');
@@ -237,6 +243,37 @@ describe('workspace intelligence CLI chain', () => {
           }),
         ])
       );
+      // New intelligence fields must flow through the real CLI JSON stream (1.18-1.20).
+      expect(verifyJson.gate).toMatchObject({ passed: false, exitCode: 2 });
+      expect(Array.isArray(verifyJson.gate.reasons)).toBe(true);
+      expect(['fresh', 'stale', 'unknown']).toContain(verifyJson.freshness.verdict);
+      expect(typeof verifyJson.policyMode).toBe('string');
+      expect(Array.isArray(verifyJson.policyViolations)).toBe(true);
+      expect(verifyJson.graphIntegrity.ok).toBe(true);
+
+      // Strict gate exercised over the JSON stream: still blocked (exit 2).
+      const verifyStrict = runCli(
+        dist,
+        ['workspace', 'verify', '--strict', '--json'],
+        workspaceDir
+      );
+      expect(verifyStrict.status).toBe(2);
+
+      // History artifact recorded by the verify runs (1.21).
+      const historyPath = path.join(
+        workspaceDir,
+        '.rapidkit',
+        'reports',
+        'workspace-intelligence-history.json'
+      );
+      expect(fs.existsSync(historyPath)).toBe(true);
+      const history = JSON.parse(fs.readFileSync(historyPath, 'utf8')) as {
+        schemaVersion: string;
+        entries: Array<{ verdict: string; gatePassed: boolean }>;
+      };
+      expect(history.schemaVersion).toBe('workspace-intelligence-history.v1');
+      expect(history.entries.length).toBeGreaterThanOrEqual(2);
+      expect(history.entries.at(-1)?.verdict).toBe('blocked');
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }

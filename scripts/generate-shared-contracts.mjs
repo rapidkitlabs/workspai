@@ -15,11 +15,29 @@ const GENERATED_FILES = [
 
 function runGenerator() {
   const scriptPath = path.resolve(npmRoot, 'scripts/run-generate-shared-contracts.ts');
-  const result = spawnSync('npx', ['tsx', scriptPath], {
+  const localTsx = path.resolve(
+    npmRoot,
+    'node_modules',
+    '.bin',
+    process.platform === 'win32' ? 'tsx.cmd' : 'tsx'
+  );
+  const hasLocalTsx = fs.existsSync(localTsx);
+  const result = spawnSync(hasLocalTsx ? localTsx : 'npx', hasLocalTsx ? [scriptPath] : ['tsx', scriptPath], {
     cwd: npmRoot,
     stdio: 'inherit',
     shell: process.platform === 'win32',
   });
+
+  if (result.error) {
+    console.error('Could not run shared contract generator.');
+    console.error(
+      hasLocalTsx
+        ? `Failed runner: ${localTsx}`
+        : 'Neither local node_modules/.bin/tsx nor npx is available.'
+    );
+    console.error('Install npm dependencies or run through npm so npx can resolve tsx.');
+    process.exit(1);
+  }
 
   if (result.status !== 0) {
     process.exit(result.status ?? 1);

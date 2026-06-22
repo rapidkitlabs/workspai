@@ -33,6 +33,34 @@ export function emitCliStepProgress(
   });
 }
 
+/**
+ * Emit a structured `progress` event for a workspace intelligence phase.
+ *
+ * Every workspace intelligence command (model/snapshot/diff/impact/verify/context/
+ * agent-sync) emits at least a `started` phase so IDE/CI consumers get deterministic
+ * progress on stderr (`cli-log-event.v1`) instead of scraping terminal text. The
+ * terminal outcome is covered by the run lifecycle (`run.completed`/`run.failed`).
+ */
+export function emitWorkspacePhase(options: {
+  action: string;
+  status: ProgressStatus;
+  message: string;
+  metadata?: Record<string, unknown>;
+}): void {
+  emitCliLogEvent({
+    level: options.status === 'failed' ? 'error' : options.status === 'warn' ? 'warn' : 'info',
+    event: 'progress',
+    component: 'workspace',
+    message: options.message,
+    metadata: {
+      phase: `workspace.${options.action}`,
+      action: options.action,
+      status: options.status,
+      ...(options.metadata ?? {}),
+    },
+  });
+}
+
 export function emitCliInstallProgress(options: {
   phase?: string;
   status: ProgressStatus;

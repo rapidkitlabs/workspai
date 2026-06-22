@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-dependency-graph.v1.json",
+  "title": "RapidKit Workspace Dependency Graph",
+  "description": "First-class, versioned dependency graph of inter-project relationships consumed by impact, verify, run --blast-radius, and risk weighting.",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "nodes", "edges", "stats"],
+  "properties": {
+    "schemaVersion": {
+      "const": "workspace-dependency-graph.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "path"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "runtime": { "type": "string" },
+          "framework": { "type": "string" },
+          "kind": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "kind", "source", "confidence", "evidence"],
+        "properties": {
+          "from": { "type": "string", "minLength": 1 },
+          "to": { "type": "string", "minLength": 1 },
+          "kind": {
+            "enum": [
+              "code-import",
+              "package-dep",
+              "event-pub-sub",
+              "service-dependsOn",
+              "shared-resource"
+            ]
+          },
+          "source": {
+            "enum": ["inferred", "contract", "manual"]
+          },
+          "confidence": {
+            "enum": ["high", "medium", "low"]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["file"],
+              "properties": {
+                "file": { "type": "string", "minLength": 1 },
+                "detail": { "type": "string" }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "stats": {
+      "type": "object",
+      "required": [
+        "nodeCount",
+        "edgeCount",
+        "inferredEdges",
+        "contractEdges",
+        "manualEdges",
+        "hasCycle"
+      ],
+      "properties": {
+        "nodeCount": { "type": "integer", "minimum": 0 },
+        "edgeCount": { "type": "integer", "minimum": 0 },
+        "inferredEdges": { "type": "integer", "minimum": 0 },
+        "contractEdges": { "type": "integer", "minimum": 0 },
+        "manualEdges": { "type": "integer", "minimum": 0 },
+        "hasCycle": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

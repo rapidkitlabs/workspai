@@ -8,6 +8,7 @@ import {
   type WorkspaceModelValidationResult,
   type WorkspaceModelProject,
 } from './workspace-model.js';
+import { attachRunCorrelation } from './observability/run-correlation.js';
 
 export const WORKSPACE_CONTEXT_SCHEMA_VERSION = 'workspace-context.v1';
 export const WORKSPACE_CONTEXT_AGENT_REPORT_PATH = '.rapidkit/reports/workspace-context-agent.json';
@@ -377,6 +378,6 @@ export async function writeWorkspaceAgentContext(
 ): Promise<string> {
   const outputPath = path.join(workspacePath, WORKSPACE_CONTEXT_AGENT_REPORT_PATH);
   await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJSON(outputPath, context, { spaces: 2 });
+  await fsExtra.writeJSON(outputPath, attachRunCorrelation(context), { spaces: 2 });
   return outputPath;
 }

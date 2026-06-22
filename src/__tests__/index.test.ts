@@ -11,6 +11,7 @@ import { spawnSync } from 'child_process';
 
 import { handleAdoptCommand, handleImportCommand } from '../index';
 import { ensureDistBuilt } from './helpers/dist';
+import { WORKSPACE_SUBCOMMANDS } from '../utils/workspace-command-surface';
 
 interface CliExecOptions {
   cwd?: string;
@@ -1009,9 +1010,8 @@ describe('CLI Entry Point', () => {
         expect(error.exitCode).toBe(1);
         const output = `${error.stdout || ''}\n${error.stderr || ''}`;
         expect(output).toContain('Unknown workspace action: unknown-action');
-        expect(output).toContain(
-          'Available: list, model, context, snapshot, diff, impact, sync, policy, share, export, hydrate, import, run'
-        );
+        // Pin against the canonical workspace command surface (single source of truth).
+        expect(output).toContain(`Available: ${WORKSPACE_SUBCOMMANDS.join(', ')}`);
       }
     });
 

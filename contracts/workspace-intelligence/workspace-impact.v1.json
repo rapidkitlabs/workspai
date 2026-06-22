@@ -11,6 +11,8 @@
     "workspace",
     "summary",
     "affectedProjects",
+    "transitiveImpact",
+    "criticalPathHotspots",
     "workspaceImpact",
     "verificationPlan",
     "agentBrief",
@@ -43,7 +45,8 @@
         "risk",
         "affectedProjects",
         "workspaceItems",
-        "recommendedCommands"
+        "recommendedCommands",
+        "blastRadius"
       ],
       "properties": {
         "changed": { "type": "boolean" },
@@ -52,11 +55,38 @@
         },
         "affectedProjects": { "type": "integer", "minimum": 0 },
         "workspaceItems": { "type": "integer", "minimum": 0 },
-        "recommendedCommands": { "type": "integer", "minimum": 0 }
+        "recommendedCommands": { "type": "integer", "minimum": 0 },
+        "blastRadius": {
+          "type": "object",
+          "required": ["directlyAffected", "transitivelyAffected", "maxDistance", "graphEdges"],
+          "properties": {
+            "directlyAffected": { "type": "integer", "minimum": 0 },
+            "transitivelyAffected": { "type": "integer", "minimum": 0 },
+            "maxDistance": { "type": "integer", "minimum": 0 },
+            "graphEdges": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },
     "affectedProjects": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "transitiveImpact": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "criticalPathHotspots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["project", "fanIn", "fanOut", "reach", "betweenness"],
+        "properties": {
+          "project": { "type": "string" },
+          "fanIn": { "type": "integer", "minimum": 0 },
+          "fanOut": { "type": "integer", "minimum": 0 },
+          "reach": { "type": "integer", "minimum": 0 },
+          "betweenness": { "type": "number", "minimum": 0 }
+        },
+        "additionalProperties": true
+      }
+    },
     "workspaceImpact": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
     "verificationPlan": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
     "agentBrief": {

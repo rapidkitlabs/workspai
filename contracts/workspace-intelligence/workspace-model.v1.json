@@ -41,6 +41,11 @@
       "items": { "type": "object", "additionalProperties": true }
     },
     "contracts": { "type": "object", "additionalProperties": true },
+    "graph": {
+      "type": "object",
+      "description": "First-class inferred dependency graph (workspace-dependency-graph.v1). Additive/optional.",
+      "additionalProperties": true
+    },
     "evidence": { "type": "object", "additionalProperties": true },
     "discovery": { "type": "object", "additionalProperties": true },
     "policies": { "type": "object", "additionalProperties": true },

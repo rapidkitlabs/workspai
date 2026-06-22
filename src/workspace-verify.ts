@@ -13,7 +13,22 @@ import {
   type WorkspaceImpactRisk,
 } from './workspace-intelligence.js';
 import { resolveWorkspaceRunStageReport } from './utils/workspace-run-evidence.js';
-import { buildWorkspaceModel, type BuildWorkspaceModelOptions } from './workspace-model.js';
+import {
+  buildWorkspaceModel,
+  type BuildWorkspaceModelOptions,
+  type WorkspaceModel,
+} from './workspace-model.js';
+import {
+  checkGraphIntegrity,
+  summarizeGraphIntegrity,
+  type WorkspaceGraphIntegrity,
+} from './workspace-graph-integrity.js';
+import {
+  compareFreshness,
+  computeProjectFreshnessHashes,
+  freshnessHashRecord,
+  type FreshnessComparison,
+} from './workspace-graph-freshness.js';
 
 export const WORKSPACE_VERIFY_SCHEMA_VERSION = 'workspace-verify.v1';
 export const WORKSPACE_VERIFY_REPORT_PATH = '.rapidkit/reports/workspace-verify-last-run.json';
@@ -60,6 +75,59 @@ export type WorkspaceVerify = {
   missingEvidence: string[];
   blockingReasons: string[];
   verificationPlan: WorkspaceImpactCommand[];
+  /**
+   * Graph-aware coverage of the entire affected subgraph (1.11): the verdict
+   * gates the changed projects **and** their transitive dependents, not just the
+   * directly-changed node. `uncovered` dependents (failed/missing-required
+   * evidence) become blocking reasons; `unverifiable` projects have no applicable
+   * verification command and are informational only.
+   */
+  affectedSubgraph: WorkspaceVerifyAffectedSubgraph;
+  /**
+   * Structural integrity of the dependency graph (1.13). Cycles and dangling
+   * edges are blocking; orphans are informational.
+   */
+  graphIntegrity: WorkspaceGraphIntegrity;
+  /**
+   * Graph-aware transitive freshness (1.18): an explicit fresh|stale|unknown
+   * verdict vs the previously verified state, using content hashes chained
+   * through the dependency graph.
+   */
+  freshness: WorkspaceVerifyFreshness;
+  /**
+   * Structured policy/contract violations (1.20) so consumers can render them as
+   * blockers directly instead of inferring them from the exit code. In `enforce`
+   * policy mode error-severity violations block; in `warn` mode they escalate to
+   * needs-attention.
+   */
+  policyMode: string;
+  policyViolations: WorkspacePolicyViolation[];
+};
+
+export type WorkspacePolicyViolation = {
+  source: 'model' | 'contract';
+  severity: 'error' | 'warning';
+  code: string;
+  message: string;
+  target?: string;
+};
+
+export type WorkspaceVerifyFreshness = {
+  verdict: FreshnessComparison['verdict'];
+  baseline: FreshnessComparison['baseline'];
+  changed: string[];
+  added: string[];
+  removed: string[];
+  projectHashes: Record<string, string>;
+};
+
+export type WorkspaceVerifyAffectedSubgraph = {
+  totalProjects: number;
+  directlyChanged: string[];
+  transitiveDependents: string[];
+  covered: string[];
+  uncovered: string[];
+  unverifiable: string[];
 };
 
 export type BuildWorkspaceVerifyOptions = Pick<
@@ -466,7 +534,13 @@ async function evaluateCommandEvidence(
   };
 }
 
-function computeVerifySummary(steps: WorkspaceVerifyStep[]): WorkspaceVerify['summary'] {
+function computeVerifySummary(
+  steps: WorkspaceVerifyStep[],
+  graphGate: { blockingReasons: string[]; needsAttention: boolean } = {
+    blockingReasons: [],
+    needsAttention: false,
+  }
+): WorkspaceVerify['summary'] {
   const stepsPassed = steps.filter((step) => step.status === 'pass').length;
   const stepsWarn = steps.filter((step) => step.status === 'warn').length;
   const stepsFailed = steps.filter((step) => step.status === 'fail').length;
@@ -481,10 +555,10 @@ function computeVerifySummary(steps: WorkspaceVerifyStep[]): WorkspaceVerify['su
 
   let verdict: WorkspaceVerifyVerdict = 'ready';
   let exitCode: 0 | 1 | 2 = 0;
-  if (blockingReasons.length > 0) {
+  if (blockingReasons.length > 0 || graphGate.blockingReasons.length > 0) {
     verdict = 'blocked';
     exitCode = 2;
-  } else if (stepsWarn > 0 || requiredMissing > 0) {
+  } else if (stepsWarn > 0 || requiredMissing > 0 || graphGate.needsAttention) {
     verdict = 'needs-attention';
     exitCode = 1;
   }
@@ -498,6 +572,120 @@ function computeVerifySummary(steps: WorkspaceVerifyStep[]): WorkspaceVerify['su
     stepsMissing,
     stepsSkipped,
   };
+}
+
+type SubgraphGateResult = {
+  subgraph: WorkspaceVerifyAffectedSubgraph;
+  blockingReasons: string[];
+  needsAttention: boolean;
+};
+
+/**
+ * Gate the whole affected subgraph (1.11). Walks the directly-changed projects
+ * and their transitive dependents (from the impact report) and checks that each
+ * has a passing/warning verification step. A dependent with failed or
+ * missing-required evidence blocks; a dependent with missing non-required
+ * evidence escalates to needs-attention; a dependent with no applicable
+ * verification command is recorded as unverifiable (informational).
+ */
+export function computeAffectedSubgraphGate(
+  impact: WorkspaceImpact,
+  steps: WorkspaceVerifyStep[]
+): SubgraphGateResult {
+  const directNames = uniqueSorted(
+    impact.affectedProjects
+      .map((item) => item.project?.name)
+      .filter((name): name is string => typeof name === 'string')
+  );
+  const directSet = new Set(directNames.map((name) => name.toLowerCase()));
+  const transitiveNames = uniqueSorted(
+    impact.transitiveImpact
+      .map((item) => item.project?.name)
+      .filter((name): name is string => typeof name === 'string')
+      .filter((name) => !directSet.has(name.toLowerCase()))
+  );
+
+  const projectSteps = new Map<string, WorkspaceVerifyStep[]>();
+  for (const step of steps) {
+    if (step.scope !== 'project' || !step.project) {
+      continue;
+    }
+    const key = step.project.toLowerCase();
+    const bucket = projectSteps.get(key) ?? [];
+    bucket.push(step);
+    projectSteps.set(key, bucket);
+  }
+
+  const covered: string[] = [];
+  const uncovered: string[] = [];
+  const unverifiable: string[] = [];
+  const blockingReasons: string[] = [];
+  let needsAttention = false;
+
+  const classify = (name: string, relationship: 'directly-changed' | 'transitive dependent') => {
+    const ownSteps = projectSteps.get(name.toLowerCase()) ?? [];
+    if (ownSteps.length === 0) {
+      unverifiable.push(name);
+      return;
+    }
+    const failed = ownSteps.filter((step) => step.status === 'fail');
+    const missing = ownSteps.filter((step) => step.status === 'missing');
+    const requiredMissing = missing.filter((step) => step.required);
+    const hasEvidence = ownSteps.some((step) => step.status === 'pass' || step.status === 'warn');
+
+    if (failed.length > 0) {
+      uncovered.push(name);
+      blockingReasons.push(
+        `graph.subgraph.${name}: ${relationship} has failed verification evidence (${failed
+          .map((step) => step.id)
+          .join(', ')}).`
+      );
+      return;
+    }
+    if (requiredMissing.length > 0) {
+      uncovered.push(name);
+      blockingReasons.push(
+        `graph.subgraph.${name}: ${relationship} has missing required verification evidence (${requiredMissing
+          .map((step) => step.id)
+          .join(', ')}).`
+      );
+      return;
+    }
+    if (missing.length > 0) {
+      uncovered.push(name);
+      needsAttention = true;
+      return;
+    }
+    if (hasEvidence) {
+      covered.push(name);
+      return;
+    }
+    unverifiable.push(name);
+  };
+
+  for (const name of directNames) {
+    classify(name, 'directly-changed');
+  }
+  for (const name of transitiveNames) {
+    classify(name, 'transitive dependent');
+  }
+
+  return {
+    subgraph: {
+      totalProjects: directNames.length + transitiveNames.length,
+      directlyChanged: directNames,
+      transitiveDependents: transitiveNames,
+      covered: uniqueSorted(covered),
+      uncovered: uniqueSorted(uncovered),
+      unverifiable: uniqueSorted(unverifiable),
+    },
+    blockingReasons,
+    needsAttention,
+  };
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
 
 async function resolveImpactForVerify(
@@ -560,8 +748,16 @@ async function resolveImpactForVerify(
         affectedProjects: 0,
         workspaceItems: 0,
         recommendedCommands: 0,
+        blastRadius: {
+          directlyAffected: 0,
+          transitivelyAffected: 0,
+          maxDistance: 0,
+          graphEdges: model.graph?.edges.length ?? 0,
+        },
       },
       affectedProjects: [],
+      transitiveImpact: [],
+      criticalPathHotspots: [],
       workspaceImpact: [],
       verificationPlan: [],
       agentBrief: {
@@ -622,13 +818,47 @@ export async function buildWorkspaceVerify(
     );
   }
 
-  const summary = computeVerifySummary(steps);
+  const subgraphGate = computeAffectedSubgraphGate(impact, steps);
+  const graphIntegrity = checkGraphIntegrity(model.graph ?? { nodes: [], edges: [] });
+
+  const freshnessHashes = computeProjectFreshnessHashes(model);
+  const priorVerify = await readPriorVerifyReport(workspacePath);
+  const freshnessComparison = compareFreshness(
+    freshnessHashes,
+    priorVerify?.freshness?.projectHashes
+  );
+  const freshness: WorkspaceVerifyFreshness = {
+    verdict: freshnessComparison.verdict,
+    baseline: freshnessComparison.baseline,
+    changed: freshnessComparison.changed,
+    added: freshnessComparison.added,
+    removed: freshnessComparison.removed,
+    projectHashes: freshnessHashRecord(freshnessHashes),
+  };
+  const integrityReasons = summarizeGraphIntegrity(graphIntegrity);
+  const policyMode = model.policies?.mode ?? 'warn';
+  const policyViolations = await collectPolicyViolations(model, workspacePath);
+  const policyDecision = policyGate(policyMode, policyViolations);
+  const summary = computeVerifySummary(steps, {
+    blockingReasons: [
+      ...subgraphGate.blockingReasons,
+      ...integrityReasons,
+      ...policyDecision.blockingReasons,
+    ],
+    needsAttention: subgraphGate.needsAttention || policyDecision.needsAttention,
+  });
   const missingEvidence = steps
     .filter((step) => step.status === 'missing' && step.evidencePath)
     .map((step) => step.evidencePath as string);
-  const blockingReasons = steps
+  const stepBlockingReasons = steps
     .filter((step) => step.required && (step.status === 'fail' || step.status === 'missing'))
     .map((step) => `${step.id}: ${step.message}`);
+  const blockingReasons = [
+    ...stepBlockingReasons,
+    ...subgraphGate.blockingReasons,
+    ...integrityReasons,
+    ...policyDecision.blockingReasons,
+  ];
 
   return {
     schemaVersion: WORKSPACE_VERIFY_SCHEMA_VERSION,
@@ -648,7 +878,94 @@ export async function buildWorkspaceVerify(
     missingEvidence,
     blockingReasons,
     verificationPlan,
+    affectedSubgraph: subgraphGate.subgraph,
+    graphIntegrity,
+    freshness,
+    policyMode,
+    policyViolations,
   };
+}
+
+async function collectPolicyViolations(
+  model: WorkspaceModel,
+  workspacePath: string
+): Promise<WorkspacePolicyViolation[]> {
+  const violations: WorkspacePolicyViolation[] = [];
+
+  for (const issue of model.validation?.issues ?? []) {
+    violations.push({
+      source: 'model',
+      severity: issue.severity,
+      code: issue.code,
+      message: issue.message,
+      target: issue.target,
+    });
+  }
+
+  const contractReportPath = path.join(
+    workspacePath,
+    '.rapidkit',
+    'reports',
+    'workspace-contract-verify-last-run.json'
+  );
+  try {
+    if (await fsExtra.pathExists(contractReportPath)) {
+      const payload = (await fsExtra.readJson(contractReportPath)) as {
+        violations?: unknown;
+      };
+      if (Array.isArray(payload.violations)) {
+        for (const entry of payload.violations) {
+          if (typeof entry === 'string' && entry.trim().length > 0) {
+            violations.push({
+              source: 'contract',
+              severity: 'error',
+              code: 'contract.violation',
+              message: entry,
+            });
+          }
+        }
+      }
+    }
+  } catch {
+    // best-effort; contract evidence is optional
+  }
+
+  return violations.sort((a, b) => {
+    if (a.source !== b.source) return a.source.localeCompare(b.source);
+    if (a.code !== b.code) return a.code.localeCompare(b.code);
+    return a.message.localeCompare(b.message);
+  });
+}
+
+function policyGate(
+  policyMode: string,
+  violations: WorkspacePolicyViolation[]
+): { blockingReasons: string[]; needsAttention: boolean } {
+  const errors = violations.filter((violation) => violation.severity === 'error');
+  if (policyMode === 'enforce' && errors.length > 0) {
+    return {
+      blockingReasons: errors.map((violation) => `policy.${violation.code}: ${violation.message}`),
+      needsAttention: false,
+    };
+  }
+  // In warn mode (or enforce mode with only warnings) error-severity violations
+  // warrant attention; pure warnings are surfaced but do not change the verdict.
+  return { blockingReasons: [], needsAttention: errors.length > 0 };
+}
+
+async function readPriorVerifyReport(workspacePath: string): Promise<WorkspaceVerify | null> {
+  const reportPath = path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH);
+  try {
+    if (!(await fsExtra.pathExists(reportPath))) {
+      return null;
+    }
+    const payload = (await fsExtra.readJson(reportPath)) as Partial<WorkspaceVerify>;
+    return payload && payload.schemaVersion === WORKSPACE_VERIFY_SCHEMA_VERSION
+      ? (payload as WorkspaceVerify)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function writeWorkspaceVerify(
@@ -661,10 +978,74 @@ export async function writeWorkspaceVerify(
   return outputPath;
 }
 
+export type WorkspaceVerifyGateMode = 'default' | 'strict';
+
+export type WorkspaceVerifyGateDecision = {
+  /** Whether the action guarded by this gate is allowed to proceed. */
+  passed: boolean;
+  mode: WorkspaceVerifyGateMode;
+  exitCode: 0 | 1 | 2;
+  /** Deterministic, ordered reasons the gate failed (empty when passed). */
+  reasons: string[];
+};
+
+/**
+ * Definitive verify gate (roadmap 1.19). This is THE contract used before
+ * high-risk actions: callers must treat `passed === false` as a hard stop.
+ *
+ * Default mode: fails only on a `blocked` verdict (exit 2).
+ * Strict mode additionally fails on `needs-attention` and on a graph-aware
+ * `stale` freshness verdict (exit 1) — i.e. the workspace must be in a fully
+ * green, freshly-verified state. Reasons are surfaced so the extension/CI can
+ * render the blocker without re-deriving it.
+ */
+export function evaluateWorkspaceVerifyGate(
+  verify: WorkspaceVerify,
+  options?: { strict?: boolean }
+): WorkspaceVerifyGateDecision {
+  const mode: WorkspaceVerifyGateMode = options?.strict ? 'strict' : 'default';
+  const reasons: string[] = [];
+
+  if (verify.summary.verdict === 'blocked') {
+    reasons.push(...verify.blockingReasons);
+    if (reasons.length === 0) {
+      reasons.push('verify verdict is blocked.');
+    }
+    return { passed: false, mode, exitCode: 2, reasons };
+  }
+
+  if (mode === 'strict') {
+    if (verify.summary.verdict !== 'ready') {
+      reasons.push(`verify verdict is ${verify.summary.verdict} (strict requires ready).`);
+    }
+    if (verify.freshness.verdict === 'stale') {
+      const detail = [...verify.freshness.changed, ...verify.freshness.added].slice(0, 5);
+      reasons.push(
+        `freshness is stale${detail.length > 0 ? `: ${detail.join(', ')}` : ''} (strict requires fresh).`
+      );
+    }
+    if (reasons.length > 0) {
+      return { passed: false, mode, exitCode: 1, reasons };
+    }
+  }
+
+  return {
+    passed: true,
+    mode,
+    exitCode: verify.summary.exitCode === 2 ? 0 : verify.summary.exitCode,
+    reasons,
+  };
+}
+
 export function workspaceVerifyExitCode(
   verify: WorkspaceVerify,
   options?: { strict?: boolean }
 ): number {
+  // Back-compat thin wrapper over the definitive gate (1.19).
+  const decision = evaluateWorkspaceVerifyGate(verify, options);
+  if (!decision.passed) {
+    return decision.exitCode;
+  }
   if (verify.summary.verdict === 'blocked') {
     return 2;
   }

@@ -8,10 +8,13 @@ import {
   setCliRunId,
 } from '../observability/cli-log-event.js';
 import { resolveCliLogFormat } from '../observability/cli-log-format.js';
+import { emitWorkspacePhase } from '../observability/cli-progress.js';
+import { isWorkspaceIntelligenceSubcommand } from '../utils/workspace-command-surface.js';
 import {
   finalizeCliRunContext,
   initializeCliRunContext,
   installCliProcessExitHook,
+  normalizeObservabilityInvocation,
   resetCliProcessExitHookForTests,
   resetCliRunContextForTests,
 } from '../observability/cli-run-context.js';
@@ -118,6 +121,97 @@ describe('cli observability', () => {
     finalizeCliRunContext(0);
 
     expect(stderrWrite).not.toHaveBeenCalled();
+  });
+
+  it('emits a structured progress event for workspace intelligence phases (1.3)', () => {
+    process.env.RAPIDKIT_LOG_FORMAT = 'json';
+    setCliRunId('run-ws-12345678');
+
+    emitWorkspacePhase({
+      action: 'verify',
+      status: 'started',
+      message: 'workspace verify started',
+      metadata: { json: true, strict: true },
+    });
+
+    expect(stderrWrite).toHaveBeenCalledTimes(1);
+    const event = JSON.parse(String(stderrWrite.mock.calls[0][0]).trim());
+    expect(event.schemaVersion).toBe(CLI_LOG_EVENT_SCHEMA_VERSION);
+    expect(event.event).toBe('progress');
+    expect(event.component).toBe('workspace');
+    expect(event.runId).toBe('run-ws-12345678');
+    expect(event.metadata.phase).toBe('workspace.verify');
+    expect(event.metadata.action).toBe('verify');
+    expect(event.metadata.status).toBe('started');
+    expect(event.metadata.json).toBe(true);
+    expect(event.metadata.strict).toBe(true);
+  });
+
+  it('maps failed/warn workspace phases to the matching log level', () => {
+    process.env.RAPIDKIT_LOG_FORMAT = 'json';
+
+    emitWorkspacePhase({ action: 'impact', status: 'failed', message: 'impact failed' });
+    emitWorkspacePhase({ action: 'diff', status: 'warn', message: 'diff warning' });
+
+    const failed = JSON.parse(String(stderrWrite.mock.calls[0][0]).trim());
+    const warned = JSON.parse(String(stderrWrite.mock.calls[1][0]).trim());
+    expect(failed.level).toBe('error');
+    expect(warned.level).toBe('warn');
+  });
+
+  it('does not emit workspace phase events in text mode', () => {
+    emitWorkspacePhase({ action: 'model', status: 'started', message: 'model started' });
+    expect(stderrWrite).not.toHaveBeenCalled();
+  });
+
+  it('instruments every canonical intelligence subcommand', () => {
+    for (const action of [
+      'model',
+      'snapshot',
+      'diff',
+      'impact',
+      'verify',
+      'context',
+      'agent-sync',
+    ]) {
+      expect(isWorkspaceIntelligenceSubcommand(action), action).toBe(true);
+    }
+  });
+
+  describe('normalizeObservabilityInvocation (1.3/1.4)', () => {
+    let originalArgv: string[];
+
+    beforeEach(() => {
+      originalArgv = process.argv;
+    });
+
+    afterEach(() => {
+      process.argv = originalArgv;
+    });
+
+    it('makes --log-format json sticky via env and strips the flag from argv', () => {
+      process.argv = ['node', 'rapidkit', 'workspace', 'model', '--log-format', 'json', '--json'];
+      normalizeObservabilityInvocation(process.argv);
+
+      expect(process.env.RAPIDKIT_LOG_FORMAT).toBe('json');
+      // The observability flag is stripped so commander never sees it...
+      expect(process.argv).toEqual(['node', 'rapidkit', 'workspace', 'model', '--json']);
+      // ...but the result flag (--json) is preserved for channel separation.
+      expect(process.argv).toContain('--json');
+    });
+
+    it('strips --log-json alias too', () => {
+      process.argv = ['node', 'rapidkit', 'workspace', 'verify', '--log-json'];
+      normalizeObservabilityInvocation(process.argv);
+      expect(process.env.RAPIDKIT_LOG_FORMAT).toBe('json');
+      expect(process.argv).toEqual(['node', 'rapidkit', 'workspace', 'verify']);
+    });
+
+    it('leaves argv untouched in text mode', () => {
+      process.argv = ['node', 'rapidkit', 'workspace', 'model'];
+      normalizeObservabilityInvocation(process.argv);
+      expect(process.argv).toEqual(['node', 'rapidkit', 'workspace', 'model']);
+    });
   });
 
   it('finalizes run context when process.exit is hooked', () => {

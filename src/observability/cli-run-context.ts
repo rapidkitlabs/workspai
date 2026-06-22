@@ -5,7 +5,7 @@ import {
   type CliLogEventV1,
 } from '../contracts/cli-log-event-contract.js';
 import { emitCliLogEventRecord, setCliRunId } from './cli-log-event.js';
-import { isCliJsonLogFormat } from './cli-log-format.js';
+import { isCliJsonLogFormat, resolveCliLogFormat } from './cli-log-format.js';
 
 export type CliRunContext = {
   runId: string;
@@ -80,6 +80,27 @@ export function finalizeCliRunContext(exitCode: number, message?: string): void 
   }
 
   activeRun = null;
+}
+
+/**
+ * Normalize the observability invocation so the structured log stream works for
+ * every command (including commander-parsed ones like `workspace`).
+ *
+ * The `--log-format json` / `--log-json` flags are not registered as commander
+ * options, so commander would reject them with "unknown option" before a command
+ * runs. We resolve the format once, make it sticky via `RAPIDKIT_LOG_FORMAT` (which
+ * `isCliJsonLogFormat()` reads first), then strip the flags from `process.argv` so
+ * downstream parsers never see them. Delegated child CLIs inherit the env var.
+ */
+export function normalizeObservabilityInvocation(argv: string[] = process.argv): void {
+  if (resolveCliLogFormat(argv) === 'json') {
+    process.env.RAPIDKIT_LOG_FORMAT = 'json';
+  }
+  const head = argv.slice(0, 2);
+  const rest = filterObservabilityArgs(argv.slice(2));
+  if (rest.length !== argv.length - 2) {
+    process.argv = [...head, ...rest];
+  }
 }
 
 function filterObservabilityArgs(args: readonly string[]): string[] {

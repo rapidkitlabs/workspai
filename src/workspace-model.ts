@@ -19,6 +19,21 @@ import {
   resolveCreatePlannerCapability,
   type CreatePlannerCapability,
 } from './utils/create-planner-capabilities.js';
+import { attachRunCorrelation } from './observability/run-correlation.js';
+import {
+  inferWorkspaceDependencyGraph,
+  inferWorkspaceDependencyGraphIncremental,
+} from './workspace-dependency-graph.js';
+import type { WorkspaceDependencyGraph } from './contracts/workspace-dependency-graph-contract.js';
+import {
+  computeModelInputsHash,
+  computeProjectSignatures,
+  computeWorkspaceFileSignatures,
+  getRapidkitCliVersion,
+  readWorkspaceModelCache,
+  writeWorkspaceModelCache,
+} from './workspace-model-cache.js';
+import { readWorkspaceContract, type WorkspaceContract } from './utils/workspace-contract.js';
 import { readRapidkitProjectJson } from './utils/runtime-detection.js';
 import { getRuntimeSupport } from './utils/support-matrix.js';
 import { discoverWorkspaceProjects } from './utils/workspace-discovery.js';
@@ -122,6 +137,12 @@ export type WorkspaceModel = {
     exists: boolean;
     status: 'known' | 'missing' | 'unknown';
   };
+  /**
+   * First-class, automatically-inferred dependency graph (workspace-dependency-graph.v1).
+   * Additive and optional for back-compatibility with pre-graph readers; deterministic
+   * (see `hashModel`, which normalizes the graph's `generatedAt`).
+   */
+  graph?: WorkspaceDependencyGraph;
   evidence: Record<string, WorkspaceModelEvidenceRef | null>;
   summary: {
     projectCount: number;
@@ -140,7 +161,27 @@ export type BuildWorkspaceModelOptions = {
   observableScanDepth?: number;
   strict?: boolean;
   now?: Date;
+  /**
+   * Opt-in model/graph cache keyed by `inputsHash` (1.15). Honored only by
+   * `buildWorkspaceModelCached`; `buildWorkspaceModel` always rebuilds.
+   */
+  cache?: boolean;
+  /**
+   * Incremental reuse (1.16): cached project models keyed by relative path. For
+   * paths present here the cached model is reused instead of being rebuilt.
+   */
+  reuseProjectModels?: Map<string, WorkspaceModelProject>;
+  /** Incremental graph inference context (1.16). */
+  incrementalGraph?: {
+    previousGraph: WorkspaceDependencyGraph;
+    changedProjectIds: Set<string>;
+    structuralChange: boolean;
+  };
 };
+
+export type WorkspaceModelCacheStatus = 'hit' | 'miss' | 'disabled';
+
+export type WorkspaceModelIncrementalMode = 'full' | 'incremental' | 'unchanged';
 
 const OBSERVABLE_PROJECT_MARKERS = [
   'package.json',
@@ -760,10 +801,24 @@ export async function buildWorkspaceModel(
       path.isAbsolute(project.path) ? project.path : path.join(workspacePath, project.path)
     ),
   ]);
+  const reuseProjectModels = input.reuseProjectModels;
   const projects = await Promise.all(
-    projectPaths.map((projectPath) =>
-      buildProjectModel(workspacePath, projectPath, { includeAbsolutePaths, includeEvidence })
-    )
+    projectPaths.map((projectPath) => {
+      if (reuseProjectModels) {
+        const rel = path
+          .relative(workspacePath, path.resolve(projectPath))
+          .split(path.sep)
+          .join('/');
+        const cached = reuseProjectModels.get(rel);
+        if (cached) {
+          return Promise.resolve(cached);
+        }
+      }
+      return buildProjectModel(workspacePath, projectPath, {
+        includeAbsolutePaths,
+        includeEvidence,
+      });
+    })
   );
 
   const workspaceName =
@@ -861,11 +916,347 @@ export async function buildWorkspaceModel(
       observedProjects: projects.filter((project) => project.supportTier === 'observed').length,
     },
   };
-  const validation = validateWorkspaceModel(model);
+  const graph = await inferModelDependencyGraph(workspacePath, model as WorkspaceModel, {
+    contractExists,
+    now,
+    incrementalGraph: input.incrementalGraph,
+  });
+  const modelWithGraph: Omit<WorkspaceModel, 'validation'> = { ...model, graph };
+
+  const validation = validateWorkspaceModel(modelWithGraph);
   return {
-    ...model,
+    ...modelWithGraph,
     validation,
   };
+}
+
+/**
+ * Build the workspace model with the opt-in `inputsHash` cache (1.15). On a cache
+ * hit the stored model is returned byte-for-byte (skipping the expensive
+ * per-project + graph-inference rebuild); on a miss the freshly built model is
+ * persisted. When `cache` is not requested this delegates straight to
+ * `buildWorkspaceModel` and reports `disabled`.
+ */
+export async function buildWorkspaceModelCached(
+  input: BuildWorkspaceModelOptions
+): Promise<{ model: WorkspaceModel; cache: WorkspaceModelCacheStatus }> {
+  if (input.cache !== true) {
+    return { model: await buildWorkspaceModel(input), cache: 'disabled' };
+  }
+
+  const workspacePath = path.resolve(input.workspacePath);
+  const observableScanDepth = resolveObservableScanDepth(input.observableScanDepth);
+  const cliVersion = getRapidkitCliVersion();
+
+  const [marker, workspaceJson, importedProjects, rapidkitProjectPaths, observableProjectPaths] =
+    await Promise.all([
+      readWorkspaceMarker(workspacePath),
+      readWorkspaceJson(workspacePath),
+      readImportedProjectsRegistry(workspacePath),
+      discoverWorkspaceProjects(workspacePath, { descendIntoMatchedProjects: false }),
+      discoverObservableProjectRoots(workspacePath, observableScanDepth),
+    ]);
+  const projectPaths = collectUniquePaths([
+    ...rapidkitProjectPaths,
+    ...observableProjectPaths,
+    ...importedProjects.map((project) =>
+      path.isAbsolute(project.path) ? project.path : path.join(workspacePath, project.path)
+    ),
+  ]);
+
+  const inputsHash = await computeModelInputsHash({
+    workspacePath,
+    cliVersion,
+    flags: {
+      includeAbsolutePaths: input.includeAbsolutePaths === true,
+      includeEvidence: input.includeEvidence === true,
+      observableScanDepth,
+    },
+    projectPaths,
+    workspaceJson,
+    marker,
+  });
+
+  const cached = await readWorkspaceModelCache(workspacePath);
+  if (cached && cached.cliVersion === cliVersion && cached.inputsHash === inputsHash) {
+    return { model: cached.model, cache: 'hit' };
+  }
+
+  const model = await buildWorkspaceModel({ ...input, cache: false });
+  const [projectSignatures, workspaceFileSignatures] = await Promise.all([
+    computeProjectSignatures(workspacePath, projectPaths),
+    computeWorkspaceFileSignatures(workspacePath),
+  ]);
+  await writeWorkspaceModelCache(workspacePath, {
+    cliVersion,
+    inputsHash,
+    generatedAt: (input.now ?? new Date()).toISOString(),
+    model,
+    projectSignatures,
+    workspaceFileSignatures,
+  });
+  return { model, cache: 'miss' };
+}
+
+function diffSignatureMaps(
+  previous: Record<string, string>,
+  current: Record<string, string>
+): { changed: Set<string>; added: Set<string>; removed: Set<string> } {
+  const changed = new Set<string>();
+  const added = new Set<string>();
+  const removed = new Set<string>();
+  for (const [key, value] of Object.entries(current)) {
+    if (!(key in previous)) {
+      added.add(key);
+    } else if (previous[key] !== value) {
+      changed.add(key);
+    }
+  }
+  for (const key of Object.keys(previous)) {
+    if (!(key in current)) {
+      removed.add(key);
+    }
+  }
+  return { changed, added, removed };
+}
+
+function shallowSignaturesEqual(
+  a: Record<string, string> = {},
+  b: Record<string, string> = {}
+): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (a[key] !== b[key]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Graph-aware incremental model build (roadmap 1.16). Reuses cached project
+ * models for unchanged projects and re-infers only the dependency-graph edges
+ * incident to changed projects. Falls back to a full rebuild when no compatible
+ * cache exists or when workspace-level inputs (contract/workspace.json/policies)
+ * change. When nothing changed at all the cached model is returned as `unchanged`.
+ */
+export async function buildWorkspaceModelIncremental(
+  input: BuildWorkspaceModelOptions
+): Promise<{ model: WorkspaceModel; mode: WorkspaceModelIncrementalMode }> {
+  const workspacePath = path.resolve(input.workspacePath);
+  const observableScanDepth = resolveObservableScanDepth(input.observableScanDepth);
+  const cliVersion = getRapidkitCliVersion();
+  const now = input.now ?? new Date();
+
+  const [marker, workspaceJson, importedProjects, rapidkitProjectPaths, observableProjectPaths] =
+    await Promise.all([
+      readWorkspaceMarker(workspacePath),
+      readWorkspaceJson(workspacePath),
+      readImportedProjectsRegistry(workspacePath),
+      discoverWorkspaceProjects(workspacePath, { descendIntoMatchedProjects: false }),
+      discoverObservableProjectRoots(workspacePath, observableScanDepth),
+    ]);
+  const projectPaths = collectUniquePaths([
+    ...rapidkitProjectPaths,
+    ...observableProjectPaths,
+    ...importedProjects.map((project) =>
+      path.isAbsolute(project.path) ? project.path : path.join(workspacePath, project.path)
+    ),
+  ]);
+
+  const cached = await readWorkspaceModelCache(workspacePath);
+  const buildFull = async (): Promise<{ model: WorkspaceModel; mode: 'full' }> => {
+    const model = await buildWorkspaceModel({ ...input, cache: false });
+    const inputsHash = await computeModelInputsHash({
+      workspacePath,
+      cliVersion,
+      flags: {
+        includeAbsolutePaths: input.includeAbsolutePaths === true,
+        includeEvidence: input.includeEvidence === true,
+        observableScanDepth,
+      },
+      projectPaths,
+      workspaceJson,
+      marker,
+    });
+    const [projectSignatures, workspaceFileSignatures] = await Promise.all([
+      computeProjectSignatures(workspacePath, projectPaths),
+      computeWorkspaceFileSignatures(workspacePath),
+    ]);
+    await writeWorkspaceModelCache(workspacePath, {
+      cliVersion,
+      inputsHash,
+      generatedAt: now.toISOString(),
+      model,
+      projectSignatures,
+      workspaceFileSignatures,
+    });
+    return { model, mode: 'full' };
+  };
+
+  if (
+    !cached ||
+    cached.cliVersion !== cliVersion ||
+    !cached.projectSignatures ||
+    !cached.model?.graph
+  ) {
+    return buildFull();
+  }
+
+  const currentWorkspaceSignatures = await computeWorkspaceFileSignatures(workspacePath);
+  if (!shallowSignaturesEqual(cached.workspaceFileSignatures, currentWorkspaceSignatures)) {
+    // Workspace contract / config changed: affects all projects + graph contract
+    // edges, so rebuild fully to stay correct.
+    return buildFull();
+  }
+
+  const currentProjectSignatures = await computeProjectSignatures(workspacePath, projectPaths);
+  const { changed, added, removed } = diffSignatureMaps(
+    cached.projectSignatures,
+    currentProjectSignatures
+  );
+
+  if (changed.size === 0 && added.size === 0 && removed.size === 0) {
+    return { model: cached.model, mode: 'unchanged' };
+  }
+
+  // Reuse cached project models for projects whose signature is unchanged.
+  const changedOrAddedRel = new Set([...changed, ...added]);
+  const reuseProjectModels = new Map<string, WorkspaceModelProject>();
+  for (const project of cached.model.projects) {
+    const rel = project.path.split(path.sep).join('/');
+    if (!changedOrAddedRel.has(rel) && !removed.has(rel)) {
+      reuseProjectModels.set(rel, project);
+    }
+  }
+
+  // Names whose outgoing code-import edges must be re-scanned. A renamed changed
+  // project (graph node id changes) is treated as a structural change.
+  const changedProjectIds = new Set<string>();
+  let renameDetected = false;
+  for (const project of cached.model.projects) {
+    const rel = project.path.split(path.sep).join('/');
+    if (changed.has(rel)) {
+      changedProjectIds.add(project.name);
+    }
+  }
+
+  const structuralChange = added.size > 0 || removed.size > 0;
+
+  const model = await buildWorkspaceModel({
+    ...input,
+    cache: false,
+    reuseProjectModels,
+    incrementalGraph: {
+      previousGraph: cached.model.graph,
+      changedProjectIds,
+      structuralChange: structuralChange || renameDetected,
+    },
+  });
+
+  // Detect a rename among changed projects (cached name vs rebuilt name); if so,
+  // the scoped graph result may be stale, so rebuild fully for correctness.
+  for (const project of cached.model.projects) {
+    const rel = project.path.split(path.sep).join('/');
+    if (!changed.has(rel)) {
+      continue;
+    }
+    const rebuilt = model.projects.find(
+      (candidate) => candidate.path.split(path.sep).join('/') === rel
+    );
+    if (rebuilt && rebuilt.name !== project.name) {
+      renameDetected = true;
+      break;
+    }
+  }
+  if (renameDetected) {
+    return buildFull();
+  }
+
+  const inputsHash = await computeModelInputsHash({
+    workspacePath,
+    cliVersion,
+    flags: {
+      includeAbsolutePaths: input.includeAbsolutePaths === true,
+      includeEvidence: input.includeEvidence === true,
+      observableScanDepth,
+    },
+    projectPaths,
+    workspaceJson,
+    marker,
+  });
+  await writeWorkspaceModelCache(workspacePath, {
+    cliVersion,
+    inputsHash,
+    generatedAt: now.toISOString(),
+    model,
+    projectSignatures: currentProjectSignatures,
+    workspaceFileSignatures: currentWorkspaceSignatures,
+  });
+  return { model, mode: 'incremental' };
+}
+
+async function loadWorkspaceContractSafely(
+  workspacePath: string
+): Promise<WorkspaceContract | null> {
+  try {
+    const { contract } = await readWorkspaceContract({ workspacePath });
+    return contract && typeof contract === 'object' ? contract : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Infer the first-class dependency graph for the model. Failures degrade to an
+ * empty (but valid) graph so a single bad manifest never breaks model building;
+ * the field stays present and deterministic for downstream consumers.
+ */
+async function inferModelDependencyGraph(
+  workspacePath: string,
+  model: WorkspaceModel,
+  options: {
+    contractExists: boolean;
+    now: Date;
+    incrementalGraph?: BuildWorkspaceModelOptions['incrementalGraph'];
+  }
+): Promise<WorkspaceDependencyGraph> {
+  const contract = options.contractExists ? await loadWorkspaceContractSafely(workspacePath) : null;
+  try {
+    if (options.incrementalGraph) {
+      return await inferWorkspaceDependencyGraphIncremental({
+        workspacePath,
+        model,
+        contract,
+        now: options.now,
+        previousGraph: options.incrementalGraph.previousGraph,
+        changedProjectIds: options.incrementalGraph.changedProjectIds,
+        structuralChange: options.incrementalGraph.structuralChange,
+      });
+    }
+    return await inferWorkspaceDependencyGraph({
+      workspacePath,
+      model,
+      contract,
+      now: options.now,
+    });
+  } catch {
+    const nodes = model.projects.map((project) => ({ id: project.name, path: project.path }));
+    return {
+      schemaVersion: 'workspace-dependency-graph.v1',
+      generatedAt: options.now.toISOString(),
+      nodes,
+      edges: [],
+      stats: {
+        nodeCount: nodes.length,
+        edgeCount: 0,
+        inferredEdges: 0,
+        contractEdges: 0,
+        manualEdges: 0,
+        hasCycle: false,
+      },
+    };
+  }
 }
 
 export async function writeWorkspaceModel(
@@ -874,6 +1265,6 @@ export async function writeWorkspaceModel(
 ): Promise<string> {
   const outputPath = path.join(workspacePath, WORKSPACE_MODEL_REPORT_PATH);
   await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJSON(outputPath, model, { spaces: 2 });
+  await fsExtra.writeJSON(outputPath, attachRunCorrelation(model), { spaces: 2 });
   return outputPath;
 }

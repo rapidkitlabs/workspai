@@ -7,11 +7,17 @@ import { listFrontendGenerators } from '../../frontend-project';
 import { PROJECT_CAPABILITY_COMMANDS } from '../../utils/project-command-capabilities';
 import { getRuntimeSupport } from '../../utils/support-matrix';
 import { buildRuntimeCommandSurfaceContract } from '../../contracts/runtime-command-surface-contract';
+import {
+  WORKSPACE_INTELLIGENCE_SUBCOMMANDS,
+  WORKSPACE_SUBCOMMANDS,
+} from '../../utils/workspace-command-surface';
 
 type RuntimeSurfaceContract = {
   schemaVersion: string;
   lifecycleCommands: string[];
   coreProjectCommands: string[];
+  workspaceSubcommands: string[];
+  workspaceIntelligenceSubcommands: string[];
   moduleMutationCommands: string[];
   globalCommands: string[];
   universalCommands: string[];
@@ -77,6 +83,21 @@ describe('shared runtime command surface contract (npm)', () => {
         ...contract.globalCommands,
       ])
     );
+  });
+
+  it('publishes the canonical workspace command surface for IDE/CI capability detection', () => {
+    const contract = readContract();
+
+    expect(contract.workspaceSubcommands).toEqual([...WORKSPACE_SUBCOMMANDS]);
+    expect(contract.workspaceIntelligenceSubcommands).toEqual([
+      ...WORKSPACE_INTELLIGENCE_SUBCOMMANDS,
+    ]);
+
+    // Intelligence subcommands must be a subset of the full workspace surface so
+    // consumers can gate the intelligence chain without regex-parsing --help.
+    for (const subcommand of contract.workspaceIntelligenceSubcommands) {
+      expect(contract.workspaceSubcommands).toContain(subcommand);
+    }
   });
 
   it('matches npm runtime support matrix exactly', () => {

@@ -1,6 +1,86 @@
 # Release Notes
 
-## Latest Release: v0.38.0 (June 21, 2026)
+## Latest Release: v0.39.0 (June 22, 2026)
+
+### Graph-Aware Workspace Intelligence Engine
+
+This minor release makes the workspace dependency graph a first-class,
+deterministic part of the workspace model, and routes impact, verification,
+freshness, risk, and a new watch/daemon mode through that single graph.
+
+The engine is language- and framework-agnostic: it works the same for projects
+created with a RapidKit kit or imported/adopted from an existing repository, and
+across Python, Node, Go, Java, .NET, and observed runtimes such as PHP, Ruby,
+and Rust.
+
+**What's New:**
+
+- **First-class dependency graph**
+  - Added `contracts/workspace-intelligence/workspace-dependency-graph.v1.json`,
+    embedded deterministically in `workspace-model.v1`.
+  - Multi-source, provenance-tracked edge inference: `package-dep`
+    (`package.json`, `pyproject.toml` path deps, `go.mod` replace), contract
+    `dependsOn` and event publish/subscribe, `code-import` (JS/TS), and `manual`
+    overrides.
+
+- **Graph-aware impact and verify**
+  - `workspace impact` reports a transitive blast radius (`distance`/`path`/`via`)
+    plus centrality-weighted critical-path hotspots.
+  - `workspace verify` gates the whole affected subgraph and surfaces graph
+    integrity issues (cycles, dangling edges, orphans).
+
+- **Graph command surface**
+  - `workspace graph` with `emit`, `explain <project>`, `dot`, and `mermaid`.
+
+- **Performance**
+  - Model + graph cache keyed by a structural `inputsHash`
+    (`workspace-model-cache.v1`).
+  - `workspace model --incremental` for graph-aware incremental rebuilds.
+
+- **Governance and freshness**
+  - Transitive `fresh | stale | unknown` freshness verdict in `workspace verify`.
+  - A definitive verify `gate` in `--json`; `--strict` also fails on
+    `needs-attention` and `stale` freshness.
+  - Structured `policyMode` + `policyViolations[]` in the verify output.
+
+- **Watch / daemon mode**
+  - `workspace watch` keeps the model + graph in memory and streams
+    `workspace-watch-event.v1` change events via fast incremental rebuilds.
+
+- **History**
+  - Bounded health/impact history at
+    `.rapidkit/reports/workspace-intelligence-history.json`.
+
+**Language and framework coverage:**
+
+- The Workspace Intelligence consumer layer (model, graph traversal, impact,
+  verify, freshness, centrality, integrity, watch, history, gate, and policy) is
+  language- and framework-agnostic for created, imported, and adopted projects.
+- Automatic `code-import` edge inference is JS/TS-only and degrades gracefully;
+  other runtimes derive inter-project edges from manifests, the workspace
+  contract, and manual overrides.
+
+**Breaking changes:** None. Schema additions are additive and the new
+subcommands/flags are opt-in.
+
+**Verification:**
+
+- `npx vitest run` (full suite: 1517 passed, 11 skipped, 0 failures)
+- `npx tsc --noEmit`
+- `npm run check:shared-contracts`
+- `npm run test:drift`
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.39.0
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.39.0.md)
+
+---
+
+## Previous Release: v0.38.0 (June 21, 2026)
 
 ### Create Planner Capability Contract and Agent-Ready Scaffold Guardrails
 
@@ -64,7 +144,7 @@ npm install -g rapidkit@0.38.0
 
 ---
 
-## Previous Release: v0.37.1 (June 19, 2026)
+## Earlier Release: v0.37.1 (June 19, 2026)
 
 ### Workspace Intelligence Verification and npm README Hardening
 

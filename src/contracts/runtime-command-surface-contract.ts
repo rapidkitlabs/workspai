@@ -12,6 +12,10 @@ import {
   RUNTIME_SURFACE_UNIVERSAL_COMMANDS,
 } from '../utils/project-command-capabilities.js';
 import { RUNTIME_SUPPORT_MATRIX } from '../utils/support-matrix.js';
+import {
+  WORKSPACE_INTELLIGENCE_SUBCOMMANDS,
+  WORKSPACE_SUBCOMMANDS,
+} from '../utils/workspace-command-surface.js';
 
 export const RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION = 'rapidkit-runtime-command-surface-v1';
 
@@ -22,6 +26,8 @@ export type RuntimeCommandSurfaceContract = {
   globalCommands: string[];
   universalCommands: string[];
   coreProjectCommands: string[];
+  workspaceSubcommands: string[];
+  workspaceIntelligenceSubcommands: string[];
   moduleSuggestionFrameworks: string[];
   moduleUnsupportedFrameworks: string[];
   scaffoldKits: string[];
@@ -131,6 +137,8 @@ export function buildRuntimeCommandSurfaceContract(): RuntimeCommandSurfaceContr
     globalCommands: [...RUNTIME_SURFACE_GLOBAL_COMMANDS],
     universalCommands: [...RUNTIME_SURFACE_UNIVERSAL_COMMANDS],
     coreProjectCommands: [...RUNTIME_SURFACE_CORE_PROJECT_COMMANDS],
+    workspaceSubcommands: [...WORKSPACE_SUBCOMMANDS],
+    workspaceIntelligenceSubcommands: [...WORKSPACE_INTELLIGENCE_SUBCOMMANDS],
     moduleSuggestionFrameworks: buildModuleSuggestionFrameworks(),
     moduleUnsupportedFrameworks: buildModuleUnsupportedFrameworks(),
     scaffoldKits: buildScaffoldKits(),

@@ -9,6 +9,7 @@ import {
   WORKSPACE_MODEL_REPORT_PATH,
   writeWorkspaceModel,
 } from '../workspace-model.js';
+import { buildWorkspaceModelSnapshot } from '../workspace-intelligence.js';
 
 describe('workspace intelligence model', () => {
   const tempDirs: string[] = [];
@@ -58,6 +59,46 @@ describe('workspace intelligence model', () => {
     expect(model.validation?.issues.map((issue) => issue.code)).toContain(
       'workspace.projects.empty'
     );
+  });
+
+  it('embeds a first-class dependency graph and keeps the model hash deterministic across time', async () => {
+    const workspacePath = await makeTempDir('rk-model-graph-');
+    await fsExtra.outputJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'shop',
+    });
+    await fsExtra.outputJson(path.join(workspacePath, 'api', 'package.json'), {
+      name: '@acme/api',
+      version: '1.0.0',
+    });
+    await fsExtra.outputJson(path.join(workspacePath, 'web', 'package.json'), {
+      name: '@acme/web',
+      dependencies: { '@acme/api': 'workspace:*' },
+    });
+
+    const first = await buildWorkspaceModel({
+      workspacePath,
+      now: new Date('2026-06-22T00:00:00.000Z'),
+    });
+    const second = await buildWorkspaceModel({
+      workspacePath,
+      now: new Date('2026-07-01T12:34:56.000Z'),
+    });
+
+    expect(first.graph?.schemaVersion).toBe('workspace-dependency-graph.v1');
+    expect(first.graph?.nodes.map((node) => node.id)).toEqual(['api', 'web']);
+    const packageEdge = first.graph?.edges.find(
+      (edge) => edge.from === 'web' && edge.to === 'api' && edge.kind === 'package-dep'
+    );
+    expect(packageEdge?.source).toBe('inferred');
+    expect(first.graph?.stats.edgeCount).toBeGreaterThanOrEqual(1);
+
+    // The graph is part of the model, but its write-time generatedAt must not cause
+    // hash drift: two builds at different times hash identically.
+    const firstHash = (await buildWorkspaceModelSnapshot({ workspacePath, model: first }))
+      .modelHash;
+    const secondHash = (await buildWorkspaceModelSnapshot({ workspacePath, model: second }))
+      .modelHash;
+    expect(firstHash).toBe(secondHash);
   });
 
   it('models RapidKit projects with runtime, framework, support tier, commands, and evidence refs', async () => {

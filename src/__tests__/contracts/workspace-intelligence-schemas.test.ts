@@ -3,6 +3,7 @@ import path from 'path';
 
 import { describe, expect, it } from 'vitest';
 
+import { WORKSPACE_DEPENDENCY_GRAPH_SCHEMA_VERSION } from '../../contracts/workspace-dependency-graph-contract.js';
 import { WORKSPACE_CONTEXT_SCHEMA_VERSION } from '../../workspace-context.js';
 import {
   WORKSPACE_IMPACT_SCHEMA_VERSION,
@@ -38,6 +39,10 @@ const WORKSPACE_INTELLIGENCE_CONTRACTS = [
   {
     fileName: 'workspace-verify.v1.json',
     schemaVersion: WORKSPACE_VERIFY_SCHEMA_VERSION,
+  },
+  {
+    fileName: 'workspace-dependency-graph.v1.json',
+    schemaVersion: WORKSPACE_DEPENDENCY_GRAPH_SCHEMA_VERSION,
   },
 ] as const;
 

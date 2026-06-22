@@ -15,6 +15,10 @@ import {
   collectGitWorkingTreeObservation,
   type GitWorkingTreeObservation,
 } from './workspace-git-observation.js';
+import { attachRunCorrelation } from './observability/run-correlation.js';
+import { transitiveDependents } from './workspace-graph-traversal.js';
+import { computeGraphCentrality } from './workspace-graph-centrality.js';
+import type { WorkspaceGraphEdgeKind } from './contracts/workspace-dependency-graph-contract.js';
 
 export const WORKSPACE_MODEL_SNAPSHOT_SCHEMA_VERSION = 'workspace-model-snapshot.v1';
 export const WORKSPACE_MODEL_DIFF_SCHEMA_VERSION = 'workspace-model-diff.v1';
@@ -109,6 +113,35 @@ export type WorkspaceImpactItem = {
     'name' | 'path' | 'kind' | 'runtime' | 'framework' | 'supportTier' | 'generator'
   >;
   verification: WorkspaceImpactCommand[];
+  /**
+   * Graph-aware blast-radius metadata (additive, 1.10). `direct` items changed
+   * themselves; `transitive` items are reached through the dependency graph.
+   */
+  origin?: 'direct' | 'transitive';
+  /** Hops from the nearest directly-changed project (direct items are 0). */
+  distance?: number;
+  /** Shortest dependency path from a changed origin to this project (ids). */
+  path?: string[];
+  /** Edge kind on the hop that pulled this project into the blast radius. */
+  via?: WorkspaceGraphEdgeKind | null;
+  /** Graph centrality of this project (additive, 1.12). */
+  centrality?: WorkspaceImpactCentrality;
+};
+
+export type WorkspaceImpactCentrality = {
+  fanIn: number;
+  fanOut: number;
+  reach: number;
+  betweenness: number;
+  isHotspot: boolean;
+};
+
+export type WorkspaceImpactHotspot = {
+  project: string;
+  fanIn: number;
+  fanOut: number;
+  reach: number;
+  betweenness: number;
 };
 
 export type WorkspaceImpact = {
@@ -123,8 +156,19 @@ export type WorkspaceImpact = {
     affectedProjects: number;
     workspaceItems: number;
     recommendedCommands: number;
+    /** Graph-aware blast-radius summary (additive, 1.10). */
+    blastRadius: {
+      directlyAffected: number;
+      transitivelyAffected: number;
+      maxDistance: number;
+      graphEdges: number;
+    };
   };
   affectedProjects: WorkspaceImpactItem[];
+  /** Projects pulled in only through the dependency graph (additive, 1.10). */
+  transitiveImpact: WorkspaceImpactItem[];
+  /** High-centrality projects on critical paths (additive, 1.12). */
+  criticalPathHotspots: WorkspaceImpactHotspot[];
   workspaceImpact: WorkspaceImpactItem[];
   verificationPlan: WorkspaceImpactCommand[];
   agentBrief: {
@@ -192,9 +236,18 @@ function stableStringify(value: unknown): string {
 }
 
 function hashModel(model: WorkspaceModel): string {
+  // `runId` is a write-time log-correlation field that may be present on a loaded
+  // baseline model; strip it (like generatedAt) so the hash stays deterministic.
+  const { runId: _ignoredRunId, ...modelWithoutRunId } = model as WorkspaceModel & {
+    runId?: string;
+  };
   const normalized = {
-    ...model,
+    ...modelWithoutRunId,
     generatedAt: '<ignored>',
+    // The embedded dependency graph (workspace-dependency-graph.v1) carries its own
+    // write-time `generatedAt`; normalize it like the model's so the structural graph
+    // content participates in the hash but the timestamp never causes false drift.
+    graph: model.graph ? { ...model.graph, generatedAt: '<ignored>' } : undefined,
     validation: model.validation
       ? {
           ...model.validation,
@@ -297,7 +350,7 @@ export async function writeWorkspaceModelSnapshot(
 ): Promise<string> {
   const outputPath = path.join(workspacePath, WORKSPACE_MODEL_SNAPSHOT_REPORT_PATH);
   await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJson(outputPath, snapshot, { spaces: 2 });
+  await fsExtra.writeJson(outputPath, attachRunCorrelation(snapshot), { spaces: 2 });
   return outputPath;
 }
 
@@ -563,7 +616,7 @@ export async function writeWorkspaceModelDiff(
 ): Promise<string> {
   const outputPath = path.join(workspacePath, WORKSPACE_MODEL_DIFF_REPORT_PATH);
   await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJson(outputPath, diff, { spaces: 2 });
+  await fsExtra.writeJson(outputPath, attachRunCorrelation(diff), { spaces: 2 });
   return outputPath;
 }
 
@@ -576,6 +629,27 @@ function highestRisk(risks: WorkspaceImpactRisk[]): WorkspaceImpactRisk {
     (highest, risk) => (riskRank(risk) > riskRank(highest) ? risk : highest),
     'none'
   );
+}
+
+const RISK_BY_RANK: WorkspaceImpactRisk[] = ['none', 'low', 'medium', 'high', 'critical'];
+
+/**
+ * A transitively-affected project is one notch less risky than the changed
+ * project that reached it (a dependent is risky, but the change is one hop away),
+ * floored at `low` so it still gets a verification command.
+ */
+function downgradeRisk(risk: WorkspaceImpactRisk): WorkspaceImpactRisk {
+  const downgraded = Math.max(1, riskRank(risk) - 1);
+  return RISK_BY_RANK[downgraded];
+}
+
+/**
+ * A change to a critical-path hotspot (many transitive dependents) is riskier
+ * than the same change to a leaf, so bump it one level (capped at `critical`).
+ */
+function escalateRisk(risk: WorkspaceImpactRisk): WorkspaceImpactRisk {
+  const escalated = Math.min(RISK_BY_RANK.length - 1, riskRank(risk) + 1);
+  return RISK_BY_RANK[escalated];
 }
 
 function normalizeCommandParts(parts: string[]): string {
@@ -935,6 +1009,118 @@ export async function buildWorkspaceImpact(
     });
   }
 
+  // Graph-aware transitive blast radius (1.10): propagate from directly-changed
+  // projects to their transitive dependents via the model's dependency graph.
+  const graph = diff.currentModel.graph;
+  const centrality = graph ? computeGraphCentrality(graph) : undefined;
+  const directlyAffectedNames = new Set(
+    affectedProjects
+      .map((item) => item.project?.name)
+      .filter((name): name is string => typeof name === 'string')
+  );
+  const riskByName = new Map<string, WorkspaceImpactRisk>();
+  for (const item of affectedProjects) {
+    if (item.project?.name) {
+      const nodeCentrality = centrality?.byId.get(item.project.name);
+      if (nodeCentrality) {
+        item.centrality = {
+          fanIn: nodeCentrality.fanIn,
+          fanOut: nodeCentrality.fanOut,
+          reach: nodeCentrality.reach,
+          betweenness: nodeCentrality.betweenness,
+          isHotspot: nodeCentrality.isHotspot,
+        };
+        // Centrality-weighted risk: a change to a critical-path hotspot escalates.
+        if (nodeCentrality.isHotspot) {
+          item.risk = escalateRisk(item.risk);
+          item.reasons = [
+            ...item.reasons,
+            `graph.hotspot: critical-path project with ${nodeCentrality.reach} transitive dependent(s); risk escalated.`,
+          ];
+        }
+      }
+      item.origin = 'direct';
+      item.distance = 0;
+      riskByName.set(item.project.name, item.risk);
+    }
+  }
+
+  const transitiveImpact: WorkspaceImpactItem[] = [];
+  let maxDistance = 0;
+  if (graph && directlyAffectedNames.size > 0) {
+    const reached = transitiveDependents(graph, directlyAffectedNames);
+    for (const node of reached.values()) {
+      if (node.distance === 0 || directlyAffectedNames.has(node.id)) {
+        continue;
+      }
+      const project = currentProjectsByName.get(node.id);
+      if (project && !scopeMatchesProject(options.scope, project)) {
+        continue;
+      }
+      const originName = node.path[0];
+      const predecessor = node.path[node.path.length - 2] ?? originName;
+      const originRisk = riskByName.get(originName) ?? 'medium';
+      const risk = downgradeRisk(originRisk);
+      maxDistance = Math.max(maxDistance, node.distance);
+      transitiveImpact.push({
+        id: `transitive:${node.id}`,
+        scope: 'project',
+        target: project?.path ?? node.id,
+        title: `Transitive impact: ${node.id}`,
+        summary: `Depends on changed project ${originName}${
+          node.via ? ` via ${node.via}` : ''
+        } (distance ${node.distance}).`,
+        risk,
+        reasons: [
+          `graph.dependent: depends on ${predecessor}${
+            node.via ? ` via ${node.via}` : ''
+          } (path ${node.path.join(' -> ')})`,
+        ],
+        project: project
+          ? {
+              name: project.name,
+              path: project.path,
+              kind: project.kind,
+              runtime: project.runtime,
+              framework: project.framework,
+              supportTier: project.supportTier,
+              ...(project.generator ? { generator: project.generator } : {}),
+            }
+          : undefined,
+        verification: project ? projectVerificationPlan(project) : workspaceVerificationPlan(),
+        origin: 'transitive',
+        distance: node.distance,
+        path: node.path,
+        via: node.via,
+        ...(centrality?.byId.get(node.id)
+          ? {
+              centrality: {
+                fanIn: centrality.byId.get(node.id)!.fanIn,
+                fanOut: centrality.byId.get(node.id)!.fanOut,
+                reach: centrality.byId.get(node.id)!.reach,
+                betweenness: centrality.byId.get(node.id)!.betweenness,
+                isHotspot: centrality.byId.get(node.id)!.isHotspot,
+              },
+            }
+          : {}),
+      });
+    }
+  }
+  transitiveImpact.sort((a, b) => a.target.localeCompare(b.target));
+
+  const criticalPathHotspots: WorkspaceImpactHotspot[] = centrality
+    ? centrality.hotspots.map((id) => {
+        const node = centrality.byId.get(id)!;
+        return {
+          project: id,
+          fanIn: node.fanIn,
+          fanOut: node.fanOut,
+          reach: node.reach,
+          betweenness: node.betweenness,
+        };
+      })
+    : [];
+
   const workspaceChanges = diff.changes.filter((change) => !change.type.startsWith('project.'));
   const projectCount = diff.currentModel.summary?.projectCount ?? diff.currentModel.projects.length;
   const workspaceImpact: WorkspaceImpactItem[] = workspaceChanges.map((change) => ({
@@ -950,11 +1136,13 @@ export async function buildWorkspaceImpact(
 
   const verificationPlan = dedupeCommands([
     ...affectedProjects.flatMap((item) => item.verification),
+    ...transitiveImpact.flatMap((item) => item.verification),
     ...workspaceImpact.flatMap((item) => item.verification),
     ...(diff.summary.changed ? workspaceVerificationPlan() : []),
   ]).filter((command) => command.required);
   const rawRisk = highestRisk([
     ...affectedProjects.map((item) => item.risk),
+    ...transitiveImpact.map((item) => item.risk),
     ...workspaceImpact.map((item) => item.risk),
   ]);
   const risk = softenImpactRiskForEmptyWorkspace({
@@ -969,6 +1157,12 @@ export async function buildWorkspaceImpact(
     affectedProjects: affectedProjects.length,
     workspaceItems: workspaceImpact.length,
     recommendedCommands: verificationPlan.length,
+    blastRadius: {
+      directlyAffected: affectedProjects.length,
+      transitivelyAffected: transitiveImpact.length,
+      maxDistance,
+      graphEdges: graph?.edges.length ?? 0,
+    },
   };
 
   return {
@@ -983,6 +1177,8 @@ export async function buildWorkspaceImpact(
     },
     summary,
     affectedProjects: affectedProjects.sort((a, b) => a.target.localeCompare(b.target)),
+    transitiveImpact,
+    criticalPathHotspots,
     workspaceImpact: workspaceImpact.sort((a, b) => a.target.localeCompare(b.target)),
     verificationPlan,
     agentBrief: buildAgentBrief({
@@ -1001,6 +1197,6 @@ export async function writeWorkspaceImpact(
 ): Promise<string> {
   const outputPath = path.join(workspacePath, WORKSPACE_IMPACT_REPORT_PATH);
   await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJson(outputPath, impact, { spaces: 2 });
+  await fsExtra.writeJson(outputPath, attachRunCorrelation(impact), { spaces: 2 });
   return outputPath;
 }

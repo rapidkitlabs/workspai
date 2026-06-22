@@ -237,17 +237,44 @@ Every tool gets the same answers: what projects exist, what stack they use, whic
 
 Workspace Intelligence provides a shared understanding of projects, dependencies, operational context, and release readiness for developers, CI pipelines, and AI agents.
 
-| Command                                          | Purpose                                                          |
-| ------------------------------------------------ | ---------------------------------------------------------------- |
-| `workspace model --json`                         | Canonical workspace model                                        |
-| `workspace context --for-agent --json --write`   | Agent-ready context pack + auto agent grounding sync             |
-| `workspace agent-sync --write`                   | Cross-tool grounding (AGENTS.md, Copilot, Cursor, Claude, INDEX) |
-| `workspace snapshot --json`                      | Persist model snapshot                                           |
-| `workspace diff --from <file\|git[:ref]> --json` | Diff against snapshot or git                                     |
-| `workspace impact --from <file> --json`          | Blast-radius evidence                                            |
-| `workspace verify [--strict] --json`             | Impact verification gate                                         |
+| Command                                           | Purpose                                                          |
+| ------------------------------------------------- | ---------------------------------------------------------------- |
+| `workspace model [--cache\|--incremental] --json` | Canonical workspace model (graph-aware, incremental rebuilds)    |
+| `workspace context --for-agent --json --write`    | Agent-ready context pack + auto agent grounding sync             |
+| `workspace agent-sync --write`                    | Cross-tool grounding (AGENTS.md, Copilot, Cursor, Claude, INDEX) |
+| `workspace snapshot --json`                       | Persist model snapshot                                           |
+| `workspace diff --from <file\|git[:ref]> --json`  | Diff against snapshot or git                                     |
+| `workspace impact --from <file> --json`           | Graph-aware transitive blast-radius evidence                     |
+| `workspace verify [--strict] --json`              | Definitive verification gate (subgraph + freshness + policy)     |
+| `workspace graph <emit\|explain\|dot\|mermaid>`   | Inspect and visualize the dependency graph                       |
+| `workspace watch [--json] [--once]`               | Daemon mode: keep model + graph in memory, stream change events  |
 
 JSON schemas: `contracts/workspace-intelligence/`. Details: [commands-reference.md](docs/commands-reference.md).
+
+### Graph-aware intelligence engine
+
+The workspace model carries a deterministic, first-class **dependency graph** that
+`impact`, `verify`, and `graph` all reason over — so the same evidence drives blast
+radius, gating, and visualization:
+
+- **Transitive blast radius** — `workspace impact` reports each affected project's
+  `distance`, `path`, and `via` edge back to the change, plus centrality-weighted
+  **critical-path hotspots**.
+- **Whole-subgraph gate** — `workspace verify` gates the changed projects **and** their
+  transitive dependents, surfaces graph **integrity** issues (cycles, dangling edges,
+  orphans), and emits a structured `gate` (`passed`/`mode`/`exitCode`/`reasons`).
+- **Transitive freshness** — a deterministic `fresh | stale | unknown` verdict chained
+  through the graph: a dependency change makes every dependent stale, not just by
+  timestamp.
+- **Policy violations** — model/contract violations are surfaced as structured
+  `policyViolations[]` (not just an exit code) so IDEs and CI can render blockers.
+- **Health history** — every verify run appends to a bounded
+  `.rapidkit/reports/workspace-intelligence-history.json` ring buffer for trends.
+- **Fast rebuilds** — `workspace model --cache` / `--incremental` reuse unchanged
+  project models and re-infer only incident edges, keyed by a structural `inputsHash`.
+- **Watch / daemon** — `workspace watch` keeps the model + graph in memory and streams
+  deterministic `workspace-watch-event.v1` change events (changed projects, graph edge
+  deltas, structural hash) via fast incremental rebuilds.
 
 ### Agent grounding (CLI-only, no extension required)
 

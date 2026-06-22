@@ -10,6 +10,10 @@ import {
   handleImportCommand,
   NPM_ONLY_TOP_LEVEL_COMMANDS,
 } from '../index';
+import {
+  WORKSPACE_INTELLIGENCE_SUBCOMMANDS,
+  WORKSPACE_SUBCOMMANDS,
+} from '../utils/workspace-command-surface';
 
 const tempDirs: string[] = [];
 
@@ -30,6 +34,25 @@ describe('enterprise gap closures', () => {
     }
     expect(npmOwned.has('pipeline')).toBe(true);
     expect(npmOwned.has('project')).toBe(true);
+  });
+
+  it('publishes a versioned workspace intelligence capability surface for `commands --json`', () => {
+    const capabilities = getGlobalCommandCapabilities();
+
+    // Stable schema lets the extension consume capabilities instead of
+    // regex-parsing `rapidkit --help` text.
+    expect(capabilities.schemaVersion).toBe('rapidkit-command-capabilities-v1');
+    expect(capabilities.workspace.command).toBe('workspace');
+    expect(capabilities.workspace.subcommands).toEqual([...WORKSPACE_SUBCOMMANDS]);
+    expect(capabilities.workspace.intelligenceSubcommands).toEqual([
+      ...WORKSPACE_INTELLIGENCE_SUBCOMMANDS,
+    ]);
+
+    // The legacy regex markers (workspace model/snapshot/verify/context) must all
+    // be discoverable through the structured capability surface.
+    for (const marker of ['model', 'snapshot', 'verify', 'context']) {
+      expect(capabilities.workspace.intelligenceSubcommands).toContain(marker);
+    }
   });
 
   it('syncs workspace contract after successful import', async () => {

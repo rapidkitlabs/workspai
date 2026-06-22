@@ -23,6 +23,7 @@ import {
   type BackendPlatformKey,
 } from './utils/backend-framework-contract.js';
 import { discoverWorkspaceProjects as discoverWorkspaceProjectsShared } from './utils/workspace-discovery.js';
+import { closureFromAdjacency } from './workspace-graph-traversal.js';
 import {
   publishWorkspaceRunStageReport,
   WORKSPACE_RUN_LAST_REPORT_FILENAME,
@@ -386,31 +387,8 @@ async function expandAffectedWithBlastRadius(
     }
   }
 
-  const expanded = new Set(initialAffected);
-  const queue = [...expanded];
-  let expansionDepth = 0;
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current) {
-      continue;
-    }
-
-    const dependents = reverseDeps.get(current);
-    if (!dependents) {
-      continue;
-    }
-
-    for (const dependent of dependents) {
-      if (!expanded.has(dependent)) {
-        expanded.add(dependent);
-        queue.push(dependent);
-        expansionDepth += 1;
-      }
-    }
-  }
-
-  return { expanded, graphStatus: 'loaded', expansionDepth };
+  const closure = closureFromAdjacency(reverseDeps, initialAffected);
+  return { expanded: closure.reached, graphStatus: 'loaded', expansionDepth: closure.added };
 }
 
 async function expandAffectedWithContract(
@@ -511,25 +489,8 @@ async function expandAffectedWithContract(
     }
   }
 
-  const expanded = new Set(initialAffected);
-  const queue = [...expanded];
-  let expansionDepth = 0;
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current) continue;
-    const dependents = reverseDeps.get(current);
-    if (!dependents) continue;
-    for (const dependent of dependents) {
-      if (!expanded.has(dependent)) {
-        expanded.add(dependent);
-        queue.push(dependent);
-        expansionDepth += 1;
-      }
-    }
-  }
-
-  return { expanded, graphStatus: 'loaded', expansionDepth };
+  const closure = closureFromAdjacency(reverseDeps, initialAffected);
+  return { expanded: closure.reached, graphStatus: 'loaded', expansionDepth: closure.added };
 }
 
 async function shouldEnforceWorkspaceRunGates(

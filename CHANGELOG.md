@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-06-22
+
+### Added
+
+- Added a first-class, deterministic dependency graph to the workspace model
+  (`contracts/workspace-intelligence/workspace-dependency-graph.v1.json`),
+  embedded in `workspace-model.v1` with stable hashing.
+- Added a multi-source, language-agnostic edge-inference engine: `package-dep`
+  edges from `package.json` (JS/TS), `pyproject.toml` path dependencies
+  (Python), and `go.mod` replace directives (Go); `contract dependsOn` and
+  event publish/subscribe edges from the workspace contract (all runtimes);
+  `code-import` edges for JS/TS; and `manual` override edges. Every edge carries
+  provenance (`source`/`confidence`/`evidence`).
+- Added a shared graph-traversal utility (forward/reverse dependencies,
+  transitive closure, blast radius, cycle detection) reused by impact and
+  verify.
+- Added graph-aware impact: transitive blast radius with `distance`, `path`, and
+  `via` per affected project, plus centrality-weighted critical-path hotspots
+  (`fanIn`/`fanOut`/`reach`/`betweenness`).
+- Added graph-aware verify: the verdict now gates the entire affected subgraph
+  (changed projects plus transitive dependents) and surfaces graph integrity
+  issues (cycles, dangling edges, orphans).
+- Added `rapidkit workspace graph` with `emit`, `explain <project>`, `dot`, and
+  `mermaid` subactions for inspecting and visualizing the dependency graph.
+- Added a workspace model + graph cache keyed by a structural `inputsHash`
+  (`workspace-model-cache.v1`) and `rapidkit workspace model --incremental` for
+  graph-aware incremental rebuilds that reuse unchanged project models and
+  re-infer only incident edges.
+- Added graph-aware transitive freshness with an explicit `fresh | stale |
+unknown` verdict in `workspace verify`, chaining each project's content hash
+  through its dependencies.
+- Added a definitive verify gate (`evaluateWorkspaceVerifyGate`) surfaced as a
+  `gate` object in `workspace verify --json`; `--strict` additionally fails on
+  `needs-attention` and `stale` freshness.
+- Added structured `policyMode` + `policyViolations[]` to `workspace verify`
+  output so IDEs and CI can render policy/contract blockers directly.
+- Added a bounded health/impact history
+  (`.rapidkit/reports/workspace-intelligence-history.json`,
+  `workspace-intelligence-history.v1`) with retention.
+- Added `rapidkit workspace watch` daemon mode that keeps the model + graph in
+  memory and streams `workspace-watch-event.v1` change events
+  (`ready`/`changed`/`unchanged`/`error`) via fast incremental rebuilds.
+- Added a deterministic large-monorepo performance benchmark
+  (`npm run benchmark:intelligence`).
+
+### Changed
+
+- Registered `graph` and `watch` in `WORKSPACE_SUBCOMMANDS` and the generated
+  `runtime-command-surface.v1` contract so IDE/CI surfaces detect them from the
+  contract.
+- Extended the `workspace-impact.v1` and `workspace-verify.v1` schemas additively
+  (transitive blast radius, hotspots, affected subgraph, graph integrity,
+  freshness, policy violations); existing consumers remain compatible.
+- Updated the README, contracts artifact catalog, and Workspace Intelligence
+  enterprise roadmap to document the graph-aware engine.
+
+### Notes
+
+- The entire Workspace Intelligence consumer layer (model, graph traversal,
+  impact, verify, freshness, centrality, integrity, watch, history, gate, and
+  policy) is language- and framework-agnostic and behaves identically for
+  created, imported, and adopted projects. Automatic `code-import` edge
+  inference is JS/TS-only and degrades gracefully; other runtimes derive
+  inter-project edges from manifests, the workspace contract, and manual
+  overrides.
+
+### Verification
+
+- `npx vitest run` (full suite: 1517 passed, 11 skipped, 0 failures)
+- `npx tsc --noEmit`
+- `npm run check:shared-contracts`
+- `npm run test:drift`
+
 ## [0.38.0] - 2026-06-21
 
 ### Added
