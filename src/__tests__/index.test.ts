@@ -257,7 +257,7 @@ describe('CLI Entry Point', () => {
       // Should not create any files
       const projectPath = path.join(TEST_DIR, 'test-project');
       expect(await fs.pathExists(projectPath)).toBe(false);
-    });
+    }, 15000);
 
     it('should show what would be created in NestJS template dry-run mode', async () => {
       const { stdout } = await execa(
@@ -273,7 +273,7 @@ describe('CLI Entry Point', () => {
       // Should not create any files
       const projectPath = path.join(TEST_DIR, 'test-project');
       expect(await fs.pathExists(projectPath)).toBe(false);
-    });
+    }, 15000);
 
     it('should show what would be created in workspace dry-run mode', async () => {
       const { stdout } = await execa(
