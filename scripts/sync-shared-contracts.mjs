@@ -69,6 +69,17 @@ function runGenerator() {
   }
 }
 
+// Compare contract content independent of line-ending style. Windows checkouts
+// (core.autocrlf=true) store CRLF while the generator writes LF; without this
+// the --check gate reports false drift even though the contracts are identical.
+function normalizeNewlines(value) {
+  return value.replace(/\r\n/g, '\n');
+}
+
+function contractContentEquals(a, b) {
+  return normalizeNewlines(a) === normalizeNewlines(b);
+}
+
 function listJsonContracts(dir, prefix = '') {
   if (!fs.existsSync(dir)) {
     return [];
@@ -100,7 +111,7 @@ function verifyGeneratedFiles(before) {
   for (const fileName of GENERATED_FILES) {
     const targetPath = path.join(contractsDir, fileName);
     const after = fs.readFileSync(targetPath, 'utf-8');
-    if (before[fileName] !== after) {
+    if (!contractContentEquals(before[fileName], after)) {
       console.error(`Generated contract drift: ${targetPath}`);
       console.error('Run: npm run sync:shared-contracts');
       process.exit(1);
@@ -133,7 +144,7 @@ function verifyTarget(targetPath, content, label) {
   }
 
   const targetContent = fs.readFileSync(targetPath, 'utf-8');
-  if (targetContent !== content) {
+  if (!contractContentEquals(targetContent, content)) {
     console.error(`${label} contract copy is out of sync: ${targetPath}`);
     console.error('Run from rapidkit-npm: npm run sync:shared-contracts');
     process.exit(1);
