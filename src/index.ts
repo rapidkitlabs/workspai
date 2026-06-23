@@ -2778,7 +2778,9 @@ export async function handleBootstrapCommand(
       !ciMode &&
       !jsonMode &&
       !!process.stdin.isTTY &&
-      !!process.stdout.isTTY;
+      !!process.stdout.isTTY &&
+      process.env.VITEST !== 'true' &&
+      process.env.VITEST !== '1';
 
     if (shouldPromptProfile) {
       const currentProfile = workspaceProfile || 'minimal';

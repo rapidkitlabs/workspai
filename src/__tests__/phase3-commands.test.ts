@@ -70,7 +70,36 @@ describe('Phase 3 command contract handlers', () => {
     delete process.env.RAPIDKIT_ENV;
   });
 
-  describe('bootstrap', () => {
+  describe('bootstrap', { timeout: 15000 }, () => {
+    let stdinIsTty: PropertyDescriptor | undefined;
+    let stdoutIsTty: PropertyDescriptor | undefined;
+
+    beforeEach(() => {
+      stdinIsTty = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+      stdoutIsTty = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+      Object.defineProperty(process.stdin, 'isTTY', {
+        configurable: true,
+        get: () => false,
+      });
+      Object.defineProperty(process.stdout, 'isTTY', {
+        configurable: true,
+        get: () => false,
+      });
+    });
+
+    afterEach(() => {
+      if (stdinIsTty) {
+        Object.defineProperty(process.stdin, 'isTTY', stdinIsTty);
+      } else {
+        delete (process.stdin as NodeJS.ReadStream & { isTTY?: boolean }).isTTY;
+      }
+      if (stdoutIsTty) {
+        Object.defineProperty(process.stdout, 'isTTY', stdoutIsTty);
+      } else {
+        delete (process.stdout as NodeJS.WriteStream & { isTTY?: boolean }).isTTY;
+      }
+    });
+
     it('rewrites bootstrap command to init and preserves trailing args', async () => {
       const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-bootstrap-init-args-'));
       const projectDir = path.join(workspaceRoot, 'apps', 'api');
@@ -117,7 +146,10 @@ describe('Phase 3 command contract handlers', () => {
       const index = await import('../index.js');
       const initRunner = vi.fn().mockResolvedValue(1);
 
-      const code = await index.handleBootstrapCommand(['bootstrap'], initRunner);
+      const code = await index.handleBootstrapCommand(
+        ['bootstrap', '--profile', 'minimal'],
+        initRunner
+      );
 
       expect(code).toBe(1);
 
