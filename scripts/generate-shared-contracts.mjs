@@ -8,6 +8,7 @@ const contractsDir = path.resolve(npmRoot, 'contracts');
 const GENERATED_FILES = [
   'runtime-command-surface.v1.json',
   'create-planner-capabilities.v1.json',
+  'agent-customization-pack.v1.json',
   'backend-import-stack-parity.snapshot.json',
   'module-layout.v1.json',
   'infra-stack.v1.json',
@@ -22,11 +23,15 @@ function runGenerator() {
     process.platform === 'win32' ? 'tsx.cmd' : 'tsx'
   );
   const hasLocalTsx = fs.existsSync(localTsx);
-  const result = spawnSync(hasLocalTsx ? localTsx : 'npx', hasLocalTsx ? [scriptPath] : ['tsx', scriptPath], {
-    cwd: npmRoot,
-    stdio: 'inherit',
-    shell: process.platform === 'win32',
-  });
+  const result = spawnSync(
+    hasLocalTsx ? localTsx : 'npx',
+    hasLocalTsx ? [scriptPath] : ['tsx', scriptPath],
+    {
+      cwd: npmRoot,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    }
+  );
 
   if (result.error) {
     console.error('Could not run shared contract generator.');

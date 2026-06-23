@@ -6112,9 +6112,17 @@ program
   .option('--no-agent-sync', 'Skip automatic agent grounding sync after context --write')
   .option(
     '--target <targets>',
-    'Agent grounding targets for agent-sync (all|agents,copilot,cursor,claude,codex,orca)'
+    'Agent customization targets for agent-sync (all|vscode|agents,copilot,cursor,claude,codex,orca)'
+  )
+  .option(
+    '--preset <preset>',
+    'Agent customization pack preset for agent-sync (minimal|enterprise)'
   )
   .option('--refresh-context', 'Rebuild workspace-context-agent.json during agent-sync')
+  .option(
+    '--experimental-hooks',
+    'Generate advisory VS Code agent hook design files during enterprise agent-sync'
+  )
   .option('--scope <scope>', 'Scope workspace intelligence output, e.g. project:<name>')
   .option('--no-doctor', 'Exclude doctor evidence in workspace share bundle')
   .option('--no-blueprint', 'Exclude reproducibility blueprint from workspace share bundle')
@@ -6151,7 +6159,9 @@ program
       agentSync?: boolean;
       noAgentSync?: boolean;
       target?: string;
+      preset?: string;
       refreshContext?: boolean;
+      experimentalHooks?: boolean;
       scope?: string;
       doctor?: boolean;
       blueprint?: boolean;
@@ -6301,11 +6311,14 @@ program
         write: writeRequested && !dryRun,
         dryRun,
         strict: strictRequested,
+        preset: actionOptions.preset === 'minimal' ? 'minimal' : 'enterprise',
         refreshContext:
           actionOptions.refreshContext === true ||
           hasRawFlag('--refresh-context') ||
           hasRawFlag('--refresh'),
         targets: parseAgentGroundingTargets(actionOptions.target),
+        experimentalHooks:
+          actionOptions.experimentalHooks === true || hasRawFlag('--experimental-hooks'),
         staleAfterHours: 24,
       });
 
@@ -6387,6 +6400,7 @@ program
             write: true,
             refreshContext: false,
             strict: strictRequested,
+            preset: actionOptions.preset === 'minimal' ? 'minimal' : 'enterprise',
             targets: parseAgentGroundingTargets(actionOptions.target),
           });
           if (!actionOptions.json) {
@@ -7388,7 +7402,7 @@ function printHelp() {
   );
   console.log(
     chalk.gray(
-      '  npx rapidkit workspace agent-sync --write --refresh-context  Sync AGENTS.md, Copilot, Cursor, Claude hooks'
+      '  npx rapidkit workspace agent-sync --write --refresh-context  Sync the Agent Customization Pack'
     )
   );
   console.log(

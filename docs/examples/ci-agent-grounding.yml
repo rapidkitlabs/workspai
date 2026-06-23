@@ -32,7 +32,7 @@ jobs:
           node-version: '20'
 
       - name: Install RapidKit CLI
-        run: npm install -g rapidkit@latest
+        run: npm install --no-save rapidkit@latest
 
       - name: Run governance pipeline
         run: npx rapidkit pipeline --json --strict
@@ -41,7 +41,8 @@ jobs:
 
       - name: Sync and verify agent grounding
         run: |
-          npx rapidkit workspace agent-sync --write --refresh-context --strict --json
+          npx rapidkit workspace agent-sync --write --refresh-context --strict --json --preset enterprise
+          node ./node_modules/rapidkit/scripts/check-agent-customization-drift.mjs --workspace .
         env:
           RAPIDKIT_NO_AGENT_SYNC: '0'
 
@@ -53,6 +54,8 @@ jobs:
           path: |
             .rapidkit/reports/INDEX.json
             .rapidkit/reports/workspace-context-agent.json
+            .rapidkit/reports/agent-customization-pack.json
+            .rapidkit/reports/rapidkit-mcp-design.json
             .rapidkit/reports/pipeline-last-run.json
             AGENTS.md
           if-no-files-found: ignore

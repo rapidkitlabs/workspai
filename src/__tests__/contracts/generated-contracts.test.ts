@@ -3,6 +3,7 @@ import path from 'path';
 
 import { describe, expect, it } from 'vitest';
 
+import { buildAgentCustomizationPackContract } from '../../contracts/agent-customization-pack-contract';
 import { buildCreatePlannerCapabilitiesContract } from '../../contracts/create-planner-capabilities-contract';
 import { buildImportStackParitySnapshot } from '../../contracts/import-stack-parity-snapshot';
 import { buildInfraStackContract } from '../../contracts/infra-stack-contract';
@@ -24,6 +25,12 @@ describe('generated shared contracts (Wave B + C)', () => {
   it('keeps committed create planner capabilities aligned with the generator', () => {
     expect(readJsonContract('create-planner-capabilities.v1.json')).toEqual(
       buildCreatePlannerCapabilitiesContract()
+    );
+  });
+
+  it('keeps committed agent customization pack aligned with the generator', () => {
+    expect(readJsonContract('agent-customization-pack.v1.json')).toEqual(
+      buildAgentCustomizationPackContract()
     );
   });
 

@@ -21,29 +21,29 @@ Canonical map of **on-disk artifacts** produced by `rapidkit-npm` commands. Dash
 
 ## Governance evidence loop
 
-| Command             | Primary artifact                                    | Schema version                                              | JSON Schema                                   |
-| ------------------- | --------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------- | ------------------------------------- |
-| `doctor workspace`  | `.rapidkit/reports/doctor-last-run.json`            | `doctor-workspace-evidence-v1`                              | `contracts/doctor-workspace-evidence.v1.json` |
-| `doctor project`    | `.rapidkit/reports/doctor-project-last-run.json`    | `doctor-project-evidence-v1`                                | `contracts/doctor-project-evidence.v1.json`   |
-| `analyze`           | `.rapidkit/reports/analyze-last-run.json`           | `rapidkit-analyze-v1`                                       | `contracts/analyze-last-run.v1.json`          |
-| `readiness`         | `.rapidkit/reports/release-readiness-last-run.json` | `release-readiness-v1`                                      | `contracts/release-readiness.v1.json`         |
-| `pipeline`          | `.rapidkit/reports/pipeline-last-run.json`          | Also triggers agent grounding sync unless `--no-agent-sync` | `rapidkit-pipeline-v1`                        | `contracts/pipeline-last-run.v1.json` |
-| `autopilot release` | `.rapidkit/reports/autopilot-release-last-run.json` | `autopilot-release-v1`                                      | —                                             |
-|                     | `.rapidkit/reports/autopilot-release.json`          | (alias, same payload)                                       | —                                             |
+| Command             | Primary artifact                                    | Schema version                 | JSON Schema                                   |
+| ------------------- | --------------------------------------------------- | ------------------------------ | --------------------------------------------- |
+| `doctor workspace`  | `.rapidkit/reports/doctor-last-run.json`            | `doctor-workspace-evidence-v1` | `contracts/doctor-workspace-evidence.v1.json` |
+| `doctor project`    | `.rapidkit/reports/doctor-project-last-run.json`    | `doctor-project-evidence-v1`   | `contracts/doctor-project-evidence.v1.json`   |
+| `analyze`           | `.rapidkit/reports/analyze-last-run.json`           | `rapidkit-analyze-v1`          | `contracts/analyze-last-run.v1.json`          |
+| `readiness`         | `.rapidkit/reports/release-readiness-last-run.json` | `release-readiness-v1`         | `contracts/release-readiness.v1.json`         |
+| `pipeline`          | `.rapidkit/reports/pipeline-last-run.json`          | `rapidkit-pipeline-v1`         | `contracts/pipeline-last-run.v1.json`         |
+| `autopilot release` | `.rapidkit/reports/autopilot-release-last-run.json` | `autopilot-release-v1`         | —                                             |
+|                     | `.rapidkit/reports/autopilot-release.json`          | (alias, same payload)          | —                                             |
 
 Side/cache (not gates): `.rapidkit/reports/doctor-workspace-cache.json` (`doctor-workspace-cache-v2`).
 
 ## Workspace intelligence
 
-| Command                          | Artifact                                                                             | Schema                            | Contract file                                              |
-| -------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------- | ---------------------------------------------------------- |
-| `workspace model --write`        | `workspace-model.json`                                                               | `workspace-model.v1`              | `contracts/workspace-intelligence/workspace-model.v1.json` |
-| `workspace snapshot`             | `workspace-model-snapshot.json`                                                      | `workspace-model-snapshot.v1`     | `workspace-model-snapshot.v1.json`                         |
-| `workspace diff`                 | `workspace-model-diff-last-run.json`                                                 | `workspace-model-diff.v1`         | `workspace-model-diff.v1.json`                             |
-| `workspace impact --from <diff>` | `workspace-impact-last-run.json`                                                     | `workspace-impact.v1`             | `workspace-impact.v1.json`                                 |
-| `workspace verify`               | `workspace-verify-last-run.json`                                                     | `workspace-verify.v1`             | `workspace-verify.v1.json`                                 |
-| `workspace context --write`      | `workspace-context-agent.json`                                                       | `workspace-context.v1`            | `workspace-context.v1.json`                                |
-| `workspace agent-sync --write`   | `reports/INDEX.json`, `AGENT-GROUNDING.md`, `AGENTS.md`, Copilot/Cursor/Claude hooks | `rapidkit-agent-reports-index.v1` | —                                                          |
+| Command                          | Artifact                                                                                                                                                                           | Schema                                 | Contract file                                              |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------- |
+| `workspace model --write`        | `workspace-model.json`                                                                                                                                                             | `workspace-model.v1`                   | `contracts/workspace-intelligence/workspace-model.v1.json` |
+| `workspace snapshot`             | `workspace-model-snapshot.json`                                                                                                                                                    | `workspace-model-snapshot.v1`          | `workspace-model-snapshot.v1.json`                         |
+| `workspace diff`                 | `workspace-model-diff-last-run.json`                                                                                                                                               | `workspace-model-diff.v1`              | `workspace-model-diff.v1.json`                             |
+| `workspace impact --from <diff>` | `workspace-impact-last-run.json`                                                                                                                                                   | `workspace-impact.v1`                  | `workspace-impact.v1.json`                                 |
+| `workspace verify`               | `workspace-verify-last-run.json`                                                                                                                                                   | `workspace-verify.v1`                  | `workspace-verify.v1.json`                                 |
+| `workspace context --write`      | `workspace-context-agent.json`                                                                                                                                                     | `workspace-context.v1`                 | `workspace-context.v1.json`                                |
+| `workspace agent-sync --write`   | `reports/INDEX.json`, `reports/agent-customization-pack.json`, `reports/rapidkit-mcp-design.json`, `AGENT-GROUNDING.md`, `AGENTS.md`, Copilot/Cursor/Claude/VS Code agent surfaces | `rapidkit-agent-customization-pack.v1` | `contracts/agent-customization-pack.v1.json`               |
 
 **CLI semantics:** `workspace diff --from` expects a **model or snapshot** baseline. `workspace impact --from` expects a **diff report**.
 
@@ -54,11 +54,11 @@ relationships out of `workspace run`'s private logic into one versioned source
 of truth consumed by `impact` (transitive blast radius), `verify`
 (subgraph-scoped gating), `run --blast-radius`, and risk weighting.
 
-| Field | Meaning |
-| ----- | ------- |
-| `nodes` | Projects in the workspace (`id`, workspace-relative `path`). |
+| Field   | Meaning                                                                                                                                                                                    |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `nodes` | Projects in the workspace (`id`, workspace-relative `path`).                                                                                                                               |
 | `edges` | Directed `from → to` relationships (`from` depends on `to`). Each edge carries a typed `kind`, a `source` (provenance), a `confidence` bucket, and `evidence` (the files that justify it). |
-| `stats` | Counts (`nodeCount`, `edgeCount`, per-source edge counts) and `hasCycle` for the integrity gate. |
+| `stats` | Counts (`nodeCount`, `edgeCount`, per-source edge counts) and `hasCycle` for the integrity gate.                                                                                           |
 
 Edge `kind` ∈ `code-import`, `package-dep`, `event-pub-sub`, `service-dependsOn`,
 `shared-resource`. Edge `source` ∈ `inferred`, `contract`, `manual` (`manual`/`contract`
@@ -160,10 +160,10 @@ Intelligence reports carry a shared freshness envelope so any consumer (CLI
 `workspace verify`, Workspai, CI) can detect staleness **without** re-running the
 whole chain:
 
-| Field | Meaning |
-| ----- | ------- |
-| `generatedAt` | ISO-8601 timestamp the report was produced. |
-| `inputsHash` | Stable sha256 of the inputs that produced the report. If a freshly recomputed inputs hash differs, the report is stale. |
+| Field         | Meaning                                                                                                                 |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `generatedAt` | ISO-8601 timestamp the report was produced.                                                                             |
+| `inputsHash`  | Stable sha256 of the inputs that produced the report. If a freshly recomputed inputs hash differs, the report is stale. |
 
 Canonical source: `src/contracts/freshness-metadata-contract.ts`
 (`computeInputsHash`, `buildFreshnessMetadata`, `assessFreshness`). Verdicts:
@@ -209,8 +209,8 @@ Separate from the on-disk artifacts above, `rapidkit-npm` emits a structured
 **NDJSON log stream on stderr** when `--log-format json` (or `RAPIDKIT_LOG_FORMAT=json`)
 is set. This is the deterministic progress/outcome channel for IDEs and CI.
 
-| Stream | Schema version | Contract file | Doc |
-| ------ | -------------- | ------------- | --- |
+| Stream                  | Schema version     | Contract file                     | Doc                                                  |
+| ----------------------- | ------------------ | --------------------------------- | ---------------------------------------------------- |
 | CLI log events (stderr) | `cli-log-event-v1` | `contracts/cli-log-event.v1.json` | [CLI_LOG_EVENT_STREAM.md](./CLI_LOG_EVENT_STREAM.md) |
 
 **Channel rule:** command **results** go to stdout (`--json`); **progress/lifecycle**
@@ -233,23 +233,37 @@ Under `{project}/.rapidkit/reports/` when commands run at project scope (e.g. pr
 2. **Release gates:** follow chain doctor → analyze → readiness → verify → autopilot; use `pipeline-last-run.json` for orchestration summary.
 3. **Do not** use `workspace.json.projects` (removed in schema 1.0).
 4. Prefer `schemaVersion` constants in each artifact; legacy `v1` on readiness is accepted when reading old reports.
-5. **Agent grounding:** read `.rapidkit/reports/INDEX.json` first, then `workspace-context-agent.json`; regenerate with `workspace agent-sync --write`.
+5. **Agent customization:** read `.rapidkit/reports/agent-customization-pack.json` first for generated surfaces, then `.rapidkit/reports/INDEX.json` and `workspace-context-agent.json`; regenerate with `workspace agent-sync --write --refresh-context --preset enterprise`.
 
-## Agent grounding files (repo hooks)
+## Agent customization files (repo hooks)
 
-Written by `workspace agent-sync --write` (and by default after `workspace context --for-agent --write`):
+Written by `workspace agent-sync --write --refresh-context --preset enterprise` (and by default after `workspace context --for-agent --write`):
 
-| Path                                                     | Consumer                                                  |
-| -------------------------------------------------------- | --------------------------------------------------------- |
-| `AGENTS.md`                                              | Copilot, Cursor, Claude Code, Codex, Grok (open standard) |
-| `.github/copilot-instructions.md`                        | GitHub Copilot / VS Code Chat                             |
-| `.github/instructions/rapidkit-evidence.instructions.md` | Copilot scoped `.rapidkit/**` rules                       |
-| `.github/prompts/rapidkit-diagnose.prompt.md`            | Copilot prompt library                                    |
-| `.github/skills/rapidkit-grounding/SKILL.md`             | Copilot skills                                            |
-| `.cursor/rules/rapidkit-grounding.mdc`                   | Cursor always-on rule                                     |
-| `CLAUDE.md`                                              | Claude Code (imports `@AGENTS.md`)                        |
-| `.claude/rules/rapidkit-evidence.md`                     | Claude Code scoped evidence rule                          |
-| `.rapidkit/AGENT-GROUNDING.md`                           | Tool-agnostic operator doc                                |
+| Path                                                                    | Consumer                                                       |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `AGENTS.md`                                                             | Copilot, Cursor, Claude Code, Codex, Grok (open standard)      |
+| `.github/copilot-instructions.md`                                       | GitHub Copilot / VS Code Chat                                  |
+| `.github/instructions/rapidkit-workspace.instructions.md`               | Copilot workspace scope and command discipline                 |
+| `.github/instructions/rapidkit-evidence.instructions.md`                | Copilot scoped `.rapidkit/**` rules                            |
+| `.github/prompts/rapidkit-diagnose.prompt.md`                           | Copilot prompt library                                         |
+| `.github/prompts/rapidkit-repair.prompt.md`                             | Copilot repair workflow prompt                                 |
+| `.github/prompts/rapidkit-release-readiness.prompt.md`                  | Copilot release readiness workflow prompt                      |
+| `.github/prompts/rapidkit-project-onboard.prompt.md`                    | Copilot project onboarding workflow prompt                     |
+| `.github/prompts/rapidkit-adopt-project.prompt.md`                      | Copilot adopt/import workflow prompt                           |
+| `.github/skills/rapidkit-grounding/SKILL.md`                            | Copilot skills                                                 |
+| `.github/skills/rapidkit-workspace-intelligence/SKILL.md`               | Enterprise Workspace Intelligence skill                        |
+| `.github/skills/rapidkit-workspace-intelligence/resources/mcp-tools.md` | Future MCP tool design reference                               |
+| `.github/agents/workspai-advisor.agent.md`                              | Read-only workspace advisor agent                              |
+| `.github/agents/workspai-repair.agent.md`                               | Blocker repair agent                                           |
+| `.github/agents/workspai-release.agent.md`                              | Release safety agent                                           |
+| `.github/agents/workspai-project-onboarder.agent.md`                    | Project onboarding agent                                       |
+| `.cursor/rules/rapidkit-grounding.mdc`                                  | Cursor always-on rule                                          |
+| `CLAUDE.md`                                                             | Claude Code (imports `@AGENTS.md`)                             |
+| `.claude/rules/rapidkit-evidence.md`                                    | Claude Code scoped evidence rule                               |
+| `.rapidkit/AGENT-GROUNDING.md`                                          | Tool-agnostic operator doc                                     |
+| `.rapidkit/reports/agent-customization-pack.json`                       | Versioned output inventory, target matrix, drift state         |
+| `.rapidkit/reports/rapidkit-mcp-design.json`                            | Read-mostly MCP-ready design manifest                          |
+| `.vscode/rapidkit-agent-hooks.json`                                     | Optional advisory VS Code agent hooks (`--experimental-hooks`) |
 
 ## See also
 

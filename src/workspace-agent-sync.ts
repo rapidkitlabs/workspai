@@ -9,17 +9,73 @@ import {
 } from './workspace-context.js';
 
 export const AGENT_REPORTS_INDEX_SCHEMA = 'rapidkit-agent-reports-index.v1';
+export const AGENT_CUSTOMIZATION_PACK_SCHEMA = 'rapidkit-agent-customization-pack.v1';
 export const AGENT_REPORTS_INDEX_PATH = '.rapidkit/reports/INDEX.json';
 export const AGENT_GROUNDING_DOC_PATH = '.rapidkit/AGENT-GROUNDING.md';
+export const AGENT_CUSTOMIZATION_PACK_REPORT_PATH =
+  '.rapidkit/reports/agent-customization-pack.json';
 
 export type AgentGroundingTarget =
   | 'all'
+  | 'vscode'
   | 'agents'
   | 'copilot'
   | 'cursor'
   | 'claude'
   | 'codex'
   | 'orca';
+
+export type AgentCustomizationPackPreset = 'minimal' | 'enterprise';
+
+export type AgentCustomizationOutputKind =
+  | 'report'
+  | 'grounding'
+  | 'instruction'
+  | 'prompt'
+  | 'skill'
+  | 'skill-resource'
+  | 'agent'
+  | 'rule'
+  | 'hook'
+  | 'mcp-design';
+
+export type AgentCustomizationOutputStatus = 'written' | 'planned' | 'skipped';
+
+export type AgentCustomizationPackOutput = {
+  path: string;
+  kind: AgentCustomizationOutputKind;
+  targets: AgentGroundingTarget[];
+  required: boolean;
+  status: AgentCustomizationOutputStatus;
+};
+
+export type AgentCustomizationPackReport = {
+  schemaVersion: typeof AGENT_CUSTOMIZATION_PACK_SCHEMA;
+  generatedAt: string;
+  workspaceRoot: string;
+  preset: AgentCustomizationPackPreset;
+  targets: AgentGroundingTarget[];
+  sourceReports: string[];
+  outputInventory: AgentCustomizationPackOutput[];
+  capabilityMatrix: Record<
+    AgentGroundingTarget,
+    {
+      enabled: boolean;
+      outputs: string[];
+    }
+  >;
+  drift: {
+    missingRequired: string[];
+    staleReports: string[];
+    strictViolations: string[];
+  };
+  answerContract: string[];
+  refreshCommand: string;
+  experimental: {
+    hooksEnabled: boolean;
+    mcpReady: boolean;
+  };
+};
 
 export type AgentReportCatalogEntry = {
   relativePath: string;
@@ -94,6 +150,8 @@ export type WorkspaceAgentReportsIndex = {
 export type AgentGroundingSyncResult = {
   workspacePath: string;
   indexPath: string;
+  packPath?: string;
+  pack?: AgentCustomizationPackReport;
   contextPath?: string;
   writtenFiles: string[];
   skippedFiles: string[];
@@ -108,11 +166,13 @@ export type SyncWorkspaceAgentGroundingOptions = {
   scope?: string;
   agent?: WorkspaceContextAgent | string | boolean;
   targets?: AgentGroundingTarget[];
+  preset?: AgentCustomizationPackPreset;
   write?: boolean;
   dryRun?: boolean;
   strict?: boolean;
   staleAfterHours?: number;
   refreshContext?: boolean;
+  experimentalHooks?: boolean;
 };
 
 function displayRapidkitCommand(args: string): string {
@@ -174,6 +234,7 @@ function normalizeTargets(targets: AgentGroundingTarget[] | undefined): Set<Agen
   if (input.includes('all')) {
     return new Set<AgentGroundingTarget>([
       'all',
+      'vscode',
       'agents',
       'copilot',
       'cursor',
@@ -187,6 +248,122 @@ function normalizeTargets(targets: AgentGroundingTarget[] | undefined): Set<Agen
 
 function targetEnabled(selected: Set<AgentGroundingTarget>, target: AgentGroundingTarget): boolean {
   return selected.has('all') || selected.has(target);
+}
+
+function targetEnabledForCopilot(selected: Set<AgentGroundingTarget>): boolean {
+  return targetEnabled(selected, 'copilot') || targetEnabled(selected, 'vscode');
+}
+
+function normalizePreset(
+  preset: AgentCustomizationPackPreset | undefined
+): AgentCustomizationPackPreset {
+  return preset ?? 'enterprise';
+}
+
+function inferOutputKind(relativePath: string): AgentCustomizationOutputKind {
+  if (relativePath.includes('hooks') || relativePath.endsWith('rapidkit-agent-hooks.json')) {
+    return 'hook';
+  }
+  if (relativePath.includes('mcp') || relativePath.endsWith('rapidkit-mcp-design.json')) {
+    return 'mcp-design';
+  }
+  if (relativePath.endsWith('.json')) {
+    return 'report';
+  }
+  if (relativePath.includes('/instructions/') || relativePath.endsWith('copilot-instructions.md')) {
+    return 'instruction';
+  }
+  if (relativePath.includes('/prompts/')) {
+    return 'prompt';
+  }
+  if (relativePath.includes('/skills/') && relativePath.endsWith('/SKILL.md')) {
+    return 'skill';
+  }
+  if (relativePath.includes('/skills/')) {
+    return 'skill-resource';
+  }
+  if (relativePath.includes('/agents/')) {
+    return 'agent';
+  }
+  if (relativePath.includes('/rules/') || relativePath.endsWith('.mdc')) {
+    return 'rule';
+  }
+  return 'grounding';
+}
+
+function inferOutputTargets(relativePath: string): AgentGroundingTarget[] {
+  if (relativePath.startsWith('.github/')) {
+    return ['vscode', 'copilot'];
+  }
+  if (relativePath.startsWith('.cursor/')) {
+    return ['cursor'];
+  }
+  if (relativePath.startsWith('.claude/') || relativePath === 'CLAUDE.md') {
+    return ['claude'];
+  }
+  if (relativePath === 'AGENTS.md' || relativePath.startsWith('.rapidkit/')) {
+    return ['agents', 'codex', 'orca', 'vscode'];
+  }
+  if (relativePath.startsWith('.vscode/')) {
+    return ['vscode'];
+  }
+  return ['agents'];
+}
+
+function isRequiredPackOutput(relativePath: string, preset: AgentCustomizationPackPreset): boolean {
+  const alwaysRequired = new Set([
+    AGENT_REPORTS_INDEX_PATH,
+    AGENT_CUSTOMIZATION_PACK_REPORT_PATH,
+    'AGENTS.md',
+  ]);
+  if (alwaysRequired.has(relativePath)) {
+    return true;
+  }
+  if (preset === 'minimal') {
+    return false;
+  }
+  return [
+    '.github/instructions/rapidkit-workspace.instructions.md',
+    '.github/prompts/rapidkit-diagnose.prompt.md',
+    '.github/skills/rapidkit-workspace-intelligence/SKILL.md',
+    '.github/agents/workspai-advisor.agent.md',
+  ].includes(relativePath);
+}
+
+function isSafeWorkspaceRelativePath(relativePath: string): boolean {
+  return (
+    relativePath.length > 0 &&
+    !path.isAbsolute(relativePath) &&
+    !relativePath.split(/[\\/]+/).includes('..')
+  );
+}
+
+function buildCapabilityMatrix(input: {
+  targets: AgentGroundingTarget[];
+  outputs: AgentCustomizationPackOutput[];
+}): AgentCustomizationPackReport['capabilityMatrix'] {
+  const knownTargets: AgentGroundingTarget[] = [
+    'all',
+    'vscode',
+    'agents',
+    'copilot',
+    'cursor',
+    'claude',
+    'codex',
+    'orca',
+  ];
+  return Object.fromEntries(
+    knownTargets.map((target) => [
+      target,
+      {
+        enabled: input.targets.includes('all') || input.targets.includes(target),
+        outputs: input.outputs
+          .filter((output) => output.targets.includes(target))
+          .map((output) => output.path)
+          .sort(),
+      },
+    ])
+  ) as AgentCustomizationPackReport['capabilityMatrix'];
 }
 
 async function readJsonIfExists(absolutePath: string): Promise<Record<string, unknown> | null> {
@@ -397,6 +574,31 @@ function buildCopilotEvidenceInstructions(): string {
   ].join('\n');
 }
 
+function buildCopilotWorkspaceInstructions(): string {
+  return [
+    '---',
+    'applyTo: "**"',
+    'description: RapidKit workspace scope, evidence, and command discipline',
+    '---',
+    '',
+    '# RapidKit Workspace Intelligence',
+    '',
+    'Use RapidKit reports as the workspace source of truth before giving architectural, repair, release, or project lifecycle advice.',
+    '',
+    '## Scope rules',
+    '',
+    '- Start from `.rapidkit/reports/INDEX.json` and `.rapidkit/reports/workspace-context-agent.json`.',
+    '- Distinguish workspace-level blockers from project-level blockers.',
+    '- When a project is active, cite its name, path, framework, and evidence source.',
+    '- Do not translate unsupported stack requests into unrelated native kits.',
+    '',
+    '## Answer contract',
+    '',
+    'Return answers with: Scope, Evidence, Diagnosis, Fix Plan, Run, Verify, Assumptions.',
+    '',
+  ].join('\n');
+}
+
 function buildClaudeEvidenceRule(): string {
   return [
     '# RapidKit evidence',
@@ -429,6 +631,231 @@ function buildCopilotDiagnosePrompt(): string {
     '1. Root cause grounded in report blockers',
     '2. Smallest safe fix path (commands + file edits)',
     '3. One verification command to prove recovery',
+    '',
+  ].join('\n');
+}
+
+function buildWorkflowPrompt(input: {
+  description: string;
+  objective: string;
+  expectedOutput: string[];
+}): string {
+  return [
+    '---',
+    `description: ${input.description}`,
+    '---',
+    '',
+    input.objective,
+    '',
+    'Read first:',
+    '',
+    '- `.rapidkit/reports/INDEX.json`',
+    '- `.rapidkit/reports/workspace-context-agent.json`',
+    '- Any report referenced by the current blocker or task',
+    '',
+    'Return:',
+    '',
+    ...input.expectedOutput.map((item, index) => `${index + 1}. ${item}`),
+    '',
+    'Use the standard RapidKit answer contract: Scope, Evidence, Diagnosis, Fix Plan, Run, Verify, Assumptions.',
+    '',
+  ].join('\n');
+}
+
+function buildSkillResource(input: { title: string; lines: string[] }): string {
+  return ['# ' + input.title, '', ...input.lines, ''].join('\n');
+}
+
+function buildMcpToolsResource(): string {
+  return buildSkillResource({
+    title: 'MCP Tool Design',
+    lines: [
+      'RapidKit MCP is a future read-mostly bridge. Use the CLI reports today; do not assume a running MCP server exists.',
+      '',
+      'Candidate read tools:',
+      '- `getWorkspaceModel` — read `.rapidkit/reports/workspace-model.json`.',
+      '- `getEvidenceIndex` — read `.rapidkit/reports/INDEX.json`.',
+      '- `getBlockers` — derive current blockers from INDEX and gate reports.',
+      '- `getSafeCommands` — read safe commands from `workspace-context-agent.json`.',
+      '- `getProjectContext` — return one project-scoped slice of the workspace model.',
+      '- `getArtifact` — read one explicit artifact path inside the workspace root.',
+      '- `refreshWorkspaceIntelligence` — explicit user-approved refresh command only.',
+      '',
+      'Write or repair tools require explicit approval boundaries and are intentionally not part of the first read-mostly design.',
+    ],
+  });
+}
+
+function buildMcpDesignManifest(input: { workspacePath: string; generatedAt: string }): string {
+  return `${JSON.stringify(
+    {
+      schemaVersion: 'rapidkit-mcp-design.v1',
+      generatedAt: input.generatedAt,
+      workspaceRoot: input.workspacePath,
+      status: 'design-only',
+      mode: 'read-mostly',
+      safety: {
+        writeToolsEnabled: false,
+        approvalRequiredForRefresh: true,
+        artifactReadsMustStayInsideWorkspace: true,
+      },
+      candidateTools: [
+        {
+          name: 'getWorkspaceModel',
+          reads: ['.rapidkit/reports/workspace-model.json'],
+          mutates: false,
+        },
+        {
+          name: 'getEvidenceIndex',
+          reads: ['.rapidkit/reports/INDEX.json'],
+          mutates: false,
+        },
+        {
+          name: 'getBlockers',
+          reads: [
+            '.rapidkit/reports/INDEX.json',
+            '.rapidkit/reports/workspace-verify-last-run.json',
+            '.rapidkit/reports/pipeline-last-run.json',
+          ],
+          mutates: false,
+        },
+        {
+          name: 'getSafeCommands',
+          reads: ['.rapidkit/reports/workspace-context-agent.json'],
+          mutates: false,
+        },
+        {
+          name: 'getProjectContext',
+          reads: [
+            '.rapidkit/reports/workspace-model.json',
+            '.rapidkit/reports/workspace-context-agent.json',
+          ],
+          mutates: false,
+        },
+        {
+          name: 'getArtifact',
+          reads: ['requested workspace-relative artifact path'],
+          mutates: false,
+        },
+        {
+          name: 'refreshWorkspaceIntelligence',
+          command: displayRapidkitCommand('workspace agent-sync --write --refresh-context'),
+          mutates: true,
+          approvalRequired: true,
+        },
+      ],
+    },
+    null,
+    2
+  )}\n`;
+}
+
+function buildExperimentalHooksConfig(input: {
+  workspacePath: string;
+  generatedAt: string;
+}): string {
+  return `${JSON.stringify(
+    {
+      schemaVersion: 'rapidkit-agent-hooks.v1',
+      generatedAt: input.generatedAt,
+      workspaceRoot: input.workspacePath,
+      enabledByDefault: false,
+      mode: 'advisory',
+      hooks: [
+        {
+          name: 'rapidkit-pre-tool-use-workspace-boundary',
+          event: 'PreToolUse',
+          purpose: 'Block or warn on state-changing commands outside the active workspace root.',
+          defaultAction: 'warn',
+          rules: [
+            'Allow read-only commands.',
+            'Warn before write/delete commands outside workspaceRoot.',
+            'Never run destructive commands without explicit user approval.',
+          ],
+        },
+        {
+          name: 'rapidkit-post-tool-use-verify-suggestion',
+          event: 'PostToolUse',
+          purpose: 'Suggest non-destructive verification commands after edits.',
+          defaultAction: 'suggest',
+          commands: [
+            displayRapidkitCommand('doctor workspace'),
+            displayRapidkitCommand('workspace verify --strict --json'),
+          ],
+        },
+        {
+          name: 'rapidkit-user-prompt-submit-scope-hint',
+          event: 'UserPromptSubmit',
+          purpose: 'Inject lightweight workspace scope and evidence index hints.',
+          defaultAction: 'inject-context-hint',
+          reads: ['.rapidkit/reports/INDEX.json', '.rapidkit/reports/workspace-context-agent.json'],
+        },
+      ],
+    },
+    null,
+    2
+  )}\n`;
+}
+
+function buildWorkspaceIntelligenceSkill(): string {
+  return [
+    '---',
+    'name: rapidkit-workspace-intelligence',
+    'description: Use RapidKit workspace intelligence reports to answer, repair, verify, and release with evidence',
+    '---',
+    '',
+    '# RapidKit Workspace Intelligence',
+    '',
+    'Use this skill for workspace architecture, project lifecycle, blocker repair, release readiness, agent grounding, and CI evidence questions.',
+    '',
+    '## Decision flow',
+    '',
+    '1. Load `resources/scope-model.md`.',
+    '2. Load `.rapidkit/reports/INDEX.json`.',
+    '3. Load `.rapidkit/reports/workspace-context-agent.json`.',
+    '4. Load the smallest evidence report required for the task.',
+    '5. Answer with Scope, Evidence, Diagnosis, Fix Plan, Run, Verify, Assumptions.',
+    '',
+    '## Rules',
+    '',
+    '- Prefer RapidKit reports over full-repo scans.',
+    '- Never claim a gate passed without a cited report.',
+    '- Separate display commands from execution requests.',
+    '- Keep project-scoped fixes inside the active project unless workspace evidence says otherwise.',
+    '',
+  ].join('\n');
+}
+
+function buildWorkspaiAgent(input: {
+  name: string;
+  description: string;
+  mode: 'read-only' | 'repair' | 'release' | 'onboard';
+  tools: string[];
+}): string {
+  return [
+    '---',
+    `name: ${input.name}`,
+    `description: ${input.description}`,
+    `tools: [${input.tools.map((tool) => `'${tool}'`).join(', ')}]`,
+    '---',
+    '',
+    `You are the ${input.name} agent for RapidKit Workspace Intelligence.`,
+    '',
+    `Mode: ${input.mode}.`,
+    '',
+    'Start every task by reading `.rapidkit/reports/INDEX.json` and `.rapidkit/reports/workspace-context-agent.json`.',
+    '',
+    'Use this answer contract:',
+    '',
+    '- Scope',
+    '- Evidence',
+    '- Diagnosis',
+    '- Fix Plan',
+    '- Run',
+    '- Verify',
+    '- Assumptions',
+    '',
+    'Do not invent health, readiness, or policy status. Cite report paths and command outputs.',
     '',
   ].join('\n');
 }
@@ -499,6 +926,7 @@ export function parseAgentGroundingTargets(input?: string): AgentGroundingTarget
   }
   const allowed = new Set<AgentGroundingTarget>([
     'all',
+    'vscode',
     'agents',
     'copilot',
     'cursor',
@@ -513,6 +941,47 @@ export function parseAgentGroundingTargets(input?: string): AgentGroundingTarget
   return parsed.length > 0 ? parsed : undefined;
 }
 
+function buildAgentCustomizationPackReport(input: {
+  workspacePath: string;
+  generatedAt: string;
+  preset: AgentCustomizationPackPreset;
+  targets: AgentGroundingTarget[];
+  index: WorkspaceAgentReportsIndex;
+  outputs: AgentCustomizationPackOutput[];
+  missingRequired: string[];
+  staleReports: string[];
+  strictViolations: string[];
+  experimentalHooks: boolean;
+}): AgentCustomizationPackReport {
+  const outputInventory = [...input.outputs].sort((a, b) => a.path.localeCompare(b.path));
+  return {
+    schemaVersion: AGENT_CUSTOMIZATION_PACK_SCHEMA,
+    generatedAt: input.generatedAt,
+    workspaceRoot: input.workspacePath,
+    preset: input.preset,
+    targets: [...input.targets].sort(),
+    sourceReports: input.index.reports
+      .filter((report) => report.exists)
+      .map((report) => report.path)
+      .sort(),
+    outputInventory,
+    capabilityMatrix: buildCapabilityMatrix({ targets: input.targets, outputs: outputInventory }),
+    drift: {
+      missingRequired: input.missingRequired,
+      staleReports: input.staleReports,
+      strictViolations: input.strictViolations,
+    },
+    answerContract: ['Scope', 'Evidence', 'Diagnosis', 'Fix Plan', 'Run', 'Verify', 'Assumptions'],
+    refreshCommand: displayRapidkitCommand(
+      `workspace agent-sync --write --refresh-context --preset ${input.preset}`
+    ),
+    experimental: {
+      hooksEnabled: input.experimentalHooks,
+      mcpReady: outputInventory.some((output) => output.kind === 'mcp-design'),
+    },
+  };
+}
+
 export async function syncWorkspaceAgentGrounding(
   options: SyncWorkspaceAgentGroundingOptions
 ): Promise<AgentGroundingSyncResult> {
@@ -520,6 +989,8 @@ export async function syncWorkspaceAgentGrounding(
   const now = new Date();
   const staleAfterHours = options.staleAfterHours ?? 24;
   const selectedTargets = normalizeTargets(options.targets);
+  const selectedTargetList = [...selectedTargets].sort();
+  const preset = normalizePreset(options.preset);
   const write = options.write === true;
   const strict = options.strict === true;
 
@@ -563,6 +1034,7 @@ export async function syncWorkspaceAgentGrounding(
 
   const writtenFiles: string[] = [];
   const skippedFiles: string[] = [];
+  const outputs: AgentCustomizationPackOutput[] = [];
 
   const record = (result: 'written' | 'skipped', relativePath: string) => {
     if (result === 'written') {
@@ -570,6 +1042,13 @@ export async function syncWorkspaceAgentGrounding(
     } else {
       skippedFiles.push(relativePath);
     }
+    outputs.push({
+      path: relativePath,
+      kind: inferOutputKind(relativePath),
+      targets: inferOutputTargets(relativePath),
+      required: isRequiredPackOutput(relativePath, preset),
+      status: result === 'written' ? 'written' : options.dryRun ? 'planned' : 'skipped',
+    });
   };
 
   record(
@@ -590,7 +1069,7 @@ export async function syncWorkspaceAgentGrounding(
     AGENT_GROUNDING_DOC_PATH
   );
 
-  if (targetEnabled(selectedTargets, 'agents')) {
+  if (targetEnabled(selectedTargets, 'agents') || targetEnabled(selectedTargets, 'vscode')) {
     record(
       await writeManagedMarkdownFile({
         absolutePath: path.join(workspacePath, 'AGENTS.md'),
@@ -639,7 +1118,7 @@ export async function syncWorkspaceAgentGrounding(
     );
   }
 
-  if (targetEnabled(selectedTargets, 'copilot')) {
+  if (targetEnabledForCopilot(selectedTargets)) {
     record(
       await writeManagedMarkdownFile({
         absolutePath: path.join(workspacePath, '.github/copilot-instructions.md'),
@@ -647,6 +1126,14 @@ export async function syncWorkspaceAgentGrounding(
         write,
       }),
       '.github/copilot-instructions.md'
+    );
+    record(
+      await writeTextFile(
+        path.join(workspacePath, '.github/instructions/rapidkit-workspace.instructions.md'),
+        buildCopilotWorkspaceInstructions(),
+        write
+      ),
+      '.github/instructions/rapidkit-workspace.instructions.md'
     );
     record(
       await writeTextFile(
@@ -664,6 +1151,71 @@ export async function syncWorkspaceAgentGrounding(
       ),
       '.github/prompts/rapidkit-diagnose.prompt.md'
     );
+    if (preset === 'enterprise') {
+      const promptDefinitions = [
+        [
+          '.github/prompts/rapidkit-repair.prompt.md',
+          buildWorkflowPrompt({
+            description: 'Repair RapidKit blockers with evidence and verification',
+            objective: 'Plan the smallest safe repair for the current RapidKit blocker.',
+            expectedOutput: [
+              'Blocker and affected workspace/project scope',
+              'Evidence paths and exact failing signals',
+              'Minimal fix plan',
+              'Human-run commands',
+              'Verification command and expected success signal',
+            ],
+          }),
+        ],
+        [
+          '.github/prompts/rapidkit-release-readiness.prompt.md',
+          buildWorkflowPrompt({
+            description: 'Assess RapidKit release readiness from evidence',
+            objective: 'Assess whether this workspace is release-ready using RapidKit gates.',
+            expectedOutput: [
+              'Readiness verdict with cited reports',
+              'Blocking gates',
+              'Safe next command',
+              'Verification checklist',
+            ],
+          }),
+        ],
+        [
+          '.github/prompts/rapidkit-project-onboard.prompt.md',
+          buildWorkflowPrompt({
+            description: 'Onboard a project into RapidKit Workspace Intelligence',
+            objective:
+              'Guide project onboarding using workspace model and create planner capabilities.',
+            expectedOutput: [
+              'Target project scope',
+              'Native create, external create-adopt, or adopt-only lane',
+              'Safe commands',
+              'Post-onboarding verification',
+            ],
+          }),
+        ],
+        [
+          '.github/prompts/rapidkit-adopt-project.prompt.md',
+          buildWorkflowPrompt({
+            description: 'Adopt an existing project into RapidKit governance',
+            objective: 'Adopt an existing project without changing its runtime behavior.',
+            expectedOutput: [
+              'Detected stack and confidence',
+              'Adoption plan',
+              'Generated metadata expectations',
+              'Doctor and workspace model verification',
+            ],
+          }),
+        ],
+      ] as const;
+
+      for (const [relativePath, content] of promptDefinitions) {
+        record(
+          await writeTextFile(path.join(workspacePath, relativePath), content, write),
+          relativePath
+        );
+      }
+    }
     record(
       await writeTextFile(
         path.join(workspacePath, '.github/skills/rapidkit-grounding/SKILL.md'),
@@ -671,6 +1223,150 @@ export async function syncWorkspaceAgentGrounding(
         write
       ),
       '.github/skills/rapidkit-grounding/SKILL.md'
+    );
+    if (preset === 'enterprise') {
+      record(
+        await writeTextFile(
+          path.join(workspacePath, '.github/skills/rapidkit-workspace-intelligence/SKILL.md'),
+          buildWorkspaceIntelligenceSkill(),
+          write
+        ),
+        '.github/skills/rapidkit-workspace-intelligence/SKILL.md'
+      );
+      const resources = [
+        [
+          'artifact-map.md',
+          buildSkillResource({
+            title: 'Artifact Map',
+            lines: AGENT_REPORT_CATALOG.map(
+              (entry) => `- \`${entry.relativePath}\` — ${entry.label}`
+            ),
+          }),
+        ],
+        [
+          'command-map.md',
+          buildSkillResource({
+            title: 'Command Map',
+            lines: [
+              '- `npx rapidkit workspace agent-sync --write --refresh-context` — refresh agent grounding.',
+              '- `npx rapidkit workspace model --json --write` — refresh workspace model.',
+              '- `npx rapidkit doctor workspace` — refresh health evidence.',
+              '- `npx rapidkit workspace verify --strict --json` — verify release gates.',
+            ],
+          }),
+        ],
+        [
+          'scope-model.md',
+          buildSkillResource({
+            title: 'Scope Model',
+            lines: [
+              '- Workspace scope is the default source of truth.',
+              '- Project scope is selected only when the active task targets a specific project.',
+              '- Always name the workspace and project when giving repair or lifecycle advice.',
+            ],
+          }),
+        ],
+        [
+          'runtime-support.md',
+          buildSkillResource({
+            title: 'Runtime Support',
+            lines: [
+              '- Native create is available only for RapidKit-owned scaffold contracts.',
+              '- Unsupported stacks should use external-create-adopt when a stable ecosystem generator exists.',
+              '- Existing projects should use adopt-only when native create is unavailable.',
+            ],
+          }),
+        ],
+        [
+          'create-planner-capabilities.md',
+          buildSkillResource({
+            title: 'Create Planner Capabilities',
+            lines: [
+              '- Use `contracts/create-planner-capabilities.v1.json` to decide native-create, external-create-adopt, or adopt-only.',
+              '- Do not map PHP, WordPress, Laravel, Rails, or Symfony requests to unrelated native kits.',
+              '- Explain unsupported native create requests and guide users to adopt/import.',
+            ],
+          }),
+        ],
+        ['mcp-tools.md', buildMcpToolsResource()],
+      ] as const;
+
+      for (const [fileName, content] of resources) {
+        const relativePath = `.github/skills/rapidkit-workspace-intelligence/resources/${fileName}`;
+        record(
+          await writeTextFile(path.join(workspacePath, relativePath), content, write),
+          relativePath
+        );
+      }
+
+      const agents = [
+        [
+          'workspai-advisor.agent.md',
+          buildWorkspaiAgent({
+            name: 'Workspai Advisor',
+            description: 'Read-only workspace and project guidance using RapidKit evidence',
+            mode: 'read-only',
+            tools: ['search', 'read'],
+          }),
+        ],
+        [
+          'workspai-repair.agent.md',
+          buildWorkspaiAgent({
+            name: 'Workspai Repair',
+            description: 'Turn RapidKit blockers into minimal fixes and verification steps',
+            mode: 'repair',
+            tools: ['search', 'read', 'edit'],
+          }),
+        ],
+        [
+          'workspai-release.agent.md',
+          buildWorkspaiAgent({
+            name: 'Workspai Release',
+            description: 'Assess readiness, governance gates, and release safety from evidence',
+            mode: 'release',
+            tools: ['search', 'read'],
+          }),
+        ],
+        [
+          'workspai-project-onboarder.agent.md',
+          buildWorkspaiAgent({
+            name: 'Workspai Project Onboarder',
+            description: 'Guide create, import, and adopt flows with RapidKit contracts',
+            mode: 'onboard',
+            tools: ['search', 'read', 'edit'],
+          }),
+        ],
+      ] as const;
+
+      for (const [fileName, content] of agents) {
+        const relativePath = `.github/agents/${fileName}`;
+        record(
+          await writeTextFile(path.join(workspacePath, relativePath), content, write),
+          relativePath
+        );
+      }
+    }
+  }
+
+  if (preset === 'enterprise') {
+    record(
+      await writeTextFile(
+        path.join(workspacePath, '.rapidkit/reports/rapidkit-mcp-design.json'),
+        buildMcpDesignManifest({ workspacePath, generatedAt: index.generatedAt }),
+        write
+      ),
+      '.rapidkit/reports/rapidkit-mcp-design.json'
+    );
+  }
+
+  if (preset === 'enterprise' && options.experimentalHooks === true) {
+    record(
+      await writeTextFile(
+        path.join(workspacePath, '.vscode/rapidkit-agent-hooks.json'),
+        buildExperimentalHooksConfig({ workspacePath, generatedAt: index.generatedAt }),
+        write
+      ),
+      '.vscode/rapidkit-agent-hooks.json'
     );
   }
 
@@ -688,9 +1384,51 @@ export async function syncWorkspaceAgentGrounding(
     }
   }
 
+  if (strict) {
+    const unsafeOutputs = outputs
+      .map((output) => output.path)
+      .filter((relativePath) => !isSafeWorkspaceRelativePath(relativePath));
+    if (unsafeOutputs.length > 0) {
+      strictViolations.push(`Unsafe generated output paths: ${unsafeOutputs.join(', ')}`);
+    }
+  }
+
+  const pack = buildAgentCustomizationPackReport({
+    workspacePath,
+    generatedAt: now.toISOString(),
+    preset,
+    targets: selectedTargetList,
+    index,
+    outputs: [
+      ...outputs,
+      {
+        path: AGENT_CUSTOMIZATION_PACK_REPORT_PATH,
+        kind: 'report',
+        targets: ['agents', 'vscode', 'copilot', 'codex', 'orca'],
+        required: true,
+        status: write ? 'written' : options.dryRun ? 'planned' : 'skipped',
+      },
+    ],
+    missingRequired,
+    staleReports,
+    strictViolations,
+    experimentalHooks: options.experimentalHooks === true,
+  });
+
+  record(
+    await writeTextFile(
+      path.join(workspacePath, AGENT_CUSTOMIZATION_PACK_REPORT_PATH),
+      `${JSON.stringify(pack, null, 2)}\n`,
+      write
+    ),
+    AGENT_CUSTOMIZATION_PACK_REPORT_PATH
+  );
+
   return {
     workspacePath,
     indexPath: path.join(workspacePath, AGENT_REPORTS_INDEX_PATH),
+    packPath: path.join(workspacePath, AGENT_CUSTOMIZATION_PACK_REPORT_PATH),
+    pack,
     contextPath,
     writtenFiles,
     skippedFiles,

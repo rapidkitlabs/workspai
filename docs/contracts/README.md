@@ -6,13 +6,14 @@ Contract documentation for JSON payloads, support matrices, and cross-repo parit
 
 Canonical JSON lives in **`../contracts/`** (npm package root, published in the tarball).
 
-| Script                              | Purpose                                                                                     |
-| ----------------------------------- | ------------------------------------------------------------------------------------------- |
-| `npm run generate:contracts`        | Regenerate runtime surface, create planner, import-stack parity, module-layout, infra-stack |
-| `npm run check:generated-contracts` | Verify committed JSON matches generators                                                    |
-| `npm run sync:parity-snapshot`      | Copy canonical → vscode `contracts/` mirror                                                 |
-| `npm run check:parity-snapshot`     | Verify mirrors match canonical                                                              |
-| `npm run validate:contracts`        | Generate check + mirror check + contract tests                                              |
+| Script                                    | Purpose                                                                                                               |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `npm run generate:contracts`              | Regenerate runtime surface, create planner, agent customization pack, import-stack parity, module-layout, infra-stack |
+| `npm run check:generated-contracts`       | Verify committed JSON matches generators                                                                              |
+| `npm run sync:parity-snapshot`            | Copy canonical → vscode `contracts/` mirror                                                                           |
+| `npm run check:parity-snapshot`           | Verify mirrors match canonical                                                                                        |
+| `npm run validate:contracts`              | Generate check + mirror check + contract tests                                                                        |
+| `npm run check:agent-customization-drift` | Verify generated agent customization files are committed in a consumer workspace                                      |
 
 Workflow: change code → `npm run generate:contracts` → `npm run sync:parity-snapshot` → commit npm + vscode `contracts/`.
 
@@ -37,6 +38,7 @@ Published under `../contracts/` (not duplicated in this folder):
 - `analyze-last-run.v1.json` — analyze evidence
 - `pipeline-last-run.v1.json` — governance pipeline orchestration
 - `create-planner-capabilities.v1.json` — native-create, external-create-adopt, and adopt-only capability lanes
+- `agent-customization-pack.v1.json` — generated instructions, prompts, skills, agents, optional hooks, MCP-ready design metadata, target matrix, and drift state for AI agent surfaces
 
 Workspace intelligence (`../contracts/workspace-intelligence/`):
 

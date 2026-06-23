@@ -4,6 +4,7 @@ import fsExtra from 'fs-extra';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  AGENT_CUSTOMIZATION_PACK_REPORT_PATH,
   AGENT_REPORTS_INDEX_PATH,
   buildWorkspaceAgentReportsIndex,
   syncWorkspaceAgentGrounding,
@@ -101,6 +102,7 @@ describe('workspace agent sync', () => {
         '.cursor/rules/rapidkit-grounding.mdc',
         'CLAUDE.md',
         '.github/skills/rapidkit-grounding/SKILL.md',
+        AGENT_CUSTOMIZATION_PACK_REPORT_PATH,
       ])
     );
 
@@ -116,6 +118,98 @@ describe('workspace agent sync', () => {
       'utf8'
     );
     expect(cursorRule).toContain('alwaysApply: true');
+
+    const pack = await fsExtra.readJson(
+      path.join(workspacePath, AGENT_CUSTOMIZATION_PACK_REPORT_PATH)
+    );
+    expect(pack.schemaVersion).toBe('rapidkit-agent-customization-pack.v1');
+    expect(pack.answerContract).toEqual([
+      'Scope',
+      'Evidence',
+      'Diagnosis',
+      'Fix Plan',
+      'Run',
+      'Verify',
+      'Assumptions',
+    ]);
+    expect(pack.outputInventory.map((output: { path: string }) => output.path)).toEqual(
+      expect.arrayContaining([
+        '.github/instructions/rapidkit-workspace.instructions.md',
+        '.github/prompts/rapidkit-repair.prompt.md',
+        '.github/skills/rapidkit-workspace-intelligence/SKILL.md',
+        '.github/skills/rapidkit-workspace-intelligence/resources/artifact-map.md',
+        '.github/skills/rapidkit-workspace-intelligence/resources/mcp-tools.md',
+        '.github/agents/workspai-advisor.agent.md',
+        '.rapidkit/reports/rapidkit-mcp-design.json',
+      ])
+    );
+    expect(pack.experimental).toEqual({
+      hooksEnabled: false,
+      mcpReady: true,
+    });
+
+    const mcpDesign = await fsExtra.readJson(
+      path.join(workspacePath, '.rapidkit/reports/rapidkit-mcp-design.json')
+    );
+    expect(mcpDesign.mode).toBe('read-mostly');
+    expect(mcpDesign.safety.writeToolsEnabled).toBe(false);
+  });
+
+  it('supports a VS Code target dry run without writing files', async () => {
+    const workspacePath = await makeWorkspace();
+    const result = await syncWorkspaceAgentGrounding({
+      workspacePath,
+      write: false,
+      dryRun: true,
+      preset: 'enterprise',
+      targets: ['vscode'],
+    });
+
+    expect(result.pack?.targets).toEqual(['vscode']);
+    expect(result.pack?.outputInventory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: '.github/agents/workspai-repair.agent.md',
+          status: 'planned',
+        }),
+      ])
+    );
+    expect(
+      await fsExtra.pathExists(path.join(workspacePath, AGENT_CUSTOMIZATION_PACK_REPORT_PATH))
+    ).toBe(false);
+  });
+
+  it('plans advisory VS Code hooks only when explicitly requested', async () => {
+    const workspacePath = await makeWorkspace();
+    const result = await syncWorkspaceAgentGrounding({
+      workspacePath,
+      write: true,
+      preset: 'enterprise',
+      targets: ['vscode'],
+      experimentalHooks: true,
+    });
+
+    expect(result.writtenFiles).toContain('.vscode/rapidkit-agent-hooks.json');
+
+    const hooks = await fsExtra.readJson(
+      path.join(workspacePath, '.vscode/rapidkit-agent-hooks.json')
+    );
+    expect(hooks.enabledByDefault).toBe(false);
+    expect(hooks.mode).toBe('advisory');
+
+    const pack = await fsExtra.readJson(
+      path.join(workspacePath, AGENT_CUSTOMIZATION_PACK_REPORT_PATH)
+    );
+    expect(pack.experimental.hooksEnabled).toBe(true);
+    expect(pack.outputInventory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: '.vscode/rapidkit-agent-hooks.json',
+          kind: 'hook',
+          status: 'written',
+        }),
+      ])
+    );
   });
 
   it('fails strict mode when required context is missing', async () => {

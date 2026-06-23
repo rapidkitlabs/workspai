@@ -172,7 +172,7 @@ describe('CLI Entry Point', () => {
           npx rapidkit workspace list               List registered workspaces
           npx rapidkit workspace model --json      Build workspace intelligence model
           npx rapidkit workspace context --for-agent --json --write  Build agent context + sync grounding
-          npx rapidkit workspace agent-sync --write --refresh-context  Sync AGENTS.md, Copilot, Cursor, Claude hooks
+          npx rapidkit workspace agent-sync --write --refresh-context  Sync the Agent Customization Pack
           npx rapidkit workspace snapshot --json   Persist workspace intelligence snapshot
           npx rapidkit workspace diff --from <file|git[:ref]> --json  Diff current model against a snapshot
           npx rapidkit workspace impact --from <file> --json  Build blast radius from model diff

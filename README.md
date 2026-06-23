@@ -148,6 +148,7 @@ For the visual experience, install the [Workspai VS Code extension](https://mark
 - [Typical workflows](#typical-workflows)
 - [Mental model](#mental-model)
 - [Workspace Intelligence Commands](#workspace-intelligence-commands)
+- [Agent Customization Pack](#agent-customization-pack)
 - [Requirements](#requirements)
 - [Install](#install)
 - [Project workflows](#project-workflows)
@@ -182,7 +183,8 @@ npx rapidkit workspace model --json
 
 ```bash
 npx rapidkit workspace context --for-agent --json --write
-npx rapidkit workspace agent-sync --write --refresh-context
+npx rapidkit workspace agent-sync --write --refresh-context --preset enterprise
+npx rapidkit workspace agent-sync --write --refresh-context --preset enterprise --experimental-hooks
 ```
 
 ### Release verification
@@ -237,17 +239,17 @@ Every tool gets the same answers: what projects exist, what stack they use, whic
 
 Workspace Intelligence provides a shared understanding of projects, dependencies, operational context, and release readiness for developers, CI pipelines, and AI agents.
 
-| Command                                           | Purpose                                                          |
-| ------------------------------------------------- | ---------------------------------------------------------------- |
-| `workspace model [--cache\|--incremental] --json` | Canonical workspace model (graph-aware, incremental rebuilds)    |
-| `workspace context --for-agent --json --write`    | Agent-ready context pack + auto agent grounding sync             |
-| `workspace agent-sync --write`                    | Cross-tool grounding (AGENTS.md, Copilot, Cursor, Claude, INDEX) |
-| `workspace snapshot --json`                       | Persist model snapshot                                           |
-| `workspace diff --from <file\|git[:ref]> --json`  | Diff against snapshot or git                                     |
-| `workspace impact --from <file> --json`           | Graph-aware transitive blast-radius evidence                     |
-| `workspace verify [--strict] --json`              | Definitive verification gate (subgraph + freshness + policy)     |
-| `workspace graph <emit\|explain\|dot\|mermaid>`   | Inspect and visualize the dependency graph                       |
-| `workspace watch [--json] [--once]`               | Daemon mode: keep model + graph in memory, stream change events  |
+| Command                                           | Purpose                                                                              |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `workspace model [--cache\|--incremental] --json` | Canonical workspace model (graph-aware, incremental rebuilds)                        |
+| `workspace context --for-agent --json --write`    | Agent-ready context pack + auto agent grounding sync                                 |
+| `workspace agent-sync --write`                    | Agent Customization Pack (AGENTS.md, Copilot, Cursor, Claude, INDEX, skills, agents) |
+| `workspace snapshot --json`                       | Persist model snapshot                                                               |
+| `workspace diff --from <file\|git[:ref]> --json`  | Diff against snapshot or git                                                         |
+| `workspace impact --from <file> --json`           | Graph-aware transitive blast-radius evidence                                         |
+| `workspace verify [--strict] --json`              | Definitive verification gate (subgraph + freshness + policy)                         |
+| `workspace graph <emit\|explain\|dot\|mermaid>`   | Inspect and visualize the dependency graph                                           |
+| `workspace watch [--json] [--once]`               | Daemon mode: keep model + graph in memory, stream change events                      |
 
 JSON schemas: `contracts/workspace-intelligence/`. Details: [commands-reference.md](docs/commands-reference.md).
 
@@ -276,40 +278,76 @@ radius, gating, and visualization:
   deterministic `workspace-watch-event.v1` change events (changed projects, graph edge
   deltas, structural hash) via fast incremental rebuilds.
 
-### Agent grounding (CLI-only, no extension required)
+### Agent Customization Pack
 
-RapidKit can sync **cross-tool instruction files** so Copilot, Cursor, Claude Code, Codex, Grok, and other agents read the same evidence before guessing:
+RapidKit can generate a versioned **Agent Customization Pack** so AI tools do
+not start from an ungrounded repository scan. They start from the same workspace
+truth developers and CI use: reports, commands, contracts, blockers, scope, and
+verification evidence.
+
+This is CLI-only and does not require the Workspai extension:
 
 ```bash
-# Full sync: refresh context pack + INDEX + AGENTS.md + Copilot/Cursor/Claude hooks
-npx rapidkit workspace agent-sync --write --refresh-context
+# Full enterprise pack:
+# context pack + INDEX + AGENTS.md + Copilot/Cursor/Claude/Codex surfaces + MCP-ready design
+npx rapidkit workspace agent-sync --write --refresh-context --preset enterprise
+
+# Optional advisory VS Code agent hooks (disabled by default in the generated file)
+npx rapidkit workspace agent-sync --write --refresh-context --preset enterprise --experimental-hooks
 
 # Context pack write also syncs grounding by default
 npx rapidkit workspace context --for-agent --json --write
 
 # CI strict gate (fail if required reports missing/stale)
 npx rapidkit workspace agent-sync --write --strict --json
+
+# CI drift gate after sync
+npm run check:agent-customization-drift -- --workspace <workspace-root>
 ```
 
-| Artifact / file                                          | Purpose                                                 |
-| -------------------------------------------------------- | ------------------------------------------------------- |
-| `.rapidkit/reports/INDEX.json`                           | Read order, blockers, report timestamps                 |
-| `.rapidkit/reports/workspace-context-agent.json`         | Canonical agent context pack                            |
-| `.rapidkit/AGENT-GROUNDING.md`                           | Tool-agnostic grounding doc                             |
-| `AGENTS.md`                                              | Open standard for all agents (managed RapidKit section) |
-| `.github/copilot-instructions.md`                        | GitHub Copilot / VS Code Chat always-on rules           |
-| `.github/instructions/rapidkit-evidence.instructions.md` | Copilot scoped rules for `.rapidkit/**`                 |
-| `.github/prompts/rapidkit-diagnose.prompt.md`            | Copilot reusable diagnose prompt                        |
-| `.github/skills/rapidkit-grounding/SKILL.md`             | Copilot agent skill workflow                            |
-| `.cursor/rules/rapidkit-grounding.mdc`                   | Cursor always-on project rule                           |
-| `CLAUDE.md`                                              | Claude Code entry (`@AGENTS.md` + managed notes)        |
-| `.claude/rules/rapidkit-evidence.md`                     | Claude Code scoped evidence rules                       |
+| Artifact / file                                                         | Purpose                                                  |
+| ----------------------------------------------------------------------- | -------------------------------------------------------- |
+| `.rapidkit/reports/agent-customization-pack.json`                       | Versioned output inventory, target matrix, drift state   |
+| `.rapidkit/reports/rapidkit-mcp-design.json`                            | Read-mostly MCP-ready tool design manifest               |
+| `.rapidkit/reports/INDEX.json`                                          | Read order, blockers, report timestamps                  |
+| `.rapidkit/reports/workspace-context-agent.json`                        | Canonical agent context pack                             |
+| `.rapidkit/AGENT-GROUNDING.md`                                          | Tool-agnostic grounding doc                              |
+| `AGENTS.md`                                                             | Open standard for all agents (managed RapidKit section)  |
+| `.github/copilot-instructions.md`                                       | GitHub Copilot / VS Code Chat always-on rules            |
+| `.github/instructions/rapidkit-workspace.instructions.md`               | Copilot workspace scope and command discipline           |
+| `.github/instructions/rapidkit-evidence.instructions.md`                | Copilot scoped rules for `.rapidkit/**`                  |
+| `.github/prompts/rapidkit-diagnose.prompt.md`                           | Copilot reusable diagnose prompt                         |
+| `.github/skills/rapidkit-workspace-intelligence/SKILL.md`               | Workspace Intelligence skill workflow                    |
+| `.github/skills/rapidkit-workspace-intelligence/resources/mcp-tools.md` | Future MCP tool design reference                         |
+| `.github/agents/workspai-advisor.agent.md`                              | Read-only workspace advisor agent                        |
+| `.github/agents/workspai-repair.agent.md`                               | Blocker repair agent                                     |
+| `.github/agents/workspai-release.agent.md`                              | Release safety agent                                     |
+| `.github/agents/workspai-project-onboarder.agent.md`                    | Project onboarding agent                                 |
+| `.cursor/rules/rapidkit-grounding.mdc`                                  | Cursor always-on project rule                            |
+| `CLAUDE.md`                                                             | Claude Code entry (`@AGENTS.md` + managed notes)         |
+| `.claude/rules/rapidkit-evidence.md`                                    | Claude Code scoped evidence rules                        |
+| `.vscode/rapidkit-agent-hooks.json`                                     | Optional advisory VS Code hooks (`--experimental-hooks`) |
 
-Agents cannot be **forced** probabilistically — but this stack maximizes the chance they read reports first, even when the user talks to Copilot directly without Workspai.
+The pack also publishes a standard answer contract for agent-facing output:
+
+```text
+Scope -> Evidence -> Diagnosis -> Fix Plan -> Run -> Verify -> Assumptions
+```
+
+That contract is what keeps agent responses operational: every recommendation
+should name the workspace/project scope, cite the evidence it used, explain the
+diagnosis, propose the command or file action, and tell the user how to verify
+the result.
+
+Agents cannot be **forced** probabilistically. This stack makes the desired
+behavior explicit, versioned, and easy for IDEs, CI, and Workspai to audit.
 
 Skip auto-sync after context write: `--no-agent-sync`. Target specific ecosystems: `--target copilot,cursor,claude`.
 
-After `pipeline`, grounding syncs automatically (refresh context + INDEX + hooks). Disable with `--no-agent-sync` or `RAPIDKIT_NO_AGENT_SYNC=1`.
+After `pipeline`, grounding syncs automatically (refresh context + INDEX + agent surfaces). Disable with `--no-agent-sync` or `RAPIDKIT_NO_AGENT_SYNC=1`.
+
+Contract: `contracts/agent-customization-pack.v1.json`. Artifact map:
+[docs/contracts/ARTIFACT_CATALOG.md](docs/contracts/ARTIFACT_CATALOG.md).
 
 CI template: [docs/examples/ci-agent-grounding.yml](docs/examples/ci-agent-grounding.yml).
 

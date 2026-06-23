@@ -1,6 +1,66 @@
 # Release Notes
 
-## Latest Release: v0.39.0 (June 22, 2026)
+## Latest Release: v0.40.0 (June 23, 2026)
+
+### Agent Customization Pack (Enterprise Agent Output)
+
+This minor release promotes RapidKit agent grounding from scattered files into a
+versioned **Agent Customization Pack** that VS Code, Copilot, Cursor, Claude,
+Codex, CI, and future MCP consumers can read consistently.
+
+**What's New:**
+
+- **Versioned pack contract**
+  - `contracts/agent-customization-pack.v1.json` defines presets, targets,
+    required reports, drift rules, and the standard answer contract.
+
+- **Enterprise `workspace agent-sync`**
+  - Writes `.rapidkit/reports/agent-customization-pack.json` with output
+    inventory, capability matrix, and drift state.
+  - `--preset minimal|enterprise`, `--target vscode|copilot,cursor,...`,
+    `--dry-run --json`, `--strict --json`.
+
+- **VS Code-native surfaces**
+  - Copilot instructions, scoped instruction files, reusable prompts, portable
+    skill pack, and specialized agents (`workspai-advisor`, `workspai-repair`,
+    `workspai-release`, `workspai-project-onboarder`).
+
+- **Optional hooks (experimental)**
+  - `--experimental-hooks` generates advisory
+    `.vscode/rapidkit-agent-hooks.json` (disabled by default).
+
+- **MCP-ready design**
+  - `.rapidkit/reports/rapidkit-mcp-design.json` plus skill resource
+    `resources/mcp-tools.md` (read-mostly, approval-gated writes).
+
+- **CI drift guard**
+  - `npm run check:agent-customization-drift` fails when generated
+    customization files are out of sync with git.
+
+**Standard answer contract:** Scope → Evidence → Diagnosis → Fix Plan → Run →
+Verify → Assumptions.
+
+**Breaking changes:** None. Existing `agent-sync --write` remains
+backward-compatible; new flags are opt-in except the pack report, which is
+additive.
+
+**Verification:**
+
+- `npx vitest run src/__tests__/workspace-agent-sync.test.ts`
+- `npx vitest run src/__tests__/contracts/`
+- `npm run check:shared-contracts`
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.40.0
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.40.0.md)
+
+---
+
+## Previous Release: v0.39.0 (June 22, 2026)
 
 ### Graph-Aware Workspace Intelligence Engine
 

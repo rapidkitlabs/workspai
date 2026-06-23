@@ -27,12 +27,14 @@ const vscodeRoot = process.env.RAPIDKIT_VSCODE_REPO_PATH
 const GENERATED_FILES = [
   'runtime-command-surface.v1.json',
   'create-planner-capabilities.v1.json',
+  'agent-customization-pack.v1.json',
   'backend-import-stack-parity.snapshot.json',
   'module-layout.v1.json',
   'infra-stack.v1.json',
 ];
 
 const VSCODE_SRC_CONTRACT_FILES = [
+  'agent-customization-pack.v1.json',
   'create-planner-capabilities.v1.json',
   'release-readiness.v1.json',
   'workspace-registry.v1.json',
@@ -47,11 +49,15 @@ function runGenerator() {
     process.platform === 'win32' ? 'tsx.cmd' : 'tsx'
   );
   const hasLocalTsx = fs.existsSync(localTsx);
-  const result = spawnSync(hasLocalTsx ? localTsx : 'npx', hasLocalTsx ? [scriptPath] : ['tsx', scriptPath], {
-    cwd: npmRoot,
-    stdio: 'inherit',
-    shell: process.platform === 'win32',
-  });
+  const result = spawnSync(
+    hasLocalTsx ? localTsx : 'npx',
+    hasLocalTsx ? [scriptPath] : ['tsx', scriptPath],
+    {
+      cwd: npmRoot,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    }
+  );
 
   if (result.error) {
     console.error('Could not run shared contract generator.');
@@ -186,7 +192,12 @@ for (const relativePath of canonicalFiles) {
   }
 
   if (!npmOnly && fs.existsSync(vscodeRoot)) {
-    syncContract(relativePath, path.resolve(vscodeRoot, 'contracts'), 'rapidkit-vscode/contracts', content);
+    syncContract(
+      relativePath,
+      path.resolve(vscodeRoot, 'contracts'),
+      'rapidkit-vscode/contracts',
+      content
+    );
 
     if (VSCODE_SRC_CONTRACT_FILES.includes(relativePath)) {
       syncContract(

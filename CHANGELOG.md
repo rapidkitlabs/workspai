@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-06-23
+
+### Added
+
+- Added the versioned **Agent Customization Pack** contract
+  (`contracts/agent-customization-pack.v1.json`,
+  `src/contracts/agent-customization-pack-contract.ts`) with preset/target
+  matrices, standard answer contract, drift rules, and output kinds (`hook`,
+  `mcp-design`).
+- Upgraded `workspace agent-sync` from grounding sync to full pack generation:
+  writes `.rapidkit/reports/agent-customization-pack.json` on every successful
+  sync.
+- Added `--preset minimal|enterprise`, `--target` (including `vscode` alias),
+  `--dry-run --json`, and `--strict --json` to `workspace agent-sync`.
+- Added enterprise VS Code/Copilot surfaces: workspace/evidence instructions,
+  diagnose/repair/release/project-onboard/adopt prompts, the
+  `rapidkit-workspace-intelligence` skill (with artifact/command/scope/runtime
+  resources + `mcp-tools.md`), and specialized `workspai-*` custom agents.
+- Added optional advisory VS Code agent hooks behind `--experimental-hooks`
+  (`.vscode/rapidkit-agent-hooks.json`, disabled by default).
+- Added read-mostly MCP-ready design artifact
+  (`.rapidkit/reports/rapidkit-mcp-design.json`).
+- Added `scripts/check-agent-customization-drift.mjs` and
+  `npm run check:agent-customization-drift` for CI drift detection on generated
+  agent customization files.
+
+### Changed
+
+- Extended `workspace agent-sync` strict validation for required report
+  presence/staleness, path containment, pack inventory, answer contract, and
+  English-only generated instruction surfaces.
+- Updated `docs/examples/ci-agent-grounding.yml`, `docs/ci-workflows.md`,
+  `docs/commands-reference.md`, artifact catalog, and README for enterprise pack
+  workflows.
+- Synced `agent-customization-pack.v1.json` to Front and Workspai contract
+  mirrors via shared-contract scripts.
+
+### Notes
+
+- Standard agent answer contract: **Scope → Evidence → Diagnosis → Fix Plan →
+  Run → Verify → Assumptions** (with display vs execute command distinction).
+- Hooks are advisory and disabled by default; MCP design is read-mostly until
+  write tools have explicit approval boundaries.
+
+### Verification
+
+- `npx vitest run src/__tests__/workspace-agent-sync.test.ts`
+- `npx vitest run src/__tests__/contracts/`
+- `npx tsc --noEmit`
+- `npm run check:shared-contracts`
+- `npm run check:agent-customization-drift -- --workspace <workspace-root>` (in
+  git worktrees)
+
 ## [0.39.0] - 2026-06-22
 
 ### Added
