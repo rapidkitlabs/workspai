@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.40.1] - 2026-06-23
+
+### Changed
+
+- Rewrote root CLI help (`npx rapidkit`, `--help`, `-h`, `help`) to lead with
+  **Workspace Intelligence** positioning: lifecycle (Create → Model → Context →
+  Impact → Verify), curated command groups, agent grounding, and mental model.
+- Kept the full flat command reference, workspace profiles, options, project
+  commands, and flag clarifications — no commands removed from help output.
+- Updated README **Start here**: split **Install** (global) from **CLI help**
+  (`npx rapidkit --help` without implying global install).
+
+### Verification
+
+- `npx vitest run src/__tests__/index.test.ts -t "Version and Help"`
+
 ## [0.40.0] - 2026-06-23
 
 ### Added

@@ -1,6 +1,44 @@
 # Release Notes
 
-## Latest Release: v0.40.0 (June 23, 2026)
+## Latest Release: v0.40.1 (June 23, 2026)
+
+### Workspace Intelligence-First CLI Help
+
+This patch release reframes the root CLI help so new users see RapidKit as
+**Workspace Intelligence for Software Systems** — not just another bootstrap/generator
+CLI — while preserving every existing command in the full reference block.
+
+**What's New:**
+
+- **Positioning-first help screen**
+  - Tagline, lifecycle flow (Create → Model → Context → Impact → Verify), and
+    question-driven **Workspace Intelligence** section before operational commands.
+
+- **Curated command groups**
+  - Workspace Operations, Governance & Release, Agent Grounding, and Mental Model
+    sections surface the narrative without hiding bootstrap/create/dev workflows.
+
+- **Complete reference preserved**
+  - Quick start, workspace profiles, flat workspace command list, creation options,
+    project commands, and flag clarifications remain at the bottom of help output.
+
+- **README clarity**
+  - **Install** documents global install only; **CLI help** is a separate Start here
+    subsection for `npx rapidkit --help` (no global install implied).
+
+**Breaking changes:** None.
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.40.1
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.40.1.md)
+
+---
+
+## Previous Release: v0.40.0 (June 23, 2026)
 
 ### Agent Customization Pack (Enterprise Agent Output)
 

@@ -7327,6 +7327,14 @@ program
     }
   });
 
+function printHelpSectionDivider(title: string): void {
+  const rule = '─'.repeat(46);
+  console.log('');
+  console.log(chalk.gray(rule));
+  console.log(chalk.bold(title));
+  console.log(chalk.gray(rule));
+}
+
 function printHelp() {
   const quickStartInitDev = isWindowsPlatform()
     ? 'npx rapidkit init; npx rapidkit dev'
@@ -7334,6 +7342,90 @@ function printHelp() {
 
   console.log(chalk.white('Usage:\n'));
   console.log(chalk.cyan('  npx rapidkit <workspace-name> [options]\n'));
+
+  console.log(chalk.bold('Open-Source Workspace Intelligence for Software Systems\n'));
+  console.log(chalk.white('Most AI tools understand files.'));
+  console.log(
+    chalk.white(
+      'RapidKit helps developers, CI pipelines, IDEs, and AI agents share the same understanding of a software system.'
+    )
+  );
+  console.log(chalk.dim('One workspace. One truth. Humans and AI aligned.\n'));
+
+  printHelpSectionDivider('Workspace Lifecycle');
+  console.log(chalk.white('\n1. Create or adopt a workspace\n'));
+  console.log(chalk.cyan('   npx rapidkit my-workspace'));
+  console.log(chalk.cyan('   npx rapidkit adopt /path/to/project'));
+  console.log(chalk.cyan('   npx rapidkit import <path|git-url>\n'));
+  console.log(chalk.white('2. Build a workspace model\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace model --json\n'));
+  console.log(chalk.white('3. Generate agent-ready context\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace context --for-agent --json --write\n'));
+  console.log(chalk.white('4. Analyze change impact\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace impact --from <snapshot>\n'));
+  console.log(chalk.white('5. Verify release readiness\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace verify --strict'));
+  console.log(chalk.cyan('   npx rapidkit pipeline --strict\n'));
+
+  printHelpSectionDivider('Workspace Intelligence');
+  console.log(chalk.white('\nWhat projects exist?\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace model --json\n'));
+  console.log(chalk.white('What should AI agents know?\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace context --for-agent --json --write\n'));
+  console.log(chalk.white('What breaks if this changes?\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace impact --from <snapshot>\n'));
+  console.log(chalk.white('Is this change safe?\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace verify --strict\n'));
+  console.log(chalk.white('How do I align AI tools and CI?\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace agent-sync --write\n'));
+
+  printHelpSectionDivider('Workspace Operations');
+  console.log(chalk.white('\nCreate workspace\n'));
+  console.log(chalk.cyan('   npx rapidkit my-workspace\n'));
+  console.log(chalk.white('Bootstrap toolchains\n'));
+  console.log(chalk.cyan('   npx rapidkit bootstrap\n'));
+  console.log(chalk.white('Create project\n'));
+  console.log(chalk.cyan('   npx rapidkit create project\n'));
+  console.log(chalk.white('Create frontend\n'));
+  console.log(chalk.cyan('   npx rapidkit create frontend nextjs web\n'));
+  console.log(chalk.white('Adopt existing project\n'));
+  console.log(chalk.cyan('   npx rapidkit adopt /path/to/project\n'));
+  console.log(chalk.white('Import repository\n'));
+  console.log(chalk.cyan('   npx rapidkit import <path|git-url>\n'));
+
+  printHelpSectionDivider('Governance & Release');
+  console.log(chalk.white('\nAnalyze workspace\n'));
+  console.log(chalk.cyan('   npx rapidkit analyze\n'));
+  console.log(chalk.white('Check readiness\n'));
+  console.log(chalk.cyan('   npx rapidkit readiness\n'));
+  console.log(chalk.white('Run governance pipeline\n'));
+  console.log(chalk.cyan('   npx rapidkit pipeline --strict\n'));
+  console.log(chalk.white('Create snapshot\n'));
+  console.log(chalk.cyan('   npx rapidkit snapshot create\n'));
+  console.log(chalk.white('Archive project\n'));
+  console.log(chalk.cyan('   npx rapidkit project archive\n'));
+
+  printHelpSectionDivider('Agent Grounding');
+  console.log(chalk.white('\nGenerate context pack\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace context --for-agent\n'));
+  console.log(chalk.white('Sync agent surfaces\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace agent-sync --write\n'));
+  console.log(chalk.white('Supported ecosystems:\n'));
+  console.log(chalk.gray('   Copilot · Cursor · Claude Code · Codex · MCP-ready tools\n'));
+
+  printHelpSectionDivider('Mental Model');
+  console.log(chalk.gray('\n  Repository'));
+  console.log(chalk.gray('      ↓'));
+  console.log(chalk.gray('  Workspace'));
+  console.log(chalk.gray('      ↓'));
+  console.log(chalk.gray('  Workspace Intelligence'));
+  console.log(chalk.gray('      ↓'));
+  console.log(chalk.gray('  Developers · CI · IDEs · AI Agents\n'));
+  console.log(
+    chalk.dim(
+      'RapidKit turns projects and repositories into a shared, evidence-backed understanding of a software system.\n'
+    )
+  );
 
   console.log(chalk.bold('Quick start — workspace workflow:'));
   console.log(

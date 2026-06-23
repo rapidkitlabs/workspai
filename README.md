@@ -23,7 +23,9 @@ contracts, and release gates.
 npm install -g rapidkit
 ```
 
-or run without installing:
+### CLI help
+
+Browse all commands without a global install (first run fetches from npm):
 
 ```bash
 npx rapidkit --help
@@ -32,11 +34,8 @@ npx rapidkit --help
 ### Create a governed workspace
 
 ```bash
-mkdir -p ~/rapidkit/workspaces
-cd ~/rapidkit/workspaces
-
-npx rapidkit create workspace platform --yes --profile polyglot --output .
-cd platform
+npx rapidkit my-workspace --yes --profile polyglot
+cd ~/rapidkit/workspaces/my-workspace
 
 npx rapidkit bootstrap --profile polyglot
 npx rapidkit create project
@@ -50,13 +49,9 @@ npx rapidkit pipeline --json --strict
 ### Adopt an existing project
 
 ```bash
-mkdir -p ~/rapidkit/workspaces
-cd ~/rapidkit/workspaces
+npx rapidkit adopt /path/to/project
+cd ~/rapidkit/workspaces/workspai
 
-npx rapidkit create workspace platform --yes --profile polyglot --output .
-npx rapidkit adopt /path/to/project --workspace ~/rapidkit/workspaces/platform
-
-cd ~/rapidkit/workspaces/platform
 npx rapidkit workspace model --json
 npx rapidkit workspace context --for-agent --json --write
 npx rapidkit pipeline --json --strict
@@ -361,8 +356,6 @@ CI template: [docs/examples/ci-agent-grounding.yml](docs/examples/ci-agent-groun
 
 ```bash
 npm install -g rapidkit
-# or
-npx rapidkit --help
 ```
 
 ## Project workflows
@@ -370,8 +363,10 @@ npx rapidkit --help
 ### I already have a project
 
 ```bash
-npx rapidkit adopt /path/to/project --workspace /path/to/workspace
-npx rapidkit import ../orders-api --workspace ./platform
+npx rapidkit adopt /path/to/project
+npx rapidkit import ../orders-api
+cd ~/rapidkit/workspaces/workspai
+
 npx rapidkit workspace model --json
 npx rapidkit doctor workspace --json
 ```
@@ -379,11 +374,8 @@ npx rapidkit doctor workspace --json
 ### I want a new project
 
 ```bash
-mkdir -p ~/rapidkit/workspaces
-cd ~/rapidkit/workspaces
-
-npx rapidkit create workspace platform --yes --profile polyglot --output .
-cd platform
+npx rapidkit my-workspace --yes --profile polyglot
+cd ~/rapidkit/workspaces/my-workspace
 
 npx rapidkit bootstrap --profile polyglot
 npx rapidkit create project          # interactive kit picker

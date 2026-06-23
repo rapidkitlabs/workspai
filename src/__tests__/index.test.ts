@@ -91,6 +91,10 @@ describe('CLI Entry Point', () => {
       // CLI identity
       expect(stdout).toContain('RapidKit');
       expect(stdout).toContain('Usage:');
+      expect(stdout).toContain('Open-Source Workspace Intelligence for Software Systems');
+      expect(stdout).toContain('Workspace Lifecycle');
+      expect(stdout).toContain('Workspace Intelligence');
+      expect(stdout).toContain('One workspace. One truth. Humans and AI aligned.');
 
       // Core sections
       expect(stdout).toContain('Workspace commands (inside a workspace):');
@@ -137,6 +141,7 @@ describe('CLI Entry Point', () => {
       const { stdout } = await execa('node', [CLI_PATH, '-h']);
 
       expect(stdout).toContain('RapidKit');
+      expect(stdout).toContain('Workspace Lifecycle');
       expect(stdout).toContain('Workspace commands (inside a workspace):');
       expect(stdout).toContain('Project commands (inside a project):');
       expect(stdout).toContain('npx rapidkit workspace list');
