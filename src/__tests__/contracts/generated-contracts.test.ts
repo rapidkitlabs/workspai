@@ -3,6 +3,7 @@ import path from 'path';
 
 import { describe, expect, it } from 'vitest';
 
+import { buildExtensionCliCompatibilityContract } from '../../contracts/extension-cli-compatibility-contract';
 import { buildAgentCustomizationPackContract } from '../../contracts/agent-customization-pack-contract';
 import { buildCreatePlannerCapabilitiesContract } from '../../contracts/create-planner-capabilities-contract';
 import { buildImportStackParitySnapshot } from '../../contracts/import-stack-parity-snapshot';
@@ -46,5 +47,11 @@ describe('generated shared contracts (Wave B + C)', () => {
 
   it('keeps committed infra stack contract aligned with the generator', () => {
     expect(readJsonContract('infra-stack.v1.json')).toEqual(buildInfraStackContract());
+  });
+
+  it('keeps committed extension CLI compatibility aligned with npm package version', () => {
+    expect(readJsonContract('extension-cli-compatibility.v1.json')).toEqual(
+      buildExtensionCliCompatibilityContract()
+    );
   });
 });

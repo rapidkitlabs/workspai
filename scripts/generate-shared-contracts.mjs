@@ -12,6 +12,7 @@ const GENERATED_FILES = [
   'backend-import-stack-parity.snapshot.json',
   'module-layout.v1.json',
   'infra-stack.v1.json',
+  'extension-cli-compatibility.v1.json',
 ];
 
 function runGenerator() {

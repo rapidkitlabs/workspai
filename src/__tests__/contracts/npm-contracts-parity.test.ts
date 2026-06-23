@@ -7,6 +7,7 @@ const NPM_CONTRACTS_DIR = path.resolve(process.cwd(), 'contracts');
 const VSCODE_CONTRACTS_DIR = path.resolve(process.cwd(), '..', 'rapidkit-vscode', 'contracts');
 
 const CLI_EXTENSION_CONTRACT_FILES = [
+  'extension-cli-compatibility.v1.json',
   'runtime-command-surface.v1.json',
   'create-planner-capabilities.v1.json',
   'agent-customization-pack.v1.json',

@@ -4,6 +4,7 @@ import path from 'path';
 import { buildAgentCustomizationPackContract } from '../src/contracts/agent-customization-pack-contract.js';
 import { buildImportStackParitySnapshot } from '../src/contracts/import-stack-parity-snapshot.js';
 import { buildCreatePlannerCapabilitiesContract } from '../src/contracts/create-planner-capabilities-contract.js';
+import { buildExtensionCliCompatibilityContract } from '../src/contracts/extension-cli-compatibility-contract.js';
 import { buildInfraStackContract } from '../src/contracts/infra-stack-contract.js';
 import { buildModuleLayoutContract } from '../src/contracts/module-layout-contract.js';
 import { buildRuntimeCommandSurfaceContract } from '../src/contracts/runtime-command-surface-contract.js';
@@ -23,3 +24,4 @@ writeJson('agent-customization-pack.v1.json', buildAgentCustomizationPackContrac
 writeJson('backend-import-stack-parity.snapshot.json', buildImportStackParitySnapshot());
 writeJson('module-layout.v1.json', buildModuleLayoutContract());
 writeJson('infra-stack.v1.json', buildInfraStackContract());
+writeJson('extension-cli-compatibility.v1.json', buildExtensionCliCompatibilityContract());
