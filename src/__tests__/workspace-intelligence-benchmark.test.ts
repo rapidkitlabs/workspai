@@ -19,6 +19,10 @@ import { inferWorkspaceDependencyGraph } from '../workspace-dependency-graph.js'
 
 const PROJECT_COUNT = Number.parseInt(process.env.RK_BENCH_PROJECTS ?? '120', 10);
 const NOW = new Date('2026-06-22T00:00:00.000Z');
+/** Generous ceilings (scaled by project count) to catch gross regressions only. */
+const BENCH_PERFORMANCE_CEILING_MS = 30_000 + PROJECT_COUNT * 200;
+/** Vitest default (5s) is too low for Windows CI under full-suite load. */
+const BENCH_TEST_TIMEOUT_MS = BENCH_PERFORMANCE_CEILING_MS + 20_000;
 
 async function generateMonorepo(workspacePath: string, count: number): Promise<void> {
   await fsExtra.outputJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
@@ -52,47 +56,50 @@ describe('workspace intelligence benchmark (1.23)', () => {
     }
   });
 
-  it(`builds model + graph for ${PROJECT_COUNT} projects within a generous ceiling`, async () => {
-    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-bench-'));
-    tempDirs.push(workspacePath);
-    await generateMonorepo(workspacePath, PROJECT_COUNT);
+  it(
+    `builds model + graph for ${PROJECT_COUNT} projects within a generous ceiling`,
+    async () => {
+      const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-bench-'));
+      tempDirs.push(workspacePath);
+      await generateMonorepo(workspacePath, PROJECT_COUNT);
 
-    const fullStart = performance.now();
-    const model = await buildWorkspaceModel({ workspacePath, now: NOW });
-    const fullMs = performance.now() - fullStart;
+      const fullStart = performance.now();
+      const model = await buildWorkspaceModel({ workspacePath, now: NOW });
+      const fullMs = performance.now() - fullStart;
 
-    expect(model.projects.length).toBe(PROJECT_COUNT);
-    expect(model.graph?.nodes.length).toBe(PROJECT_COUNT);
-    // Layered chain → roughly 2 edges per project (minus the first two).
-    expect(model.graph!.edges.length).toBeGreaterThanOrEqual(PROJECT_COUNT - 2);
+      expect(model.projects.length).toBe(PROJECT_COUNT);
+      expect(model.graph?.nodes.length).toBe(PROJECT_COUNT);
+      // Layered chain → roughly 2 edges per project (minus the first two).
+      expect(model.graph!.edges.length).toBeGreaterThanOrEqual(PROJECT_COUNT - 2);
 
-    const graphStart = performance.now();
-    const graph = await inferWorkspaceDependencyGraph({ workspacePath, model, now: NOW });
-    const graphMs = performance.now() - graphStart;
-    expect(graph.nodes.length).toBe(PROJECT_COUNT);
+      const graphStart = performance.now();
+      const graph = await inferWorkspaceDependencyGraph({ workspacePath, model, now: NOW });
+      const graphMs = performance.now() - graphStart;
+      expect(graph.nodes.length).toBe(PROJECT_COUNT);
 
-    const incrStart = performance.now();
-    const incremental = await buildWorkspaceModelIncremental({ workspacePath, now: NOW });
-    const incrMs = performance.now() - incrStart;
-    // First incremental run seeds the cache (full); a second confirms reuse.
-    const incremental2Start = performance.now();
-    const incremental2 = await buildWorkspaceModelIncremental({ workspacePath, now: NOW });
-    const incr2Ms = performance.now() - incremental2Start;
+      const incrStart = performance.now();
+      const incremental = await buildWorkspaceModelIncremental({ workspacePath, now: NOW });
+      const incrMs = performance.now() - incrStart;
+      // First incremental run seeds the cache (full); a second confirms reuse.
+      const incremental2Start = performance.now();
+      const incremental2 = await buildWorkspaceModelIncremental({ workspacePath, now: NOW });
+      const incr2Ms = performance.now() - incremental2Start;
 
-    expect(incremental.model.graph?.nodes.length).toBe(PROJECT_COUNT);
-    expect(['full', 'incremental', 'unchanged']).toContain(incremental.mode);
-    expect(incremental2.mode).toBe('unchanged');
+      expect(incremental.model.graph?.nodes.length).toBe(PROJECT_COUNT);
+      expect(['full', 'incremental', 'unchanged']).toContain(incremental.mode);
+      expect(incremental2.mode).toBe('unchanged');
 
-    console.log(
-      `[bench] projects=${PROJECT_COUNT} fullModel=${fullMs.toFixed(1)}ms graphInfer=${graphMs.toFixed(
-        1
-      )}ms incrementalSeed=${incrMs.toFixed(1)}ms incrementalUnchanged=${incr2Ms.toFixed(1)}ms ` +
-        `nodes=${model.graph?.nodes.length} edges=${model.graph?.edges.length}`
-    );
+      console.log(
+        `[bench] projects=${PROJECT_COUNT} fullModel=${fullMs.toFixed(1)}ms graphInfer=${graphMs.toFixed(
+          1
+        )}ms incrementalSeed=${incrMs.toFixed(1)}ms incrementalUnchanged=${incr2Ms.toFixed(1)}ms ` +
+          `nodes=${model.graph?.nodes.length} edges=${model.graph?.edges.length}`
+      );
 
-    // Generous ceilings (scaled by project count) to catch gross regressions only.
-    const ceilingMs = 30_000 + PROJECT_COUNT * 200;
-    expect(fullMs).toBeLessThan(ceilingMs);
-    expect(graphMs).toBeLessThan(ceilingMs);
-  });
+      // Generous ceilings (scaled by project count) to catch gross regressions only.
+      expect(fullMs).toBeLessThan(BENCH_PERFORMANCE_CEILING_MS);
+      expect(graphMs).toBeLessThan(BENCH_PERFORMANCE_CEILING_MS);
+    },
+    BENCH_TEST_TIMEOUT_MS
+  );
 });

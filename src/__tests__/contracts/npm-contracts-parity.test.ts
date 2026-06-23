@@ -4,9 +4,9 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 
 const NPM_CONTRACTS_DIR = path.resolve(process.cwd(), 'contracts');
-const FRONT_CONTRACTS_DIR = path.resolve(process.cwd(), '..', 'contracts');
+const VSCODE_CONTRACTS_DIR = path.resolve(process.cwd(), '..', 'rapidkit-vscode', 'contracts');
 
-const MONOREPO_CONTRACT_FILES = [
+const CLI_EXTENSION_CONTRACT_FILES = [
   'runtime-command-surface.v1.json',
   'create-planner-capabilities.v1.json',
   'agent-customization-pack.v1.json',
@@ -26,19 +26,21 @@ function readJson(filePath: string): unknown {
   return JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
 }
 
-describe('npm monorepo contract parity', () => {
-  it('keeps npm contracts aligned with Front/contracts in monorepo layout', () => {
-    if (!fs.existsSync(FRONT_CONTRACTS_DIR)) {
+describe('CLI ↔ extension contract parity', () => {
+  it('keeps rapidkit-npm contracts aligned with rapidkit-vscode/contracts', () => {
+    if (!fs.existsSync(VSCODE_CONTRACTS_DIR)) {
       return;
     }
 
-    for (const fileName of MONOREPO_CONTRACT_FILES) {
+    for (const fileName of CLI_EXTENSION_CONTRACT_FILES) {
       const npmPath = path.join(NPM_CONTRACTS_DIR, fileName);
-      const frontPath = path.join(FRONT_CONTRACTS_DIR, fileName);
+      const extensionPath = path.join(VSCODE_CONTRACTS_DIR, fileName);
 
-      expect(fs.existsSync(npmPath), `${fileName} missing in npm`).toBe(true);
-      expect(fs.existsSync(frontPath), `${fileName} missing in Front/contracts`).toBe(true);
-      expect(readJson(npmPath)).toEqual(readJson(frontPath));
+      expect(fs.existsSync(npmPath), `${fileName} missing in rapidkit-npm`).toBe(true);
+      expect(fs.existsSync(extensionPath), `${fileName} missing in rapidkit-vscode/contracts`).toBe(
+        true
+      );
+      expect(readJson(npmPath)).toEqual(readJson(extensionPath));
     }
   });
 });

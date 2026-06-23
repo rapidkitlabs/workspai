@@ -16,17 +16,28 @@ set -euo pipefail
 #   RAPIDKIT_E2E_FULL=1   (run `rapidkit init` inside created project)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NPM_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Resolve monorepo root robustly (Front/rapidkit-npm may be a nested git repo).
-MONOREPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 GIT_ROOT=""
 if command -v git >/dev/null 2>&1; then
-  GIT_ROOT="$(cd "$SCRIPT_DIR" && git rev-parse --show-toplevel 2>/dev/null || true)"
+  GIT_ROOT="$(cd "$NPM_DIR" && git rev-parse --show-toplevel 2>/dev/null || true)"
 fi
 
-ROOT="$MONOREPO_ROOT"
-if [[ -n "$GIT_ROOT" ]] && [[ -d "$GIT_ROOT/core" ]] && [[ -d "$GIT_ROOT/Front/rapidkit-npm" ]]; then
-  ROOT="$GIT_ROOT"
+# Platform root: directory that contains the `core/` checkout (sibling-repo layout).
+ROOT="${RAPIDKIT_PLATFORM_ROOT:-}"
+if [[ -z "$ROOT" ]]; then
+  for candidate in \
+    "$(cd "$NPM_DIR/../.." 2>/dev/null && pwd)" \
+    "$(cd "$NPM_DIR/../../.." 2>/dev/null && pwd)" \
+    "$GIT_ROOT"; do
+    if [[ -n "$candidate" && -d "$candidate/core" ]]; then
+      ROOT="$candidate"
+      break
+    fi
+  done
+fi
+if [[ -z "$ROOT" ]]; then
+  ROOT="$(cd "$NPM_DIR/../.." && pwd)"
 fi
 
 TS="$(date +%s)"
@@ -131,7 +142,6 @@ export RAPIDKIT_BRIDGE_PYTHON="$PYTHON_WITH_VENV"
 TARBALL="${RAPIDKIT_E2E_NPM_TARBALL:-}"
 
 if [[ -z "$TARBALL" ]]; then
-  NPM_DIR="$ROOT/Front/rapidkit-npm"
   if [[ ! -d "$NPM_DIR" ]]; then
     echo "E2E(user): rapidkit-npm directory not found: $NPM_DIR" >&2
     exit 1

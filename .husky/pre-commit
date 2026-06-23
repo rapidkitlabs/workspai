@@ -28,7 +28,7 @@ fi
 
 # Shared contracts (canonical: rapidkit-npm/contracts/)
 echo "📋 Syncing shared contracts..."
-npm run sync:shared-contracts || {
+npm run sync:shared-contracts -- --stage-git || {
 	echo "❌ Contract sync failed."
 	echo "   Run: npm run sync:shared-contracts"
 	exit 1

@@ -114,31 +114,32 @@ describe('shared runtime command surface contract (npm)', () => {
     }
   });
 
-  it('keeps npm and Front/contracts runtime surfaces semantically aligned', () => {
+  it('keeps npm and rapidkit-vscode runtime surfaces semantically aligned', () => {
     const npmContractPath = path.resolve(
       process.cwd(),
       'contracts',
       'runtime-command-surface.v1.json'
     );
-    const frontContractPath = path.resolve(
+    const extensionContractPath = path.resolve(
       process.cwd(),
       '..',
+      'rapidkit-vscode',
       'contracts',
       'runtime-command-surface.v1.json'
     );
 
-    if (!fs.existsSync(npmContractPath) || !fs.existsSync(frontContractPath)) {
+    if (!fs.existsSync(npmContractPath) || !fs.existsSync(extensionContractPath)) {
       return;
     }
 
     const npmContract = JSON.parse(
       fs.readFileSync(npmContractPath, 'utf8')
     ) as RuntimeSurfaceContract;
-    const frontContract = JSON.parse(
-      fs.readFileSync(frontContractPath, 'utf8')
+    const extensionContract = JSON.parse(
+      fs.readFileSync(extensionContractPath, 'utf8')
     ) as RuntimeSurfaceContract;
 
-    expect(npmContract).toEqual(frontContract);
+    expect(npmContract).toEqual(extensionContract);
   });
 
   it('keeps module marketplace support restricted to first-class Core-backed frameworks', () => {

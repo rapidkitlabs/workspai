@@ -8,7 +8,6 @@ import { spawnSync } from 'node:child_process';
  * Canonical contracts live in rapidkit-npm/contracts/.
  * This script:
  * - regenerates generated canonical contracts from npm source code
- * - mirrors every canonical JSON contract to Front/contracts/
  * - mirrors every canonical JSON contract to rapidkit-vscode/contracts/
  * - mirrors runtime-consumed extension JSON contracts to rapidkit-vscode/src/contracts/
  */
@@ -16,10 +15,10 @@ import { spawnSync } from 'node:child_process';
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has('--check');
 const npmOnly = args.has('--npm-only');
+const stageGit = args.has('--stage-git');
 
 const npmRoot = path.resolve(process.cwd());
 const contractsDir = path.resolve(npmRoot, 'contracts');
-const frontContractsRoot = path.resolve(npmRoot, '..', 'contracts');
 const vscodeRoot = process.env.RAPIDKIT_VSCODE_REPO_PATH
   ? path.resolve(process.env.RAPIDKIT_VSCODE_REPO_PATH)
   : path.resolve(npmRoot, '..', 'rapidkit-vscode');
@@ -168,6 +167,103 @@ function syncContract(relativePath, targetRoot, label, content) {
   console.log(`- ${label}: ${targetPath}`);
 }
 
+function getGitTopLevel(cwd) {
+  const result = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd,
+    encoding: 'utf-8',
+  });
+  if (result.status !== 0) {
+    return null;
+  }
+  return result.stdout.trim();
+}
+
+function toRepoRelativePath(repoRoot, absolutePath) {
+  return path.relative(repoRoot, absolutePath).split(path.sep).join('/');
+}
+
+/**
+ * After regenerate/sync, re-stage contract files in the current commit so pre-commit
+ * does not leave generator formatting drift as unstaged changes.
+ */
+function stageSyncedContracts(canonicalRelativePaths) {
+  const npmGitRoot = getGitTopLevel(npmRoot);
+  if (!npmGitRoot) {
+    console.warn('[rapidkit] Skipping contract git staging (not inside a git repository).');
+    return;
+  }
+
+  const staged = new Set();
+
+  function stageInRepo(repoRoot, absolutePath) {
+    if (!repoRoot || !fs.existsSync(absolutePath)) {
+      return;
+    }
+    const relativePath = toRepoRelativePath(repoRoot, absolutePath);
+    if (!relativePath || relativePath.startsWith('..')) {
+      return;
+    }
+    const key = `${repoRoot}:${relativePath}`;
+    if (staged.has(key)) {
+      return;
+    }
+    const unstaged = spawnSync('git', ['diff', '--name-only', '--', relativePath], {
+      cwd: repoRoot,
+      encoding: 'utf-8',
+    });
+    const untracked = spawnSync(
+      'git',
+      ['ls-files', '--others', '--exclude-standard', '--', relativePath],
+      {
+        cwd: repoRoot,
+        encoding: 'utf-8',
+      }
+    );
+    const needsStage =
+      Boolean(unstaged.stdout.trim()) || Boolean(untracked.stdout.trim());
+    if (!needsStage) {
+      return;
+    }
+    const result = spawnSync('git', ['add', '--', relativePath], {
+      cwd: repoRoot,
+      encoding: 'utf-8',
+    });
+    if (result.status !== 0) {
+      console.error(`Failed to stage contract file: ${absolutePath}`);
+      if (result.stderr?.trim()) {
+        console.error(result.stderr.trim());
+      }
+      process.exit(result.status ?? 1);
+    }
+    staged.add(key);
+  }
+
+  for (const relativePath of canonicalRelativePaths) {
+    stageInRepo(npmGitRoot, path.resolve(contractsDir, relativePath));
+  }
+
+  if (!npmOnly && fs.existsSync(vscodeRoot)) {
+    const vscodeGitRoot = getGitTopLevel(vscodeRoot);
+    for (const relativePath of canonicalRelativePaths) {
+      stageInRepo(vscodeGitRoot, path.resolve(vscodeRoot, 'contracts', relativePath));
+      if (VSCODE_SRC_CONTRACT_FILES.includes(relativePath)) {
+        stageInRepo(
+          vscodeGitRoot,
+          path.resolve(vscodeRoot, 'src', 'contracts', relativePath)
+        );
+      }
+    }
+  }
+
+  if (staged.size > 0) {
+    console.log('📎 Staged synced contract files for this commit:');
+    for (const entry of [...staged].sort()) {
+      const [, relativePath] = entry.split(':');
+      console.log(`   - ${relativePath}`);
+    }
+  }
+}
+
 const generatedSnapshot = checkOnly ? snapshotGeneratedFiles() : null;
 runGenerator();
 if (checkOnly) {
@@ -185,10 +281,6 @@ for (const relativePath of canonicalFiles) {
 
   if (!checkOnly) {
     console.log(`Contract synced from ${canonicalPath}`);
-  }
-
-  if (fs.existsSync(frontContractsRoot)) {
-    syncContract(relativePath, frontContractsRoot, 'Front/contracts', content);
   }
 
   if (!npmOnly && fs.existsSync(vscodeRoot)) {
@@ -214,4 +306,7 @@ if (checkOnly) {
   console.log('Shared generated contracts and mirrors match rapidkit-npm/contracts/.');
 } else {
   console.log('Shared contracts generated and synced from rapidkit-npm/contracts/.');
+  if (stageGit) {
+    stageSyncedContracts(canonicalFiles);
+  }
 }

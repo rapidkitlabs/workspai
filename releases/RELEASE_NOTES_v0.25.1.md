@@ -40,11 +40,11 @@ v0.25.1 stabilizes Poetry-missing behavior by enforcing non-blocking auto-fallba
 Validated with:
 
 ```bash
-npm -C Front/rapidkit-npm run typecheck
-npm -C Front/rapidkit-npm run test -- src/__tests__/doctor.test.ts
-npm -C Front/rapidkit-npm run test -- src/__tests__/create-internal.test.ts -t "Poetry Installation Flow"
-npm -C Front/rapidkit-npm run test -- src/__tests__/create-internal.test.ts -t "Pipx Installation Flow"
-npm -C Front/rapidkit-npm run test
+npm -C rapidkit-npm run typecheck
+npm -C rapidkit-npm run test -- src/__tests__/doctor.test.ts
+npm -C rapidkit-npm run test -- src/__tests__/create-internal.test.ts -t "Poetry Installation Flow"
+npm -C rapidkit-npm run test -- src/__tests__/create-internal.test.ts -t "Pipx Installation Flow"
+npm -C rapidkit-npm run test
 ```
 
 Result:

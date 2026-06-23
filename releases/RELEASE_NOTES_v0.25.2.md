@@ -35,11 +35,11 @@ v0.25.2 hardens command ownership between npm wrapper and Python core, upgrades 
 Validated with:
 
 ```bash
-npm -C Front/rapidkit-npm run typecheck
-npm -C Front/rapidkit-npm run test -- src/__tests__/runtime-adapters.test.ts
-npm -C Front/rapidkit-npm run test -- src/__tests__/init-scenarios.integration.test.ts
-npm -C Front/rapidkit-npm run test -- src/__tests__/phase3-commands.test.ts src/__tests__/phase3-cli.integration.test.ts
-npm -C Front/rapidkit-npm run build
+npm -C rapidkit-npm run typecheck
+npm -C rapidkit-npm run test -- src/__tests__/runtime-adapters.test.ts
+npm -C rapidkit-npm run test -- src/__tests__/init-scenarios.integration.test.ts
+npm -C rapidkit-npm run test -- src/__tests__/phase3-commands.test.ts src/__tests__/phase3-cli.integration.test.ts
+npm -C rapidkit-npm run build
 ```
 
 Additional real-scenario smoke checks:

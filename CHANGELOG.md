@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `docs/examples/ci-agent-grounding.yml`, `docs/ci-workflows.md`,
   `docs/commands-reference.md`, artifact catalog, and README for enterprise pack
   workflows.
-- Synced `agent-customization-pack.v1.json` to Front and Workspai contract
+- Synced `agent-customization-pack.v1.json` to Workspai contract
   mirrors via shared-contract scripts.
 
 ### Notes
@@ -1205,7 +1205,6 @@ unknown` verdict in `workspace verify`, chaining each project's content hash
 
 - 📚 **Documentation Organization**
   - ✅ Separated public docs from internal development docs
-  - 📁 Moved 9 internal docs to `/Front/Docs/npm/develop/`
   - 📖 Updated docs index with proper categorization
   - 🎯 Clear distinction between user and developer documentation
 

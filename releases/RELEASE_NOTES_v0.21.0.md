@@ -43,17 +43,6 @@ This minor release focuses on **significant performance improvements** through d
 
 **Clear Separation Between Public and Internal Docs:**
 
-- **Moved to Internal** (`/Front/Docs/npm/develop/`):
-  - `ACTION_PLAN_v0.15.0.md` - Internal planning
-  - `DOCTOR_ENHANCEMENTS.md` - Internal enhancements
-  - `METRICS.md` - Internal metrics
-  - `OPTIMIZATION_RECOMMENDATIONS.md` - Internal optimization roadmap
-  - `PHASE_1_COMPLETED.md` - Internal tracking
-  - `POLISH_CHECKLIST.md` - Internal checklist
-  - `PRE_RELEASE_CHECKLIST.md` - Internal process
-  - `QUALITY_IMPROVEMENTS.md` - Internal improvements
-  - `RELEASE_CHECKLIST.md` - Internal release process
-
 - **Kept in Public Docs** (`/rapidkit-npm/docs/`):
   - AI documentation (AI_QUICKSTART, AI_FEATURES, AI_EXAMPLES, AI_DYNAMIC_INTEGRATION)
   - User guides (config-file-guide, doctor-command, UTILITIES, SETUP)
@@ -140,10 +129,6 @@ npm run quality
 ```bash
 # Public docs (for open source community)
 /rapidkit-npm/docs/
-
-# Internal docs (for development team)
-/Front/Docs/npm/develop/
-```
 
 ---
 

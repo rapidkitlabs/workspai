@@ -31,7 +31,9 @@ describe('shared contracts workflow (Wave A + B)', () => {
     expect(syncScript).toContain('listJsonContracts');
     expect(syncScript).toContain('module-layout.v1.json');
     expect(syncScript).toContain('infra-stack.v1.json');
-    expect(preCommit).toContain('npm run sync:shared-contracts');
+    expect(syncScript).toContain('--stage-git');
+    expect(syncScript).toContain('stageSyncedContracts');
+    expect(preCommit).toContain('sync:shared-contracts -- --stage-git');
     expect(preCommit).toContain('npm run validate:contracts');
   });
 });
