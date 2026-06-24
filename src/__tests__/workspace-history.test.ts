@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   appendHistoryEntry,
+  normalizeHistoryEntry,
   readWorkspaceHistory,
   recordWorkspaceHistory,
   WORKSPACE_HISTORY_SCHEMA_VERSION,
@@ -64,5 +65,19 @@ describe('workspace intelligence history (1.21)', () => {
 
   it('returns null when no history exists', async () => {
     expect(await readWorkspaceHistory(workspacePath)).toBeNull();
+  });
+
+  it('normalizes legacy verify entries without kind', () => {
+    const legacy = normalizeHistoryEntry({
+      generatedAt: 't0',
+      verdict: 'ready',
+      risk: 'low',
+      affectedProjects: 0,
+      freshness: 'fresh',
+      gatePassed: true,
+      blockingReasons: 0,
+      policyViolations: 0,
+    });
+    expect(legacy?.kind).toBe('verify');
   });
 });

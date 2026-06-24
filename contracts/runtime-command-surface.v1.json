@@ -53,6 +53,11 @@
     "watch",
     "context",
     "agent-sync",
+    "explain",
+    "why",
+    "trace",
+    "feedback",
+    "mcp",
     "policy",
     "contract",
     "share",
@@ -70,7 +75,8 @@
     "impact",
     "verify",
     "context",
-    "agent-sync"
+    "agent-sync",
+    "explain"
   ],
   "moduleSuggestionFrameworks": [
     "fastapi",

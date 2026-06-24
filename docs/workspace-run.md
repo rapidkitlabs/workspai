@@ -46,7 +46,31 @@ Override stage commands per project via `.rapidkit/context.json`:
 }
 ```
 
-Enterprise features include command overrides, multi-framework projects, error categorization (setup vs test vs runtime), preflight validation, health checks, custom stages, stage dependencies, environment variants, caching, and composite steps.
+Enterprise features include command overrides, multi-framework projects, error categorization (setup vs test vs runtime), preflight validation, health checks, custom stages (via `.rapidkit/context.json` `commands`), stage dependencies (from framework registry), environment variants, result caching (`--reuse-passed`), and composite steps.
+
+### Custom stages
+
+Declare extra fleet stages in `.rapidkit/context.json`:
+
+```json
+{
+  "commands": {
+    "lint": "php bin/phpstan analyse --level=8"
+  }
+}
+```
+
+Run them with `npx rapidkit workspace run lint --scope project:<name>`.
+
+### Stage dependencies and caching
+
+Framework registry entries may declare `dependencies` (for example `start` depends on `build`). When `.rapidkit/reports/workspace-run-last.json` exists, projects skip until dependency stages show `passed`.
+
+Use `--reuse-passed` to skip projects that already passed the requested stage in the cached report:
+
+```bash
+npx rapidkit workspace run test --reuse-passed --json
+```
 
 ## JSON reporting
 

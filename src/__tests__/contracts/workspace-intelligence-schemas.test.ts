@@ -4,7 +4,12 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 
 import { WORKSPACE_DEPENDENCY_GRAPH_SCHEMA_VERSION } from '../../contracts/workspace-dependency-graph-contract.js';
+import { AGENT_ACTION_OUTCOME_SCHEMA_VERSION } from '../../contracts/agent-action-outcome-contract.js';
+import { WORKSPACE_EXPLAIN_SCHEMA_VERSION } from '../../contracts/workspace-explain-contract.js';
+import { WORKSPACE_OPERATIONAL_SKILL_SCHEMA_VERSION } from '../../contracts/workspace-operational-skill-contract.js';
+import { WORKSPACE_SKILLS_INDEX_SCHEMA_VERSION } from '../../contracts/workspace-skills-index-contract.js';
 import { WORKSPACE_CONTEXT_SCHEMA_VERSION } from '../../workspace-context.js';
+import { WORKSPACE_HISTORY_SCHEMA_VERSION } from '../../workspace-history.js';
 import {
   WORKSPACE_IMPACT_SCHEMA_VERSION,
   WORKSPACE_MODEL_DIFF_SCHEMA_VERSION,
@@ -43,6 +48,26 @@ const WORKSPACE_INTELLIGENCE_CONTRACTS = [
   {
     fileName: 'workspace-dependency-graph.v1.json',
     schemaVersion: WORKSPACE_DEPENDENCY_GRAPH_SCHEMA_VERSION,
+  },
+  {
+    fileName: 'workspace-operational-skill.v1.json',
+    schemaVersion: WORKSPACE_OPERATIONAL_SKILL_SCHEMA_VERSION,
+  },
+  {
+    fileName: 'workspace-skills-index.v1.json',
+    schemaVersion: WORKSPACE_SKILLS_INDEX_SCHEMA_VERSION,
+  },
+  {
+    fileName: 'workspace-explain.v1.json',
+    schemaVersion: WORKSPACE_EXPLAIN_SCHEMA_VERSION,
+  },
+  {
+    fileName: 'agent-action-outcome.v1.json',
+    schemaVersion: AGENT_ACTION_OUTCOME_SCHEMA_VERSION,
+  },
+  {
+    fileName: 'workspace-intelligence-history.v1.json',
+    schemaVersion: WORKSPACE_HISTORY_SCHEMA_VERSION,
   },
 ] as const;
 

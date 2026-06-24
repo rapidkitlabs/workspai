@@ -9,6 +9,7 @@ import {
   buildWorkspaceAgentReportsIndex,
   syncWorkspaceAgentGrounding,
 } from '../workspace-agent-sync.js';
+import { WORKSPACE_SKILLS_INDEX_PATH } from '../contracts/workspace-artifact-paths.js';
 import {
   extractManagedAgentSection,
   RAPIDKIT_AGENT_GROUNDING_END,
@@ -97,6 +98,7 @@ describe('workspace agent sync', () => {
     expect(result.writtenFiles).toEqual(
       expect.arrayContaining([
         AGENT_REPORTS_INDEX_PATH,
+        WORKSPACE_SKILLS_INDEX_PATH,
         'AGENTS.md',
         '.github/copilot-instructions.md',
         '.cursor/rules/rapidkit-grounding.mdc',
@@ -147,6 +149,12 @@ describe('workspace agent sync', () => {
       hooksEnabled: false,
       mcpReady: true,
     });
+
+    const intelligenceSkill = await fsExtra.readFile(
+      path.join(workspacePath, '.github/skills/rapidkit-workspace-intelligence/SKILL.md'),
+      'utf8'
+    );
+    expect(intelligenceSkill).toContain('Operational skills (canonical)');
 
     const mcpDesign = await fsExtra.readJson(
       path.join(workspacePath, '.rapidkit/reports/rapidkit-mcp-design.json')

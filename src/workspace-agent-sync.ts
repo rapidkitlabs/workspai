@@ -2,6 +2,21 @@ import path from 'path';
 import fsExtra from 'fs-extra';
 
 import {
+  buildOperationalSkillsCatalogSection,
+  buildWorkspaceOperationalSkills,
+  hydrateOperationalPrompts,
+  writeWorkspaceOperationalSkills,
+} from './workspace-operational-skills.js';
+import { WORKSPACE_SKILLS_INDEX_PATH } from './contracts/workspace-artifact-paths.js';
+import { buildAgentCustomizationPackContract } from './contracts/agent-customization-pack-contract.js';
+import { readWorkspaceContract } from './utils/workspace-contract.js';
+import {
+  buildWorkspaceModel,
+  WORKSPACE_MODEL_REPORT_PATH,
+  WORKSPACE_MODEL_SCHEMA_VERSION,
+  type WorkspaceModel,
+} from './workspace-model.js';
+import {
   buildWorkspaceAgentContext,
   WORKSPACE_CONTEXT_AGENT_REPORT_PATH,
   writeWorkspaceAgentContext,
@@ -34,6 +49,9 @@ export type AgentCustomizationOutputKind =
   | 'prompt'
   | 'skill'
   | 'skill-resource'
+  | 'operational-skill'
+  | 'skills-index'
+  | 'explain-report'
   | 'agent'
   | 'rule'
   | 'hook'
@@ -90,6 +108,11 @@ export const AGENT_REPORT_CATALOG: AgentReportCatalogEntry[] = [
     required: true,
   },
   {
+    relativePath: WORKSPACE_SKILLS_INDEX_PATH,
+    label: 'Operational skills index',
+    required: true,
+  },
+  {
     relativePath: '.rapidkit/reports/workspace-model.json',
     label: 'Workspace model graph',
     required: false,
@@ -122,6 +145,31 @@ export const AGENT_REPORT_CATALOG: AgentReportCatalogEntry[] = [
   {
     relativePath: '.rapidkit/reports/workspace-verify-last-run.json',
     label: 'Workspace verify',
+    required: false,
+  },
+  {
+    relativePath: '.rapidkit/reports/workspace-model-snapshot.json',
+    label: 'Workspace model snapshot',
+    required: false,
+  },
+  {
+    relativePath: '.rapidkit/reports/workspace-model-diff-last-run.json',
+    label: 'Workspace model diff',
+    required: false,
+  },
+  {
+    relativePath: '.rapidkit/reports/workspace-explain-last-run.json',
+    label: 'Workspace explain',
+    required: false,
+  },
+  {
+    relativePath: '.rapidkit/reports/workspace-contract-verify-last-run.json',
+    label: 'Workspace contract verify',
+    required: false,
+  },
+  {
+    relativePath: '.rapidkit/reports/workspace-intelligence-history.json',
+    label: 'Workspace intelligence history',
     required: false,
   },
 ];
@@ -173,6 +221,8 @@ export type SyncWorkspaceAgentGroundingOptions = {
   staleAfterHours?: number;
   refreshContext?: boolean;
   experimentalHooks?: boolean;
+  /** Hydrate matching `.github/prompts/rapidkit-*.prompt.md` with workspace verification steps. */
+  hydratePrompts?: boolean;
 };
 
 function displayRapidkitCommand(args: string): string {
@@ -261,6 +311,15 @@ function normalizePreset(
 }
 
 function inferOutputKind(relativePath: string): AgentCustomizationOutputKind {
+  if (relativePath === WORKSPACE_SKILLS_INDEX_PATH) {
+    return 'skills-index';
+  }
+  if (relativePath.includes('workspace-explain-last-run.json')) {
+    return 'explain-report';
+  }
+  if (relativePath.startsWith('.rapidkit/skills/') && relativePath.endsWith('.md')) {
+    return 'operational-skill';
+  }
   if (relativePath.includes('hooks') || relativePath.endsWith('rapidkit-agent-hooks.json')) {
     return 'hook';
   }
@@ -311,23 +370,43 @@ function inferOutputTargets(relativePath: string): AgentGroundingTarget[] {
 }
 
 function isRequiredPackOutput(relativePath: string, preset: AgentCustomizationPackPreset): boolean {
-  const alwaysRequired = new Set([
-    AGENT_REPORTS_INDEX_PATH,
-    AGENT_CUSTOMIZATION_PACK_REPORT_PATH,
-    'AGENTS.md',
-  ]);
-  if (alwaysRequired.has(relativePath)) {
-    return true;
+  const contract = buildAgentCustomizationPackContract();
+  return contract.presets[preset].requiredOutputs.includes(relativePath);
+}
+
+function isPersistedWorkspaceModel(raw: Record<string, unknown>): raw is WorkspaceModel {
+  return (
+    raw.schemaVersion === WORKSPACE_MODEL_SCHEMA_VERSION &&
+    typeof raw.generatedAt === 'string' &&
+    raw.summary != null &&
+    typeof raw.summary === 'object' &&
+    !Array.isArray(raw.summary) &&
+    Array.isArray(raw.projects)
+  );
+}
+
+async function resolveModelForAgentSync(
+  workspacePath: string,
+  prefetched?: WorkspaceModel
+): Promise<WorkspaceModel> {
+  if (prefetched) {
+    return prefetched;
   }
-  if (preset === 'minimal') {
-    return false;
+  const reportPath = path.join(workspacePath, WORKSPACE_MODEL_REPORT_PATH);
+  if (await fsExtra.pathExists(reportPath)) {
+    try {
+      const raw = (await fsExtra.readJson(reportPath)) as Record<string, unknown>;
+      if (isPersistedWorkspaceModel(raw)) {
+        return raw;
+      }
+    } catch {
+      // fall through to live build
+    }
   }
-  return [
-    '.github/instructions/rapidkit-workspace.instructions.md',
-    '.github/prompts/rapidkit-diagnose.prompt.md',
-    '.github/skills/rapidkit-workspace-intelligence/SKILL.md',
-    '.github/agents/workspai-advisor.agent.md',
-  ].includes(relativePath);
+  return buildWorkspaceModel({
+    workspacePath,
+    includeEvidence: true,
+  });
 }
 
 function isSafeWorkspaceRelativePath(relativePath: string): boolean {
@@ -679,6 +758,8 @@ function buildMcpToolsResource(): string {
       '- `getSafeCommands` — read safe commands from `workspace-context-agent.json`.',
       '- `getProjectContext` — return one project-scoped slice of the workspace model.',
       '- `getArtifact` — read one explicit artifact path inside the workspace root.',
+      '- `listOperationalSkills` — read `.rapidkit/reports/workspace-skills-index.json`.',
+      '- `getWorkspaceExplain` — read/build workspace explain for release-blocked or project scope.',
       '- `refreshWorkspaceIntelligence` — explicit user-approved refresh command only.',
       '',
       'Write or repair tools require explicit approval boundaries and are intentionally not part of the first read-mostly design.',
@@ -735,6 +816,20 @@ function buildMcpDesignManifest(input: { workspacePath: string; generatedAt: str
         {
           name: 'getArtifact',
           reads: ['requested workspace-relative artifact path'],
+          mutates: false,
+        },
+        {
+          name: 'listOperationalSkills',
+          reads: ['.rapidkit/reports/workspace-skills-index.json'],
+          mutates: false,
+        },
+        {
+          name: 'getWorkspaceExplain',
+          reads: [
+            '.rapidkit/reports/workspace-explain-last-run.json',
+            '.rapidkit/reports/workspace-verify-last-run.json',
+            '.rapidkit/reports/workspace-impact-last-run.json',
+          ],
           mutates: false,
         },
         {
@@ -797,8 +892,8 @@ function buildExperimentalHooksConfig(input: {
   )}\n`;
 }
 
-function buildWorkspaceIntelligenceSkill(): string {
-  return [
+function buildWorkspaceIntelligenceSkill(catalogSection?: string): string {
+  const lines = [
     '---',
     'name: rapidkit-workspace-intelligence',
     'description: Use RapidKit workspace intelligence reports to answer, repair, verify, and release with evidence',
@@ -813,8 +908,9 @@ function buildWorkspaceIntelligenceSkill(): string {
     '1. Load `resources/scope-model.md`.',
     '2. Load `.rapidkit/reports/INDEX.json`.',
     '3. Load `.rapidkit/reports/workspace-context-agent.json`.',
-    '4. Load the smallest evidence report required for the task.',
-    '5. Answer with Scope, Evidence, Diagnosis, Fix Plan, Run, Verify, Assumptions.',
+    '4. Load `.rapidkit/reports/workspace-skills-index.json` when operational playbooks are needed.',
+    '5. Load the smallest evidence report required for the task.',
+    '6. Answer with Scope, Evidence, Diagnosis, Fix Plan, Run, Verify, Assumptions.',
     '',
     '## Rules',
     '',
@@ -823,7 +919,11 @@ function buildWorkspaceIntelligenceSkill(): string {
     '- Separate display commands from execution requests.',
     '- Keep project-scoped fixes inside the active project unless workspace evidence says otherwise.',
     '',
-  ].join('\n');
+  ];
+  if (catalogSection?.trim()) {
+    lines.push(catalogSection.trim(), '');
+  }
+  return lines.join('\n');
 }
 
 function buildWorkspaiAgent(input: {
@@ -996,10 +1096,16 @@ export async function syncWorkspaceAgentGrounding(
 
   let contextPath: string | undefined;
   let context: Awaited<ReturnType<typeof buildWorkspaceAgentContext>> | null = null;
+  let sharedModel: WorkspaceModel | undefined;
 
   if (options.refreshContext) {
+    sharedModel = await buildWorkspaceModel({
+      workspacePath,
+      includeEvidence: true,
+    });
     context = await buildWorkspaceAgentContext({
       workspacePath,
+      model: sharedModel,
       agent: options.agent ?? 'generic',
       scope: options.scope,
       includeEvidence: true,
@@ -1068,6 +1174,33 @@ export async function syncWorkspaceAgentGrounding(
     ),
     AGENT_GROUNDING_DOC_PATH
   );
+
+  let operationalSkillsCatalogSection = '';
+  const model = await resolveModelForAgentSync(workspacePath, sharedModel);
+  let contract: Awaited<ReturnType<typeof readWorkspaceContract>>['contract'] | null = null;
+  try {
+    contract = (await readWorkspaceContract({ workspacePath })).contract;
+  } catch {
+    contract = null;
+  }
+  const operationalSkills = buildWorkspaceOperationalSkills({
+    workspacePath,
+    model,
+    context,
+    contract,
+    generatedAt: now,
+  });
+  const skillsWrite = await writeWorkspaceOperationalSkills({
+    workspacePath,
+    skills: operationalSkills,
+    generatedAt: now.toISOString(),
+    write,
+  });
+  for (const skill of skillsWrite.skills) {
+    record(write ? 'written' : 'skipped', skill.canonicalPath);
+  }
+  record(write ? 'written' : 'skipped', WORKSPACE_SKILLS_INDEX_PATH);
+  operationalSkillsCatalogSection = buildOperationalSkillsCatalogSection(skillsWrite.index);
 
   if (targetEnabled(selectedTargets, 'agents') || targetEnabled(selectedTargets, 'vscode')) {
     record(
@@ -1215,6 +1348,16 @@ export async function syncWorkspaceAgentGrounding(
           relativePath
         );
       }
+
+      if (options.hydratePrompts === true) {
+        for (const relativePath of await hydrateOperationalPrompts({
+          workspacePath,
+          skills: skillsWrite.skills,
+          write,
+        })) {
+          record(write ? 'written' : 'skipped', relativePath);
+        }
+      }
     }
     record(
       await writeTextFile(
@@ -1228,7 +1371,7 @@ export async function syncWorkspaceAgentGrounding(
       record(
         await writeTextFile(
           path.join(workspacePath, '.github/skills/rapidkit-workspace-intelligence/SKILL.md'),
-          buildWorkspaceIntelligenceSkill(),
+          buildWorkspaceIntelligenceSkill(operationalSkillsCatalogSection),
           write
         ),
         '.github/skills/rapidkit-workspace-intelligence/SKILL.md'

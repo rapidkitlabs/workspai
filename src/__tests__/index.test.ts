@@ -182,7 +182,13 @@ describe('CLI Entry Point', () => {
           npx rapidkit workspace diff --from <file|git[:ref]> --json  Diff current model against a snapshot
           npx rapidkit workspace impact --from <file> --json  Build blast radius from model diff
           npx rapidkit workspace verify [--strict] --json  Evaluate impact verification evidence
-          npx rapidkit workspace run test --scope project:<name>  Run a stage for one project
+          npx rapidkit workspace explain <target> [--write] --json  Narrative for blockers/projects (alias: why)
+          npx rapidkit workspace trace --from <diff> [--write] --json  Diff → blast radius → gates narrative
+          npx rapidkit workspace feedback record --json  Append agent action outcome to intelligence history
+          npx rapidkit workspace mcp serve              Read-mostly stdio MCP over workspace evidence
+          npx rapidkit workspace graph [emit|explain|dot|mermaid]  Inspect/visualize dependency graph
+          npx rapidkit workspace watch [--once] [--json]  Keep model+graph in memory; stream change events
+          npx rapidkit workspace run <stage> [--scope project:<name>] [--reuse-passed]  Fleet init/test/build/start or custom stage
           npx rapidkit workspace sync [--json]      Sync registry + contract from projects
           npx rapidkit workspace registry status [--refresh] [--json]  Canonical project registry summary
           npx rapidkit import <path|git-url>        Copy or clone a backend project into this workspace

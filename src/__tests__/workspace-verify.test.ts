@@ -74,6 +74,7 @@ describe('workspace verify', () => {
 
   it('passes required gates when doctor and readiness evidence are healthy', async () => {
     const workspacePath = await makeTempDir('rk-verify-pass-');
+    const now = new Date('2026-06-15T12:00:00.000Z');
     await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {
       name: 'api',
       runtime: 'python',
@@ -82,17 +83,19 @@ describe('workspace verify', () => {
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
       {
+        generatedAt: now.toISOString(),
         healthScore: { percent: 92, errors: 0 },
       }
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
       {
+        generatedAt: now.toISOString(),
         overallStatus: 'pass',
       }
     );
 
-    const verify = await buildWorkspaceVerify({ workspacePath });
+    const verify = await buildWorkspaceVerify({ workspacePath, now });
 
     expect(verify.summary.verdict).toBe('ready');
     expect(verify.summary.exitCode).toBe(0);
@@ -348,6 +351,52 @@ describe('workspace verify', () => {
         'Workspace run evidence for web is stale: generated at 2026-06-15T00:01:00.000Z, before impact 2026-06-15T00:02:00.000Z.',
     });
     expect(verify.summary.verdict).toBe('blocked');
+  });
+
+  it('blocks doctor evidence missing generatedAt when impact floor applies', async () => {
+    const workspacePath = await makeTempDir('rk-verify-missing-generated-at-');
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {
+      name: 'api',
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+
+    const before = await buildWorkspaceModelSnapshot({
+      workspacePath,
+      now: new Date('2026-06-15T00:00:00.000Z'),
+    });
+    const beforePath = await writeWorkspaceModelSnapshot(before, workspacePath);
+    const impact = await buildWorkspaceImpact({
+      workspacePath,
+      fromPath: beforePath,
+      now: new Date('2026-06-15T00:02:00.000Z'),
+    });
+    const impactPath = await writeWorkspaceImpact(impact, workspacePath);
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
+      {
+        healthScore: { percent: 95, errors: 0 },
+      }
+    );
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
+      {
+        generatedAt: '2026-06-15T00:03:00.000Z',
+        overallStatus: 'pass',
+      }
+    );
+
+    const verify = await buildWorkspaceVerify({
+      workspacePath,
+      fromImpactPath: impactPath,
+    });
+    const doctorStep = verify.steps.find((step) => step.id === 'workspace.doctor');
+
+    expect(doctorStep).toMatchObject({
+      status: 'fail',
+      required: true,
+      message: expect.stringContaining('missing generatedAt'),
+    });
   });
 
   it('loads verify schema contract file with pinned schema version', () => {

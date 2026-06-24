@@ -1,7 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 
-import type { WorkspaceRunReport, WorkspaceRunStage } from '../workspace-run.js';
+import type {
+  WorkspaceRunReport,
+  WorkspaceRunStage,
+  WorkspaceRunStageName,
+} from '../workspace-run.js';
 
 export const WORKSPACE_RUN_EVIDENCE_SCHEMA_VERSION = 'workspace-run-v1';
 export const WORKSPACE_RUN_LAST_REPORT_FILENAME = 'workspace-run-last.json';
@@ -16,8 +20,8 @@ export interface WorkspaceRunEvidence {
   schemaVersion: typeof WORKSPACE_RUN_EVIDENCE_SCHEMA_VERSION;
   generatedAt: string;
   workspacePath: string;
-  latestStage: WorkspaceRunStage;
-  stages: Partial<Record<WorkspaceRunStage, WorkspaceRunReport>>;
+  latestStage: WorkspaceRunStageName;
+  stages: Partial<Record<WorkspaceRunStageName, WorkspaceRunReport>>;
   enterpriseControls: {
     jsonReady: boolean;
     evidencePath: string;
@@ -62,7 +66,10 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function isWorkspaceRunStageReport(payload: Record<string, unknown>): boolean {
   const stage = payload.stage;
-  return typeof stage === 'string' && isWorkspaceRunStage(stage) && Array.isArray(payload.projects);
+  if (typeof stage !== 'string' || stage.trim().length === 0 || !Array.isArray(payload.projects)) {
+    return false;
+  }
+  return isWorkspaceRunStage(stage) || /^[a-z][a-z0-9_-]*$/i.test(stage);
 }
 
 export function isLegacyWorkspaceRunStageReport(payload: unknown): payload is WorkspaceRunReport {
@@ -107,7 +114,7 @@ export function normalizeWorkspaceRunEvidence(payload: unknown): WorkspaceRunEvi
 
 export function resolveWorkspaceRunStageReport(
   payload: unknown,
-  stage?: WorkspaceRunStage
+  stage?: WorkspaceRunStageName
 ): WorkspaceRunReport | null {
   const aggregate = normalizeWorkspaceRunEvidence(payload);
   if (!aggregate) {
@@ -147,7 +154,7 @@ export async function publishWorkspaceRunStageReport(
   );
   const existing = await readJsonFile<unknown>(reportPath);
   const normalized = normalizeWorkspaceRunEvidence(existing);
-  const stages: Partial<Record<WorkspaceRunStage, WorkspaceRunReport>> = normalized
+  const stages: Partial<Record<WorkspaceRunStageName, WorkspaceRunReport>> = normalized
     ? { ...normalized.stages }
     : {};
 

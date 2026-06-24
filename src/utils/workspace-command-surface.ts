@@ -24,6 +24,11 @@ export const WORKSPACE_SUBCOMMANDS = [
   'watch',
   'context',
   'agent-sync',
+  'explain',
+  'why',
+  'trace',
+  'feedback',
+  'mcp',
   'policy',
   'contract',
   'share',
@@ -53,6 +58,7 @@ export const WORKSPACE_INTELLIGENCE_SUBCOMMANDS = [
   'verify',
   'context',
   'agent-sync',
+  'explain',
 ] as const;
 
 export type WorkspaceIntelligenceSubcommand = (typeof WORKSPACE_INTELLIGENCE_SUBCOMMANDS)[number];

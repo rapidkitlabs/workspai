@@ -1,38 +1,57 @@
 # Release Notes
 
-## Latest Release: v0.40.1 (June 23, 2026)
+## Latest Release: v0.41.0 (June 23, 2026)
 
-### Workspace Intelligence-First CLI Help
+### Phase 4 Workspace Intelligence Closure
 
-This patch release reframes the root CLI help so new users see RapidKit as
-**Workspace Intelligence for Software Systems** — not just another bootstrap/generator
-CLI — while preserving every existing command in the full reference block.
+This minor release completes the operational intelligence loop: human-readable
+blocker narratives, agent feedback, MCP read bridge, operational skills, structured
+doctor-fix evidence, and extended verify + fleet-run gates — all versioned for
+Workspai, CI, and AI agents.
 
 **What's New:**
 
-- **Positioning-first help screen**
-  - Tagline, lifecycle flow (Create → Model → Context → Impact → Verify), and
-    question-driven **Workspace Intelligence** section before operational commands.
+- **Explain / Why / Trace**
+  - `workspace explain`, `workspace why`, and `workspace trace --from <diff>` with
+    `workspace-explain.v1` artifact.
 
-- **Curated command groups**
-  - Workspace Operations, Governance & Release, Agent Grounding, and Mental Model
-    sections surface the narrative without hiding bootstrap/create/dev workflows.
+- **MCP serve**
+  - Read-mostly stdio JSON-RPC: `workspace mcp serve`.
 
-- **Complete reference preserved**
-  - Quick start, workspace profiles, flat workspace command list, creation options,
-    project commands, and flag clarifications remain at the bottom of help output.
+- **Agent feedback & skills**
+  - `workspace feedback record` → history ring buffer.
+  - Operational skills via `workspace agent-sync --write` (no separate generator).
 
-- **README clarity**
-  - **Install** documents global install only; **CLI help** is a separate Start here
-    subsection for `npx rapidkit --help` (no global install implied).
+- **Doctor fix result**
+  - Structured `fixResult` on `doctor workspace --fix --json`
+    (`rapidkit-doctor-fix-result-v1`).
+
+- **Verify & fleet extensions**
+  - Verify init/start fleet evidence + optional doctor-fix step.
+  - Resolution hints on blocking steps.
+  - `workspace run` custom stages, `--reuse-passed`, stage dependencies.
+
+- **Contracts**
+  - Nine new/updated Phase 4 schemas; extension CLI compatibility matrix expanded.
 
 **Breaking changes:** None.
 
 **Upgrade:**
 
 ```bash
-npm install -g rapidkit@0.40.1
+npm install -g rapidkit@0.41.0
 ```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.41.0.md)
+
+---
+
+## Previous Release: v0.40.1 (June 23, 2026)
+
+### Workspace Intelligence-First CLI Help
+
+Reframes root CLI help around Workspace Intelligence positioning while preserving
+the full command reference.
 
 [Full Release Notes](./releases/RELEASE_NOTES_v0.40.1.md)
 

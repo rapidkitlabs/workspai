@@ -556,12 +556,10 @@ export const FALLBACK_PATTERNS: Record<WorkspaceRunStage, Record<RuntimeFamily, 
  * Get stage command for a given runtime and framework.
  * Tries explicit mapping first, then fallback patterns.
  */
-export function getStageCommand(
+export function resolveFrameworkRegistryEntry(
   runtime: RuntimeFamily,
-  framework: string | undefined,
-  stage: WorkspaceRunStage
-): string | undefined {
-  // Exact match: php-laravel, rust-actix, etc.
+  framework: string | undefined
+): FrameworkMetadata | undefined {
   if (framework) {
     const normalizedRaw = framework
       .trim()
@@ -581,15 +579,31 @@ export function getStageCommand(
     })();
 
     const key = `${runtime}-${registryFramework}`;
-    const entry = FRAMEWORK_REGISTRY[key];
+    return FRAMEWORK_REGISTRY[key];
+  }
+  return undefined;
+}
+
+export function getStageCommand(
+  runtime: RuntimeFamily,
+  framework: string | undefined,
+  stage: string
+): string | undefined {
+  // Exact match: php-laravel, rust-actix, etc.
+  if (framework) {
+    const entry = resolveFrameworkRegistryEntry(runtime, framework);
     if (entry && entry.commands[stage]) {
       return entry.commands[stage];
     }
   }
 
-  // Fallback to pattern list for this runtime
-  const patterns = FALLBACK_PATTERNS[stage]?.[runtime] ?? [];
-  return patterns.length > 0 ? patterns[0] : undefined;
+  if (['init', 'test', 'build', 'start'].includes(stage)) {
+    const patterns =
+      FALLBACK_PATTERNS[stage as 'init' | 'test' | 'build' | 'start']?.[runtime] ?? [];
+    return patterns.length > 0 ? patterns[0] : undefined;
+  }
+
+  return undefined;
 }
 
 const WORKSPACE_STAGE_TO_NODE_LIFECYCLE: Partial<Record<WorkspaceRunStage, NodeLifecycleCommand>> =

@@ -2,6 +2,7 @@ import path from 'path';
 
 import fsExtra from 'fs-extra';
 
+import { attachRunCorrelation } from './observability/run-correlation.js';
 import {
   buildWorkspaceImpact,
   WORKSPACE_IMPACT_REPORT_PATH,
@@ -13,6 +14,7 @@ import {
   type WorkspaceImpactRisk,
 } from './workspace-intelligence.js';
 import { resolveWorkspaceRunStageReport } from './utils/workspace-run-evidence.js';
+import type { WorkspaceRunStage } from './workspace-run.js';
 import {
   buildWorkspaceModel,
   type BuildWorkspaceModelOptions,
@@ -23,6 +25,8 @@ import {
   summarizeGraphIntegrity,
   type WorkspaceGraphIntegrity,
 } from './workspace-graph-integrity.js';
+import { buildResolutionHintsForBlockingReasons } from './workspace-blocker-resolution-hints.js';
+import type { BlockerResolution } from './contracts/blocker-resolution-contract.js';
 import {
   compareFreshness,
   computeProjectFreshnessHashes,
@@ -74,6 +78,8 @@ export type WorkspaceVerify = {
   steps: WorkspaceVerifyStep[];
   missingEvidence: string[];
   blockingReasons: string[];
+  /** Machine-readable fix/run hints for each blocking reason (Phase 3.A). */
+  resolutionHints?: BlockerResolution[];
   verificationPlan: WorkspaceImpactCommand[];
   /**
    * Graph-aware coverage of the entire affected subgraph (1.11): the verdict
@@ -205,10 +211,10 @@ function evidencePathForCommand(
   if (command.id === 'workspace.pipeline') {
     return path.join(workspacePath, '.rapidkit', 'reports', 'pipeline-last-run.json');
   }
-  if (
-    command.id.startsWith('project.') &&
-    (command.id.endsWith('.test') || command.id.endsWith('.build'))
-  ) {
+  if (command.id === 'workspace.doctor-fix') {
+    return path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json');
+  }
+  if (command.id.startsWith('project.') && command.id.includes('.')) {
     return path.join(workspacePath, '.rapidkit', 'reports', 'workspace-run-last.json');
   }
   return undefined;
@@ -278,6 +284,42 @@ function evaluateAnalyzeEvidence(payload: Record<string, unknown>): EvidenceEval
   return { status: 'pass', message: 'Analyze evidence is present.' };
 }
 
+function evaluateDoctorFixEvidence(payload: Record<string, unknown>): EvidenceEvaluation {
+  const fixResult = payload.fixResult;
+  if (!fixResult || typeof fixResult !== 'object' || Array.isArray(fixResult)) {
+    return {
+      status: 'skipped',
+      message: 'Doctor fix result not present; run doctor workspace --fix --json to record fixes.',
+    };
+  }
+  const record = fixResult as Record<string, unknown>;
+  const remaining = Array.isArray(record.remainingBlockers) ? record.remainingBlockers : [];
+  if (remaining.length > 0) {
+    return {
+      status: 'fail',
+      message: `Doctor fix result reports ${remaining.length} remaining blocker(s).`,
+    };
+  }
+  const applied = Array.isArray(record.appliedFixes) ? record.appliedFixes : [];
+  if (applied.length === 0) {
+    return { status: 'pass', message: 'Doctor fix result recorded with no remaining blockers.' };
+  }
+  return {
+    status: 'pass',
+    message: `Doctor fix result recorded ${applied.length} applied fix(es) with no remaining blockers.`,
+  };
+}
+
+function resolveWorkspaceRunStageFromCommand(
+  command: WorkspaceImpactCommand
+): WorkspaceRunStage | null {
+  if (command.id.endsWith('.init')) return 'init';
+  if (command.id.endsWith('.test')) return 'test';
+  if (command.id.endsWith('.build')) return 'build';
+  if (command.id.endsWith('.start')) return 'start';
+  return null;
+}
+
 function evaluatePipelineEvidence(payload: Record<string, unknown>): EvidenceEvaluation {
   const summary = asRecord(payload.summary);
   const verdict = typeof summary?.verdict === 'string' ? summary.verdict : undefined;
@@ -298,15 +340,8 @@ function evaluateWorkspaceRunEvidence(
   command: WorkspaceImpactCommand,
   minGeneratedAt?: string
 ): EvidenceEvaluation {
-  const stage = command.id.endsWith('.build')
-    ? 'build'
-    : command.id.endsWith('.test')
-      ? 'test'
-      : null;
-  const stageReport = resolveWorkspaceRunStageReport(
-    payload,
-    stage as 'init' | 'test' | 'build' | 'start' | undefined
-  );
+  const stage = resolveWorkspaceRunStageFromCommand(command);
+  const stageReport = resolveWorkspaceRunStageReport(payload, stage ?? undefined);
   if (!stageReport) {
     return {
       status: 'missing',
@@ -381,12 +416,18 @@ function staleEvidenceMessage(
   minGeneratedAt: string | undefined,
   label: string
 ): string | null {
-  if (typeof evidenceGeneratedAt !== 'string' || !minGeneratedAt) {
+  if (!minGeneratedAt) {
     return null;
+  }
+  if (typeof evidenceGeneratedAt !== 'string' || evidenceGeneratedAt.trim().length === 0) {
+    return `${label} is stale: missing generatedAt timestamp (required after impact ${minGeneratedAt}).`;
   }
   const evidenceTime = Date.parse(evidenceGeneratedAt);
   const minTime = Date.parse(minGeneratedAt);
-  if (!Number.isFinite(evidenceTime) || !Number.isFinite(minTime)) {
+  if (!Number.isFinite(evidenceTime)) {
+    return `${label} is stale: invalid generatedAt timestamp (required after impact ${minGeneratedAt}).`;
+  }
+  if (!Number.isFinite(minTime)) {
     return null;
   }
   if (evidenceTime < minTime) {
@@ -506,6 +547,8 @@ async function evaluateCommandEvidence(
     } else {
       evaluation = evaluatePipelineEvidence(payload);
     }
+  } else if (command.id === 'workspace.doctor-fix') {
+    evaluation = evaluateDoctorFixEvidence(payload);
   } else if (command.id.startsWith('project.')) {
     evaluation = evaluateWorkspaceRunEvidence(payload, command, minGeneratedAt);
   } else {
@@ -690,7 +733,7 @@ function uniqueSorted(values: string[]): string[] {
 
 async function resolveImpactForVerify(
   options: BuildWorkspaceVerifyOptions
-): Promise<{ impact: WorkspaceImpact; fromImpactRef?: string }> {
+): Promise<{ impact: WorkspaceImpact; fromImpactRef?: string; impactFromDisk: boolean }> {
   const workspacePath = path.resolve(options.workspacePath);
 
   if (options.fromImpactPath) {
@@ -698,6 +741,7 @@ async function resolveImpactForVerify(
     return {
       impact: await readImpactFromPath(impactPath),
       fromImpactRef: path.relative(workspacePath, impactPath).split(path.sep).join('/'),
+      impactFromDisk: true,
     };
   }
 
@@ -706,6 +750,7 @@ async function resolveImpactForVerify(
     return {
       impact: await readImpactFromPath(defaultImpactPath),
       fromImpactRef: WORKSPACE_IMPACT_REPORT_PATH,
+      impactFromDisk: true,
     };
   }
 
@@ -720,7 +765,7 @@ async function resolveImpactForVerify(
       observableScanDepth: options.observableScanDepth,
       now: options.now,
     });
-    return { impact, fromImpactRef: WORKSPACE_MODEL_SNAPSHOT_REPORT_PATH };
+    return { impact, fromImpactRef: WORKSPACE_MODEL_SNAPSHOT_REPORT_PATH, impactFromDisk: false };
   }
 
   const model = await buildWorkspaceModel({
@@ -792,15 +837,31 @@ async function resolveImpactForVerify(
         currentModel: model,
       },
     },
+    impactFromDisk: false,
   };
+}
+
+function resolveEvidenceFreshnessFloor(
+  impact: WorkspaceImpact,
+  impactFromDisk: boolean
+): string | undefined {
+  if (impactFromDisk) {
+    return impact.generatedAt;
+  }
+  const diffGeneratedAt = impact.diff?.generatedAt;
+  if (typeof diffGeneratedAt === 'string' && diffGeneratedAt.trim().length > 0) {
+    return diffGeneratedAt;
+  }
+  return undefined;
 }
 
 export async function buildWorkspaceVerify(
   options: BuildWorkspaceVerifyOptions
 ): Promise<WorkspaceVerify> {
   const workspacePath = path.resolve(options.workspacePath);
-  const { impact, fromImpactRef } = await resolveImpactForVerify(options);
+  const { impact, fromImpactRef, impactFromDisk } = await resolveImpactForVerify(options);
   const model = impact.diff.currentModel;
+  const evidenceGeneratedAtFloor = resolveEvidenceFreshnessFloor(impact, impactFromDisk);
   const verificationPlan = dedupeCommands([
     ...workspaceVerificationPlan(),
     ...impact.verificationPlan,
@@ -813,7 +874,7 @@ export async function buildWorkspaceVerify(
         command,
         workspacePath,
         model.contracts.exists === true,
-        impact.generatedAt
+        evidenceGeneratedAtFloor
       )
     );
   }
@@ -859,6 +920,15 @@ export async function buildWorkspaceVerify(
     ...integrityReasons,
     ...policyDecision.blockingReasons,
   ];
+  const resolutionHints =
+    blockingReasons.length > 0
+      ? buildResolutionHintsForBlockingReasons({
+          blockingReasons,
+          verifyCommand:
+            'npx rapidkit workspace verify --from-impact .rapidkit/reports/workspace-impact-last-run.json --json',
+          verifyArtifact: WORKSPACE_VERIFY_REPORT_PATH,
+        })
+      : [];
 
   return {
     schemaVersion: WORKSPACE_VERIFY_SCHEMA_VERSION,
@@ -877,6 +947,7 @@ export async function buildWorkspaceVerify(
     steps,
     missingEvidence,
     blockingReasons,
+    ...(resolutionHints.length > 0 ? { resolutionHints } : {}),
     verificationPlan,
     affectedSubgraph: subgraphGate.subgraph,
     graphIntegrity,
@@ -974,7 +1045,7 @@ export async function writeWorkspaceVerify(
 ): Promise<string> {
   const outputPath = path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH);
   await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJson(outputPath, verify, { spaces: 2 });
+  await fsExtra.writeJson(outputPath, attachRunCorrelation(verify), { spaces: 2 });
   return outputPath;
 }
 

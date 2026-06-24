@@ -26,15 +26,18 @@ import { discoverWorkspaceProjects as discoverWorkspaceProjectsShared } from './
 import { closureFromAdjacency } from './workspace-graph-traversal.js';
 import {
   publishWorkspaceRunStageReport,
+  readWorkspaceRunEvidence,
   WORKSPACE_RUN_LAST_REPORT_FILENAME,
   WORKSPACE_RUN_LAST_REPORT_RELATIVE_PATH,
 } from './utils/workspace-run-evidence.js';
+import { resolveFrameworkRegistryEntry } from './framework-registry.js';
 
 export type WorkspaceRunStage = 'init' | 'test' | 'build' | 'start';
+export type WorkspaceRunStageName = WorkspaceRunStage | (string & {});
 
 export interface WorkspaceRunOptions {
   workspacePath: string;
-  stage: WorkspaceRunStage;
+  stage: WorkspaceRunStageName;
   scope?: string;
   affected?: boolean;
   blastRadius?: boolean;
@@ -45,6 +48,7 @@ export interface WorkspaceRunOptions {
   strict?: boolean;
   json?: boolean;
   enforceGates?: boolean;
+  reusePassed?: boolean;
 }
 
 type GateStatus = 'pass' | 'warn' | 'fail' | 'skipped';
@@ -82,7 +86,7 @@ export type GraphStatus = 'loaded' | 'missing' | 'invalid' | 'not-applicable';
 export interface WorkspaceRunReport {
   schemaVersion: '1.0';
   workspacePath: string;
-  stage: WorkspaceRunStage;
+  stage: WorkspaceRunStageName;
   generatedAt: string;
   durationMs: number;
   options: {
@@ -95,6 +99,7 @@ export interface WorkspaceRunReport {
     strict: boolean;
     enforceGates: boolean;
     scope: string | null;
+    reusePassed: boolean;
   };
   selection: {
     mode: SelectionMode;
@@ -926,8 +931,51 @@ async function runWorkspaceGates(workspacePath: string): Promise<GateResult[]> {
   return gates;
 }
 
-function ensureValidStage(stage: string): stage is WorkspaceRunStage {
-  return STAGE_SET.has(stage as WorkspaceRunStage);
+const RESERVED_NON_FLEET_STAGES = new Set(['dev', 'stop']);
+
+function ensureRunnableStage(stage: string): boolean {
+  const normalized = stage.trim();
+  if (!normalized) {
+    return false;
+  }
+  if (RESERVED_NON_FLEET_STAGES.has(normalized.toLowerCase())) {
+    return false;
+  }
+  if (STAGE_SET.has(normalized as WorkspaceRunStage)) {
+    return true;
+  }
+  return /^[a-z][a-z0-9_-]*$/i.test(normalized);
+}
+
+function projectPassedStageReport(
+  stageReport: WorkspaceRunReport,
+  projectPath: string,
+  workspacePath: string
+): boolean {
+  const relativePath = normalizePathForMatch(path.relative(workspacePath, projectPath));
+  const projects = Array.isArray(stageReport.projects) ? stageReport.projects : [];
+  return projects.some((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return false;
+    }
+    const record = entry as ProjectExecutionResult;
+    const candidates = [record.relativePath, record.path]
+      .filter((value): value is string => typeof value === 'string' && value.length > 0)
+      .map((value) => normalizePathForMatch(value));
+    return (
+      record.status === 'passed' &&
+      (candidates.includes(relativePath) ||
+        candidates.some((candidate) => candidate.endsWith(`/${relativePath}`)))
+    );
+  });
+}
+
+function resolveStageDependencies(
+  runtime: RuntimeFamily,
+  framework?: string
+): WorkspaceRunStageName[] {
+  const entry = resolveFrameworkRegistryEntry(runtime, framework);
+  return (entry?.dependencies ?? []) as WorkspaceRunStageName[];
 }
 
 function normalizeWorkers(maxWorkers: number | undefined, projectCount: number): number {
@@ -940,12 +988,13 @@ function normalizeWorkers(maxWorkers: number | undefined, projectCount: number):
 }
 
 export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<WorkspaceRunReport> {
-  if (!ensureValidStage(options.stage)) {
+  if (!ensureRunnableStage(options.stage)) {
     throw new Error(`Unsupported workspace run stage: ${options.stage}`);
   }
 
   const startedAt = Date.now();
   const workspacePath = path.resolve(options.workspacePath);
+  const cachedEvidence = await readWorkspaceRunEvidence(workspacePath);
   const projectPaths = await discoverWorkspaceProjects(workspacePath);
   const { projects: scopedProjectPaths, normalizedScope } = await filterProjectsByScope(
     workspacePath,
@@ -1078,6 +1127,42 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
         row.exitCode = null;
         completedTargets += 1;
         return;
+      }
+
+      if (options.reusePassed && cachedEvidence) {
+        const priorStage =
+          cachedEvidence.stages[options.stage as WorkspaceRunStage] ??
+          (cachedEvidence.stages as Record<string, WorkspaceRunReport | undefined>)[options.stage];
+        if (priorStage && projectPassedStageReport(priorStage, projectPath, workspacePath)) {
+          row.status = 'passed';
+          row.reason = 'reused passed result from workspace-run-last.json';
+          row.durationMs = Date.now() - started;
+          row.exitCode = 0;
+          completedTargets += 1;
+          if (!options.json) {
+            console.log(chalk.gray(`↺ reused passed cache for ${relativePath}`));
+          }
+          return;
+        }
+      }
+
+      const dependencyStages = resolveStageDependencies(runtime, framework);
+      if (dependencyStages.length > 0 && cachedEvidence) {
+        const missingDependency = dependencyStages.find((dependencyStage) => {
+          const dependencyReport = cachedEvidence.stages[dependencyStage];
+          return (
+            !dependencyReport ||
+            !projectPassedStageReport(dependencyReport, projectPath, workspacePath)
+          );
+        });
+        if (missingDependency) {
+          row.status = 'skipped';
+          row.reason = `dependency stage "${missingDependency}" not satisfied in workspace-run-last.json`;
+          row.durationMs = Date.now() - started;
+          row.exitCode = null;
+          completedTargets += 1;
+          return;
+        }
       }
 
       // Execute stage command with enterprise features
@@ -1224,6 +1309,7 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
       strict,
       enforceGates,
       scope: normalizedScope,
+      reusePassed: options.reusePassed === true,
     },
     selection: {
       mode: selectionMode,

@@ -1,4 +1,5 @@
 import type { WorkspaceRunStageName } from './cli-lifecycle-contract.js';
+import { readProjectMetadata } from './project-metadata.js';
 import {
   resolveProjectCommandCapabilities,
   type ProjectCommandCapabilities,
@@ -18,6 +19,26 @@ export function resolveWorkspaceStageCapabilityCommand(stage: string): string | 
   return null;
 }
 
+function readCustomStageOverride(projectPath: string, stage: string): string | undefined {
+  const metadata = readProjectMetadata(projectPath);
+  const commands = metadata?.contextJson?.commands;
+  if (!commands || typeof commands !== 'object' || Array.isArray(commands)) {
+    return undefined;
+  }
+  const override = (commands as Record<string, unknown>)[stage];
+  if (typeof override === 'string' && override.trim().length > 0) {
+    return override.trim();
+  }
+  if (override && typeof override === 'object' && !Array.isArray(override)) {
+    const record = override as Record<string, unknown>;
+    const preferred = record.default ?? record.dev;
+    if (typeof preferred === 'string' && preferred.trim().length > 0) {
+      return preferred.trim();
+    }
+  }
+  return undefined;
+}
+
 export function isWorkspaceStageSupported(
   projectPath: string,
   stage: string,
@@ -25,6 +46,10 @@ export function isWorkspaceStageSupported(
 ): { supported: boolean; reason?: string } {
   const capabilityCommand = resolveWorkspaceStageCapabilityCommand(stage);
   if (!capabilityCommand) {
+    const customOverride = readCustomStageOverride(projectPath, stage);
+    if (customOverride) {
+      return { supported: true };
+    }
     return {
       supported: false,
       reason: `Workspace stage "${stage}" is not part of the RapidKit fleet contract.`,

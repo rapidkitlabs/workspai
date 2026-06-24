@@ -1,4 +1,11 @@
 import { AGENT_REPORT_CATALOG } from '../workspace-agent-sync.js';
+import {
+  RAPIDKIT_SKILLS_DIR,
+  WORKSPACE_EXPLAIN_REPORT_PATH,
+  WORKSPACE_SKILLS_INDEX_PATH,
+  operationalSkillPath,
+} from './workspace-artifact-paths.js';
+import { STANDARD_ANSWER_CONTRACT_SECTIONS } from './standard-answer-contract.js';
 
 export const AGENT_CUSTOMIZATION_PACK_SCHEMA_VERSION = 'rapidkit-agent-customization-pack.v1';
 
@@ -26,6 +33,11 @@ export type AgentCustomizationPackContract = {
   }>;
   strictRules: string[];
   outputKinds: string[];
+  pathLayers: {
+    l1CanonicalRoots: string[];
+    l2PrefixedMirrorRoots: string[];
+    l3SharedIndustryFiles: string[];
+  };
 };
 
 export function buildAgentCustomizationPackContract(): AgentCustomizationPackContract {
@@ -53,6 +65,7 @@ export function buildAgentCustomizationPackContract(): AgentCustomizationPackCon
           '.github/skills/rapidkit-workspace-intelligence/SKILL.md',
           '.github/agents/workspai-advisor.agent.md',
           '.rapidkit/reports/rapidkit-mcp-design.json',
+          WORKSPACE_SKILLS_INDEX_PATH,
         ],
       },
     },
@@ -90,15 +103,7 @@ export function buildAgentCustomizationPackContract(): AgentCustomizationPackCon
         outputFamilies: ['portable'],
       },
     },
-    standardAnswerContract: [
-      'Scope',
-      'Evidence',
-      'Diagnosis',
-      'Fix Plan',
-      'Run',
-      'Verify',
-      'Assumptions',
-    ],
+    standardAnswerContract: [...STANDARD_ANSWER_CONTRACT_SECTIONS],
     requiredReports: AGENT_REPORT_CATALOG.map((entry) => ({
       path: entry.relativePath,
       label: entry.label,
@@ -120,10 +125,20 @@ export function buildAgentCustomizationPackContract(): AgentCustomizationPackCon
       'prompt',
       'skill',
       'skill-resource',
+      'operational-skill',
+      'skills-index',
+      'explain-report',
       'agent',
       'rule',
       'hook',
       'mcp-design',
     ],
+    pathLayers: {
+      l1CanonicalRoots: [`.rapidkit/reports/`, `${RAPIDKIT_SKILLS_DIR}/`],
+      l2PrefixedMirrorRoots: ['.github/', '.cursor/', '.claude/'],
+      l3SharedIndustryFiles: ['AGENTS.md', '.github/copilot-instructions.md', 'CLAUDE.md'],
+    },
   };
 }
+
+export { operationalSkillPath, WORKSPACE_SKILLS_INDEX_PATH, WORKSPACE_EXPLAIN_REPORT_PATH };

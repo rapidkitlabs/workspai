@@ -78,9 +78,7 @@ import {
   WORKSPACE_SUBCOMMANDS,
 } from './utils/workspace-command-surface.js';
 import { emitWorkspacePhase } from './observability/cli-progress.js';
-import { RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION } from './contracts/runtime-command-surface-contract.js';
-import { CLI_LOG_EVENT_SCHEMA_VERSION } from './contracts/cli-log-event-contract.js';
-import { FRESHNESS_METADATA_SCHEMA_VERSION } from './contracts/freshness-metadata-contract.js';
+import { getPublishedContractVersions } from './contracts/published-contract-versions.js';
 import {
   isNpmBackedKit,
   normalizeKitId,
@@ -1381,13 +1379,7 @@ export const VERSION_CONTRACT_SCHEMA_VERSION = 'rapidkit-version-v1';
  * advertised versions can never drift between the two surfaces. The envelope schema
  * versions (command-capabilities, version) live on their own `schemaVersion` field.
  */
-export function getPublishedContractVersions() {
-  return {
-    runtimeCommandSurface: RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION,
-    cliLogEvent: CLI_LOG_EVENT_SCHEMA_VERSION,
-    freshnessMetadata: FRESHNESS_METADATA_SCHEMA_VERSION,
-  };
-}
+export { getPublishedContractVersions } from './contracts/published-contract-versions.js';
 
 /**
  * Machine-readable version contract emitted by `rapidkit --version --json`.
@@ -6085,9 +6077,12 @@ program
 program
   .command('workspace <action> [subaction] [key] [value]')
   .description(
-    'Manage RapidKit workspaces (list, sync, policy, share, export, hydrate, run)\n' +
+    'Manage RapidKit workspaces (list, sync, policy, share, export, run, intelligence)\n' +
       '  workspace run <stage>   \u2014 fleet stage execution across discovered projects\n' +
-      '                            stages: init | test | build | start  (dev excluded by design)'
+      '                            stages: init | test | build | start | <custom-from-context>\n' +
+      '  workspace explain|why   \u2014 blocker/project narrative (--write for artifact)\n' +
+      '  workspace trace         \u2014 diff \u2192 blast radius \u2192 gates narrative (--from <diff>)\n' +
+      '  workspace mcp serve     \u2014 read-mostly stdio MCP bridge over workspace evidence'
   )
   .option('--workspace <path>', 'Workspace root path (defaults to nearest RapidKit workspace)')
   .option('--output <file>', 'Output file path for workspace share bundle')
@@ -6125,6 +6120,10 @@ program
     '--experimental-hooks',
     'Generate advisory VS Code agent hook design files during enterprise agent-sync'
   )
+  .option(
+    '--hydrate-prompts',
+    'Hydrate matching Copilot prompt files with workspace-specific verification steps during agent-sync'
+  )
   .option('--scope <scope>', 'Scope workspace intelligence output, e.g. project:<name>')
   .option('--no-doctor', 'Exclude doctor evidence in workspace share bundle')
   .option('--no-blueprint', 'Exclude reproducibility blueprint from workspace share bundle')
@@ -6138,6 +6137,10 @@ program
   .option('--parallel', 'Run project stages in parallel')
   .option('--max-workers <count>', 'Maximum parallel workers (default: min(4, selected))')
   .option('--continue-on-error', 'Continue running remaining projects after a failure')
+  .option(
+    '--reuse-passed',
+    'Skip projects that already passed this stage in workspace-run-last.json'
+  )
   .option('--json', 'Emit machine-readable JSON output')
   .option('--strict', 'Return non-zero exit on warn/fail gate outcomes')
   .option('--no-gates', 'Skip doctor/readiness pre-run gates')
@@ -6164,6 +6167,7 @@ program
       preset?: string;
       refreshContext?: boolean;
       experimentalHooks?: boolean;
+      hydratePrompts?: boolean;
       scope?: string;
       doctor?: boolean;
       blueprint?: boolean;
@@ -6177,6 +6181,7 @@ program
       parallel?: boolean;
       maxWorkers?: string;
       continueOnError?: boolean;
+      reusePassed?: boolean;
       json?: boolean;
       strict?: boolean;
       gates?: boolean;
@@ -6222,7 +6227,12 @@ program
     // Emit a deterministic `progress` start event for every workspace intelligence
     // command so IDE/CI consumers track phases via `cli-log-event.v1` on stderr.
     // The terminal outcome is guaranteed by the run lifecycle (run.completed/failed).
-    if (isWorkspaceIntelligenceSubcommand(action)) {
+    if (
+      isWorkspaceIntelligenceSubcommand(action) ||
+      action === 'trace' ||
+      action === 'feedback' ||
+      action === 'mcp'
+    ) {
       emitWorkspacePhase({
         action,
         status: 'started',
@@ -6321,6 +6331,7 @@ program
         targets: parseAgentGroundingTargets(actionOptions.target),
         experimentalHooks:
           actionOptions.experimentalHooks === true || hasRawFlag('--experimental-hooks'),
+        hydratePrompts: actionOptions.hydratePrompts === true || hasRawFlag('--hydrate-prompts'),
         staleAfterHours: 24,
       });
 
@@ -6376,7 +6387,7 @@ program
         scope: actionOptions.scope,
         includeEvidence: actionOptions.includeEvidence === true || hasRawFlag('--include-evidence'),
         observableScanDepth: workspaceModelScanDepth(),
-        strict: strictRequested && !actionOptions.json,
+        strict: false,
       });
       let outputPath: string | undefined;
       let agentGroundingSync:
@@ -6456,6 +6467,12 @@ program
         console.log(
           chalk.gray('   Add --write to persist .rapidkit/reports/workspace-context-agent.json')
         );
+      }
+      if (strictFailed) {
+        for (const issue of context.validation.issues) {
+          console.log(chalk.red(`❌ ${issue.severity}:${issue.code}:${issue.target}`));
+        }
+        process.exit(1);
       }
     } else if (action === 'snapshot') {
       const workspacePath = requireWorkspaceRootForAction('snapshot');
@@ -6965,8 +6982,15 @@ program
             contractPath,
             strict: actionOptions.strict === true || hasRawFlag('--strict'),
           });
+          const { writeWorkspaceContractVerifyEvidence } = await import(
+            './utils/workspace-contract.js'
+          );
+          const evidencePath = await writeWorkspaceContractVerifyEvidence({
+            workspacePath,
+            result,
+          });
           if (actionOptions.json) {
-            console.log(JSON.stringify(result, null, 2));
+            console.log(JSON.stringify({ ...result, evidencePath }, null, 2));
           } else {
             const color = result.status === 'passed' ? chalk.green : chalk.red;
             console.log(
@@ -7228,17 +7252,34 @@ program
     } else if (action === 'run') {
       const workspacePath = requireWorkspaceRootForAction(`run ${subaction || ''}`.trim());
 
-      if (!subaction || !['init', 'test', 'build', 'start'].includes(subaction)) {
+      const fleetStages = new Set(['init', 'test', 'build', 'start']);
+      const stageName = subaction?.trim() ?? '';
+      if (!stageName) {
         console.log(chalk.red(`Unknown workspace run stage: ${subaction || '(none provided)'}`));
-        console.log(chalk.gray('Available stages: init | test | build | start'));
+        console.log(
+          chalk.gray('Available stages: init | test | build | start | <custom-from-context>')
+        );
         console.log(chalk.gray('  • init   — run install/bootstrap across the project fleet'));
         console.log(chalk.gray('  • test   — run test suite across selected projects'));
         console.log(chalk.gray('  • build  — compile/package across selected projects'));
         console.log(chalk.gray('  • start  — start services (smoke/e2e scenarios)'));
         console.log(
+          chalk.gray('  • custom — any stage key declared in .rapidkit/context.json commands')
+        );
+        console.log(
           chalk.gray('  Note: dev is excluded — it is a local-only primitive, not a CI stage')
         );
         process.exit(2);
+      }
+
+      if (!fleetStages.has(stageName)) {
+        if (!/^[a-z][a-z0-9_-]*$/i.test(stageName) || stageName === 'dev' || stageName === 'stop') {
+          console.log(chalk.red(`Unknown workspace run stage: ${stageName}`));
+          console.log(
+            chalk.gray('Available stages: init | test | build | start | <custom-from-context>')
+          );
+          process.exit(2);
+        }
       }
 
       const maxWorkersRaw = Number(actionOptions.maxWorkers ?? '');
@@ -7246,7 +7287,7 @@ program
         ? Math.max(1, Math.trunc(maxWorkersRaw))
         : undefined;
 
-      if (subaction === 'init') {
+      if (stageName === 'init') {
         const workspaceInitCode = await installWorkspaceDependencies(workspacePath);
         if (workspaceInitCode !== 0) {
           process.exit(workspaceInitCode);
@@ -7256,7 +7297,7 @@ program
       const { runWorkspaceStage } = await import('./workspace-run.js');
       const report = await runWorkspaceStage({
         workspacePath,
-        stage: subaction as 'init' | 'test' | 'build' | 'start',
+        stage: stageName,
         scope: actionOptions.scope,
         affected: actionOptions.affected === true,
         blastRadius: actionOptions.blastRadius === true,
@@ -7267,6 +7308,7 @@ program
         strict: actionOptions.strict === true,
         json: actionOptions.json === true,
         enforceGates: actionOptions.gates,
+        reusePassed: actionOptions.reusePassed === true,
       });
 
       if (actionOptions.json) {
@@ -7276,6 +7318,170 @@ program
       if (report.summary.exitCode !== 0) {
         process.exit(report.summary.exitCode);
       }
+    } else if (action === 'explain' || action === 'why') {
+      const workspacePath = requireWorkspaceRootForAction(action);
+      const { parseWorkspaceExplainTarget } = await import(
+        './contracts/workspace-explain-contract.js'
+      );
+      const { buildWorkspaceExplain, writeWorkspaceExplainReport } = await import(
+        './workspace-explain.js'
+      );
+
+      let targetRaw = (subaction ?? key ?? '').trim();
+      if (!targetRaw && actionOptions.scope) {
+        targetRaw = actionOptions.scope.startsWith('project:')
+          ? actionOptions.scope
+          : `project:${actionOptions.scope}`;
+      }
+      if (!targetRaw) {
+        console.log(chalk.red(`❌ workspace ${action} requires a target.`));
+        console.log(
+          chalk.gray(
+            '   npx rapidkit workspace explain project:<name>|release-blocked [--json] [--write]'
+          )
+        );
+        console.log(chalk.gray('   npx rapidkit workspace why <project>|release-blocked [--json]'));
+        process.exit(1);
+      }
+
+      const target = parseWorkspaceExplainTarget(targetRaw);
+      if (!target) {
+        console.log(chalk.red(`❌ Invalid explain target: ${targetRaw}`));
+        process.exit(1);
+      }
+
+      const report = await buildWorkspaceExplain({ workspacePath, target });
+      const writeRequested = actionOptions.write === true || hasRawFlag('--write');
+      let outputPath: string | undefined;
+      if (writeRequested) {
+        outputPath = await writeWorkspaceExplainReport(report, workspacePath);
+      }
+
+      if (actionOptions.json) {
+        console.log(JSON.stringify({ ...report, outputPath }, null, 2));
+        return;
+      }
+
+      console.log(chalk.green(`✔ Workspace explain: ${report.summary}`));
+      for (const section of report.sections) {
+        console.log(chalk.bold(`\n${section.title}`));
+        console.log(section.body);
+      }
+      if (outputPath) {
+        console.log(chalk.gray(`\nWritten: ${outputPath}`));
+      }
+    } else if (action === 'trace') {
+      const workspacePath = requireWorkspaceRootForAction('trace');
+      const fromRef = actionOptions.from || subaction;
+      if (!fromRef) {
+        console.log(chalk.red('❌ workspace trace requires --from <diff-ref>'));
+        console.log(
+          chalk.gray(
+            '   npx rapidkit workspace trace --from .rapidkit/reports/workspace-model-diff-last-run.json --json'
+          )
+        );
+        process.exit(1);
+      }
+      const { parseWorkspaceExplainTarget } = await import(
+        './contracts/workspace-explain-contract.js'
+      );
+      const { buildWorkspaceExplain, writeWorkspaceExplainReport } = await import(
+        './workspace-explain.js'
+      );
+      const traceTarget = parseWorkspaceExplainTarget(fromRef) ??
+        parseWorkspaceExplainTarget(`trace:${fromRef}`) ?? {
+          kind: 'trace' as const,
+          diffRef: fromRef,
+        };
+      if (traceTarget.kind !== 'trace') {
+        console.log(chalk.red(`❌ Invalid trace ref: ${fromRef}`));
+        process.exit(1);
+      }
+      const report = await buildWorkspaceExplain({
+        workspacePath,
+        target: traceTarget,
+      });
+      const writeRequested = actionOptions.write === true || hasRawFlag('--write');
+      let outputPath: string | undefined;
+      if (writeRequested) {
+        outputPath = await writeWorkspaceExplainReport(report, workspacePath);
+      }
+      if (actionOptions.json) {
+        console.log(JSON.stringify({ ...report, outputPath }, null, 2));
+        return;
+      }
+      console.log(chalk.green(`✔ Workspace trace: ${report.summary}`));
+      for (const section of report.sections) {
+        console.log(chalk.bold(`\n${section.title}`));
+        console.log(section.body);
+      }
+      if (outputPath) {
+        console.log(chalk.gray(`\nWritten: ${outputPath}`));
+      }
+    } else if (action === 'feedback') {
+      const workspacePath = requireWorkspaceRootForAction('feedback');
+      const mode = (subaction || 'record').toLowerCase();
+      if (mode !== 'record') {
+        console.log(chalk.red(`Unknown feedback action: ${mode}`));
+        console.log(chalk.gray('Available: record'));
+        process.exit(1);
+      }
+      if (!actionOptions.json && !hasRawFlag('--json')) {
+        console.log(chalk.red('❌ workspace feedback record requires --json (stdin payload)'));
+        console.log(
+          chalk.gray(
+            '   echo \'{"actionId":"fix","summary":"ok","outcome":"ok"}\' | npx rapidkit workspace feedback record --json'
+          )
+        );
+        process.exit(1);
+      }
+      if (process.stdin.isTTY) {
+        console.log(
+          chalk.red('❌ workspace feedback record requires piped JSON on stdin (not a TTY)')
+        );
+        console.log(
+          chalk.gray(
+            '   echo \'{"actionId":"fix","summary":"ok","outcome":"ok"}\' | npx rapidkit workspace feedback record --json'
+          )
+        );
+        process.exit(1);
+      }
+      const { recordWorkspaceFeedback, parseFeedbackStdinPayload, readStdinAll } = await import(
+        './workspace-feedback.js'
+      );
+      const raw = await readStdinAll();
+      const payload = parseFeedbackStdinPayload(raw);
+      if (!payload) {
+        console.log(chalk.red('❌ Invalid or empty feedback JSON on stdin'));
+        process.exit(1);
+      }
+      const result = await recordWorkspaceFeedback({ workspacePath, payload });
+      if (actionOptions.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else if (result.ok) {
+        console.log(chalk.green('✔ Workspace feedback recorded'));
+        console.log(chalk.gray(`   History: ${result.historyPath}`));
+      } else {
+        console.log(chalk.red(`❌ ${result.error ?? 'Failed to record feedback'}`));
+      }
+      if (!result.ok) {
+        process.exit(1);
+      }
+    } else if (action === 'mcp') {
+      const workspacePath = requireWorkspaceRootForAction('mcp');
+      const mode = (subaction || 'serve').toLowerCase();
+      if (mode !== 'serve') {
+        console.log(chalk.red(`Unknown mcp action: ${mode}`));
+        console.log(chalk.gray('Available: serve'));
+        process.exit(1);
+      }
+      const { runWorkspaceMcpServe } = await import('./workspace-mcp-serve.js');
+      if (!actionOptions.json) {
+        console.error(
+          chalk.gray('ℹ RapidKit MCP server (read-mostly) listening on stdio JSON-RPC…')
+        );
+      }
+      await runWorkspaceMcpServe({ workspacePath });
     } else if (action === 'init') {
       console.log(
         chalk.yellow('ℹ  workspace init is an alias of: npx rapidkit workspace run init')
@@ -7368,6 +7574,13 @@ function printHelp() {
   console.log(chalk.white('5. Verify release readiness\n'));
   console.log(chalk.cyan('   npx rapidkit workspace verify --strict'));
   console.log(chalk.cyan('   npx rapidkit pipeline --strict\n'));
+  console.log(chalk.white('6. Explain blockers and trace change impact\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace explain release-blocked --json --write'));
+  console.log(
+    chalk.cyan(
+      '   npx rapidkit workspace trace --from .rapidkit/reports/workspace-model-diff-last-run.json --json --write\n'
+    )
+  );
 
   printHelpSectionDivider('Workspace Intelligence');
   console.log(chalk.white('\nWhat projects exist?\n'));
@@ -7378,8 +7591,18 @@ function printHelp() {
   console.log(chalk.cyan('   npx rapidkit workspace impact --from <snapshot>\n'));
   console.log(chalk.white('Is this change safe?\n'));
   console.log(chalk.cyan('   npx rapidkit workspace verify --strict\n'));
+  console.log(chalk.white('Why is release blocked?\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace explain release-blocked --json --write\n'));
+  console.log(chalk.white('Trace a diff through blast radius and gates?\n'));
+  console.log(
+    chalk.cyan(
+      '   npx rapidkit workspace trace --from .rapidkit/reports/workspace-model-diff-last-run.json --json --write\n'
+    )
+  );
   console.log(chalk.white('How do I align AI tools and CI?\n'));
   console.log(chalk.cyan('   npx rapidkit workspace agent-sync --write\n'));
+  console.log(chalk.white('Expose evidence to MCP clients?\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace mcp serve\n'));
 
   printHelpSectionDivider('Workspace Operations');
   console.log(chalk.white('\nCreate workspace\n'));
@@ -7412,6 +7635,8 @@ function printHelp() {
   console.log(chalk.cyan('   npx rapidkit workspace context --for-agent\n'));
   console.log(chalk.white('Sync agent surfaces\n'));
   console.log(chalk.cyan('   npx rapidkit workspace agent-sync --write\n'));
+  console.log(chalk.white('Serve read-mostly MCP bridge\n'));
+  console.log(chalk.cyan('   npx rapidkit workspace mcp serve\n'));
   console.log(chalk.white('Supported ecosystems:\n'));
   console.log(chalk.gray('   Copilot · Cursor · Claude Code · Codex · MCP-ready tools\n'));
 
@@ -7519,7 +7744,37 @@ function printHelp() {
   );
   console.log(
     chalk.gray(
-      '  npx rapidkit workspace run test --scope project:<name>  Run a stage for one project'
+      '  npx rapidkit workspace explain <target> [--write] --json  Narrative for blockers/projects (alias: why)'
+    )
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit workspace trace --from <diff> [--write] --json  Diff → blast radius → gates narrative'
+    )
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit workspace feedback record --json  Append agent action outcome to intelligence history'
+    )
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit workspace mcp serve              Read-mostly stdio MCP over workspace evidence'
+    )
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit workspace graph [emit|explain|dot|mermaid]  Inspect/visualize dependency graph'
+    )
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit workspace watch [--once] [--json]  Keep model+graph in memory; stream change events'
+    )
+  );
+  console.log(
+    chalk.gray(
+      '  npx rapidkit workspace run <stage> [--scope project:<name>] [--reuse-passed]  Fleet init/test/build/start or custom stage'
     )
   );
   console.log(

@@ -162,8 +162,11 @@ For the visual experience, install the [Workspai VS Code extension](https://mark
 | What projects exist in this workspace?        | `workspace model --json`                       |
 | What context should AI agents receive?        | `workspace context --for-agent --json --write` |
 | What breaks if I change this?                 | `workspace impact --from <snapshot>`           |
+| Why is release blocked?                       | `workspace explain release-blocked --json --write` |
+| Trace a diff through blast radius and gates?  | `workspace trace --from .rapidkit/reports/workspace-model-diff-last-run.json --json --write` |
 | Can I safely release?                         | `pipeline --json --strict`                     |
 | How do I align AI tools and CI?               | `workspace agent-sync --write`                 |
+| Expose workspace evidence to MCP clients?     | `workspace mcp serve`                          |
 | How do I onboard an existing project?         | `adopt`                                        |
 | How do I bring repositories into a workspace? | `import`                                       |
 
@@ -242,11 +245,39 @@ Workspace Intelligence provides a shared understanding of projects, dependencies
 | `workspace snapshot --json`                       | Persist model snapshot                                                               |
 | `workspace diff --from <file\|git[:ref]> --json`  | Diff against snapshot or git                                                         |
 | `workspace impact --from <file> --json`           | Graph-aware transitive blast-radius evidence                                         |
-| `workspace verify [--strict] --json`              | Definitive verification gate (subgraph + freshness + policy)                         |
+| `workspace verify [--strict] --json`              | Definitive verification gate (subgraph + freshness + policy + fleet evidence)        |
+| `workspace explain <target> [--write] --json`     | Human narrative for release blockers, projects, or trace slices                      |
+| `workspace why <target>`                          | Alias of `workspace explain`                                                         |
+| `workspace trace --from <diff> [--write] --json`  | Diff → impact → gates narrative for agents and IDE handoff                           |
+| `workspace feedback record --json`                | Append structured agent action outcomes to intelligence history                      |
+| `workspace mcp serve`                             | Read-mostly stdio MCP bridge over workspace evidence                                 |
 | `workspace graph <emit\|explain\|dot\|mermaid>`   | Inspect and visualize the dependency graph                                           |
 | `workspace watch [--json] [--once]`               | Daemon mode: keep model + graph in memory, stream change events                      |
+| `workspace run <stage> [--scope project:X] [--reuse-passed]` | Fleet init/test/build/start or custom stages from `.rapidkit/context.json` |
 
-JSON schemas: `contracts/workspace-intelligence/`. Details: [commands-reference.md](docs/commands-reference.md).
+JSON schemas: `contracts/workspace-intelligence/`. Command coexistence and naming:
+[docs/contracts/NAMING_AND_COEXISTENCE.md](docs/contracts/NAMING_AND_COEXISTENCE.md).
+Details: [commands-reference.md](docs/commands-reference.md).
+
+### Operational intelligence (Phase 4)
+
+After model → diff → impact → verify, use **explain** and **trace** for
+human/agent narratives, **feedback** to record outcomes, and **MCP serve** for
+read-only tool access:
+
+```bash
+npx rapidkit workspace explain release-blocked --json --write
+npx rapidkit workspace trace --from .rapidkit/reports/workspace-model-diff-last-run.json --json --write
+npx rapidkit workspace feedback record --json
+npx rapidkit workspace mcp serve
+```
+
+Fleet runs support scoped execution and result reuse:
+
+```bash
+npx rapidkit workspace run test --scope project:api --reuse-passed --json
+npx rapidkit workspace run lint --scope project:api   # custom stage from context.json
+```
 
 ### Graph-aware intelligence engine
 
@@ -303,6 +334,9 @@ npm run check:agent-customization-drift -- --workspace <workspace-root>
 | Artifact / file                                                         | Purpose                                                  |
 | ----------------------------------------------------------------------- | -------------------------------------------------------- |
 | `.rapidkit/reports/agent-customization-pack.json`                       | Versioned output inventory, target matrix, drift state   |
+| `.rapidkit/reports/workspace-explain-last-run.json`                     | Unified explain / trace narrative for blockers and projects |
+| `.rapidkit/reports/workspace-skills-index.json`                        | Index of operational playbooks (`.rapidkit/skills/*.md`)      |
+| `.rapidkit/skills/rapidkit-*.md`                                       | Operational playbooks (generated by agent-sync)               |
 | `.rapidkit/reports/rapidkit-mcp-design.json`                            | Read-mostly MCP-ready tool design manifest               |
 | `.rapidkit/reports/INDEX.json`                                          | Read order, blockers, report timestamps                  |
 | `.rapidkit/reports/workspace-context-agent.json`                        | Canonical agent context pack                             |

@@ -43,6 +43,12 @@ import {
   withGovernanceRunMetadata,
 } from './utils/governance-report-metadata.js';
 import { getProbeTimeoutMs } from './utils/command-timeouts.js';
+import {
+  buildDoctorFixExecutionResult,
+  DOCTOR_FIX_VERIFY_RECOMMENDED,
+  type DoctorAppliedFix,
+  type DoctorFixExecutionResult,
+} from './contracts/doctor-fix-result-contract.js';
 
 function uniquePaths(paths: string[]): string[] {
   return [
@@ -4243,13 +4249,28 @@ async function verifyProjectPostFix(
   };
 }
 
+async function collectDoctorRemainingBlockers(projects: ProjectHealth[]): Promise<string[]> {
+  const blockers: string[] = [];
+  for (const project of projects) {
+    const recheck = await checkProject(project.path, { allowNonRapidkit: true });
+    for (const issue of recheck.issues) {
+      if (typeof issue === 'string' && issue.trim()) {
+        blockers.push(`${project.name}: ${issue.trim()}`);
+      }
+    }
+  }
+  return blockers.slice(0, 24);
+}
+
 async function executeFixCommands(
   projects: ProjectHealth[],
   autoFix: boolean = false,
   options: { planOnly?: boolean; skipConfirmation?: boolean; json?: boolean } = {}
-): Promise<void> {
+): Promise<DoctorFixExecutionResult | void> {
   const remediationPlan = await buildRemediationPlan(projects);
   const fixableProjects = projects.filter((p) => p.fixCommands && p.fixCommands.length > 0);
+  const appliedFixes: DoctorAppliedFix[] = [];
+  const quiet = options.json === true;
   let goToolchainAvailable: boolean | null = null;
   const goFixBlocked = remediationPlan.steps.some(
     (step) => step.kind === 'go-mod-tidy' && !step.executableInCurrentEnvironment
@@ -4257,19 +4278,30 @@ async function executeFixCommands(
   const snapshotCache = new Map<string, ProjectSnapshotEntry>();
 
   if (fixableProjects.length === 0) {
-    console.log(chalk.green('\n✅ No fixes needed - all projects are healthy!'));
+    if (!quiet) {
+      console.log(chalk.green('\n✅ No fixes needed - all projects are healthy!'));
+    }
+    if (autoFix) {
+      return buildDoctorFixExecutionResult({
+        appliedFixes: [],
+        remainingBlockers: [],
+        verifyRecommended: DOCTOR_FIX_VERIFY_RECOMMENDED,
+      });
+    }
     return;
   }
 
-  console.log(chalk.bold.cyan('\n🔧 Available Fixes:\n'));
+  if (!quiet) {
+    console.log(chalk.bold.cyan('\n🔧 Available Fixes:\n'));
 
-  for (const project of fixableProjects) {
-    const fixCommands = project.fixCommands ?? [];
-    console.log(chalk.bold(`Project: ${chalk.yellow(project.name)}`));
-    fixCommands.forEach((cmd, idx) => {
-      console.log(`  ${idx + 1}. ${chalk.cyan(cmd)}`);
-    });
-    console.log();
+    for (const project of fixableProjects) {
+      const fixCommands = project.fixCommands ?? [];
+      console.log(chalk.bold(`Project: ${chalk.yellow(project.name)}`));
+      fixCommands.forEach((cmd, idx) => {
+        console.log(`  ${idx + 1}. ${chalk.cyan(cmd)}`);
+      });
+      console.log();
+    }
   }
 
   if (options.planOnly) {
@@ -4308,29 +4340,42 @@ async function executeFixCommands(
   const invasiveSteps = remediationPlan.risk.invasive;
 
   if (executableFixCount === 0) {
-    console.log(chalk.gray('💡 No automatic fixes can be applied right now.'));
-    if (goFixBlocked) {
-      console.log(
-        chalk.gray(
-          '   Install Go to enable go mod tidy fixes, then rerun `rapidkit doctor workspace --fix`.'
-        )
-      );
+    if (!quiet) {
+      console.log(chalk.gray('💡 No automatic fixes can be applied right now.'));
+      if (goFixBlocked) {
+        console.log(
+          chalk.gray(
+            '   Install Go to enable go mod tidy fixes, then rerun `rapidkit doctor workspace --fix`.'
+          )
+        );
+      }
+    }
+    if (autoFix) {
+      return buildDoctorFixExecutionResult({
+        appliedFixes: [],
+        remainingBlockers: await collectDoctorRemainingBlockers(fixableProjects),
+        verifyRecommended: DOCTOR_FIX_VERIFY_RECOMMENDED,
+      });
     }
     return;
   }
 
   if (!autoFix) {
-    console.log(
-      chalk.gray('💡 Run "npx rapidkit doctor workspace --fix" to apply fixes automatically')
-    );
+    if (!quiet) {
+      console.log(
+        chalk.gray('💡 Run "npx rapidkit doctor workspace --fix" to apply fixes automatically')
+      );
+    }
     return;
   }
 
-  console.log(
-    chalk.gray(
-      `Risk policy: safe=${safeSteps}, guarded=${guardedSteps}, invasive=${invasiveSteps}. Guarded/invasive fixes use snapshot + rollback.`
-    )
-  );
+  if (!quiet) {
+    console.log(
+      chalk.gray(
+        `Risk policy: safe=${safeSteps}, guarded=${guardedSteps}, invasive=${invasiveSteps}. Guarded/invasive fixes use snapshot + rollback.`
+      )
+    );
+  }
 
   if (!options.skipConfirmation) {
     // Confirm before proceeding
@@ -4344,18 +4389,28 @@ async function executeFixCommands(
     ]);
 
     if (!confirm) {
-      console.log(chalk.yellow('\n⚠️  Fixes cancelled by user'));
-      return;
+      if (!quiet) {
+        console.log(chalk.yellow('\n⚠️  Fixes cancelled by user'));
+      }
+      return buildDoctorFixExecutionResult({
+        appliedFixes: [],
+        remainingBlockers: await collectDoctorRemainingBlockers(fixableProjects),
+        verifyRecommended: DOCTOR_FIX_VERIFY_RECOMMENDED,
+      });
     }
   }
 
-  console.log(chalk.bold.cyan('\n🚀 Applying fixes...\n'));
+  if (!quiet) {
+    console.log(chalk.bold.cyan('\n🚀 Applying fixes...\n'));
+  }
 
   const executedSteps = new Set<string>();
 
   for (const project of fixableProjects) {
     const fixCommands = project.fixCommands ?? [];
-    console.log(chalk.bold(`Fixing ${chalk.cyan(project.name)}...`));
+    if (!quiet) {
+      console.log(chalk.bold(`Fixing ${chalk.cyan(project.name)}...`));
+    }
 
     for (const cmd of fixCommands) {
       const planStep = classifyFixStep(project, cmd);
@@ -4497,7 +4552,16 @@ async function executeFixCommands(
           throw shellError;
         }
 
-        console.log(chalk.green(`  ✅ Success\n`));
+        if (!quiet) {
+          console.log(chalk.green(`  ✅ Success\n`));
+        }
+        appliedFixes.push({
+          path: planStep.projectPath,
+          action: planStep.kind,
+          outcome: 'applied',
+          projectName: project.name,
+          command: cmd,
+        });
       } catch (error) {
         const step = classifyFixStep(project, cmd);
         if (step.risk !== 'safe') {
@@ -4505,19 +4569,33 @@ async function executeFixCommands(
           if (snapshot) {
             try {
               await rollbackProjectFromSnapshot(snapshot);
-              console.log(chalk.yellow('  ↩ Rolled back snapshot after failed fix'));
+              if (!quiet) {
+                console.log(chalk.yellow('  ↩ Rolled back snapshot after failed fix'));
+              }
             } catch (rollbackError) {
-              console.log(
-                chalk.red(
-                  `  ❌ Rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`
-                )
-              );
+              if (!quiet) {
+                console.log(
+                  chalk.red(
+                    `  ❌ Rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`
+                  )
+                );
+              }
             }
           }
         }
-        console.log(
-          chalk.red(`  ❌ Failed: ${error instanceof Error ? error.message : String(error)}\n`)
-        );
+        if (!quiet) {
+          console.log(
+            chalk.red(`  ❌ Failed: ${error instanceof Error ? error.message : String(error)}\n`)
+          );
+        }
+        appliedFixes.push({
+          path: step.projectPath,
+          action: step.kind,
+          outcome: 'failed',
+          projectName: project.name,
+          command: cmd,
+          detail: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -4539,7 +4617,17 @@ async function executeFixCommands(
     }
   }
 
-  console.log(chalk.bold.green('\n✅ Fix process completed!'));
+  if (!quiet) {
+    console.log(chalk.bold.green('\n✅ Fix process completed!'));
+  }
+
+  if (autoFix) {
+    return buildDoctorFixExecutionResult({
+      appliedFixes,
+      remainingBlockers: await collectDoctorRemainingBlockers(fixableProjects),
+      verifyRecommended: DOCTOR_FIX_VERIFY_RECOMMENDED,
+    });
+  }
 }
 
 export function computeDoctorGateExitCode(
@@ -4602,7 +4690,7 @@ export async function runDoctor(
       console.log(chalk.gray(`Path: ${workspacePath}`));
     }
 
-    const health = await getWorkspaceHealth(workspacePath);
+    let health = await getWorkspaceHealth(workspacePath);
 
     if (!options.json) {
       if (health.projectScanCached) {
@@ -4619,9 +4707,25 @@ export async function runDoctor(
 
     // JSON output mode
     if (options.json) {
+      let fixResult: DoctorFixExecutionResult | undefined;
       const remediationPlan = options.plan
         ? await buildRemediationPlan(health.projects)
         : undefined;
+
+      if ((options.fix || options.apply) && !options.plan) {
+        fixResult =
+          (await executeFixCommands(health.projects, true, {
+            skipConfirmation: options.apply === true || options.fix === true,
+            json: true,
+          })) ??
+          buildDoctorFixExecutionResult({
+            appliedFixes: [],
+            remainingBlockers: [],
+            verifyRecommended: DOCTOR_FIX_VERIFY_RECOMMENDED,
+          });
+        health = await getWorkspaceHealth(workspacePath, false);
+      }
+
       const output = {
         contract: getDoctorContractMetadata(),
         workspace: {
@@ -4656,6 +4760,14 @@ export async function runDoctor(
         driftDelta: health.driftDelta,
         scoreBreakdown: health.scoreBreakdown ?? [],
         ...(remediationPlan ? { remediationPlan } : {}),
+        ...(fixResult
+          ? {
+              appliedFixes: fixResult.appliedFixes,
+              remainingBlockers: fixResult.remainingBlockers,
+              verifyRecommended: fixResult.verifyRecommended,
+              fixResult,
+            }
+          : {}),
       };
 
       if (!options.quiet) {

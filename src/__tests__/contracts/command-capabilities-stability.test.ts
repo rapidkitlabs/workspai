@@ -8,12 +8,7 @@ import {
   getPublishedContractVersions,
   getVersionContract,
 } from '../../index';
-import {
-  buildRuntimeCommandSurfaceContract,
-  RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION,
-} from '../../contracts/runtime-command-surface-contract';
-import { CLI_LOG_EVENT_SCHEMA_VERSION } from '../../contracts/cli-log-event-contract';
-import { FRESHNESS_METADATA_SCHEMA_VERSION } from '../../contracts/freshness-metadata-contract';
+import { buildRuntimeCommandSurfaceContract } from '../../contracts/runtime-command-surface-contract';
 import {
   WORKSPACE_INTELLIGENCE_SUBCOMMANDS,
   WORKSPACE_SUBCOMMANDS,
@@ -76,11 +71,7 @@ describe('rapidkit commands --json stability contract (1.1)', () => {
   it('advertises the versioned contracts it publishes (discoverable, not hard-coded)', () => {
     const capabilities = getGlobalCommandCapabilities();
 
-    expect(capabilities.contracts).toEqual({
-      runtimeCommandSurface: RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION,
-      cliLogEvent: CLI_LOG_EVENT_SCHEMA_VERSION,
-      freshnessMetadata: FRESHNESS_METADATA_SCHEMA_VERSION,
-    });
+    expect(capabilities.contracts).toEqual(getPublishedContractVersions());
     // The advertised runtime-command-surface version must match the real one so
     // consumers can trust the capability surface aligns with the contract file.
     expect(capabilities.contracts.runtimeCommandSurface).toBe(
@@ -119,6 +110,11 @@ describe('rapidkit commands --json stability contract (1.1)', () => {
     expect(capabilities.workspace.intelligenceSubcommands).toEqual(
       onDisk.workspaceIntelligenceSubcommands
     );
+  });
+
+  it('does not advertise a standalone skills generate command (Phase 4.26)', () => {
+    const capabilities = getGlobalCommandCapabilities();
+    expect(capabilities.workspace.subcommands).not.toContain('skills');
   });
 });
 

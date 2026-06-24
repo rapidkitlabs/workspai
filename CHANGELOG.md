@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-06-23
+
+### Added
+
+- Added **Phase 4 operational intelligence** CLI surfaces: `workspace explain`,
+  `workspace why` (alias), `workspace trace --from <diff>`, `workspace feedback
+  record`, and read-mostly `workspace mcp serve` (stdio JSON-RPC over workspace
+  evidence).
+- Added versioned contracts under `contracts/workspace-intelligence/`:
+  `workspace-explain.v1`, `workspace-contract-verify.v1`,
+  `blocker-resolution.v1`, `doctor-fix-result.v1`, `studio-blocker-handoff.v1`,
+  `agent-action-outcome.v1`, `workspace-skills-index.v1`, and
+  `workspace-operational-skill.v1`.
+- Added operational skills generation via `workspace agent-sync --write`
+  (`.rapidkit/skills/*.md`, `workspace-skills-index.json`) — no separate
+  `skills generate` command; see `docs/contracts/NAMING_AND_COEXISTENCE.md`.
+- Added structured **doctor fix result** output (`fixResult`) for
+  `doctor workspace --fix --json` and contract
+  `rapidkit-doctor-fix-result-v1`.
+- Added `workspace contract verify` evidence artifact and reader alignment for
+  IDE/CI consumers.
+- Added blocker **resolution hints** on `workspace verify` when steps fail or
+  evidence is missing.
+- Added `src/contracts/published-contract-versions.ts` and expanded
+  `extension-cli-compatibility.v1.json` schema matrix for Workspai extension
+  parity.
+
+### Changed
+
+- Extended `workspace verify` plan: per-project **init** and **start** fleet
+  evidence when declared in `fleetStages`; optional **doctor-fix** step reads
+  `fixResult` from `doctor-last-run.json`.
+- Extended `workspace run` enterprise controls: **custom stages** from
+  `.rapidkit/context.json` `commands`, **stage dependencies** from framework
+  registry, and **`--reuse-passed`** to skip projects already passing in
+  `workspace-run-last.json`.
+- Refactored framework registry with `resolveFrameworkRegistryEntry()` for
+  dependency and stage resolution reuse.
+- Updated `docs/contracts/ARTIFACT_CATALOG.md`, `docs/workspace-run.md`, and
+  runtime/extension CLI compatibility contracts.
+
+### Notes
+
+- `workspace graph explain <project>` remains the graph-topology slice;
+  `workspace explain project:<name>` is the unified narrative surface.
+- MCP serve is read-mostly; write/fix tools stay approval-gated per MCP design
+  artifact.
+
+### Verification
+
+- `npm run build`
+- `npx vitest run` (1550+ tests)
+- `npm run validate:contracts`
+
 ## [0.40.1] - 2026-06-23
 
 ### Changed

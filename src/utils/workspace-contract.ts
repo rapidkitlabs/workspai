@@ -1,6 +1,7 @@
 import path from 'path';
 import fsExtra from 'fs-extra';
 
+import { attachRunCorrelation } from '../observability/run-correlation.js';
 import { auditWorkspaceModulePaths } from './module-layout.js';
 import {
   readImportedProjectsRegistry,
@@ -8,7 +9,20 @@ import {
 } from '../imported-projects-registry.js';
 
 export const WORKSPACE_CONTRACT_PATH = '.rapidkit/workspace.contract.json';
+export const WORKSPACE_CONTRACT_VERIFY_REPORT_PATH =
+  '.rapidkit/reports/workspace-contract-verify-last-run.json';
 export const WORKSPACE_CONTRACT_SCHEMA_VERSION = 1;
+export const WORKSPACE_CONTRACT_VERIFY_SCHEMA_VERSION = 'workspace-contract-verify.v1' as const;
+
+export type WorkspaceContractVerifyEvidence = {
+  schemaVersion: typeof WORKSPACE_CONTRACT_VERIFY_SCHEMA_VERSION;
+  generatedAt: string;
+  status: 'passed' | 'failed';
+  contractPath: string;
+  projectCount: number;
+  checks: WorkspaceContractVerificationResult['checks'];
+  violations: string[];
+};
 
 export interface WorkspaceContractPort {
   name: string;
@@ -728,4 +742,25 @@ export async function verifyWorkspaceContract(input: {
     checks,
     violations,
   };
+}
+
+export async function writeWorkspaceContractVerifyEvidence(input: {
+  workspacePath: string;
+  result: WorkspaceContractVerificationResult;
+  generatedAt?: string;
+}): Promise<string> {
+  const workspacePath = path.resolve(input.workspacePath);
+  const outputPath = path.join(workspacePath, WORKSPACE_CONTRACT_VERIFY_REPORT_PATH);
+  await fsExtra.ensureDir(path.dirname(outputPath));
+  const payload: WorkspaceContractVerifyEvidence = {
+    schemaVersion: WORKSPACE_CONTRACT_VERIFY_SCHEMA_VERSION,
+    generatedAt: input.generatedAt ?? new Date().toISOString(),
+    status: input.result.status,
+    contractPath: input.result.contractPath,
+    projectCount: input.result.projectCount,
+    checks: input.result.checks,
+    violations: input.result.violations,
+  };
+  await fsExtra.writeJSON(outputPath, attachRunCorrelation(payload), { spaces: 2 });
+  return outputPath;
 }

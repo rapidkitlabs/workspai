@@ -19,7 +19,8 @@
         ".github/prompts/rapidkit-diagnose.prompt.md",
         ".github/skills/rapidkit-workspace-intelligence/SKILL.md",
         ".github/agents/workspai-advisor.agent.md",
-        ".rapidkit/reports/rapidkit-mcp-design.json"
+        ".rapidkit/reports/rapidkit-mcp-design.json",
+        ".rapidkit/reports/workspace-skills-index.json"
       ]
     }
   },
@@ -100,6 +101,11 @@
       "required": true
     },
     {
+      "path": ".rapidkit/reports/workspace-skills-index.json",
+      "label": "Operational skills index",
+      "required": true
+    },
+    {
       "path": ".rapidkit/reports/workspace-model.json",
       "label": "Workspace model graph",
       "required": false
@@ -133,6 +139,31 @@
       "path": ".rapidkit/reports/workspace-verify-last-run.json",
       "label": "Workspace verify",
       "required": false
+    },
+    {
+      "path": ".rapidkit/reports/workspace-model-snapshot.json",
+      "label": "Workspace model snapshot",
+      "required": false
+    },
+    {
+      "path": ".rapidkit/reports/workspace-model-diff-last-run.json",
+      "label": "Workspace model diff",
+      "required": false
+    },
+    {
+      "path": ".rapidkit/reports/workspace-explain-last-run.json",
+      "label": "Workspace explain",
+      "required": false
+    },
+    {
+      "path": ".rapidkit/reports/workspace-contract-verify-last-run.json",
+      "label": "Workspace contract verify",
+      "required": false
+    },
+    {
+      "path": ".rapidkit/reports/workspace-intelligence-history.json",
+      "label": "Workspace intelligence history",
+      "required": false
     }
   ],
   "strictRules": [
@@ -151,9 +182,28 @@
     "prompt",
     "skill",
     "skill-resource",
+    "operational-skill",
+    "skills-index",
+    "explain-report",
     "agent",
     "rule",
     "hook",
     "mcp-design"
-  ]
+  ],
+  "pathLayers": {
+    "l1CanonicalRoots": [
+      ".rapidkit/reports/",
+      ".rapidkit/skills/"
+    ],
+    "l2PrefixedMirrorRoots": [
+      ".github/",
+      ".cursor/",
+      ".claude/"
+    ],
+    "l3SharedIndustryFiles": [
+      "AGENTS.md",
+      ".github/copilot-instructions.md",
+      "CLAUDE.md"
+    ]
+  }
 }

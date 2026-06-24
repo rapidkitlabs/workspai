@@ -679,7 +679,18 @@ function buildImpactCommand(
 
 function projectVerificationPlan(project: WorkspaceModelProject): WorkspaceImpactCommand[] {
   const scope = `project:${project.name}`;
+  const fleetStages = project.commands.fleetStages;
   return [
+    buildImpactCommand(
+      `project.${project.name}.init`,
+      `Run init for ${project.name}`,
+      ['workspace', 'run', 'init', '--scope', scope, '--json'],
+      {
+        scope: 'project',
+        project: project.name,
+        required: fleetStages.includes('init'),
+      }
+    ),
     buildImpactCommand(
       `project.${project.name}.test`,
       `Run tests for ${project.name}`,
@@ -687,7 +698,7 @@ function projectVerificationPlan(project: WorkspaceModelProject): WorkspaceImpac
       {
         scope: 'project',
         project: project.name,
-        required: project.commands.fleetStages.includes('test'),
+        required: fleetStages.includes('test'),
       }
     ),
     buildImpactCommand(
@@ -697,7 +708,17 @@ function projectVerificationPlan(project: WorkspaceModelProject): WorkspaceImpac
       {
         scope: 'project',
         project: project.name,
-        required: project.commands.fleetStages.includes('build'),
+        required: fleetStages.includes('build'),
+      }
+    ),
+    buildImpactCommand(
+      `project.${project.name}.start`,
+      `Run start for ${project.name}`,
+      ['workspace', 'run', 'start', '--scope', scope, '--json'],
+      {
+        scope: 'project',
+        project: project.name,
+        required: fleetStages.includes('start'),
       }
     ),
   ];
@@ -728,6 +749,12 @@ export function workspaceVerificationPlan(): WorkspaceImpactCommand[] {
       scope: 'workspace',
       required: false,
     }),
+    buildImpactCommand(
+      'workspace.doctor-fix',
+      'Verify doctor fix result',
+      ['doctor', 'workspace', '--fix', '--json'],
+      { scope: 'workspace', required: false }
+    ),
   ];
 }
 
