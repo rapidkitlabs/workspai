@@ -34,7 +34,7 @@ describe('workspace contract verify evidence', () => {
 
     const result = await verifyWorkspaceContract({ workspacePath, strict: false });
     const outputPath = await writeWorkspaceContractVerifyEvidence({ workspacePath, result });
-    expect(outputPath).toContain(WORKSPACE_CONTRACT_VERIFY_REPORT_PATH);
+    expect(outputPath).toBe(path.join(workspacePath, WORKSPACE_CONTRACT_VERIFY_REPORT_PATH));
 
     const raw = JSON.parse(await readFile(outputPath, 'utf8')) as Record<string, unknown>;
     expect(raw.status).toBe(result.status);
