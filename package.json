@@ -1,6 +1,6 @@
 {
   "name": "rapidkit",
-  "version": "0.41.0",
+  "version": "0.41.1",
   "type": "module",
   "description": "Open-source workspace intelligence CLI for software systems: create, adopt, govern, verify, and align polyglot workspaces for humans, CI, IDEs, and AI agents.",
   "keywords": [
@@ -41,10 +41,13 @@
     "dist",
     "contracts",
     "docs",
+    "templates",
     "data/modules-embeddings.json",
     "scripts/enforce-package-manager.cjs",
     "scripts/check-cli-resolution.cjs",
-    "scripts/check-agent-customization-drift.mjs"
+    "scripts/check-agent-customization-drift.mjs",
+    "scripts/enterprise-package-smoke.mjs",
+    "scripts/prepack-enterprise.mjs"
   ],
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
@@ -80,7 +83,8 @@
     "test:prepare-embeddings": "node scripts/prepare-mock-embeddings.mjs",
     "generate-embeddings": "npx tsx src/ai/generate-embeddings.ts",
     "verify:package-cli": "node scripts/verify-package-cli.mjs",
-    "prepack": "npm run build && npm run test:prepare-embeddings && npm run verify:package-cli",
+    "smoke:enterprise-package": "node scripts/enterprise-package-smoke.mjs",
+    "prepack": "node scripts/prepack-enterprise.mjs",
     "test:e2e": "vitest run src/__tests__/e2e.test.ts",
     "test:scenarios": "node scripts/run-scenario-matrix-local.mjs",
     "test:scenarios:full": "node scripts/run-scenario-matrix-local.mjs --full",

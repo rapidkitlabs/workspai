@@ -186,8 +186,24 @@ describe('Demo Kit Generator', () => {
       const stat = await fs.stat(projectPath);
       expect(stat.isDirectory()).toBe(true);
 
-      // Note: Actual file generation depends on templates being available
-      // This test verifies the directory is created successfully
+      await expect(fileExists(path.join(projectPath, 'pyproject.toml'))).resolves.toBe(true);
+      await expect(fileExists(path.join(projectPath, 'src', 'main.py'))).resolves.toBe(true);
+      await expect(fileExists(path.join(projectPath, 'src', 'routing', 'health.py'))).resolves.toBe(
+        true
+      );
+      await expect(
+        fileExists(path.join(projectPath, 'src', 'routing', 'examples.py'))
+      ).resolves.toBe(true);
+      await expect(fileExists(path.join(projectPath, 'tests', 'test_health.py'))).resolves.toBe(
+        true
+      );
+      await expect(fileExists(path.join(projectPath, 'tests', 'test_examples.py'))).resolves.toBe(
+        true
+      );
+      await expect(fileExists(path.join(projectPath, '.env.example'))).resolves.toBe(true);
+      await expect(fileExists(path.join(projectPath, '.rapidkit', 'project.json'))).resolves.toBe(
+        true
+      );
     });
 
     // NOTE: Python Core 0.2.2+ no longer generates .rapidkit folder
@@ -303,6 +319,13 @@ describe('Demo Kit Generator', () => {
       const content = await fs.readFile(packageJsonPath, 'utf-8');
       const packageJson = JSON.parse(content);
       expect(packageJson.dependencies).toHaveProperty('@nestjs/core');
+      await expect(fileExists(path.join(projectPath, '.env.example'))).resolves.toBe(true);
+      await expect(
+        fileExists(path.join(projectPath, 'src', 'examples', 'examples.module.ts'))
+      ).resolves.toBe(true);
+      await expect(fileExists(path.join(projectPath, '.rapidkit', 'project.json'))).resolves.toBe(
+        true
+      );
     });
 
     it('should generate NestJS project structure with src folder', async () => {
@@ -527,3 +550,10 @@ describe('Demo Kit Generator', () => {
     });
   });
 });
+
+async function fileExists(filePath: string): Promise<boolean> {
+  return fs
+    .access(filePath)
+    .then(() => true)
+    .catch(() => false);
+}

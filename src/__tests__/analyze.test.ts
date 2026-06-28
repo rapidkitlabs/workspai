@@ -209,6 +209,21 @@ describe('analyze command', () => {
     expect(report.nextActions[0]).toContain('create project');
   });
 
+  it('keeps needs-attention under strict when only scaffold project warning exists', async () => {
+    const workspaceDir = await createTempDir();
+    await fs.mkdir(path.join(workspaceDir, '.rapidkit'), { recursive: true });
+    await fs.writeFile(
+      path.join(workspaceDir, '.rapidkit', 'workspace.json'),
+      JSON.stringify({ profile: 'minimal', workspace_name: 'empty-minimal' }, null, 2)
+    );
+
+    const report = await runAnalyze({ workspacePath: workspaceDir, json: true, strict: true });
+
+    expect(report.summary.verdict).toBe('needs-attention');
+    expect(report.summary.findings.fail).toBe(0);
+    expect(report.summary.findings.warn).toBe(1);
+  });
+
   it('warns for polyglot profile with zero projects and prioritizes project scaffolding', async () => {
     const workspaceDir = await createTempDir();
     await fs.mkdir(path.join(workspaceDir, '.rapidkit'), { recursive: true });

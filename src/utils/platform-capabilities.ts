@@ -1,5 +1,6 @@
 import os from 'os';
 import path from 'path';
+import fs from 'fs-extra';
 
 export type PlatformKind = 'windows' | 'linux' | 'macos' | 'other';
 
@@ -21,6 +22,141 @@ export function isWindowsPlatform(platform: NodeJS.Platform = process.platform):
 
 export function shouldUseShellExecution(platform: NodeJS.Platform = process.platform): boolean {
   return isWindowsPlatform(platform);
+}
+
+const PACKAGE_RUNNER_COMMANDS = new Set(['npx', 'npm', 'yarn', 'pnpm']);
+
+export type PackageRunnerInvocation = {
+  command: string;
+  prefixArgs: string[];
+};
+
+function packageRunnerCliBasename(command: string): string {
+  return command === 'npx' ? 'npx-cli.js' : 'npm-cli.js';
+}
+
+function npmExecPathCandidate(command: string, env: NodeJS.ProcessEnv): string | null {
+  const execPath = env.npm_execpath;
+  if (!execPath) return null;
+
+  const basename = path.basename(execPath).toLowerCase();
+  if (command === 'npx' && basename !== 'npx-cli.js') {
+    const sibling = path.join(path.dirname(execPath), 'npx-cli.js');
+    return fs.existsSync(sibling) ? sibling : null;
+  }
+  if (command === 'npm' && basename === 'npx-cli.js') {
+    const sibling = path.join(path.dirname(execPath), 'npm-cli.js');
+    return fs.existsSync(sibling) ? sibling : null;
+  }
+  return fs.existsSync(execPath) ? execPath : null;
+}
+
+function wellKnownPackageRunnerCliCandidates(command: string): string[] {
+  if (command !== 'npm' && command !== 'npx') return [];
+
+  const cli = packageRunnerCliBasename(command);
+  const nodeBinDir = path.dirname(process.execPath);
+  const prefix = path.dirname(nodeBinDir);
+
+  return [
+    path.join(prefix, 'lib', 'node_modules', 'npm', 'bin', cli),
+    path.join(prefix, 'lib64', 'node_modules', 'npm', 'bin', cli),
+    path.join('/usr', 'lib', 'node_modules', 'npm', 'bin', cli),
+    path.join('/usr', 'local', 'lib', 'node_modules', 'npm', 'bin', cli),
+    path.join('/usr', 'share', 'nodejs', 'npm', 'bin', cli),
+  ];
+}
+
+/** Resolve npx/npm next to the active Node binary (fixes VS Code extension host PATH gaps). */
+export function resolvePackageRunnerExecutable(
+  command: string,
+  platform: NodeJS.Platform = process.platform
+): string {
+  return resolvePackageRunnerInvocation(command, platform).command;
+}
+
+/**
+ * Resolve npm-family package runners for subprocess execution.
+ *
+ * Enterprise surfaces often invoke RapidKit from VS Code, npm/npx shims, or CI
+ * jobs with a reduced PATH. Returning command + prefixArgs lets callers safely
+ * execute `node npm-cli.js ...` or `corepack npm ...` without shell-string hacks.
+ */
+export function resolvePackageRunnerInvocation(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env
+): PackageRunnerInvocation {
+  const normalized = command.trim();
+  if (!PACKAGE_RUNNER_COMMANDS.has(normalized)) {
+    return { command: normalized, prefixArgs: [] };
+  }
+
+  const nodeBinDir = path.dirname(process.execPath);
+  const extension = isWindowsPlatform(platform) ? '.cmd' : '';
+  const candidates = [
+    path.join(nodeBinDir, `${normalized}${extension}`),
+    path.join(nodeBinDir, normalized),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return { command: candidate, prefixArgs: [] };
+    }
+  }
+
+  const npmExecPath = npmExecPathCandidate(normalized, env);
+  if (npmExecPath) {
+    return { command: process.execPath, prefixArgs: [npmExecPath] };
+  }
+
+  for (const candidate of wellKnownPackageRunnerCliCandidates(normalized)) {
+    if (fs.existsSync(candidate)) {
+      return { command: process.execPath, prefixArgs: [candidate] };
+    }
+  }
+
+  if (normalized === 'npm') {
+    return { command: 'corepack', prefixArgs: ['npm'] };
+  }
+
+  return { command: normalized, prefixArgs: [] };
+}
+
+export function augmentPathWithNodeBin(
+  pathEnv?: string,
+  platform: NodeJS.Platform = process.platform
+): string {
+  const delimiter = isWindowsPlatform(platform) ? ';' : ':';
+  const nodeBin = path.dirname(process.execPath);
+  const parts = (pathEnv ?? process.env.PATH ?? '').split(delimiter).filter(Boolean);
+  if (!parts.includes(nodeBin)) {
+    parts.unshift(nodeBin);
+  }
+  return parts.join(delimiter);
+}
+
+/** npm_config keys inherited from `npx --package …` that break nested npx/npm runs. */
+const NPX_PARENT_PACKAGE_ENV_KEYS = ['npm_config_package', 'npm_config__package'] as const;
+
+/**
+ * Env for spawning nested npx/npm/yarn/pnpm from RapidKit.
+ * Strips parent `npx --package file:…` package pins so inner generators resolve from the registry.
+ */
+export function buildPackageRunnerSubprocessEnv(
+  baseEnv: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): NodeJS.ProcessEnv {
+  const rapidkitCorepackHome = path.join(os.tmpdir(), 'rapidkit-corepack');
+  const env: NodeJS.ProcessEnv = {
+    ...baseEnv,
+    PATH: augmentPathWithNodeBin(baseEnv.PATH, platform),
+    COREPACK_HOME: baseEnv.COREPACK_HOME ?? rapidkitCorepackHome,
+  };
+  for (const key of NPX_PARENT_PACKAGE_ENV_KEYS) {
+    delete env[key];
+  }
+  return env;
 }
 
 export function getDefaultPythonCommand(platform: NodeJS.Platform = process.platform): string {

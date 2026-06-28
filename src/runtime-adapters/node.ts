@@ -8,6 +8,11 @@ import {
   type NodeLifecycleCommand,
 } from '../utils/node-lifecycle-scripts.js';
 import { readRapidkitProjectJson } from '../utils/runtime-detection.js';
+import {
+  buildPackageRunnerSubprocessEnv,
+  resolvePackageRunnerInvocation,
+  shouldUseShellExecution,
+} from '../utils/platform-capabilities.js';
 
 export type NodeCommandRunner = (command: string, args: string[], cwd: string) => Promise<number>;
 
@@ -149,9 +154,11 @@ export class NodeRuntimeAdapter implements RuntimeAdapter {
   }
 
   private commandAvailable(command: string): boolean {
-    const result = spawnSync(command, ['--version'], {
+    const invocation = resolvePackageRunnerInvocation(command);
+    const result = spawnSync(invocation.command, [...invocation.prefixArgs, '--version'], {
       stdio: 'ignore',
-      shell: process.platform === 'win32',
+      shell: shouldUseShellExecution(),
+      env: buildPackageRunnerSubprocessEnv(),
     });
     return result.status === 0;
   }

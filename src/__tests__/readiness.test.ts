@@ -387,7 +387,7 @@ describe('release readiness', () => {
     expect(analyzeGate?.status).toBe('fail');
   });
 
-  it('uses workspace-scoped env gate wording when no projects are registered', async () => {
+  it('passes env gate when no projects are registered and another runtime is pinned', async () => {
     const workspace = await makeWorkspace();
 
     await fsExtra.writeJSON(path.join(workspace, '.rapidkit', 'workspace.json'), {
@@ -417,8 +417,8 @@ describe('release readiness', () => {
 
     const readiness = await evaluateReleaseReadiness({ startPath: workspace, writeReport: false });
     const envGate = readiness.gates.find((gate) => gate.gate === 'env');
-    expect(envGate?.summary).toContain('Workspace (python)');
-    expect(envGate?.summary).not.toContain('Project runtime');
+    expect(envGate?.status).toBe('pass');
+    expect(envGate?.summary).toContain('Pinned runtimes');
   });
 
   it('warns on analyze gate for polyglot workspace with zero projects instead of failing', async () => {

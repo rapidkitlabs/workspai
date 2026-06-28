@@ -139,8 +139,75 @@ describe('workspace dependency graph inference', () => {
       inferredEdges: 3,
       contractEdges: 2,
       manualEdges: 0,
+      authoritativeEdges: 2,
+      lowConfidenceEdges: 1,
+      orphanCount: 0,
+      connectedNodeCount: 2,
+      density: 2.5,
+      edgeCoverageRatio: 1,
+      evidenceCoverageRatio: 1,
+      hotspotCount: 0,
       hasCycle: false,
     });
+    const apiNode = graph.nodes.find((node) => node.id === 'api');
+    expect(apiNode?.operationalProfile).toMatchObject({
+      weight: 'high',
+      verificationPriority: 'strict',
+      centrality: { fanIn: 1, fanOut: 0, reach: 1, isHotspot: false },
+    });
+    expect(apiNode?.operationalProfile?.reasons).toContain('Change reaches 1 dependent project(s)');
+    expect(graph.diagnostics?.map((diagnostic) => diagnostic.code)).toEqual([
+      'graph.low_confidence_edges',
+    ]);
+  });
+
+  it('diagnoses graph coverage gaps when projects exist but dependency evidence is missing', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-graph-empty-'));
+    tempDirs.push(workspacePath);
+    await fsExtra.outputJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'isolated',
+    });
+    await fsExtra.outputJson(path.join(workspacePath, 'web', 'package.json'), {
+      name: '@acme/web',
+      version: '1.0.0',
+    });
+    await fsExtra.outputJson(path.join(workspacePath, 'api', 'package.json'), {
+      name: '@acme/api',
+      version: '1.0.0',
+    });
+
+    const model = await buildWorkspaceModel({ workspacePath, now: FIXED_NOW });
+    const graph = await inferWorkspaceDependencyGraph({
+      workspacePath,
+      model,
+      now: FIXED_NOW,
+    });
+
+    expect(graph.stats).toMatchObject({
+      nodeCount: 2,
+      edgeCount: 0,
+      orphanCount: 2,
+      connectedNodeCount: 0,
+      density: 0,
+      edgeCoverageRatio: 0,
+      evidenceCoverageRatio: 1,
+      hotspotCount: 0,
+      hasCycle: false,
+    });
+    expect(graph.nodes.every((node) => node.operationalProfile?.weight === 'low')).toBe(true);
+    expect(
+      graph.nodes.every((node) => node.operationalProfile?.verificationPriority === 'normal')
+    ).toBe(true);
+    expect(graph.diagnostics).toEqual([
+      {
+        code: 'graph.edges.missing',
+        severity: 'warning',
+        message: 'Projects were detected, but no inter-project dependency edges were found.',
+        recommendation:
+          'Run graph explain, add workspace contract relationships, or define manual graph overrides for operational dependencies that code imports cannot reveal.',
+        nodeIds: ['api', 'web'],
+      },
+    ]);
   });
 
   it('lets a manual override win over an inferred edge of the same kind', async () => {

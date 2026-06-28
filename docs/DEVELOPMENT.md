@@ -42,7 +42,7 @@ npx rapidkit my-workspace --test-mode
 ```bash
 # Direct project creation
 npx rapidkit create project fastapi.standard my-api --output .
-npx rapidkit create frontend nextjs my-web --yes
+npx rapidkit create project nextjs my-web --yes
 
 # Workspace mode
 npx rapidkit create workspace my-workspace --yes --profile polyglot

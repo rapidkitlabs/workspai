@@ -43,6 +43,9 @@ describe('frontend-framework-contract', () => {
     });
     expect(frontendCreateUsage()).toContain('remix');
     expect(frontendCreateUsage()).toContain('angular');
+    expect(frontendCreateUsage('nextjs')).toBe(
+      'rapidkit create project nextjs <name> [--output <dir>] [--skip-install] [--dry-run]'
+    );
   });
 
   it('classifies frontend workspace membership for in-tree and out-of-tree projects', () => {

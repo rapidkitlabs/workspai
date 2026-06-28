@@ -1,5 +1,9 @@
 import type { BlockerResolution } from './blocker-resolution-contract.js';
-import { WORKSPACE_EXPLAIN_REPORT_PATH } from './workspace-artifact-paths.js';
+import {
+  WORKSPACE_EXPLAIN_REPORT_PATH,
+  WORKSPACE_TRACE_REPORT_PATH,
+  WORKSPACE_WHY_REPORT_PATH,
+} from './workspace-artifact-paths.js';
 
 export const WORKSPACE_EXPLAIN_SCHEMA_VERSION = 'workspace-explain.v1' as const;
 
@@ -36,7 +40,7 @@ export type WorkspaceExplainReport = {
   resolutionHints?: BlockerResolution[];
 };
 
-export { WORKSPACE_EXPLAIN_REPORT_PATH };
+export { WORKSPACE_EXPLAIN_REPORT_PATH, WORKSPACE_WHY_REPORT_PATH, WORKSPACE_TRACE_REPORT_PATH };
 
 export function parseWorkspaceExplainTarget(raw: string): WorkspaceExplainTarget | null {
   const value = raw.trim();
@@ -59,6 +63,28 @@ export function parseWorkspaceExplainTarget(raw: string): WorkspaceExplainTarget
     return diffRef ? { kind: 'trace', diffRef } : null;
   }
   return { kind: 'project', project: value };
+}
+
+/** Resolve `--from` for `workspace trace` without treating artifact paths as project ids. */
+export function resolveWorkspaceTraceTarget(fromRef: string): WorkspaceExplainTarget | null {
+  const value = fromRef.trim();
+  if (!value) {
+    return null;
+  }
+  if (value.startsWith('trace:')) {
+    const parsed = parseWorkspaceExplainTarget(value);
+    return parsed?.kind === 'trace' ? parsed : null;
+  }
+  const normalized = value.replace(/\\/g, '/').trim().toLowerCase();
+  const looksLikeDiff =
+    normalized.endsWith('.json') ||
+    normalized.includes('workspace-model-diff') ||
+    normalized.startsWith('.rapidkit/') ||
+    normalized.includes('/.rapidkit/');
+  if (looksLikeDiff) {
+    return { kind: 'trace', diffRef: value };
+  }
+  return null;
 }
 
 export function isWorkspaceExplainReport(value: unknown): value is WorkspaceExplainReport {

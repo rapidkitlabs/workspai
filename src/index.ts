@@ -708,6 +708,9 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
   // Supported offline fallback:
   //   rapidkit create project <kit> <name> [--output <dir>]
   // for kits that have embedded templates (fastapi*, nestjs*).
+  if (process.env.RAPIDKIT_FORCE_OFFLINE_CREATE_FALLBACK === '1' && args[0] === 'create') {
+    return runCreateFallback(args, 'PYTHON_NOT_FOUND');
+  }
 
   // If this is a create project invocation, handle wrapper-level flags
   // (workspace creation UX) **before** attempting to run the Python core.
@@ -1892,11 +1895,17 @@ async function runCommandInCwd(
   commandArgs: string[],
   cwd: string
 ): Promise<number> {
+  const { buildPackageRunnerSubprocessEnv, resolvePackageRunnerInvocation } = await import(
+    './utils/platform-capabilities.js'
+  );
+  const invocation = resolvePackageRunnerInvocation(command);
+  const executable = invocation.command;
   return await new Promise<number>((resolve) => {
-    const child = spawn(command, commandArgs, {
+    const child = spawn(executable, [...invocation.prefixArgs, ...commandArgs], {
       stdio: ['ignore', 'pipe', 'pipe'],
       cwd,
       shell: shouldUseShellExecution(),
+      env: buildPackageRunnerSubprocessEnv(),
     });
 
     child.stdout?.on('data', (chunk: Buffer) => {
@@ -7354,7 +7363,11 @@ program
       const writeRequested = actionOptions.write === true || hasRawFlag('--write');
       let outputPath: string | undefined;
       if (writeRequested) {
-        outputPath = await writeWorkspaceExplainReport(report, workspacePath);
+        outputPath = await writeWorkspaceExplainReport(
+          report,
+          workspacePath,
+          action === 'why' ? 'why' : 'explain'
+        );
       }
 
       if (actionOptions.json) {
@@ -7362,7 +7375,9 @@ program
         return;
       }
 
-      console.log(chalk.green(`✔ Workspace explain: ${report.summary}`));
+      console.log(
+        chalk.green(`✔ Workspace ${action === 'why' ? 'why' : 'explain'}: ${report.summary}`)
+      );
       for (const section of report.sections) {
         console.log(chalk.bold(`\n${section.title}`));
         console.log(section.body);
@@ -7382,19 +7397,20 @@ program
         );
         process.exit(1);
       }
-      const { parseWorkspaceExplainTarget } = await import(
+      const { resolveWorkspaceTraceTarget } = await import(
         './contracts/workspace-explain-contract.js'
       );
       const { buildWorkspaceExplain, writeWorkspaceExplainReport } = await import(
         './workspace-explain.js'
       );
-      const traceTarget = parseWorkspaceExplainTarget(fromRef) ??
-        parseWorkspaceExplainTarget(`trace:${fromRef}`) ?? {
-          kind: 'trace' as const,
-          diffRef: fromRef,
-        };
-      if (traceTarget.kind !== 'trace') {
+      const traceTarget = resolveWorkspaceTraceTarget(fromRef);
+      if (!traceTarget || traceTarget.kind !== 'trace') {
         console.log(chalk.red(`❌ Invalid trace ref: ${fromRef}`));
+        console.log(
+          chalk.gray(
+            '   Use a diff artifact path or trace:<path>, e.g. trace:.rapidkit/reports/workspace-model-diff-last-run.json'
+          )
+        );
         process.exit(1);
       }
       const report = await buildWorkspaceExplain({
@@ -7404,7 +7420,7 @@ program
       const writeRequested = actionOptions.write === true || hasRawFlag('--write');
       let outputPath: string | undefined;
       if (writeRequested) {
-        outputPath = await writeWorkspaceExplainReport(report, workspacePath);
+        outputPath = await writeWorkspaceExplainReport(report, workspacePath, 'trace');
       }
       if (actionOptions.json) {
         console.log(JSON.stringify({ ...report, outputPath }, null, 2));
@@ -7609,10 +7625,9 @@ function printHelp() {
   console.log(chalk.cyan('   npx rapidkit my-workspace\n'));
   console.log(chalk.white('Bootstrap toolchains\n'));
   console.log(chalk.cyan('   npx rapidkit bootstrap\n'));
-  console.log(chalk.white('Create project\n'));
-  console.log(chalk.cyan('   npx rapidkit create project\n'));
-  console.log(chalk.white('Create frontend\n'));
-  console.log(chalk.cyan('   npx rapidkit create frontend nextjs web\n'));
+  console.log(chalk.white('Create project (backend or frontend)\n'));
+  console.log(chalk.cyan('   npx rapidkit create project fastapi.standard api\n'));
+  console.log(chalk.cyan('   npx rapidkit create project nextjs web\n'));
   console.log(chalk.white('Adopt existing project\n'));
   console.log(chalk.cyan('   npx rapidkit adopt /path/to/project\n'));
   console.log(chalk.white('Import repository\n'));
@@ -7672,12 +7687,11 @@ function printHelp() {
       chalk.gray('# Bootstrap all runtime toolchains')
   );
   console.log(
-    chalk.cyan('  npx rapidkit create project              ') +
-      chalk.gray('# Interactive kit picker')
+    chalk.cyan('  npx rapidkit create project nextjs web     ') + chalk.gray('# Frontend (Next.js)')
   );
   console.log(
-    chalk.cyan('  npx rapidkit create frontend nextjs web  ') +
-      chalk.gray('# Create a frontend with the official generator')
+    chalk.cyan('  npx rapidkit create project fastapi.standard api ') +
+      chalk.gray('# Backend (FastAPI)')
   );
   console.log(chalk.cyan('  cd my-api'));
   console.log(chalk.cyan(`  ${quickStartInitDev}\n`));
@@ -8011,6 +8025,51 @@ function forceBlockingCliOutput(): void {
   }
 }
 
+function installSynchronousPipeWrites(): void {
+  for (const stream of [process.stdout, process.stderr]) {
+    if (stream.isTTY) continue;
+
+    const writable = stream as NodeJS.WriteStream & {
+      __rapidkitSyncWriteInstalled?: boolean;
+    };
+    if (writable.__rapidkitSyncWriteInstalled) continue;
+
+    const fd = stream.fd;
+    if (typeof fd !== 'number') continue;
+
+    const originalWrite = stream.write.bind(stream);
+    writable.write = ((chunk: unknown, encodingOrCallback?: unknown, callback?: unknown) => {
+      const encoding =
+        typeof encodingOrCallback === 'string' ? (encodingOrCallback as BufferEncoding) : 'utf8';
+      const cb =
+        typeof encodingOrCallback === 'function'
+          ? encodingOrCallback
+          : typeof callback === 'function'
+            ? callback
+            : undefined;
+
+      try {
+        const payload =
+          typeof chunk === 'string'
+            ? Buffer.from(chunk, encoding)
+            : chunk instanceof Uint8Array
+              ? Buffer.from(chunk)
+              : Buffer.from(String(chunk), encoding);
+        fs.writeSync(fd, payload);
+        cb?.();
+        return true;
+      } catch {
+        return originalWrite(
+          chunk as string | Uint8Array,
+          encoding as BufferEncoding,
+          cb as () => void
+        );
+      }
+    }) as typeof stream.write;
+    writable.__rapidkitSyncWriteInstalled = true;
+  }
+}
+
 async function exitAfterOutputFlush(code: number): Promise<never> {
   finalizeCliRunContext(code);
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -8026,9 +8085,15 @@ async function exitAfterOutputFlush(code: number): Promise<never> {
   process.exit(code);
 }
 
+async function writeStdoutAndExit(text: string, code = 0): Promise<never> {
+  fs.writeSync(process.stdout.fd ?? 1, text);
+  return exitAfterOutputFlush(code);
+}
+
 // Delegate to local CLI if inside a RapidKit project
 if (shouldBootstrapCli) {
   forceBlockingCliOutput();
+  installSynchronousPipeWrites();
   installCliProcessExitHook();
   initializeCliRunContext({
     argv: process.argv,
@@ -8059,7 +8124,7 @@ if (shouldBootstrapCli) {
   if (shouldRenderCustomRootHelp) {
     showIntro('npm cli');
     printHelp();
-    process.exit(0);
+    await exitAfterOutputFlush(0);
   }
 
   if (
@@ -8067,15 +8132,14 @@ if (shouldBootstrapCli) {
     !preArgs.some((arg) => arg === '--help' || arg === '-h' || arg === 'help')
   ) {
     if (preArgs.includes('--json')) {
-      console.log(JSON.stringify(getVersionContract(), null, 2));
+      await writeStdoutAndExit(`${JSON.stringify(getVersionContract(), null, 2)}\n`);
     } else {
-      console.log(getVersion());
+      await writeStdoutAndExit(`${getVersion()}\n`);
     }
-    process.exit(0);
   }
 
   if (handleProjectCapabilityRequest(preArgs)) {
-    process.exit(0);
+    await exitAfterOutputFlush(0);
   }
 
   if (shouldKeepNpmOwnedCommandLocal && isNpmOnlyManualHandlerCommand(preFirst)) {

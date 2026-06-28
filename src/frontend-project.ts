@@ -5,7 +5,11 @@ import fsExtra from 'fs-extra';
 
 import { getVersion } from './update-checker.js';
 import { validateProjectName } from './validation.js';
-import { shouldUseShellExecution } from './utils/platform-capabilities.js';
+import {
+  buildPackageRunnerSubprocessEnv,
+  resolvePackageRunnerInvocation,
+  shouldUseShellExecution,
+} from './utils/platform-capabilities.js';
 import type { ImportedProjectRegistryEntry } from './imported-projects-registry.js';
 import type { BackendImportStack } from './utils/backend-framework-contract.js';
 
@@ -338,12 +342,22 @@ export function normalizeCreateFrontendArgs(args: string[]): string[] | null {
   return ['create', 'project', definition.kitId, name ?? '', ...tail].filter(Boolean);
 }
 
+export function formatProjectCreateCommand(kit: string, projectName: string): string {
+  const definition = resolveFrontendGenerator(kit);
+  const kitLabel = definition?.id ?? kit.replace(/^frontend\./, '');
+  return `rapidkit create project ${kitLabel} ${projectName}`;
+}
+
+export function formatProjectCreateDisplayCommand(kit: string, projectName: string): string {
+  return `npx ${formatProjectCreateCommand(kit, projectName)}`;
+}
+
 export function frontendCreateUsage(value?: string): string {
   const definition = resolveFrontendGenerator(value);
   if (definition) {
-    return `rapidkit create frontend ${definition.id} <name> [--output <dir>] [--skip-install] [--dry-run]`;
+    return `${formatProjectCreateCommand(definition.id, '<name>')} [--output <dir>] [--skip-install] [--dry-run]`;
   }
-  return 'rapidkit create frontend <nextjs|remix|vite-react|vite-vue|vite-svelte|vite-solid|vite-vanilla|nuxt|angular|astro|sveltekit> <name> [--output <dir>] [--skip-install] [--dry-run]';
+  return 'rapidkit create project <nextjs|remix|vite-react|vite-vue|vite-svelte|vite-solid|vite-vanilla|nuxt|angular|astro|sveltekit> <name> [--output <dir>] [--skip-install] [--dry-run]';
 }
 
 export async function createFrontendProject(
@@ -430,7 +444,9 @@ export async function createFrontendProject(
 
   console.log(chalk.green(`✅ ${definition.displayName} project created at ${projectPath}`));
   console.log(
-    chalk.gray(`   Display command: npx rapidkit create frontend ${definition.id} ${projectName}`)
+    chalk.gray(
+      `   Display command: ${formatProjectCreateDisplayCommand(definition.id, projectName)}`
+    )
   );
   console.log(chalk.gray('   Next: cd ' + projectName + ' && npx rapidkit dev'));
 
@@ -543,7 +559,9 @@ function printFrontendPlan(input: {
   console.log(chalk.gray(`Project: ${input.projectName}`));
   console.log(chalk.gray(`Target:  ${input.projectPath}`));
   console.log(
-    chalk.gray(`Show:    npx rapidkit create frontend ${input.definition.id} ${input.projectName}`)
+    chalk.gray(
+      `Show:    ${formatProjectCreateDisplayCommand(input.definition.id, input.projectName)}`
+    )
   );
   console.log(
     chalk.gray(`Run:     ${[input.commandPlan.command, ...input.commandPlan.args].join(' ')}`)
@@ -604,11 +622,13 @@ async function maybeInitProjectGit(projectPath: string): Promise<void> {
 }
 
 async function runCommand(command: string, args: string[], cwd: string): Promise<number> {
+  const invocation = resolvePackageRunnerInvocation(command);
   return await new Promise<number>((resolve) => {
-    const child = spawn(command, args, {
+    const child = spawn(invocation.command, [...invocation.prefixArgs, ...args], {
       cwd,
       stdio: 'inherit',
       shell: shouldUseShellExecution(),
+      env: buildPackageRunnerSubprocessEnv(),
     });
     child.on('close', (code) => resolve(code ?? 1));
     child.on('error', () => resolve(1));

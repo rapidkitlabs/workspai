@@ -153,6 +153,11 @@ jobs:
       - name: Generate mock embeddings for tests
         run: npm run test:prepare-embeddings
 
+      # Enterprise package smoke (Linux only): npm pack payload + CLI contracts + create fallbacks
+      - name: Run enterprise package smoke
+        if: runner.os == 'Linux'
+        run: npm run smoke:enterprise-package
+
       # Tests + coverage
       - name: Run tests with coverage
         run: npm run test:coverage

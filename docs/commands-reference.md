@@ -73,8 +73,7 @@ See [workspace-run.md](./workspace-run.md) for fleet orchestration semantics.
 ## Project lifecycle
 
 ```bash
-npx rapidkit create project <kit> <name> [--yes] [--skip-install]
-npx rapidkit create frontend <id> <name> [--output <dir>] [--yes] [--skip-install] [--skip-git]
+npx rapidkit create project <kit> <name> [--yes] [--skip-install] [--skip-git] [--output <dir>]
 npx rapidkit project commands [--json]
 npx rapidkit commands --scope project [--json]
 npx rapidkit init
@@ -83,6 +82,15 @@ npx rapidkit test
 npx rapidkit build
 npx rapidkit start
 ```
+
+Examples:
+
+```bash
+npx rapidkit create project fastapi.standard my-api --yes
+npx rapidkit create project nextjs my-web --yes
+```
+
+`create frontend <id> <name>` is still accepted and routes to the same generators.
 
 `project commands` shows the effective command contract for the current project. Core-backed FastAPI/NestJS projects can use module commands such as `add` and `modules`. Frontend apps, Go, Spring Boot, .NET, and adopted/imported repositories use runtime lifecycle commands and workspace governance while Core module mutation remains disabled.
 

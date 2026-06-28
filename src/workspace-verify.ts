@@ -26,6 +26,7 @@ import {
   type WorkspaceGraphIntegrity,
 } from './workspace-graph-integrity.js';
 import { buildResolutionHintsForBlockingReasons } from './workspace-blocker-resolution-hints.js';
+import { softenEmptyWorkspaceVerifyVerdict } from './workspace-scaffold.js';
 import type { BlockerResolution } from './contracts/blocker-resolution-contract.js';
 import {
   compareFreshness,
@@ -920,6 +921,19 @@ export async function buildWorkspaceVerify(
     ...integrityReasons,
     ...policyDecision.blockingReasons,
   ];
+  const policyErrorCount = policyViolations.filter(
+    (violation) => violation.severity === 'error'
+  ).length;
+  const projectCount = model.summary?.projectCount ?? model.projects.length;
+  const softenedSummary = softenEmptyWorkspaceVerifyVerdict({
+    projectCount,
+    verdict: summary.verdict,
+    exitCode: summary.exitCode,
+    blockingReasons,
+    policyErrorCount,
+  });
+  summary.verdict = softenedSummary.verdict;
+  summary.exitCode = softenedSummary.exitCode;
   const resolutionHints =
     blockingReasons.length > 0
       ? buildResolutionHintsForBlockingReasons({

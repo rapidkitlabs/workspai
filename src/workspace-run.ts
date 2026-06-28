@@ -22,6 +22,10 @@ import {
   normalizeBackendRuntimeFamily,
   type BackendPlatformKey,
 } from './utils/backend-framework-contract.js';
+import {
+  buildPackageRunnerSubprocessEnv,
+  resolvePackageRunnerInvocation,
+} from './utils/platform-capabilities.js';
 import { discoverWorkspaceProjects as discoverWorkspaceProjectsShared } from './utils/workspace-discovery.js';
 import { closureFromAdjacency } from './workspace-graph-traversal.js';
 import {
@@ -172,6 +176,18 @@ async function validateWrapperStagePreflight(
       reason:
         'Project-local .rapidkit/cli.py is missing. Run `rapidkit init` in this project first.',
     };
+  }
+
+  const nativeCommand = nativeStageCommand.trim().split(/\s+/)[0];
+  if (nativeCommand && ['npm', 'npx', 'pnpm', 'yarn'].includes(nativeCommand)) {
+    const invocation = resolvePackageRunnerInvocation(nativeCommand);
+    const result = await execa(invocation.command, [...invocation.prefixArgs, '--version'], {
+      reject: false,
+      env: buildPackageRunnerSubprocessEnv(),
+    });
+    if (result.exitCode === 0) {
+      return { valid: true };
+    }
   }
 
   return validateCommand(nativeStageCommand);

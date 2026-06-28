@@ -16,12 +16,35 @@ type JsonSchema = {
   required?: string[];
   properties?: {
     schemaVersion?: { const?: string };
+    nodes?: {
+      items?: {
+        properties?: {
+          operationalProfile?: {
+            properties?: {
+              weight?: { enum?: string[] };
+              verificationPriority?: { enum?: string[] };
+            };
+          };
+        };
+      };
+    };
     edges?: {
       items?: {
         properties?: {
           kind?: { enum?: string[] };
           source?: { enum?: string[] };
           confidence?: { enum?: string[] };
+        };
+      };
+    };
+    stats?: {
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+    diagnostics?: {
+      items?: {
+        properties?: {
+          severity?: { enum?: string[] };
         };
       };
     };
@@ -70,6 +93,51 @@ describe('workspace-dependency-graph.v1 contract drift guard', () => {
   it('keeps the required top-level fields aligned with the JSON schema required array', () => {
     const schema = readSchema();
     expect(schema.required).toEqual([...WORKSPACE_DEPENDENCY_GRAPH_REQUIRED_FIELDS]);
+  });
+
+  it('requires enterprise graph insight stats in the JSON schema', () => {
+    const schema = readSchema();
+    expect(schema.properties?.stats?.required).toEqual([
+      'nodeCount',
+      'edgeCount',
+      'inferredEdges',
+      'contractEdges',
+      'manualEdges',
+      'authoritativeEdges',
+      'lowConfidenceEdges',
+      'orphanCount',
+      'connectedNodeCount',
+      'density',
+      'edgeCoverageRatio',
+      'evidenceCoverageRatio',
+      'hotspotCount',
+      'hasCycle',
+    ]);
+    for (const field of [
+      'orphanCount',
+      'density',
+      'edgeCoverageRatio',
+      'evidenceCoverageRatio',
+      'hotspotCount',
+    ]) {
+      expect(schema.properties?.stats?.properties?.[field]).toBeTruthy();
+    }
+  });
+
+  it('keeps operational profile and diagnostics enums stable for extension consumers', () => {
+    const schema = readSchema();
+    expect(
+      schema.properties?.nodes?.items?.properties?.operationalProfile?.properties?.weight?.enum
+    ).toEqual(['low', 'medium', 'high', 'critical']);
+    expect(
+      schema.properties?.nodes?.items?.properties?.operationalProfile?.properties
+        ?.verificationPriority?.enum
+    ).toEqual(['normal', 'elevated', 'strict']);
+    expect(schema.properties?.diagnostics?.items?.properties?.severity?.enum).toEqual([
+      'info',
+      'warning',
+      'error',
+    ]);
   });
 
   it('treats manual and contract as authoritative provenance over inferred', () => {

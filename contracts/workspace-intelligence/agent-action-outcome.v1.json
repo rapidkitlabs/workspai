@@ -16,7 +16,23 @@
     "verifyBefore": { "type": "string" },
     "verifyAfter": { "type": "string" },
     "evidenceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-    "evidencePath": { "type": "string" }
+    "evidencePath": { "type": "string" },
+    "patchMetadata": {
+      "type": "object",
+      "required": ["appliedCount", "rejectedCount", "failedCount", "affectedFiles"],
+      "properties": {
+        "patchId": { "type": "string" },
+        "sourceAction": { "enum": ["auto-fix", "apply-patch"] },
+        "reviewRequired": { "type": "boolean" },
+        "branchCreated": { "type": "string" },
+        "appliedCount": { "type": "integer", "minimum": 0 },
+        "rejectedCount": { "type": "integer", "minimum": 0 },
+        "failedCount": { "type": "integer", "minimum": 0 },
+        "affectedFiles": { "type": "array", "items": { "type": "string" } },
+        "rollbackCommand": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": false
 }

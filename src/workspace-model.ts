@@ -1253,8 +1253,30 @@ async function inferModelDependencyGraph(
         inferredEdges: 0,
         contractEdges: 0,
         manualEdges: 0,
+        authoritativeEdges: 0,
+        lowConfidenceEdges: 0,
+        orphanCount: nodes.length,
+        connectedNodeCount: 0,
+        density: 0,
+        edgeCoverageRatio: nodes.length > 0 ? 0 : 1,
+        evidenceCoverageRatio: 1,
+        hotspotCount: 0,
         hasCycle: false,
       },
+      diagnostics:
+        nodes.length > 1
+          ? [
+              {
+                code: 'graph.inference.failed',
+                severity: 'warning',
+                message:
+                  'Dependency graph inference failed; model contains projects but no dependency edges.',
+                recommendation:
+                  'Run workspace model again after fixing graph inputs, or add workspace contract/manual graph overrides.',
+                nodeIds: nodes.map((node) => node.id).sort((a, b) => a.localeCompare(b)),
+              },
+            ]
+          : undefined,
     };
   }
 }

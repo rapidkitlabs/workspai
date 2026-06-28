@@ -23,7 +23,33 @@
           "path": { "type": "string", "minLength": 1 },
           "runtime": { "type": "string" },
           "framework": { "type": "string" },
-          "kind": { "type": "string" }
+          "kind": { "type": "string" },
+          "operationalProfile": {
+            "type": "object",
+            "required": ["weight", "score", "verificationPriority", "reasons", "centrality"],
+            "properties": {
+              "weight": { "enum": ["low", "medium", "high", "critical"] },
+              "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+              "verificationPriority": { "enum": ["normal", "elevated", "strict"] },
+              "reasons": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "centrality": {
+                "type": "object",
+                "required": ["fanIn", "fanOut", "reach", "betweenness", "isHotspot"],
+                "properties": {
+                  "fanIn": { "type": "integer", "minimum": 0 },
+                  "fanOut": { "type": "integer", "minimum": 0 },
+                  "reach": { "type": "integer", "minimum": 0 },
+                  "betweenness": { "type": "number", "minimum": 0 },
+                  "isHotspot": { "type": "boolean" }
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
         },
         "additionalProperties": true
       }
@@ -75,6 +101,14 @@
         "inferredEdges",
         "contractEdges",
         "manualEdges",
+        "authoritativeEdges",
+        "lowConfidenceEdges",
+        "orphanCount",
+        "connectedNodeCount",
+        "density",
+        "edgeCoverageRatio",
+        "evidenceCoverageRatio",
+        "hotspotCount",
         "hasCycle"
       ],
       "properties": {
@@ -83,9 +117,35 @@
         "inferredEdges": { "type": "integer", "minimum": 0 },
         "contractEdges": { "type": "integer", "minimum": 0 },
         "manualEdges": { "type": "integer", "minimum": 0 },
+        "authoritativeEdges": { "type": "integer", "minimum": 0 },
+        "lowConfidenceEdges": { "type": "integer", "minimum": 0 },
+        "orphanCount": { "type": "integer", "minimum": 0 },
+        "connectedNodeCount": { "type": "integer", "minimum": 0 },
+        "density": { "type": "number", "minimum": 0 },
+        "edgeCoverageRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "evidenceCoverageRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "hotspotCount": { "type": "integer", "minimum": 0 },
         "hasCycle": { "type": "boolean" }
       },
       "additionalProperties": true
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "severity", "message"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["info", "warning", "error"] },
+          "message": { "type": "string", "minLength": 1 },
+          "recommendation": { "type": "string" },
+          "nodeIds": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        },
+        "additionalProperties": true
+      }
     }
   },
   "additionalProperties": true

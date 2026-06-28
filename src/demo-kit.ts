@@ -108,11 +108,15 @@ export async function generateDemoKit(projectPath: string, variables: KitVariabl
         'src/cli.py.j2',
         'src/routing/__init__.py.j2',
         'src/routing/health.py.j2',
+        'src/routing/examples.py.j2',
         'src/modules/__init__.py.j2',
         'tests/__init__.py.j2',
+        'tests/test_health.py.j2',
+        'tests/test_examples.py.j2',
         'README.md.j2',
         'pyproject.toml.j2',
         'Makefile.j2',
+        'env.example.j2',
         '.rapidkit/__init__.py.j2',
         '.rapidkit/project.json.j2',
         '.rapidkit/cli.py.j2',
@@ -146,7 +150,7 @@ export async function generateDemoKit(projectPath: string, variables: KitVariabl
         'nest-cli.json.j2',
         'jest.config.ts.j2',
         'eslint.config.cjs.j2',
-        '.env.example.j2',
+        'env.example.j2',
         'docker-compose.yml.j2',
         'Dockerfile.j2',
         'README.md.j2',
@@ -181,7 +185,8 @@ export async function generateDemoKit(projectPath: string, variables: KitVariabl
       }
 
       // Output path is the same but without .j2
-      const outputFile = templateFile.replace(/\.j2$/, '');
+      const outputFile =
+        templateFile === 'env.example.j2' ? '.env.example' : templateFile.replace(/\.j2$/, '');
       const outputPath = path.join(projectPath, outputFile);
 
       // Create directory if needed
@@ -236,6 +241,39 @@ export async function generateDemoKit(projectPath: string, variables: KitVariabl
       runtime: isFastAPI ? 'python' : 'node',
     };
     await fs.writeFile(projectJsonPath, JSON.stringify(projectMarker, null, 2), 'utf-8');
+
+    const launcherPath = path.join(projectPath, 'rapidkit');
+    const launcherExists = await fs
+      .access(launcherPath)
+      .then(() => true)
+      .catch(() => false);
+    if (!launcherExists) {
+      await fs.writeFile(
+        launcherPath,
+        `#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+RAPIDKIT_LOCAL_LAUNCHER_BYPASS=1 npx rapidkit "$@"
+`
+      );
+      await fs.chmod(launcherPath, 0o755);
+    }
+
+    const windowsLauncherPath = path.join(projectPath, 'rapidkit.cmd');
+    const windowsLauncherExists = await fs
+      .access(windowsLauncherPath)
+      .then(() => true)
+      .catch(() => false);
+    if (!windowsLauncherExists) {
+      await fs.writeFile(
+        windowsLauncherPath,
+        `@echo off
+set RAPIDKIT_LOCAL_LAUNCHER_BYPASS=1
+npx rapidkit %*
+`
+      );
+    }
 
     // Create .gitignore separately with proper content
     const gitignoreContent = isFastAPI

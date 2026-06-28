@@ -7,6 +7,8 @@ import { buildAgentCustomizationPackContract } from '../contracts/agent-customiz
 import {
   RAPIDKIT_SKILLS_DIR,
   WORKSPACE_EXPLAIN_REPORT_PATH,
+  WORKSPACE_TRACE_REPORT_PATH,
+  WORKSPACE_WHY_REPORT_PATH,
   WORKSPACE_SKILLS_INDEX_PATH,
   operationalSkillPath,
 } from '../contracts/workspace-artifact-paths.js';
@@ -50,5 +52,7 @@ describe('Phase 4 path registry parity (4.0.3)', () => {
       `${RAPIDKIT_SKILLS_DIR}/rapidkit-release-readiness.md`
     );
     expect(WORKSPACE_EXPLAIN_REPORT_PATH).toBe('.rapidkit/reports/workspace-explain-last-run.json');
+    expect(WORKSPACE_WHY_REPORT_PATH).toBe('.rapidkit/reports/workspace-why-last-run.json');
+    expect(WORKSPACE_TRACE_REPORT_PATH).toBe('.rapidkit/reports/workspace-trace-last-run.json');
   });
 });

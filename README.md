@@ -38,8 +38,8 @@ npx rapidkit my-workspace --yes --profile polyglot
 cd ~/rapidkit/workspaces/my-workspace
 
 npx rapidkit bootstrap --profile polyglot
-npx rapidkit create project
-npx rapidkit create frontend nextjs my-web --yes
+npx rapidkit create project nextjs my-web --yes
+npx rapidkit create project fastapi.standard my-api --yes
 
 npx rapidkit workspace model --json
 npx rapidkit workspace context --for-agent --json --write
@@ -413,13 +413,20 @@ cd ~/rapidkit/workspaces/my-workspace
 
 npx rapidkit bootstrap --profile polyglot
 npx rapidkit create project          # interactive kit picker
-npx rapidkit create frontend nextjs my-web --yes
+npx rapidkit create project nextjs my-web --yes
+npx rapidkit create project fastapi.standard my-api --yes
 cd <project-name> && npx rapidkit init && npx rapidkit dev
 ```
 
 Backend kits: `fastapi.standard`, `nestjs.standard`, `springboot.standard`, `gofiber.standard`, `dotnet.webapi.clean`, and more.
 
-Frontend: `create frontend nextjs|remix|vite-react|angular|astro|…` or `create project frontend.nextjs <name>`.
+Frontend kits: `nextjs`, `remix`, `vite-react`, `nuxt`, `angular`, `astro`, `sveltekit`, and more — same command shape:
+
+```bash
+npx rapidkit create project <kit> <name>
+```
+
+(`create frontend <id>` remains supported as an alias.)
 
 Shortcut: `npx rapidkit platform` (interactive workspace wizard).
 
@@ -484,7 +491,7 @@ Search **Workspai** in the marketplace or install via:
 | Enterprise evidence loop        | Partial                      | Full dashboard                  |
 | Module catalog (FastAPI/NestJS) | Limited                      | Browser UI                      |
 
-The extension invokes this npm CLI. For the latest `adopt` and `create frontend` features, install matching CLI version: `npm install -g rapidkit@latest` or `npm link` from this repo ([Development](#development)).
+The extension invokes this npm CLI. For the latest `adopt` and frontend generator features, install matching CLI version: `npm install -g rapidkit@latest` or `npm link` from this repo ([Development](#development)).
 
 ## Documentation
 

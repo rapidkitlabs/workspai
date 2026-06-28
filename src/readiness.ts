@@ -594,8 +594,9 @@ export async function evaluateReleaseReadiness(
   const projectPath = resolveReadinessProjectPath(startPath, workspacePath);
   const projectRuntime = detectProjectRuntime(projectPath);
   const hasRegisteredProjects = (await resolveRegisteredWorkspaceProjectCount(workspacePath)) > 0;
+  const effectiveRuntime = hasRegisteredProjects ? projectRuntime : 'unknown';
 
-  const envGate = buildEnvGate(workspacePath, projectRuntime, { hasRegisteredProjects });
+  const envGate = buildEnvGate(workspacePath, effectiveRuntime, { hasRegisteredProjects });
   const doctor = buildDoctorGate(workspacePath);
   const analyzeGate = buildAnalyzeGate(workspacePath);
   const verifyGate = await buildVerifyGate(workspacePath, { skipVerify: options.skipVerify });

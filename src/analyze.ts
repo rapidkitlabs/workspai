@@ -615,8 +615,14 @@ export async function runAnalyze(options: AnalyzeOptions = {}): Promise<AnalyzeR
     0
   );
   const score = Math.max(0, projectScore - workspacePenalty);
+  const scaffoldOnlyMissingProjects =
+    projects.length === 0 &&
+    findingSummary.fail === 0 &&
+    findings.length > 0 &&
+    findings.every((item) => item.id === 'workspace.projects.missing' && item.severity === 'warn');
   const verdict =
-    findingSummary.fail > 0 || (options.strict && findingSummary.warn > 0)
+    findingSummary.fail > 0 ||
+    (options.strict && findingSummary.warn > 0 && !scaffoldOnlyMissingProjects)
       ? 'blocked'
       : findingSummary.warn > 0
         ? 'needs-attention'

@@ -15,10 +15,28 @@ import { attachRunCorrelation } from './observability/run-correlation.js';
 import {
   WORKSPACE_EXPLAIN_REPORT_PATH,
   WORKSPACE_EXPLAIN_SCHEMA_VERSION,
+  WORKSPACE_TRACE_REPORT_PATH,
+  WORKSPACE_WHY_REPORT_PATH,
   type WorkspaceExplainReport,
   type WorkspaceExplainSection,
   type WorkspaceExplainTarget,
 } from './contracts/workspace-explain-contract.js';
+import { summarizeEmptyWorkspaceExplain } from './workspace-scaffold.js';
+
+export type WorkspaceExplainArtifactKind = 'explain' | 'why' | 'trace';
+
+export function resolveWorkspaceExplainArtifactPath(
+  artifactKind: WorkspaceExplainArtifactKind
+): string {
+  switch (artifactKind) {
+    case 'why':
+      return WORKSPACE_WHY_REPORT_PATH;
+    case 'trace':
+      return WORKSPACE_TRACE_REPORT_PATH;
+    default:
+      return WORKSPACE_EXPLAIN_REPORT_PATH;
+  }
+}
 
 async function readJsonFile<T>(absolutePath: string): Promise<T | null> {
   try {
@@ -168,20 +186,26 @@ export async function buildWorkspaceExplain(
 
   if (input.target.kind === 'release-blocked') {
     const blockingReasons = verify?.blockingReasons ?? [];
+    const projectCount = model.summary?.projectCount ?? model.projects.length;
+    const emptyWorkspaceShell = projectCount === 0;
     const sections: WorkspaceExplainSection[] = [
       section(
         'verdict',
-        'Release verdict',
+        emptyWorkspaceShell ? 'Workspace scaffold posture' : 'Release verdict',
         verify
-          ? `Verdict: **${verify.summary.verdict}** (exit ${verify.summary.exitCode}). Risk: **${verify.impact.risk}**. Freshness: **${verify.freshness.verdict}**.`
+          ? emptyWorkspaceShell
+            ? `Scaffold posture: **${verify.summary.verdict}** (exit ${verify.summary.exitCode}). Freshness: **${verify.freshness.verdict}**. No registered projects yet — release gates apply after the first project is added.`
+            : `Verdict: **${verify.summary.verdict}** (exit ${verify.summary.exitCode}). Risk: **${verify.impact.risk}**. Freshness: **${verify.freshness.verdict}**.`
           : 'No workspace verify report found. Run `npx rapidkit workspace verify --json --write` first.'
       ),
       section(
         'blockers',
-        'Blocking reasons',
+        emptyWorkspaceShell ? 'Pre-project signals' : 'Blocking reasons',
         blockingReasons.length
           ? blockingReasons.map((reason) => `- ${reason}`).join('\n')
-          : 'No blocking reasons in the latest verify report.'
+          : emptyWorkspaceShell
+            ? 'No pre-project signals in the latest verify report.'
+            : 'No blocking reasons in the latest verify report.'
       ),
     ];
     if (verify?.resolutionHints?.length) {
@@ -204,7 +228,9 @@ export async function buildWorkspaceExplain(
       workspacePath,
       target: input.target,
       summary: verify
-        ? `Release blocked: ${verify.summary.verdict} with ${blockingReasons.length} blocking reason(s).`
+        ? emptyWorkspaceShell
+          ? summarizeEmptyWorkspaceExplain(blockingReasons.length, verify.summary.verdict)
+          : `Release blocked: ${verify.summary.verdict} with ${blockingReasons.length} blocking reason(s).`
         : 'Release posture unknown — verify report missing.',
       sections,
       releaseRisk: verify?.impact.risk,
@@ -255,6 +281,8 @@ export async function buildWorkspaceExplain(
     const changed = diff?.summary?.changedProjects ?? [
       ...new Set((diff?.changes ?? []).map((change) => change.project).filter(Boolean)),
     ];
+    const projectCount = model.summary?.projectCount ?? model.projects.length;
+    const emptyWorkspaceShell = projectCount === 0;
     const transitive =
       impact?.transitiveImpact?.map(
         (entry) =>
@@ -268,7 +296,9 @@ export async function buildWorkspaceExplain(
       target: input.target,
       summary: changed?.length
         ? `Trace from ${changed.length} changed project(s) through blast radius to gate coverage.`
-        : 'Trace: diff baseline missing or empty.',
+        : emptyWorkspaceShell
+          ? 'Trace: workspace scaffold baseline — no project changes in the latest diff.'
+          : 'Trace: diff baseline present with no project changes.',
       sections: [
         section(
           'origin',
@@ -389,12 +419,19 @@ export async function buildWorkspaceExplain(
 
 export async function writeWorkspaceExplainReport(
   report: WorkspaceExplainReport,
-  workspacePath: string
+  workspacePath: string,
+  artifactKind: WorkspaceExplainArtifactKind = 'explain'
 ): Promise<string> {
-  const outputPath = path.join(workspacePath, WORKSPACE_EXPLAIN_REPORT_PATH);
+  const relativePath = resolveWorkspaceExplainArtifactPath(artifactKind);
+  const outputPath = path.join(workspacePath, relativePath);
   await fsExtra.ensureDir(path.dirname(outputPath));
   await fsExtra.writeJson(outputPath, attachRunCorrelation(report), { spaces: 2 });
-  return WORKSPACE_EXPLAIN_REPORT_PATH;
+  return relativePath;
 }
 
-export { WORKSPACE_EXPLAIN_REPORT_PATH, WORKSPACE_MODEL_DIFF_REPORT_PATH };
+export {
+  WORKSPACE_EXPLAIN_REPORT_PATH,
+  WORKSPACE_MODEL_DIFF_REPORT_PATH,
+  WORKSPACE_TRACE_REPORT_PATH,
+  WORKSPACE_WHY_REPORT_PATH,
+};

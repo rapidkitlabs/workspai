@@ -25,8 +25,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run npm audit
-        run: npm audit --audit-level=moderate
+      - name: Block high and critical npm vulnerabilities
+        run: npm audit --audit-level=high
 
       - name: Run dependency check
         run: |

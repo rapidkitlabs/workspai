@@ -5,13 +5,19 @@ import {
   WORKSPACE_DEPENDENCY_GRAPH_SCHEMA_VERSION,
   WORKSPACE_GRAPH_EDGE_KINDS,
   type WorkspaceDependencyGraph,
+  type WorkspaceDependencyGraphDiagnostic,
+  type WorkspaceDependencyGraphStats,
   type WorkspaceGraphConfidence,
   type WorkspaceGraphEdge,
   type WorkspaceGraphEdgeKind,
+  type WorkspaceGraphNodeOperationalProfile,
+  type WorkspaceGraphOperationalWeight,
+  type WorkspaceGraphVerificationPriority,
   type WorkspaceGraphEdgeSource,
   type WorkspaceGraphEvidence,
   type WorkspaceGraphNode,
 } from './contracts/workspace-dependency-graph-contract.js';
+import { computeGraphCentrality } from './workspace-graph-centrality.js';
 import { computeInputsHash } from './contracts/freshness-metadata-contract.js';
 import type { WorkspaceModel } from './workspace-model.js';
 import {
@@ -731,6 +737,241 @@ function mergeEdges(candidates: CandidateEdge[]): WorkspaceGraphEdge[] {
     );
 }
 
+function roundMetric(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function operationalWeightFromScore(score: number): WorkspaceGraphOperationalWeight {
+  if (score >= 75) {
+    return 'critical';
+  }
+  if (score >= 50) {
+    return 'high';
+  }
+  if (score >= 20) {
+    return 'medium';
+  }
+  return 'low';
+}
+
+function verificationPriorityFromWeight(
+  weight: WorkspaceGraphOperationalWeight
+): WorkspaceGraphVerificationPriority {
+  if (weight === 'critical' || weight === 'high') {
+    return 'strict';
+  }
+  if (weight === 'medium') {
+    return 'elevated';
+  }
+  return 'normal';
+}
+
+function buildOperationalProfiles(
+  nodes: WorkspaceGraphNode[],
+  edges: WorkspaceGraphEdge[]
+): Map<string, WorkspaceGraphNodeOperationalProfile> {
+  const centrality = computeGraphCentrality({ nodes, edges });
+  const profiles = new Map<string, WorkspaceGraphNodeOperationalProfile>();
+
+  for (const node of nodes) {
+    const metrics = centrality.byId.get(node.id) ?? {
+      id: node.id,
+      fanIn: 0,
+      fanOut: 0,
+      reach: 0,
+      betweenness: 0,
+      isHotspot: false,
+    };
+    const incidentEdges = edges.filter((edge) => edge.from === node.id || edge.to === node.id);
+    const authoritativeEdges = incidentEdges.filter(
+      (edge) => edge.source === 'contract' || edge.source === 'manual'
+    ).length;
+    const lowConfidenceEdges = incidentEdges.filter((edge) => edge.confidence === 'low').length;
+    const reasons: string[] = [];
+
+    let score =
+      metrics.reach * 20 +
+      metrics.fanIn * 14 +
+      metrics.fanOut * 8 +
+      Math.min(20, metrics.betweenness * 4) +
+      authoritativeEdges * 8;
+
+    if (metrics.isHotspot) {
+      score += 24;
+      reasons.push('Critical-path hotspot in dependency graph');
+    }
+    if (metrics.reach > 0) {
+      reasons.push(`Change reaches ${metrics.reach} dependent project(s)`);
+    }
+    if (metrics.fanIn > 0) {
+      reasons.push(`${metrics.fanIn} direct dependent project(s)`);
+    }
+    if (metrics.fanOut > 0) {
+      reasons.push(`${metrics.fanOut} direct dependency project(s)`);
+    }
+    if (authoritativeEdges > 0) {
+      reasons.push(`${authoritativeEdges} contract/manual edge(s)`);
+    }
+    if (lowConfidenceEdges > 0) {
+      reasons.push(`${lowConfidenceEdges} low-confidence inferred edge(s) need review`);
+    }
+    if (incidentEdges.length === 0) {
+      reasons.push('No dependency evidence connected to this project yet');
+    }
+
+    const normalizedScore = clampScore(score);
+    const weight = operationalWeightFromScore(normalizedScore);
+    profiles.set(node.id, {
+      weight,
+      score: normalizedScore,
+      verificationPriority: verificationPriorityFromWeight(weight),
+      reasons: reasons.slice(0, 5),
+      centrality: {
+        fanIn: metrics.fanIn,
+        fanOut: metrics.fanOut,
+        reach: metrics.reach,
+        betweenness: metrics.betweenness,
+        isHotspot: metrics.isHotspot,
+      },
+    });
+  }
+
+  return profiles;
+}
+
+function enrichNodesWithOperationalProfiles(
+  nodes: WorkspaceGraphNode[],
+  edges: WorkspaceGraphEdge[]
+): WorkspaceGraphNode[] {
+  const profiles = buildOperationalProfiles(nodes, edges);
+  return nodes.map((node) => ({
+    ...node,
+    operationalProfile: profiles.get(node.id),
+  }));
+}
+
+function buildGraphStats(
+  nodes: WorkspaceGraphNode[],
+  edges: WorkspaceGraphEdge[]
+): WorkspaceDependencyGraphStats {
+  const incidentNodeIds = new Set<string>();
+  for (const edge of edges) {
+    incidentNodeIds.add(edge.from);
+    incidentNodeIds.add(edge.to);
+  }
+  const nodeCount = nodes.length;
+  const edgeCount = edges.length;
+  const connectedNodeCount = nodes.filter((node) => incidentNodeIds.has(node.id)).length;
+  const orphanCount = Math.max(0, nodeCount - connectedNodeCount);
+  const centrality = computeGraphCentrality({ nodes, edges });
+
+  return {
+    nodeCount,
+    edgeCount,
+    inferredEdges: edges.filter((edge) => edge.source === 'inferred').length,
+    contractEdges: edges.filter((edge) => edge.source === 'contract').length,
+    manualEdges: edges.filter((edge) => edge.source === 'manual').length,
+    authoritativeEdges: edges.filter(
+      (edge) => edge.source === 'contract' || edge.source === 'manual'
+    ).length,
+    lowConfidenceEdges: edges.filter((edge) => edge.confidence === 'low').length,
+    orphanCount,
+    connectedNodeCount,
+    density: roundMetric(nodeCount > 1 ? edgeCount / (nodeCount * (nodeCount - 1)) : 0),
+    edgeCoverageRatio: roundMetric(nodeCount > 0 ? connectedNodeCount / nodeCount : 1),
+    evidenceCoverageRatio: roundMetric(
+      edgeCount > 0 ? edges.filter((edge) => edge.evidence.length > 0).length / edgeCount : 1
+    ),
+    hotspotCount: centrality.hotspots.length,
+    hasCycle: graphHasCycle(nodes, edges),
+  };
+}
+
+function buildGraphDiagnostics(
+  nodes: WorkspaceGraphNode[],
+  edges: WorkspaceGraphEdge[],
+  stats: WorkspaceDependencyGraphStats
+): WorkspaceDependencyGraphDiagnostic[] {
+  const diagnostics: WorkspaceDependencyGraphDiagnostic[] = [];
+  const orphanIds = nodes
+    .filter((node) => !edges.some((edge) => edge.from === node.id || edge.to === node.id))
+    .map((node) => node.id)
+    .sort((a, b) => a.localeCompare(b));
+
+  if (stats.nodeCount === 0) {
+    diagnostics.push({
+      code: 'graph.empty',
+      severity: 'info',
+      message: 'Workspace model has no projects, so dependency reasoning is unavailable.',
+      recommendation:
+        'Import, scaffold, or register projects before relying on graph-aware impact.',
+    });
+  }
+
+  if (stats.nodeCount > 1 && stats.edgeCount === 0) {
+    diagnostics.push({
+      code: 'graph.edges.missing',
+      severity: 'warning',
+      message: 'Projects were detected, but no inter-project dependency edges were found.',
+      recommendation:
+        'Run graph explain, add workspace contract relationships, or define manual graph overrides for operational dependencies that code imports cannot reveal.',
+      nodeIds: orphanIds,
+    });
+  } else if (stats.orphanCount > 0) {
+    diagnostics.push({
+      code: 'graph.orphans.detected',
+      severity: 'warning',
+      message: `${stats.orphanCount} project(s) have no dependency evidence connected to the graph.`,
+      recommendation:
+        'Review isolated projects and add package, contract, or manual edges when they participate in release-critical flows.',
+      nodeIds: orphanIds.slice(0, 12),
+    });
+  }
+
+  if (stats.lowConfidenceEdges > 0) {
+    diagnostics.push({
+      code: 'graph.low_confidence_edges',
+      severity: 'info',
+      message: `${stats.lowConfidenceEdges} inferred edge(s) are low confidence.`,
+      recommendation:
+        'Promote important low-confidence relationships to workspace contract or manual overrides.',
+    });
+  }
+
+  if (stats.edgeCount > 0 && stats.evidenceCoverageRatio < 1) {
+    diagnostics.push({
+      code: 'graph.evidence.partial',
+      severity: 'warning',
+      message: 'Some dependency edges do not include file-level evidence.',
+      recommendation:
+        'Attach evidence to manual overrides so agents can audit why a relationship exists.',
+    });
+  }
+
+  if (stats.hasCycle) {
+    diagnostics.push({
+      code: 'graph.cycle.detected',
+      severity: 'error',
+      message: 'The dependency graph contains at least one directed cycle.',
+      recommendation:
+        'Break the cycle or document the relationship explicitly before using graph-aware release gates.',
+    });
+  }
+
+  return diagnostics.sort((a, b) => {
+    const severityRank: Record<WorkspaceDependencyGraphDiagnostic['severity'], number> = {
+      error: 0,
+      warning: 1,
+      info: 2,
+    };
+    return severityRank[a.severity] - severityRank[b.severity] || a.code.localeCompare(b.code);
+  });
+}
+
 /** Detect any directed cycle (integrity signal for the 1.13 gate). */
 export function graphHasCycle(nodes: WorkspaceGraphNode[], edges: WorkspaceGraphEdge[]): boolean {
   const adjacency = new Map<string, string[]>();
@@ -799,19 +1040,16 @@ function finalizeDependencyGraph(
   const edges = mergeEdges(
     candidates.filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
   );
+  const enrichedNodes = enrichNodesWithOperationalProfiles(nodes, edges);
+  const stats = buildGraphStats(nodes, edges);
+  const diagnostics = buildGraphDiagnostics(nodes, edges, stats);
   return {
     schemaVersion: WORKSPACE_DEPENDENCY_GRAPH_SCHEMA_VERSION,
     generatedAt: (now ?? new Date()).toISOString(),
-    nodes,
+    nodes: enrichedNodes,
     edges,
-    stats: {
-      nodeCount: nodes.length,
-      edgeCount: edges.length,
-      inferredEdges: edges.filter((edge) => edge.source === 'inferred').length,
-      contractEdges: edges.filter((edge) => edge.source === 'contract').length,
-      manualEdges: edges.filter((edge) => edge.source === 'manual').length,
-      hasCycle: graphHasCycle(nodes, edges),
-    },
+    stats,
+    ...(diagnostics.length > 0 ? { diagnostics } : {}),
   };
 }
 

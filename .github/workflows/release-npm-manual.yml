@@ -135,6 +135,12 @@ jobs:
       - name: Build distribution
         run: npm run build
 
+      - name: Generate packaged embeddings
+        run: npm run test:prepare-embeddings
+
+      - name: Run enterprise package smoke
+        run: npm run smoke:enterprise-package
+
       - name: Ensure package version is not already published
         id: version_guard
         shell: bash

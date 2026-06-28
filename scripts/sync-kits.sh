@@ -24,11 +24,16 @@ fi
 echo "📦 Syncing fastapi.standard..."
 FASTAPI_SRC="$CORE_ROOT/src/kits/fastapi/standard/templates"
 FASTAPI_DEST="$NPM_ROOT/templates/kits/fastapi-standard"
+COMMON_ENV_SRC="$CORE_ROOT/src/kits/base/templates/common/env.example.j2"
 
 if [ -d "$FASTAPI_SRC" ]; then
   rm -rf "$FASTAPI_DEST"
   mkdir -p "$FASTAPI_DEST"
   cp -r "$FASTAPI_SRC"/* "$FASTAPI_DEST/"
+  if [ -f "$COMMON_ENV_SRC" ]; then
+    mkdir -p "$FASTAPI_DEST/common"
+    cp "$COMMON_ENV_SRC" "$FASTAPI_DEST/common/env.example.j2"
+  fi
   echo "✅ FastAPI Standard kit synced"
 else
   echo "⚠️  FastAPI Standard kit not found in Python Core"
@@ -43,6 +48,10 @@ if [ -d "$FASTAPI_DDD_SRC" ]; then
   rm -rf "$FASTAPI_DDD_DEST"
   mkdir -p "$FASTAPI_DDD_DEST"
   cp -r "$FASTAPI_DDD_SRC"/* "$FASTAPI_DDD_DEST/"
+  if [ -f "$COMMON_ENV_SRC" ]; then
+    mkdir -p "$FASTAPI_DDD_DEST/common"
+    cp "$COMMON_ENV_SRC" "$FASTAPI_DDD_DEST/common/env.example.j2"
+  fi
   echo "✅ FastAPI DDD kit synced"
 else
   echo "⚠️  FastAPI DDD kit not found in Python Core"

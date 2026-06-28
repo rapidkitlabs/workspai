@@ -76,6 +76,30 @@ export type WorkspaceGraphNode = {
   runtime?: string;
   framework?: string;
   kind?: string;
+  /**
+   * Derived operational meaning of this node. This is intentionally computed
+   * from graph evidence instead of hand-authored in the model so agents can
+   * distinguish a demo node from a release-critical node without guessing.
+   */
+  operationalProfile?: WorkspaceGraphNodeOperationalProfile;
+};
+
+export type WorkspaceGraphOperationalWeight = 'low' | 'medium' | 'high' | 'critical';
+
+export type WorkspaceGraphVerificationPriority = 'normal' | 'elevated' | 'strict';
+
+export type WorkspaceGraphNodeOperationalProfile = {
+  weight: WorkspaceGraphOperationalWeight;
+  score: number;
+  verificationPriority: WorkspaceGraphVerificationPriority;
+  reasons: string[];
+  centrality: {
+    fanIn: number;
+    fanOut: number;
+    reach: number;
+    betweenness: number;
+    isHotspot: boolean;
+  };
 };
 
 /**
@@ -97,8 +121,26 @@ export type WorkspaceDependencyGraphStats = {
   inferredEdges: number;
   contractEdges: number;
   manualEdges: number;
+  authoritativeEdges: number;
+  lowConfidenceEdges: number;
+  orphanCount: number;
+  connectedNodeCount: number;
+  density: number;
+  edgeCoverageRatio: number;
+  evidenceCoverageRatio: number;
+  hotspotCount: number;
   /** True when at least one dependency cycle exists (integrity gate, item 1.13). */
   hasCycle: boolean;
+};
+
+export type WorkspaceDependencyGraphDiagnosticSeverity = 'info' | 'warning' | 'error';
+
+export type WorkspaceDependencyGraphDiagnostic = {
+  code: string;
+  severity: WorkspaceDependencyGraphDiagnosticSeverity;
+  message: string;
+  recommendation?: string;
+  nodeIds?: string[];
 };
 
 export type WorkspaceDependencyGraph = {
@@ -107,4 +149,5 @@ export type WorkspaceDependencyGraph = {
   nodes: WorkspaceGraphNode[];
   edges: WorkspaceGraphEdge[];
   stats: WorkspaceDependencyGraphStats;
+  diagnostics?: WorkspaceDependencyGraphDiagnostic[];
 };

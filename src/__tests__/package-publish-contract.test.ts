@@ -26,6 +26,9 @@ describe('npm publish contract', () => {
     });
   }
 
+  const enterpriseSmokeScript = 'scripts/enterprise-package-smoke.mjs';
+  const enterprisePrepackScript = 'scripts/prepack-enterprise.mjs';
+
   it('publishes the canonical rapidkit bin and an explicit npm alias', () => {
     expect(packageJson.bin?.rapidkit).toBe('dist/index.js');
     expect(packageJson.bin?.['rapidkit-npm']).toBe('dist/index.js');
@@ -42,14 +45,56 @@ describe('npm publish contract', () => {
   });
 
   it('builds and verifies dist before npm pack or publish', () => {
-    expect(packageJson.scripts?.prepack).toContain('npm run build');
-    expect(packageJson.scripts?.prepack).toContain('npm run test:prepare-embeddings');
-    expect(packageJson.scripts?.prepack).toContain('npm run verify:package-cli');
+    expect(packageJson.scripts?.prepack).toBe(`node ${enterprisePrepackScript}`);
+    expect(packageJson.scripts?.['smoke:enterprise-package']).toBe(`node ${enterpriseSmokeScript}`);
+
+    const prepack = fs.readFileSync(path.join(process.cwd(), enterprisePrepackScript), 'utf8');
+    expect(prepack).toContain("node_modules', 'tsup', 'dist', 'cli-default.js'");
+    expect(prepack).toContain('scripts/prepare-mock-embeddings.mjs');
+    expect(prepack).toContain('scripts/verify-package-cli.mjs');
+    expect(prepack).toContain(enterpriseSmokeScript);
   });
 
   it('ships and runs a Windows CLI resolution guard on install', () => {
     expect(packageJson.files).toContain('scripts/check-cli-resolution.cjs');
     expect(packageJson.scripts?.postinstall).toBe('node scripts/check-cli-resolution.cjs');
+  });
+
+  it('publishes enterprise-critical runtime assets used by create and AI surfaces', () => {
+    for (const assetPath of [
+      'templates/kits/fastapi-standard/README.md.j2',
+      'templates/kits/fastapi-standard/env.example.j2',
+      'templates/kits/fastapi-ddd/README.md.j2',
+      'templates/kits/fastapi-ddd/env.example.j2',
+      'templates/kits/nestjs-standard/package.json.j2',
+      'templates/kits/nestjs-standard/env.example.j2',
+      'data/modules-embeddings.json',
+      enterpriseSmokeScript,
+      enterprisePrepackScript,
+    ]) {
+      expect(fs.existsSync(path.join(process.cwd(), assetPath)), assetPath).toBe(true);
+      expect(isPublishedByFiles(assetPath), assetPath).toBe(true);
+    }
+  });
+
+  it('runs enterprise package smoke in CI and release gates', () => {
+    const ciWorkflow = fs.readFileSync(
+      path.join(process.cwd(), '.github/workflows/ci.yml'),
+      'utf8'
+    );
+    const releaseWorkflow = fs.readFileSync(
+      path.join(process.cwd(), '.github/workflows/release-npm-manual.yml'),
+      'utf8'
+    );
+    const securityWorkflow = fs.readFileSync(
+      path.join(process.cwd(), '.github/workflows/security.yml'),
+      'utf8'
+    );
+
+    expect(ciWorkflow).toContain('npm run smoke:enterprise-package');
+    expect(releaseWorkflow).toContain('npm run smoke:enterprise-package');
+    expect(releaseWorkflow).toContain('npm run test:prepare-embeddings');
+    expect(securityWorkflow).toContain('npm audit --audit-level=high');
   });
 
   it('publishes README image assets referenced from npm-safe raw GitHub URLs', () => {

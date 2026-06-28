@@ -1,6 +1,65 @@
 # Release Notes
 
-## Latest Release: v0.41.0 (June 23, 2026)
+## Latest Release: v0.41.1 (June 28, 2026)
+
+### Enterprise Package Smoke and Runner Hardening
+
+This patch release hardens the npm CLI for enterprise extension hosts, CI, and
+publish gates: package runners no longer depend on a perfect PATH, piped CLI
+output is safe before process exit, workspace-root init uses the same npm-aware
+preflight as project lifecycle commands, and npm package smoke now blocks
+publishing on broken artifacts.
+
+**What's New:**
+
+- **Publish gates**
+  - `prepack` now builds dist, prepares packaged embeddings, verifies CLI command
+    ownership, and runs enterprise package smoke before `npm pack` / publish.
+  - CI and manual release workflows run `smoke:enterprise-package`.
+
+- **Package runner hardening**
+  - npm/npx/pnpm/yarn subprocesses resolve through a command-safe invocation
+    contract (`npm_execpath`, well-known npm CLI paths, or `corepack npm`).
+  - Nested `npx --package` environment pins are stripped before child package
+    runners execute.
+  - `COREPACK_HOME` is made writable for package-runner subprocesses.
+
+- **Pipe-safe CLI output**
+  - Piped stdout/stderr is written synchronously for CLI entrypoint execution so
+    `--version --json`, workspace policy, cache, and lifecycle command output are
+    not lost on fast exits.
+
+- **Workspace Intelligence graph**
+  - `workspace-dependency-graph.v1` now carries richer operational profile,
+    coverage, topology, and diagnostics data for Workspai enterprise graph
+    surfaces.
+
+- **Scaffold/runtime stability**
+  - Frontend create commands and Node runtime package-manager detection use the
+    same package-runner contract.
+  - Workspace fleet init preflight accepts npm runners resolved outside PATH,
+    matching project-level lifecycle execution.
+
+**Breaking changes:** None.
+
+**Verification:**
+
+- `./node_modules/.bin/tsc --noEmit`
+- `./node_modules/.bin/vitest run` (1573 passed, 8 skipped)
+- `node scripts/enterprise-package-smoke.mjs`
+- `node scripts/prepack-enterprise.mjs`
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.41.1
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.41.1.md)
+
+---
+
+## Previous Release: v0.41.0 (June 23, 2026)
 
 ### Phase 4 Workspace Intelligence Closure
 

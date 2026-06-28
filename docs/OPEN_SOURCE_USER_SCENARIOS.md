@@ -27,7 +27,7 @@ npx rapidkit import https://github.com/acme/orders-api.git --git --workspace ./p
 
 ```bash
 cd my-workspace
-npx rapidkit create frontend nextjs marketing-web --yes
+npx rapidkit create project nextjs marketing-web --yes
 ```
 
 ## What changed from the old flow?

@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, readFile, access } from 'fs/promises';
+import { closeSync, openSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { spawnSync } from 'child_process';
 import { execa } from 'execa';
 import { ensureDistBuilt } from './helpers/dist';
 
@@ -21,6 +23,36 @@ describe('E2E Tests', () => {
     return env;
   }
 
+  function noPythonCliEnv(): NodeJS.ProcessEnv {
+    const env = cliEnv();
+    env.RAPIDKIT_FORCE_OFFLINE_CREATE_FALLBACK = '1';
+    return env;
+  }
+
+  function runCliCaptured(args: string[], env: NodeJS.ProcessEnv = cliEnv()): string {
+    const outputPath = join(tempDir, `cli-output-${Date.now()}-${Math.random()}.txt`);
+    const fd = openSync(outputPath, 'w');
+    try {
+      const result = spawnSync(process.execPath, [cliPath, ...args], {
+        cwd: tempDir,
+        encoding: 'utf8',
+        env,
+        stdio: ['ignore', fd, 'pipe'],
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe('');
+    } finally {
+      closeSync(fd);
+    }
+
+    try {
+      return readFileSync(outputPath, 'utf8');
+    } finally {
+      rmSync(outputPath, { force: true });
+    }
+  }
+
   beforeEach(async () => {
     cliPath = ensureDistBuilt('E2E tests');
     tempDir = await mkdtemp(join(tmpdir(), 'rapidkit-e2e-'));
@@ -32,43 +64,74 @@ describe('E2E Tests', () => {
     }
   });
 
-  it.skip('creates FastAPI project successfully', async () => {
+  it('creates FastAPI project through npm offline fallback successfully', async () => {
     const projectName = 'test-api';
     const projectPath = join(tempDir, projectName);
 
-    // Run rapidkit create command with --template fastapi
-    await execa('node', [cliPath, projectName, '--template', 'fastapi', '--skip-git'], {
-      cwd: tempDir,
-    });
+    await execa(
+      process.execPath,
+      [
+        cliPath,
+        'create',
+        'project',
+        'fastapi.standard',
+        projectName,
+        '--output',
+        tempDir,
+        '--skip-git',
+        '--skip-install',
+      ],
+      {
+        cwd: tempDir,
+        env: noPythonCliEnv(),
+      }
+    );
 
     // Verify project structure
     await expect(fileExists(join(projectPath, 'pyproject.toml'))).resolves.toBe(true);
     await expect(fileExists(join(projectPath, 'rapidkit'))).resolves.toBe(true);
-    await expect(fileExists(join(projectPath, '.rapidkit', 'cli.py'))).resolves.toBe(true);
-    await expect(fileExists(join(projectPath, '.rapidkit', 'activate'))).resolves.toBe(true);
+    await expect(fileExists(join(projectPath, '.rapidkit', 'project.json'))).resolves.toBe(true);
     await expect(fileExists(join(projectPath, 'src', 'main.py'))).resolves.toBe(true);
+    await expect(fileExists(join(projectPath, 'src', 'routing', 'examples.py'))).resolves.toBe(
+      true
+    );
+    await expect(fileExists(join(projectPath, 'tests', 'test_health.py'))).resolves.toBe(true);
+    await expect(fileExists(join(projectPath, '.env.example'))).resolves.toBe(true);
     await expect(fileExists(join(projectPath, 'README.md'))).resolves.toBe(true);
   }, 60000);
 
-  it.skip('creates NestJS project successfully', async () => {
+  it('creates NestJS project through npm offline fallback successfully', async () => {
     const projectName = 'test-nest';
     const projectPath = join(tempDir, projectName);
 
-    // Run rapidkit create command with --template nestjs
     await execa(
-      'node',
-      [cliPath, projectName, '--template', 'nestjs', '--skip-git', '--skip-install'],
+      process.execPath,
+      [
+        cliPath,
+        'create',
+        'project',
+        'nestjs.standard',
+        projectName,
+        '--output',
+        tempDir,
+        '--skip-git',
+        '--skip-install',
+      ],
       {
         cwd: tempDir,
+        env: noPythonCliEnv(),
       }
     );
 
     // Verify project structure
     await expect(fileExists(join(projectPath, 'package.json'))).resolves.toBe(true);
     await expect(fileExists(join(projectPath, 'rapidkit'))).resolves.toBe(true);
-    await expect(fileExists(join(projectPath, '.rapidkit', 'rapidkit'))).resolves.toBe(true);
-    await expect(fileExists(join(projectPath, '.rapidkit', 'activate'))).resolves.toBe(true);
+    await expect(fileExists(join(projectPath, '.rapidkit', 'project.json'))).resolves.toBe(true);
     await expect(fileExists(join(projectPath, 'src', 'main.ts'))).resolves.toBe(true);
+    await expect(
+      fileExists(join(projectPath, 'src', 'examples', 'examples.module.ts'))
+    ).resolves.toBe(true);
+    await expect(fileExists(join(projectPath, '.env.example'))).resolves.toBe(true);
     await expect(fileExists(join(projectPath, 'README.md'))).resolves.toBe(true);
 
     // Verify package.json content
@@ -76,19 +139,23 @@ describe('E2E Tests', () => {
     expect(packageJson.name).toBe('test-nest');
   }, 60000);
 
-  it.skip('creates workspace successfully', async () => {
+  it('creates workspace successfully', async () => {
     const workspaceName = 'test-workspace';
     const workspacePath = join(tempDir, workspaceName);
 
-    // Run rapidkit create command without --template (workspace mode)
-    await execa('node', [cliPath, workspaceName, '--skip-git'], {
-      cwd: tempDir,
-    });
+    await execa(
+      process.execPath,
+      [cliPath, workspaceName, '--skip-git', '--yes', '--output', tempDir],
+      {
+        cwd: tempDir,
+        env: cliEnv(),
+      }
+    );
 
     // Verify workspace structure
-    await expect(fileExists(join(workspacePath, 'rapidkit'))).resolves.toBe(true);
     await expect(fileExists(join(workspacePath, 'README.md'))).resolves.toBe(true);
-    await expect(fileExists(join(workspacePath, 'templates'))).resolves.toBe(true);
+    await expect(fileExists(join(workspacePath, '.rapidkit'))).resolves.toBe(true);
+    await expect(fileExists(join(workspacePath, 'pyproject.toml'))).resolves.toBe(true);
   }, 30000);
 
   it('rejects invalid project names', async () => {
@@ -108,14 +175,7 @@ describe('E2E Tests', () => {
   it('handles dry-run mode correctly for templates', async () => {
     const projectName = 'test-project';
 
-    const { stdout } = await execa(
-      'node',
-      [cliPath, projectName, '--template', 'fastapi', '--dry-run'],
-      {
-        cwd: tempDir,
-        env: cliEnv(),
-      }
-    );
+    const stdout = runCliCaptured([projectName, '--template', 'fastapi', '--dry-run']);
 
     expect(stdout).toContain('Dry-run mode');
     expect(stdout.toLowerCase()).toContain('fastapi');
@@ -128,10 +188,7 @@ describe('E2E Tests', () => {
   it('handles dry-run mode correctly for workspace', async () => {
     const workspaceName = 'test-workspace';
 
-    const { stdout } = await execa('node', [cliPath, workspaceName, '--dry-run'], {
-      cwd: tempDir,
-      env: cliEnv(),
-    });
+    const stdout = runCliCaptured([workspaceName, '--dry-run']);
 
     expect(stdout).toContain('Dry-run mode');
     expect(stdout.toLowerCase()).toContain('workspace');
@@ -148,7 +205,7 @@ describe('E2E Tests', () => {
   }, 5000);
 
   it('shows help correctly', async () => {
-    const { stdout } = await execa('node', [cliPath, '--help'], { env: cliEnv() });
+    const stdout = runCliCaptured(['--help']);
 
     expect(stdout).toContain('rapidkit');
     // Accept either npm wrapper help (--skip-git) or Core help (create/add/version)

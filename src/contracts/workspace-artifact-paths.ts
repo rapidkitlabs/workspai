@@ -7,6 +7,9 @@ export const RAPIDKIT_SKILLS_DIR = '.rapidkit/skills' as const;
 export const WORKSPACE_SKILLS_INDEX_PATH = '.rapidkit/reports/workspace-skills-index.json' as const;
 export const WORKSPACE_EXPLAIN_REPORT_PATH =
   '.rapidkit/reports/workspace-explain-last-run.json' as const;
+export const WORKSPACE_WHY_REPORT_PATH = '.rapidkit/reports/workspace-why-last-run.json' as const;
+export const WORKSPACE_TRACE_REPORT_PATH =
+  '.rapidkit/reports/workspace-trace-last-run.json' as const;
 
 export const BUILTIN_OPERATIONAL_SKILL_PREFIX = 'rapidkit-' as const;
 

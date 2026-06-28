@@ -29,7 +29,7 @@ Hub for user and contributor documentation. Start with the [main README](../READ
 **Common tasks**
 
 - Adopt an existing repo: [workspace-operations.md#import-and-adoption](./workspace-operations.md#import-and-adoption)
-- Scaffold a frontend app: [commands-reference.md](./commands-reference.md) (`create frontend`)
+- Scaffold a frontend app: [commands-reference.md](./commands-reference.md) (`create project nextjs <name>`)
 - CI release gate: [commands-reference.md](./commands-reference.md) (`pipeline`, `readiness`)
 - Agent context: `workspace model` / `workspace context` — schemas in [contracts/workspace-intelligence/](../contracts/workspace-intelligence/)
 

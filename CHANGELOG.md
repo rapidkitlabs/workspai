@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.1] - 2026-06-28
+
+### Added
+
+- Added enterprise npm package smoke and prepack gates:
+  `scripts/enterprise-package-smoke.mjs`, `scripts/prepack-enterprise.mjs`,
+  `npm run smoke:enterprise-package`, and `prepack` validation before
+  `npm pack` / publish.
+- Added pipe-safe CLI coverage for `--version --json` so release gates can
+  validate machine-readable output through stdout pipes.
+- Added a command-safe package-runner invocation contract for npm-family
+  subprocesses (`npm`, `npx`, `pnpm`, `yarn`), including `npm_execpath`,
+  well-known npm CLI locations, and `corepack npm` fallback.
+- Added richer `workspace-dependency-graph.v1` operational profile, topology
+  stats, coverage, and diagnostics fields for Workspai graph consumers.
+
+### Changed
+
+- Hardened frontend scaffold execution, Node runtime package-manager detection,
+  and workspace fleet init preflight to use the shared package-runner contract
+  instead of raw PATH-only `npm` / `npx` lookup.
+- Made CLI entrypoint stdout/stderr pipe-safe before fast process exits, fixing
+  empty-output behavior in spawned integration commands.
+- Updated package metadata/files policy so publish artifacts include enterprise
+  smoke/prepack scripts and critical runtime assets.
+- Synced FastAPI common environment examples from the core kit source.
+
+### Fixed
+
+- Fixed workspace-root `rapidkit init` failing child Node project init when npm
+  was available through npm/corepack resolution but not discoverable by a raw
+  `which npm` preflight.
+- Fixed nested npx execution inheriting parent `npm_config_package` pins that
+  could force inner generators to resolve the wrong package.
+- Fixed stale CLI test builds by tracking runner and platform-capability source
+  files in the dist build helper.
+
+### Verification
+
+- `./node_modules/.bin/tsc --noEmit`
+- `./node_modules/.bin/vitest run` (1573 passed, 8 skipped)
+- `node scripts/enterprise-package-smoke.mjs`
+- `node scripts/prepack-enterprise.mjs`
+
 ## [0.41.0] - 2026-06-23
 
 ### Added
