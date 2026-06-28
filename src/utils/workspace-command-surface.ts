@@ -48,7 +48,7 @@ export type WorkspaceSubcommand = (typeof WORKSPACE_SUBCOMMANDS)[number];
  * These are the capabilities the extension gates on before running the
  * intelligence chain, advisor, or agent context pack. Order follows the
  * canonical chain: model -> snapshot -> diff -> impact -> verify -> context
- * -> agent-sync.
+ * -> agent-sync -> explain -> why -> trace.
  */
 export const WORKSPACE_INTELLIGENCE_SUBCOMMANDS = [
   'model',
@@ -59,6 +59,8 @@ export const WORKSPACE_INTELLIGENCE_SUBCOMMANDS = [
   'context',
   'agent-sync',
   'explain',
+  'why',
+  'trace',
 ] as const;
 
 export type WorkspaceIntelligenceSubcommand = (typeof WORKSPACE_INTELLIGENCE_SUBCOMMANDS)[number];

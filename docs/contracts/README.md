@@ -23,6 +23,7 @@ Workflow: change code → `npm run generate:contracts` → `npm run sync:parity-
 | -------------------------------------------------------------- | ----------------------------------------------------------- |
 | [ARTIFACT_CATALOG.md](./ARTIFACT_CATALOG.md)                   | On-disk artifact paths, schema versions, and consumer rules |
 | [COMMAND_OWNERSHIP_MATRIX.md](./COMMAND_OWNERSHIP_MATRIX.md)   | Which commands the npm wrapper owns vs Python Core          |
+| [NAMING_AND_COEXISTENCE.md](./NAMING_AND_COEXISTENCE.md)       | Workspace Intelligence command naming and generated surface rules |
 | [RUNTIME_SUPPORT_MATRIX.md](./RUNTIME_SUPPORT_MATRIX.md)       | Scaffold, import, lifecycle, and module support tiers       |
 | [RUNTIME_ACCEPTANCE_MATRIX.md](./RUNTIME_ACCEPTANCE_MATRIX.md) | Runtime acceptance matrix expectations                      |
 | [rapidkit-cli-contracts.json](./rapidkit-cli-contracts.json)   | Core CLI JSON schema fragments                              |
@@ -44,10 +45,20 @@ Workspace intelligence (`../contracts/workspace-intelligence/`):
 
 - `workspace-model.v1.json`
 - `workspace-context.v1.json`
+- `workspace-dependency-graph.v1.json`
 - `workspace-model-snapshot.v1.json`
 - `workspace-model-diff.v1.json`
 - `workspace-impact.v1.json`
 - `workspace-verify.v1.json`
+- `workspace-explain.v1.json`
+- `workspace-intelligence-history.v1.json`
+- `workspace-operational-skill.v1.json`
+- `workspace-skills-index.v1.json`
+- `workspace-contract-verify.v1.json`
+- `agent-action-outcome.v1.json`
+- `blocker-resolution.v1.json`
+- `doctor-fix-result.v1.json`
+- `studio-blocker-handoff.v1.json`
 
 CLI commands: see [commands-reference.md](../commands-reference.md) and [../README.md](../README.md#workspace-intelligence).
 

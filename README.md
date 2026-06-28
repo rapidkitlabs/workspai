@@ -1,11 +1,15 @@
 # RapidKit
 
-### Open-Source Workspace Intelligence for Software Systems
+## Open-Source Workspace Intelligence for Software Systems
 
 [![npm version](https://img.shields.io/npm/v/rapidkit.svg?style=flat-square)](https://www.npmjs.com/package/rapidkit)
 [![Downloads](https://img.shields.io/npm/dm/rapidkit.svg?style=flat-square)](https://www.npmjs.com/package/rapidkit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Built by RapidKit](https://img.shields.io/badge/Built%20by-RapidKit-0f172a?logo=github)](https://www.getrapidkit.com)
+
+Not another AI coding assistant.
+Not another agent framework.
+Not another context engine.
 
 > One workspace. One truth. Humans and AI aligned.
 
@@ -142,6 +146,7 @@ For the visual experience, install the [Workspai VS Code extension](https://mark
 - [From Code to Shared Understanding](#from-code-to-shared-understanding)
 - [Typical workflows](#typical-workflows)
 - [Mental model](#mental-model)
+- [Why this architecture helps](#why-this-architecture-helps)
 - [Workspace Intelligence Commands](#workspace-intelligence-commands)
 - [Agent Customization Pack](#agent-customization-pack)
 - [Requirements](#requirements)
@@ -211,27 +216,92 @@ New workspaces go under `~/rapidkit/workspaces/<name>`. Legacy `~/Workspai/rapid
 
 ## Mental model
 
-### Two-layer model
+### Two capabilities, one workspace intelligence layer
 
 ```text
-First-class engine kits  →  FastAPI and NestJS (modules + deep generation)
-Workspace intelligence   →  frontend apps, Go, Spring, .NET, adopted/imported repos
+Workspace Intelligence  →  every project in the workspace
+Native generation       →  first-class scaffolds and stack-specific project creation
+Deep module generation  →  selected backend engine kits such as FastAPI and NestJS
 ```
 
-RapidKit treats the **workspace** as the operating boundary: policy, registry, evidence, contracts, and release readiness. Projects can live inside the workspace or be **adopted** from outside.
+Workspace Intelligence is not limited to a framework lane. It works across
+RapidKit-created projects, frontend apps, Go, Spring Boot, .NET, FastAPI, NestJS,
+and adopted/imported repositories. The difference is generation depth:
+some stacks have first-class scaffolds, some use official ecosystem generators,
+and existing projects can be adopted in place.
+
+RapidKit treats the **workspace** as the operating boundary: policy, registry,
+evidence, contracts, and release readiness. Projects can live inside the
+workspace or be **adopted** from outside.
 
 ```text
 workspace/
+  .rapidkit-workspace
   .rapidkit/workspace.json
   .rapidkit/reports/
+    workspace-model.json
+    workspace-context-agent.json
+    INDEX.json
+    agent-customization-pack.json
+    workspace-skills-index.json
+    rapidkit-mcp-design.json
+  .rapidkit/skills/
+  .rapidkit/AGENT-GROUNDING.md
   services/api/
+    .rapidkit/project.json
+  AGENTS.md
+  .github/copilot-instructions.md
+  .github/instructions/
+  .github/prompts/
+  .github/skills/
+  .github/agents/
+  .cursor/rules/rapidkit-grounding.mdc
+  CLAUDE.md
+  .vscode/rapidkit-agent-hooks.json
 
 external-project/
   .rapidkit/project.json
   .rapidkit/adopt.json
 ```
 
-Every tool gets the same answers: what projects exist, what stack they use, which commands are safe, what evidence exists, and what context agents should receive.
+`.rapidkit/workspace.json` is the workspace manifest, not the project list.
+Projects are discovered from workspace project metadata, imported/adopted
+records, and workspace intelligence reports.
+
+Agent-facing outputs are generated from the same evidence layer:
+`workspace context --for-agent --write` writes the agent context report, and
+`workspace agent-sync --write --refresh-context --preset enterprise` writes the
+portable `AGENTS.md`, report index, skills, Copilot/Cursor/Claude surfaces, and
+agent handoff files. The exact generated output inventory is recorded in
+`.rapidkit/reports/agent-customization-pack.json` and summarized in the
+[Agent Customization Pack](#agent-customization-pack) section below.
+
+Every tool gets the same answers for every registered project: what projects
+exist, what stack they use, which commands are safe, what evidence exists, what
+changed, what release gates apply, and what context agents should receive.
+
+## Why this architecture helps
+
+You do not have to change frameworks to benefit from RapidKit.
+
+Use the frontend or backend stack that already fits your product: Next.js,
+Vite, FastAPI, NestJS, Go, Spring Boot, .NET, or an existing repository you
+adopt in place. RapidKit adds the workspace layer around it: project registry,
+safe commands, evidence, impact analysis, agent context, verification, and
+release gates.
+
+That means you can move faster without turning the product into a fragile
+prototype:
+
+- Start new products with governed scaffolds when RapidKit owns the create path
+- Adopt existing products without moving source code or rewriting the stack
+- Give humans, CI, IDEs, and AI agents the same workspace truth
+- Know what changed, what is affected, and what must be verified before release
+- Keep framework stability while adding professional product-development
+  workflows around the codebase
+
+The result is faster product development with clearer boundaries, safer AI
+assistance, and release decisions backed by evidence instead of guesswork.
 
 ## Workspace Intelligence Commands
 

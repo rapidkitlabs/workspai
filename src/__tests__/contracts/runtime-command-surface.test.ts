@@ -98,6 +98,9 @@ describe('shared runtime command surface contract (npm)', () => {
     for (const subcommand of contract.workspaceIntelligenceSubcommands) {
       expect(contract.workspaceSubcommands).toContain(subcommand);
     }
+    expect(contract.workspaceIntelligenceSubcommands).toEqual(
+      expect.arrayContaining(['explain', 'why', 'trace'])
+    );
   });
 
   it('matches npm runtime support matrix exactly', () => {

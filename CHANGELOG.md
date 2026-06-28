@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.2] - 2026-06-28
+
+### Added
+
+- Added `workspace why` and `workspace trace` to the published Workspace
+  Intelligence subcommand surface in `runtime-command-surface.v1`.
+- Added additive `incidentSummary` metadata to
+  `studio-blocker-handoff.v1` for Workspai Studio incident flows.
+- Added README category positioning for Open-Source Workspace Intelligence and
+  a framework-agnostic mental model for created, imported, and adopted projects.
+
+### Changed
+
+- Hardened `enterprise-package-smoke` to use an isolated writable npm cache and
+  tolerate npm lifecycle output before `npm pack --json` payloads.
+- Updated contract documentation to list current Workspace Intelligence schemas
+  and the canonical `.rapidkit/AGENT-GROUNDING.md` artifact path.
+- Removed non-null assertions from Workspace Impact centrality/hotspot handling.
+
+### Verification
+
+- `npm run lint`
+- `npm run typecheck`
+- `npm run format:check`
+- `npm run validate:docs`
+- `npm run check:generated-contracts`
+- `npm run check:shared-contracts`
+- `npm test` (1573 passed, 8 skipped)
+- `npm run smoke:enterprise-package`
+- `npm run prepack`
+
 ## [0.41.1] - 2026-06-28
 
 ### Added

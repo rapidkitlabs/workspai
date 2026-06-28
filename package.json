@@ -1,6 +1,6 @@
 {
   "name": "rapidkit",
-  "version": "0.41.1",
+  "version": "0.41.2",
   "type": "module",
   "description": "Open-source workspace intelligence CLI for software systems: create, adopt, govern, verify, and align polyglot workspaces for humans, CI, IDEs, and AI agents.",
   "keywords": [

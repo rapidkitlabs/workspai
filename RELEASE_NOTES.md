@@ -1,6 +1,74 @@
 # Release Notes
 
-## Latest Release: v0.41.1 (June 28, 2026)
+## Latest Release: v0.41.2 (June 28, 2026)
+
+### Workspace Intelligence Contract and Publish Smoke Hardening
+
+This patch release tightens the npm source-of-truth layer for Workspai,
+enterprise CI, and agent-facing workspace operations. It expands the published
+Workspace Intelligence command surface, adds structured incident handoff
+metadata for Studio consumers, hardens package smoke against noisy npm output
+and read-only npm caches, and clarifies RapidKit's category positioning in the
+README.
+
+**What's New:**
+
+- **Workspace Intelligence command surface**
+  - `runtime-command-surface.v1` now advertises `workspace why` and
+    `workspace trace` as Workspace Intelligence subcommands alongside
+    `workspace explain`.
+  - Contract tests now assert `explain`, `why`, and `trace` stay published for
+    IDE/CI capability detection.
+
+- **Studio incident handoff**
+  - `studio-blocker-handoff.v1` now includes an additive `incidentSummary`
+    object for phase, primary action, verification requirement, and audit state.
+
+- **Enterprise package smoke**
+  - `enterprise-package-smoke` now uses an isolated writable npm cache instead
+    of inheriting a possibly read-only parent `npm_config_cache`.
+  - The smoke parser now tolerates npm lifecycle noise before `npm pack --json`
+    output.
+
+- **Workspace Intelligence docs and positioning**
+  - README positioning now leads with **Open-Source Workspace Intelligence for
+    Software Systems** and clarifies that RapidKit is not another AI coding
+    assistant, agent framework, or context engine.
+  - The mental model now makes Workspace Intelligence framework-agnostic:
+    RapidKit can govern created, imported, and adopted projects across frontend,
+    backend, and polyglot stacks.
+  - Contract docs now list the newer Workspace Intelligence schemas and fix the
+    `.rapidkit/AGENT-GROUNDING.md` artifact path.
+
+- **Graph impact quality**
+  - Workspace impact centrality handling no longer relies on non-null
+    assertions when building transitive impact and hotspot summaries.
+
+**Breaking changes:** None.
+
+**Verification:**
+
+- `npm run lint`
+- `npm run typecheck`
+- `npm run format:check`
+- `npm run validate:docs`
+- `npm run check:generated-contracts`
+- `npm run check:shared-contracts`
+- `npm test` (1573 passed, 8 skipped)
+- `npm run smoke:enterprise-package`
+- `npm run prepack`
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.41.2
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.41.2.md)
+
+---
+
+## Previous Release: v0.41.1 (June 28, 2026)
 
 ### Enterprise Package Smoke and Runner Hardening
 

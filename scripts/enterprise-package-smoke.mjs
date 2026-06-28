@@ -102,13 +102,13 @@ function runToFile(command, args, options = {}) {
 
 function runNpm(args) {
   const npm = resolveNpmInvocation();
+  const isolatedCache = path.join(os.tmpdir(), `rapidkit-enterprise-npm-cache-${process.pid}`);
+  fs.mkdirSync(isolatedCache, { recursive: true });
   return runToFile(npm.command, [...npm.prefixArgs, ...args], {
     env: {
       ...cliEnv(),
       npm_config_user_agent: process.env.npm_config_user_agent || 'npm/10 rapidkit-smoke',
-      npm_config_cache:
-        process.env.npm_config_cache ||
-        path.join(os.tmpdir(), `rapidkit-enterprise-npm-cache-${process.pid}`),
+      npm_config_cache: isolatedCache,
     },
   });
 }
@@ -164,6 +164,17 @@ function parseTrailingJson(stdout) {
   }
 }
 
+function parseTrailingJsonArray(stdout) {
+  const trimmed = stdout.trim();
+  const start = trimmed.lastIndexOf('\n[');
+  const jsonText = start >= 0 ? trimmed.slice(start + 1) : trimmed;
+  try {
+    return JSON.parse(jsonText);
+  } catch (error) {
+    fail(`failed to parse npm JSON output: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
 function assertPackContents() {
   if (process.env.RAPIDKIT_ENTERPRISE_PREPACK === '1') {
     const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
@@ -194,12 +205,7 @@ function assertPackContents() {
   }
 
   const output = runNpm(['pack', '--dry-run', '--json', '--ignore-scripts']);
-  let packuments;
-  try {
-    packuments = JSON.parse(output);
-  } catch (error) {
-    fail(`npm pack --dry-run did not return JSON: ${error instanceof Error ? error.message : error}`);
-  }
+  const packuments = parseTrailingJsonArray(output);
 
   const files = new Set(
     (packuments?.[0]?.files ?? [])

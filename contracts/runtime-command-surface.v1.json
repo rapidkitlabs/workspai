@@ -76,7 +76,9 @@
     "verify",
     "context",
     "agent-sync",
-    "explain"
+    "explain",
+    "why",
+    "trace"
   ],
   "moduleSuggestionFrameworks": [
     "fastapi",

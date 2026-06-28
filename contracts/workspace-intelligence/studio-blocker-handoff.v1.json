@@ -65,6 +65,30 @@
     "studioMode": {
       "enum": ["FIX", "RUN_ONCE", "VERIFY_ONLY", "EXPLAIN"]
     },
+    "incidentSummary": {
+      "type": "object",
+      "required": ["title", "phase", "primaryAction", "verifyRequired", "auditStatus"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "phase": {
+          "enum": ["detect", "diagnose", "fix", "verify", "audit"]
+        },
+        "primaryAction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verifyRequired": {
+          "type": "boolean"
+        },
+        "auditStatus": {
+          "enum": ["not-started", "pending", "saved", "failed", "unknown"]
+        }
+      },
+      "additionalProperties": false
+    },
     "resolutionHints": {
       "type": "array",
       "items": {

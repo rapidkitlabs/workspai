@@ -1088,6 +1088,7 @@ export async function buildWorkspaceImpact(
       const predecessor = node.path[node.path.length - 2] ?? originName;
       const originRisk = riskByName.get(originName) ?? 'medium';
       const risk = downgradeRisk(originRisk);
+      const centralityNode = centrality?.byId.get(node.id);
       maxDistance = Math.max(maxDistance, node.distance);
       transitiveImpact.push({
         id: `transitive:${node.id}`,
@@ -1119,14 +1120,14 @@ export async function buildWorkspaceImpact(
         distance: node.distance,
         path: node.path,
         via: node.via,
-        ...(centrality?.byId.get(node.id)
+        ...(centralityNode
           ? {
               centrality: {
-                fanIn: centrality.byId.get(node.id)!.fanIn,
-                fanOut: centrality.byId.get(node.id)!.fanOut,
-                reach: centrality.byId.get(node.id)!.reach,
-                betweenness: centrality.byId.get(node.id)!.betweenness,
-                isHotspot: centrality.byId.get(node.id)!.isHotspot,
+                fanIn: centralityNode.fanIn,
+                fanOut: centralityNode.fanOut,
+                reach: centralityNode.reach,
+                betweenness: centralityNode.betweenness,
+                isHotspot: centralityNode.isHotspot,
               },
             }
           : {}),
@@ -1136,15 +1137,19 @@ export async function buildWorkspaceImpact(
   transitiveImpact.sort((a, b) => a.target.localeCompare(b.target));
 
   const criticalPathHotspots: WorkspaceImpactHotspot[] = centrality
-    ? centrality.hotspots.map((id) => {
-        const node = centrality.byId.get(id)!;
-        return {
-          project: id,
-          fanIn: node.fanIn,
-          fanOut: node.fanOut,
-          reach: node.reach,
-          betweenness: node.betweenness,
-        };
+    ? centrality.hotspots.flatMap((id) => {
+        const node = centrality.byId.get(id);
+        return node
+          ? [
+              {
+                project: id,
+                fanIn: node.fanIn,
+                fanOut: node.fanOut,
+                reach: node.reach,
+                betweenness: node.betweenness,
+              },
+            ]
+          : [];
       })
     : [];
 
