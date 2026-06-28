@@ -31,8 +31,9 @@ describe('platform-capabilities package runners', () => {
   });
 
   it('prepends the Node bin directory to PATH', () => {
-    const augmented = augmentPathWithNodeBin('/usr/bin:/bin');
-    expect(augmented.startsWith(`${path.dirname(process.execPath)}:`)).toBe(true);
+    const delimiter = process.platform === 'win32' ? ';' : ':';
+    const augmented = augmentPathWithNodeBin(['/usr/bin', '/bin'].join(delimiter));
+    expect(augmented.startsWith(`${path.dirname(process.execPath)}${delimiter}`)).toBe(true);
     expect(augmented).toContain('/usr/bin');
   });
 
@@ -47,6 +48,8 @@ describe('platform-capabilities package runners', () => {
     expect(env.npm_config_package).toBeUndefined();
     expect(env.npm_config__package).toBeUndefined();
     expect(env.HOME).toBe('/home/dev');
-    expect(env.PATH?.split(':')).toContain(path.dirname(process.execPath));
+    expect(env.PATH?.split(process.platform === 'win32' ? ';' : ':')).toContain(
+      path.dirname(process.execPath)
+    );
   });
 });
