@@ -46,7 +46,8 @@ const SKILL_TEMPLATES: SkillTemplate[] = [
       'Investigate a failing API or service using RapidKit evidence before editing application code.',
     steps: [
       'Read `.rapidkit/reports/INDEX.json` and identify fail/warn reports for the scoped project.',
-      'Read `.rapidkit/reports/doctor-last-run.json` and project-scoped run evidence if present.',
+      'Read `.rapidkit/reports/doctor-last-run.json`, `doctor-project-last-run.json`, and project-scoped run evidence if present.',
+      'If a fix was requested, read `doctor-remediation-plan-last-run.json` before editing and `doctor-fix-result-last-run.json` before claiming completion.',
       'Map the failure to workspace vs project scope; cite exit codes and blocker messages.',
       'Propose the smallest safe fix (config, env, dependency) with explicit verification commands.',
     ],

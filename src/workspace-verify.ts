@@ -213,7 +213,7 @@ function evidencePathForCommand(
     return path.join(workspacePath, '.rapidkit', 'reports', 'pipeline-last-run.json');
   }
   if (command.id === 'workspace.doctor-fix') {
-    return path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json');
+    return path.join(workspacePath, '.rapidkit', 'reports', 'doctor-fix-result-last-run.json');
   }
   if (command.id.startsWith('project.') && command.id.includes('.')) {
     return path.join(workspacePath, '.rapidkit', 'reports', 'workspace-run-last.json');
@@ -286,7 +286,8 @@ function evaluateAnalyzeEvidence(payload: Record<string, unknown>): EvidenceEval
 }
 
 function evaluateDoctorFixEvidence(payload: Record<string, unknown>): EvidenceEvaluation {
-  const fixResult = payload.fixResult;
+  const fixResult =
+    payload.schemaVersion === 'rapidkit-doctor-fix-result-v1' ? payload : payload.fixResult;
   if (!fixResult || typeof fixResult !== 'object' || Array.isArray(fixResult)) {
     return {
       status: 'skipped',
@@ -309,6 +310,40 @@ function evaluateDoctorFixEvidence(payload: Record<string, unknown>): EvidenceEv
     status: 'pass',
     message: `Doctor fix result recorded ${applied.length} applied fix(es) with no remaining blockers.`,
   };
+}
+
+async function currentDoctorRemediationPlanHasNoPendingSteps(
+  workspacePath: string,
+  fixGeneratedAt: string | undefined
+): Promise<boolean> {
+  const planPath = path.join(
+    workspacePath,
+    '.rapidkit',
+    'reports',
+    'doctor-remediation-plan-last-run.json'
+  );
+  try {
+    const plan = asRecord(await fsExtra.readJson(planPath));
+    if (!plan) {
+      return false;
+    }
+    const steps = Array.isArray(plan.steps) ? plan.steps : [];
+    if (steps.length > 0) {
+      return false;
+    }
+    const planGeneratedAt = typeof plan.generatedAt === 'string' ? plan.generatedAt : undefined;
+    if (!planGeneratedAt || !fixGeneratedAt) {
+      return true;
+    }
+    const planTime = Date.parse(planGeneratedAt);
+    const fixTime = Date.parse(fixGeneratedAt);
+    if (!Number.isFinite(planTime) || !Number.isFinite(fixTime)) {
+      return true;
+    }
+    return planTime >= fixTime;
+  } catch {
+    return false;
+  }
 }
 
 function resolveWorkspaceRunStageFromCommand(
@@ -549,7 +584,22 @@ async function evaluateCommandEvidence(
       evaluation = evaluatePipelineEvidence(payload);
     }
   } else if (command.id === 'workspace.doctor-fix') {
-    evaluation = evaluateDoctorFixEvidence(payload);
+    const fixResult =
+      payload.schemaVersion === 'rapidkit-doctor-fix-result-v1' ? payload : payload.fixResult;
+    const fixRecord = asRecord(fixResult);
+    const fixGeneratedAt =
+      typeof fixRecord?.generatedAt === 'string' ? fixRecord.generatedAt : undefined;
+    const staleMessage = staleEvidenceMessage(fixGeneratedAt, minGeneratedAt, 'Doctor fix result');
+    if (staleMessage) {
+      evaluation = { status: 'fail', message: staleMessage };
+    } else if (await currentDoctorRemediationPlanHasNoPendingSteps(workspacePath, fixGeneratedAt)) {
+      evaluation = {
+        status: 'skipped',
+        message: 'No current doctor remediation steps are pending.',
+      };
+    } else {
+      evaluation = evaluateDoctorFixEvidence(payload);
+    }
   } else if (command.id.startsWith('project.')) {
     evaluation = evaluateWorkspaceRunEvidence(payload, command, minGeneratedAt);
   } else {
@@ -849,10 +899,11 @@ function resolveEvidenceFreshnessFloor(
   if (impactFromDisk) {
     return impact.generatedAt;
   }
-  const diffGeneratedAt = impact.diff?.generatedAt;
-  if (typeof diffGeneratedAt === 'string' && diffGeneratedAt.trim().length > 0) {
-    return diffGeneratedAt;
-  }
+  // A default verify run may build an impact/diff object on the fly. That
+  // generatedAt represents the verification command time, not an operator
+  // supplied impact baseline. Using it as a freshness floor makes freshly
+  // generated doctor/analyze/readiness evidence look stale by construction.
+  // Keep strict freshness gating for persisted impact reports and --from-impact.
   return undefined;
 }
 

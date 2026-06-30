@@ -36,6 +36,11 @@
     },
     "identity": { "type": "object", "additionalProperties": true },
     "summary": { "type": "object", "additionalProperties": true },
+    "factFreshness": { "$ref": "#/$defs/factFreshnessSummary" },
+    "facts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workspaceFact" }
+    },
     "projects": {
       "type": "array",
       "items": { "type": "object", "additionalProperties": true }
@@ -50,6 +55,81 @@
     "discovery": { "type": "object", "additionalProperties": true },
     "policies": { "type": "object", "additionalProperties": true },
     "validation": { "type": "object", "additionalProperties": true }
+  },
+  "$defs": {
+    "factFreshness": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "kind",
+        "category",
+        "generatedAt",
+        "ttlSeconds",
+        "status",
+        "verifyBeforeUse",
+        "reason"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "rapidkit-fact-freshness-v1" },
+        "kind": {
+          "enum": ["durable", "derived", "evidence-backed", "live", "verify-before-use"]
+        },
+        "category": { "enum": ["structure", "verification", "state"] },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "ttlSeconds": { "type": ["integer", "null"], "minimum": 0 },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "status": { "enum": ["fresh", "stale", "unknown"] },
+        "verifyBeforeUse": { "type": "boolean" },
+        "sourceArtifact": { "type": "string" },
+        "sourcePath": { "type": "string" },
+        "inputsHash": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "workspaceFact": {
+      "type": "object",
+      "required": ["id", "label", "scope", "value", "freshness"],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "scope": {
+          "enum": ["workspace", "project", "evidence", "policy", "contract", "command", "graph"]
+        },
+        "project": { "type": "string" },
+        "value": true,
+        "freshness": { "$ref": "#/$defs/factFreshness" }
+      },
+      "additionalProperties": false
+    },
+    "factFreshnessSummary": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "generatedAt",
+        "status",
+        "totalFacts",
+        "staleFacts",
+        "unknownFacts",
+        "liveFacts",
+        "verifyBeforeUseFacts",
+        "byKind",
+        "byCategory"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "rapidkit-fact-freshness-v1" },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "status": { "enum": ["fresh", "stale", "unknown"] },
+        "totalFacts": { "type": "integer", "minimum": 0 },
+        "staleFacts": { "type": "integer", "minimum": 0 },
+        "unknownFacts": { "type": "integer", "minimum": 0 },
+        "liveFacts": { "type": "integer", "minimum": 0 },
+        "verifyBeforeUseFacts": { "type": "integer", "minimum": 0 },
+        "byKind": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "byCategory": { "type": "object", "additionalProperties": { "type": "integer" } }
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": true
 }

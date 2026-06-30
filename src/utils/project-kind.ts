@@ -54,6 +54,29 @@ export async function inferWorkspaceProjectKind(
     return metadataKind;
   }
 
+  const kit = typeof metadata?.kit_name === 'string' ? metadata.kit_name : metadata?.kit;
+  const framework = typeof metadata?.framework === 'string' ? metadata.framework : null;
+  const runtime = typeof metadata?.runtime === 'string' ? metadata.runtime : null;
+  const serviceSignals = `${typeof kit === 'string' ? kit : ''} ${framework ?? ''} ${runtime ?? ''}`
+    .trim()
+    .toLowerCase();
+
+  if (
+    /\b(frontend|nextjs|next\.js|react|vue|svelte|vite|angular|astro|remix|nuxt)\b/.test(
+      serviceSignals
+    )
+  ) {
+    return 'frontend';
+  }
+
+  if (
+    /\b(fastapi|nestjs|springboot|spring boot|gofiber|gogin|dotnet|webapi|django|flask|express|fastify|python|node|java|go|rust|php|ruby|elixir)\b/.test(
+      serviceSignals
+    )
+  ) {
+    return 'service';
+  }
+
   const packageJson = await readJsonIfExists(path.join(projectPath, 'package.json'));
   if (packageJson) {
     const dependencies = {

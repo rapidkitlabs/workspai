@@ -10,7 +10,7 @@ Rules for **operational intelligence** artifacts so npm CLI, VS Code extension, 
 | Skills index | `.rapidkit/reports/workspace-skills-index.json` | — |
 | Copilot skill umbrella | — | `.github/skills/rapidkit-workspace-intelligence/SKILL.md` |
 | Explain report | `.rapidkit/reports/workspace-explain-last-run.json` | — |
-| Action feedback | `.rapidkit/reports/workspace-intelligence-history.json` (`kind: agent-action`) | — |
+| Action / repair feedback | `.rapidkit/reports/workspace-intelligence-history.json` (`kind: agent-action`, `doctor-fix`) | — |
 
 **Rule:** Never add a standalone `workspace skills generate` command. Operational skills are produced only by `workspace agent-sync --write` (extend the Agent Customization Pack).
 
@@ -34,7 +34,8 @@ Paths are derived from id via `operationalSkillPath()` in `src/contracts/workspa
 | Shorthand alias | `workspace why …` | Same parser as `explain` |
 | Diff → blast radius → gates | `workspace trace --from <diff>` | Slice of explain (`kind: trace`) |
 | Graph node centrality | `workspace graph explain <project>` | Graph-topology slice; see **Graph explain coexistence** below |
-| Record agent outcome | `workspace feedback record --json` | Appends to history, no separate feedback file |
+| Record agent outcome | `workspace feedback record --json` | Appends `kind: agent-action` to history, no separate feedback file |
+| Record Doctor repair outcome | `doctor workspace|project --fix --json` | Writes `doctor-fix-result-last-run.json` and appends `kind: doctor-fix` to history |
 | MCP read bridge | `workspace mcp serve` | Read-mostly stdio JSON-RPC; maps Phase 4 explain + skills tools |
 
 ## Graph explain coexistence (4.11)

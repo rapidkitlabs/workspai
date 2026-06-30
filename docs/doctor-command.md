@@ -13,6 +13,7 @@ npx rapidkit doctor
 ```
 
 Checks host prerequisites:
+
 - Python
 - Poetry (optional)
 - pipx (optional)
@@ -27,6 +28,7 @@ npx rapidkit doctor workspace
 ```
 
 Checks:
+
 - all system checks
 - workspace marker resolution
 - project discovery and per-project health
@@ -42,6 +44,7 @@ npx rapidkit doctor project
 ```
 
 Checks:
+
 - all system checks
 - nearest project resolution (current folder or parent with project markers)
 - project-specific framework/runtime health
@@ -74,19 +77,219 @@ npx rapidkit doctor project --fix
 
 # JSON output with audit-ready breakdown + probes
 npx rapidkit doctor project --json
+
+# Release-grade policy profile
+npx rapidkit doctor workspace --profile enterprise-strict --json
 ```
 
 ## Enterprise Fix Pipeline
 
+Doctor supports policy profiles so the same evidence can be interpreted correctly in local,
+CI, release, and enterprise gates:
+
+| Profile             | Use when                         | Warning behavior                         |
+| ------------------- | -------------------------------- | ---------------------------------------- |
+| `local`             | Developer diagnostics             | Report warnings, do not block            |
+| `ci`                | CI feedback loop                  | Exit `2` on warnings, `1` on errors      |
+| `release`           | Release readiness gate            | Exit `1` on warnings or errors           |
+| `enterprise-strict` | Enterprise/studio repair workflow | Exit `1`; every warning needs evidence or repair guidance |
+
+`--strict` maps to the `release` profile and `--ci` maps to the `ci` profile for backward
+compatibility. JSON evidence includes `policyProfile` so Workspai and CI can explain why a
+card is advisory locally but blocking for release.
+
+Doctor also attaches a **freshness contract** to evidence so tools do not treat live state as
+durable structure:
+
+| Freshness category | Meaning                                      | Default TTL |
+| ------------------ | -------------------------------------------- | ----------- |
+| `structure`        | Durable project/workspace shape and markers  | 7 days      |
+| `verification`     | Test, script, lint, quality, and probe checks | 24 hours    |
+| `state`            | Live dependency/security state               | 5 minutes   |
+
+Each probe can include `freshness`, and each JSON artifact includes `evidenceFreshness`.
+Workspai and CI should refresh stale or `verifyBeforeUse` evidence before claiming a project is
+ready, repaired, or release-safe.
+
+Doctor probes also include an **issue taxonomy** and **repair intent** for Studio-driven repair:
+
+| Field               | Purpose                                                                 |
+| ------------------- | ----------------------------------------------------------------------- |
+| `issueClass`        | Stable category such as `security`, `test`, `container`, or `dependency` |
+| `operationalImpact` | Product impact such as `ci-risk`, `release-risk`, or `security-risk`    |
+| `repairIntent.mode` | Studio action mode: `edit-file`, `run-command`, `review-required`, `verify-before-fix`, or `refresh-evidence` |
+
+This lets Workspai distinguish "show guidance" from "apply an approved file edit", "run a command",
+or "refresh stale/live evidence first".
+
 When `--fix` is enabled, Doctor now runs a staged treatment pipeline:
 
 1. Fix policy engine assigns risk for each fix step (`safe`, `guarded`, `invasive`).
-2. Transaction snapshots are created for guarded/invasive steps.
-3. Dependency orchestrator executes known dependency commands via structured adapters.
-4. Post-fix verification re-runs project diagnostics.
-5. Retry policy re-attempts transient network failures once before failing.
+2. Transaction snapshots are created for guarded/invasive steps and project-scoped file edits.
+3. Repair capabilities from probes can promote safe, typed fixes into the plan.
+4. Dependency orchestrator executes known dependency commands via structured adapters.
+5. Post-fix verification re-runs project diagnostics.
+6. Retry policy re-attempts transient network failures once before failing.
 
-If a guarded/invasive step fails, Doctor attempts rollback from snapshot and records the failure.
+If a guarded/invasive step or file edit fails, Doctor attempts rollback from snapshot and records
+the failure. Newly-created files are tracked and removed during rollback if the fix cannot finish.
+
+`--plan --json`, `--fix --json`, and `--apply --json` include a remediation plan with
+`schemaVersion: doctor-remediation-plan-v2`. This plan is the Studio handoff contract: every step
+has a stable `id`, `phase`, `order`, `dependsOn`, `issueId`, `issueClass`, `operationalImpact`,
+`repairIntent`, affected `files`, typed `operation` when Doctor can edit safely, a human-readable
+`preview`, deterministic `diffPreview`, `verifyCommand`, `refreshCommands`, rollback strategy, and
+`studioStatus`.
+
+The same plan is persisted to:
+
+```text
+.rapidkit/reports/doctor-remediation-plan-last-run.json
+```
+
+After `--fix` or `--apply`, Doctor also persists the execution result:
+
+```text
+.rapidkit/reports/doctor-fix-result-last-run.json
+```
+
+and appends a `kind: doctor-fix` entry to
+`.rapidkit/reports/workspace-intelligence-history.json`. This gives Workspai a closed repair loop:
+plan -> approved command/edit -> execution result -> refreshed evidence -> history.
+
+For `doctor project` inside a workspace, the canonical governance copy stays under the workspace
+`.rapidkit/reports/` directory and Doctor mirrors the project evidence, remediation plan, and fix
+result into the scoped project's `.rapidkit/reports/` directory. Project-local tools can inspect the
+same repair evidence without guessing the workspace root.
+
+The remediation plan is intentionally ordered for Studio execution:
+
+| Phase | Purpose |
+| --- | --- |
+| `dependency-baseline` | Restore package/runtime dependency baselines before other fixes |
+| `local-environment` | Seed local env files without overwriting operator-owned values |
+| `source-hygiene` | Apply safe project-scoped hygiene files such as `.dockerignore` or `.gitignore` rules |
+| `command-contract` | Add missing test, quality, audit, or runtime command contracts |
+| `runtime-governance` | Run RapidKit/workspace initializers that may touch multiple project surfaces |
+| `manual-review` | Surface guidance that requires a human decision |
+| `generic-execution` | Last-resort shell remediation when no typed operation exists |
+
+`dependsOn` lets Workspai avoid false loops: for example, a missing test script repair can depend on
+the project dependency baseline step, so Studio can run or ask for approval in the same order Doctor
+would use.
+
+Workspai should use this contract to offer two clear actions for a blocked card:
+
+1. Run the exact diagnostic or remediation command when the safest path is command execution.
+2. Apply the approved file edit when Doctor exposes a typed, project-scoped operation.
+
+After either path, Studio should run the step `verifyCommand` when present, then refresh the card
+with `refreshCommands` before claiming the issue is resolved.
+
+In `enterprise-strict`, guarded and invasive fixes are exposed as `review-required` even when they
+are executable. That keeps Studio honest: it can preview and propose the change, but the operator
+must approve before Doctor mutates project files or runs a dependency command.
+
+The Doctor test suite includes a multi-stack remediation canary matrix for Node/Next.js,
+Python/Poetry, Go, Rust, PHP/Composer, Ruby/Bundler, and .NET. The canary validates both
+`doctor project --plan --json` and workspace-level dashboard aggregation so new runtime support
+cannot silently regress the Studio handoff contract.
+
+Repair-capable probes include a `repairCapability` object in JSON/evidence output. This is the
+contract IDEs and Workspai use to distinguish an explanatory warning from an approved repair path:
+
+```json
+{
+  "id": "frontend-script-test",
+  "status": "warn",
+  "repairCapability": {
+    "issueId": "frontend-script-test",
+    "fixKind": "package-json-script",
+    "canAutoFix": true,
+    "canEditFiles": true,
+    "requiresApproval": true,
+    "files": ["package.json"],
+    "operation": {
+      "type": "package-json-script",
+      "path": "package.json",
+      "scriptName": "test",
+      "scriptValue": "npm run lint"
+    },
+    "verifyCommand": "npx rapidkit doctor project --json"
+  }
+}
+```
+
+For example, a frontend project with `lint` or `build` but no `test` script can receive a guarded
+`package.json` repair. `doctor workspace --fix --json` applies the package script update through
+Doctor's structured executor instead of falling back to an opaque shell command. Structured
+operations include file create/append/copy, package script creation, JSON pointer edits, env key
+additions, and Makefile target additions.
+
+File hygiene repairs use the same contract. A Dockerfile without `.dockerignore` can produce a
+safe `file-create` operation, and a `.gitignore` missing env-file rules can produce a safe
+`file-append` operation. Workspai can render those operations as reviewable file edits before the
+operator approves the fix.
+
+Local environment seeding is also typed. When `.env.example` exists and `.env` is missing, Doctor
+emits a safe `file-copy` operation instead of an opaque shell copy command. The target is never
+overwritten.
+
+For Node projects without a security audit script, Doctor can emit a guarded
+`package-json-script` operation for `scripts.audit="npm audit --audit-level=moderate"`, giving CI,
+Studio, and humans the same deterministic security check.
+
+For projects with dependency manifests but no deterministic baseline, Doctor emits guarded
+`dependency-sync` repairs when the runtime has a safe native command:
+
+- Node: `npm install`, `pnpm install`, `yarn install`, or `bun install`
+- Go: `go mod tidy`
+- Rust: `cargo fetch`
+- PHP: `composer install`
+- Ruby: `bundle install`
+- .NET: `dotnet restore`
+- Python: `poetry lock` or `uv lock` when the project metadata identifies the tool
+
+When the runtime does not expose a safe deterministic repair path, Doctor keeps the issue as
+review-required guidance instead of guessing.
+
+Doctor can also create **runtime command contracts** for missing test, quality, and security
+surfaces. For Node, safe contracts are written as `package.json` scripts when a deterministic
+fallback exists. For backend runtimes such as Go, Python, Rust, PHP, Ruby, .NET, and Java, Doctor
+uses guarded `Makefile` target repairs (`test`, `quality`, `security`) so Studio can preview and
+apply the file edit without executing an unprovisioned toolchain immediately.
+
+## Enterprise Surface Probes
+
+Doctor also emits language-agnostic product-readiness probes for every detected project. These
+probes do not replace runtime-specific checks; they add a common enterprise baseline that Workspai,
+CI, and agents can reason about consistently across frontend and backend stacks:
+
+| Surface     | Probe examples                                                                     |
+| ----------- | ---------------------------------------------------------------------------------- |
+| Dependency  | Runtime manifest plus deterministic lock/baseline (`package-lock`, `go.sum`, etc.) |
+| Environment | `.env.example`, config schema, or environment documentation                        |
+| Container   | Dockerfile / compose presence and `.dockerignore` hygiene                          |
+| Deployment  | Kubernetes/Helm/Kustomize surface plus readiness probes and resource controls      |
+| Security    | Vulnerability evidence, `.gitignore` hygiene, audit-script guidance                |
+| Tests       | Runtime/framework test scripts, configs, directories, or test files                |
+| Formatting  | Node formatter command surface for CI parity                                       |
+
+These probes are intentionally evidence-first. Missing optional surfaces are surfaced as warnings
+or manual repair capabilities, while deterministic repairs are promoted into `--fix` only when the
+change is safe enough for Doctor to apply with approval and post-fix verification.
+
+Runtime-native probes add a second layer on top of the generic surface checks:
+
+| Runtime family | Native signals sampled by Doctor                                      |
+| -------------- | --------------------------------------------------------------------- |
+| Node/Bun/Deno  | test runners, ESLint/Prettier/Biome markers, audit script/tooling     |
+| Python         | pytest/tox/nox, Ruff/Black/Mypy, pip-audit/Safety/Bandit markers      |
+| Go             | `*_test.go`, golangci-lint/Makefile quality, govulncheck/gosec hints  |
+| Java           | Maven/Gradle tests, Checkstyle/Spotless/PMD, OWASP dependency checks  |
+| .NET           | test projects, `.editorconfig`, NuGet audit and vulnerable checks     |
+| Rust           | test/Cargo markers, rustfmt/clippy, cargo-audit hints                 |
+| PHP/Ruby/etc.  | PHPUnit/Pint/PHPStan, RSpec/RuboCop/Bundler-audit and ecosystem hints |
 
 ## CI Example
 
@@ -108,10 +311,10 @@ jobs:
 
 ## Exit Codes
 
-| Code | Meaning |
-| --- | --- |
-| `0` | checks passed or warnings only |
-| `1` | blocking issues found |
+| Code | Meaning                        |
+| ---- | ------------------------------ |
+| `0`  | checks passed or warnings only |
+| `1`  | blocking issues found          |
 
 ## Enterprise Probe Extensions
 
@@ -221,14 +424,15 @@ These fields are designed for release gates and extension timeline cards that mu
 ## Workspace fix behavior
 
 - Reuses cached project scans when valid; refreshes `.rapidkit/reports/doctor-last-run.json`.
-- `--fix` runs interactive remediation; `--plan` prints plan only; `--apply` applies non-interactively.
+- `--fix` runs interactive remediation; `--plan` prints remediation plan only; `--apply` applies non-interactively.
 - `--plan` cannot be combined with `--fix` or `--apply`.
+- JSON fix/apply output includes the same `doctor-remediation-plan-v2` contract used by Studio.
 - Advisory warnings do not automatically become shell fix commands.
 - Go `go mod tidy` fixes are skipped when the Go toolchain is unavailable.
 
 ## Workspace JSON fields (AI/automation)
 
-`npx rapidkit doctor workspace --json` includes per-project metadata: `framework`, `frameworkKey`, `importStack`, `runtimeFamily`, `projectKind`, `supportTier`, `frameworkConfidence`.
+`npx rapidkit doctor workspace --json` includes per-project metadata: `framework`, `frameworkKey`, `importStack`, `runtimeFamily`, `projectKind`, `supportTier`, `frameworkConfidence`, `probes`, and `repairCapabilities`.
 
 ## Project scope behavior
 
@@ -239,13 +443,13 @@ These fields are designed for release gates and extension timeline cards that mu
 
 ## Project JSON fields (AI/automation)
 
-`npx rapidkit doctor project --json` includes `scope`, `contract`, `project`, `summary.scopeProvenance`, `driftDelta`, and `scoreBreakdown`.
+`npx rapidkit doctor project --json` includes `scope`, `contract`, `project`, `summary.scopeProvenance`, `driftDelta`, and `scoreBreakdown`. The `project` payload includes probe-level `repairCapability` entries and a flattened `repairCapabilities` list when deterministic repairs are available.
 
 ## Evidence schema compatibility
 
 - Workspace evidence: `doctor-workspace-evidence-v1`
 - Project evidence: `doctor-project-evidence-v1`
-- Workspace scan cache: `doctor-workspace-cache-v1`
+- Workspace scan cache: `doctor-workspace-cache-v2`
 
 Legacy evidence without `schemaVersion` is still accepted. Unknown versions are treated as invalid evidence. `readiness` and `workspace share` share the same validation path.
 

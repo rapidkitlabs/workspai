@@ -16,6 +16,7 @@ export type DoctorAppliedFix = {
 
 export type DoctorFixExecutionResult = {
   schemaVersion: typeof DOCTOR_FIX_RESULT_SCHEMA_VERSION;
+  generatedAt: string;
   appliedFixes: DoctorAppliedFix[];
   remainingBlockers: string[];
   verifyRecommended: string;
@@ -28,6 +29,7 @@ export function buildDoctorFixExecutionResult(input: {
 }): DoctorFixExecutionResult {
   return {
     schemaVersion: DOCTOR_FIX_RESULT_SCHEMA_VERSION,
+    generatedAt: new Date().toISOString(),
     appliedFixes: input.appliedFixes,
     remainingBlockers: input.remainingBlockers,
     verifyRecommended: input.verifyRecommended ?? DOCTOR_FIX_VERIFY_RECOMMENDED,
@@ -41,6 +43,7 @@ export function isDoctorFixExecutionResult(value: unknown): value is DoctorFixEx
   const record = value as Record<string, unknown>;
   return (
     record.schemaVersion === DOCTOR_FIX_RESULT_SCHEMA_VERSION &&
+    typeof record.generatedAt === 'string' &&
     Array.isArray(record.appliedFixes) &&
     Array.isArray(record.remainingBlockers) &&
     typeof record.verifyRecommended === 'string'

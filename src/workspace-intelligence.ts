@@ -235,6 +235,23 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(stableSort(value));
 }
 
+function normalizeModelFactsForHash(model: WorkspaceModel): unknown[] | undefined {
+  return model.facts?.map((fact) => ({
+    ...fact,
+    freshness: {
+      schemaVersion: fact.freshness.schemaVersion,
+      kind: fact.freshness.kind,
+      category: fact.freshness.category,
+      ttlSeconds: fact.freshness.ttlSeconds,
+      verifyBeforeUse: fact.freshness.verifyBeforeUse,
+      sourceArtifact: fact.freshness.sourceArtifact,
+      sourcePath: fact.freshness.sourcePath,
+      inputsHash: fact.freshness.inputsHash,
+      reason: fact.freshness.reason,
+    },
+  }));
+}
+
 function hashModel(model: WorkspaceModel): string {
   // `runId` is a write-time log-correlation field that may be present on a loaded
   // baseline model; strip it (like generatedAt) so the hash stays deterministic.
@@ -248,6 +265,17 @@ function hashModel(model: WorkspaceModel): string {
     // write-time `generatedAt`; normalize it like the model's so the structural graph
     // content participates in the hash but the timestamp never causes false drift.
     graph: model.graph ? { ...model.graph, generatedAt: '<ignored>' } : undefined,
+    facts: normalizeModelFactsForHash(model),
+    factFreshness: model.factFreshness
+      ? {
+          schemaVersion: model.factFreshness.schemaVersion,
+          totalFacts: model.factFreshness.totalFacts,
+          liveFacts: model.factFreshness.liveFacts,
+          verifyBeforeUseFacts: model.factFreshness.verifyBeforeUseFacts,
+          byKind: model.factFreshness.byKind,
+          byCategory: model.factFreshness.byCategory,
+        }
+      : undefined,
     validation: model.validation
       ? {
           ...model.validation,

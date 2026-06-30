@@ -171,7 +171,7 @@ export async function runPipeline(options: PipelineOptions = {}): Promise<Pipeli
           ? 'doctor workspace passed'
           : doctorStatus === 'warn'
             ? 'doctor workspace reported warnings'
-            : 'doctor workspace reported errors',
+            : 'doctor workspace did not pass',
       exitCode: doctorExit,
       evidencePath: doctorEvidence,
     });

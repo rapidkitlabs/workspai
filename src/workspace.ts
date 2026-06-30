@@ -1276,13 +1276,32 @@ function renderTemplate(content: string, context: Record<string, string>): strin
 /**
  * List all registered workspaces from shared registry
  */
-export async function listWorkspaces(): Promise<void> {
+export async function listWorkspaces(options: { json?: boolean } = {}): Promise<void> {
   // Use same logic as registerWorkspace for consistency
   const registryDir = getWorkspaceRegistryDirectory();
 
   const registryFile = path.join(registryDir, 'workspaces.json');
 
   if (!(await fs.stat(registryFile).catch(() => null))) {
+    if (options.json) {
+      console.log(
+        JSON.stringify(
+          {
+            schemaVersion: 'rapidkit-workspace-list-v1',
+            registryPath: registryFile,
+            workspaces: [],
+            summary: {
+              total: 0,
+              missing: 0,
+              registryExists: false,
+            },
+          },
+          null,
+          2
+        )
+      );
+      return;
+    }
     console.log(chalk.yellow('\n⚠️  No workspaces registered yet.\n'));
     console.log(chalk.gray('Create a workspace with: npx rapidkit <workspace-name>\n'));
     return;
@@ -1296,6 +1315,30 @@ export async function listWorkspaces(): Promise<void> {
       typeof parsed !== 'object' ||
       !Array.isArray((parsed as WorkspaceRegistry).workspaces)
     ) {
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              schemaVersion: 'rapidkit-workspace-list-v1',
+              registryPath: registryFile,
+              workspaces: [],
+              summary: {
+                total: 0,
+                missing: 0,
+                registryExists: true,
+                registryValid: false,
+              },
+              error: {
+                code: 'workspace.registry.invalid',
+                message: 'Workspace registry is invalid.',
+              },
+            },
+            null,
+            2
+          )
+        );
+        return;
+      }
       console.log(chalk.yellow('\n⚠️  Workspace registry is invalid; resetting to empty state.\n'));
       await fs.writeFile(registryFile, JSON.stringify({ workspaces: [] }, null, 2));
       return;
@@ -1317,11 +1360,32 @@ export async function listWorkspaces(): Promise<void> {
 
     const inputShape = JSON.stringify(parsed);
     const outputShape = JSON.stringify(registry);
-    if (inputShape !== outputShape) {
+    if (!options.json && inputShape !== outputShape) {
       await fs.writeFile(registryFile, JSON.stringify(registry, null, 2));
     }
 
     if (!registry.workspaces || registry.workspaces.length === 0) {
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              schemaVersion: 'rapidkit-workspace-list-v1',
+              registryPath: registryFile,
+              workspaces: [],
+              summary: {
+                total: 0,
+                missing: missingCount,
+                registryExists: true,
+                registryValid: true,
+                cleanupApplied: false,
+              },
+            },
+            null,
+            2
+          )
+        );
+        return;
+      }
       console.log(chalk.yellow('\n⚠️  No workspaces registered yet.\n'));
       if (missingCount > 0) {
         console.log(
@@ -1330,6 +1394,28 @@ export async function listWorkspaces(): Promise<void> {
           )
         );
       }
+      return;
+    }
+
+    if (options.json) {
+      console.log(
+        JSON.stringify(
+          {
+            schemaVersion: 'rapidkit-workspace-list-v1',
+            registryPath: registryFile,
+            workspaces: registry.workspaces,
+            summary: {
+              total: registry.workspaces.length,
+              missing: missingCount,
+              registryExists: true,
+              registryValid: true,
+              cleanupApplied: false,
+            },
+          },
+          null,
+          2
+        )
+      );
       return;
     }
 
@@ -1353,6 +1439,30 @@ export async function listWorkspaces(): Promise<void> {
 
     console.log(chalk.gray(`Total: ${registry.workspaces.length} workspace(s)\n`));
   } catch (error) {
+    if (options.json) {
+      console.log(
+        JSON.stringify(
+          {
+            schemaVersion: 'rapidkit-workspace-list-v1',
+            registryPath: registryFile,
+            workspaces: [],
+            summary: {
+              total: 0,
+              missing: 0,
+              registryExists: true,
+              registryValid: false,
+            },
+            error: {
+              code: 'workspace.registry.read_failed',
+              message: (error as Error).message,
+            },
+          },
+          null,
+          2
+        )
+      );
+      return;
+    }
     console.error(chalk.red('\n❌ Failed to read workspace registry'));
     console.error(chalk.gray(String(error)));
   }

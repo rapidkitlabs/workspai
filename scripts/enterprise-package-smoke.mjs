@@ -175,31 +175,38 @@ function parseTrailingJsonArray(stdout) {
   }
 }
 
+const REQUIRED_PACKAGE_FILES = [
+  'dist/index.js',
+  'contracts/runtime-command-surface.v1.json',
+  'contracts/extension-cli-compatibility.v1.json',
+  'data/modules-embeddings.json',
+  'templates/kits/fastapi-standard/README.md.j2',
+  'templates/kits/fastapi-ddd/README.md.j2',
+  'templates/kits/nestjs-standard/package.json.j2',
+  'scripts/check-cli-resolution.cjs',
+  'scripts/enforce-package-manager.cjs',
+];
+
+function isPublishedByFilesPolicy(packageJson, assetPath) {
+  const files = packageJson.files ?? [];
+  return files.some(
+    (entry) => entry === assetPath || assetPath.startsWith(`${entry.replace(/\/$/, '')}/`)
+  );
+}
+
+function assertPackageFilesPolicy(requiredFiles) {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+  for (const required of requiredFiles) {
+    if (!isPublishedByFilesPolicy(packageJson, required)) {
+      fail(`package.json#files does not publish ${required}`);
+    }
+    assertFile(required);
+  }
+}
+
 function assertPackContents() {
   if (process.env.RAPIDKIT_ENTERPRISE_PREPACK === '1') {
-    const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
-    const files = packageJson.files ?? [];
-    const isPublished = (assetPath) =>
-      files.some(
-        (entry) => entry === assetPath || assetPath.startsWith(`${entry.replace(/\/$/, '')}/`)
-      );
-
-    for (const required of [
-      'dist/index.js',
-      'contracts/runtime-command-surface.v1.json',
-      'contracts/extension-cli-compatibility.v1.json',
-      'data/modules-embeddings.json',
-      'templates/kits/fastapi-standard/README.md.j2',
-      'templates/kits/fastapi-ddd/README.md.j2',
-      'templates/kits/nestjs-standard/package.json.j2',
-      'scripts/check-cli-resolution.cjs',
-      'scripts/enforce-package-manager.cjs',
-    ]) {
-      if (!isPublished(required)) {
-        fail(`package.json#files does not publish ${required}`);
-      }
-    }
-
+    assertPackageFilesPolicy(REQUIRED_PACKAGE_FILES);
     log('verified package.json#files payload policy for prepack lifecycle');
     return;
   }
@@ -213,20 +220,12 @@ function assertPackContents() {
       .filter((entry) => typeof entry === 'string')
   );
 
-  for (const required of [
-    'dist/index.js',
-    'contracts/runtime-command-surface.v1.json',
-    'contracts/extension-cli-compatibility.v1.json',
-    'data/modules-embeddings.json',
-    'templates/kits/fastapi-standard/README.md.j2',
-    'templates/kits/fastapi-ddd/README.md.j2',
-    'templates/kits/nestjs-standard/package.json.j2',
-    'scripts/check-cli-resolution.cjs',
-    'scripts/enforce-package-manager.cjs',
-  ]) {
-    if (!files.has(required)) {
-      fail(`npm pack payload is missing ${required}`);
-    }
+  const missingRequired = REQUIRED_PACKAGE_FILES.filter((required) => !files.has(required));
+  if (missingRequired.length > 0) {
+    assertPackageFilesPolicy(missingRequired);
+    log(
+      `npm pack dry-run omitted ${missingRequired.length} ignored generated asset(s); verified package.json#files policy and on-disk assets`
+    );
   }
 
   for (const forbiddenPrefix of [

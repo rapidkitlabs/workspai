@@ -112,5 +112,16 @@ describe('doctor-frontend-signals', () => {
     );
     expect(probes.find((probe) => probe.id === 'frontend-script-dev')?.status).toBe('pass');
     expect(probes.find((probe) => probe.id === 'frontend-source-tree')?.status).toBe('pass');
+    const testProbe = probes.find((probe) => probe.id === 'frontend-script-test');
+    expect(testProbe?.status).toBe('warn');
+    expect(testProbe?.repairCapability).toMatchObject({
+      issueId: 'frontend-script-test',
+      fixKind: 'package-json-script',
+      status: 'available',
+      canAutoFix: true,
+      canEditFiles: true,
+      requiresApproval: true,
+    });
+    expect(testProbe?.repairCapability?.command).toContain('npm pkg set');
   });
 });

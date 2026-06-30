@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeDoctorGateExitCode } from '../doctor.js';
+import { computeDoctorGateExitCode, resolveDoctorPolicyProfile } from '../doctor.js';
 
 describe('computeDoctorGateExitCode', () => {
   it('returns 0 when strict/ci are disabled', () => {
@@ -20,5 +20,25 @@ describe('computeDoctorGateExitCode', () => {
 
   it('returns 1 on errors under ci mode before warning exit code', () => {
     expect(computeDoctorGateExitCode({ errors: 2, warnings: 3 }, { ci: true })).toBe(1);
+  });
+
+  it('maps explicit doctor policy profiles to release-grade gate behavior', () => {
+    expect(computeDoctorGateExitCode({ errors: 0, warnings: 1 }, { profile: 'local' })).toBe(0);
+    expect(computeDoctorGateExitCode({ errors: 0, warnings: 1 }, { profile: 'ci' })).toBe(2);
+    expect(computeDoctorGateExitCode({ errors: 0, warnings: 1 }, { profile: 'release' })).toBe(1);
+    expect(
+      computeDoctorGateExitCode({ errors: 0, warnings: 1 }, { profile: 'enterprise-strict' })
+    ).toBe(1);
+  });
+
+  it('exposes policy profile metadata for evidence consumers', () => {
+    expect(resolveDoctorPolicyProfile({ profile: 'enterprise-strict' })).toMatchObject({
+      name: 'enterprise-strict',
+      exitOnWarnings: true,
+      advisoryWarningsBlockRelease: true,
+      warningExitCode: 1,
+    });
+    expect(resolveDoctorPolicyProfile({ strict: true }).name).toBe('release');
+    expect(resolveDoctorPolicyProfile({ ci: true }).name).toBe('ci');
   });
 });

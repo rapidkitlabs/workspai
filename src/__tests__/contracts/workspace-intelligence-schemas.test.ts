@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { WORKSPACE_DEPENDENCY_GRAPH_SCHEMA_VERSION } from '../../contracts/workspace-dependency-graph-contract.js';
 import { AGENT_ACTION_OUTCOME_SCHEMA_VERSION } from '../../contracts/agent-action-outcome-contract.js';
+import { FACT_FRESHNESS_SCHEMA_VERSION } from '../../contracts/fact-freshness-contract.js';
 import { WORKSPACE_EXPLAIN_SCHEMA_VERSION } from '../../contracts/workspace-explain-contract.js';
 import { WORKSPACE_OPERATIONAL_SKILL_SCHEMA_VERSION } from '../../contracts/workspace-operational-skill-contract.js';
 import { WORKSPACE_SKILLS_INDEX_SCHEMA_VERSION } from '../../contracts/workspace-skills-index-contract.js';
@@ -40,6 +41,10 @@ const WORKSPACE_INTELLIGENCE_CONTRACTS = [
   {
     fileName: 'workspace-context.v1.json',
     schemaVersion: WORKSPACE_CONTEXT_SCHEMA_VERSION,
+  },
+  {
+    fileName: 'fact-freshness.v1.json',
+    schemaVersion: FACT_FRESHNESS_SCHEMA_VERSION,
   },
   {
     fileName: 'workspace-verify.v1.json',

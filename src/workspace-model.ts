@@ -38,6 +38,12 @@ import { readRapidkitProjectJson } from './utils/runtime-detection.js';
 import { getRuntimeSupport } from './utils/support-matrix.js';
 import { discoverWorkspaceProjects } from './utils/workspace-discovery.js';
 import { readWorkspaceMarker } from './workspace-marker.js';
+import {
+  buildWorkspaceFact,
+  summarizeFactFreshness,
+  type FactFreshnessSummary,
+  type WorkspaceFact,
+} from './contracts/fact-freshness-contract.js';
 
 export const WORKSPACE_MODEL_SCHEMA_VERSION = 'workspace-model.v1';
 export const WORKSPACE_MODEL_REPORT_PATH = '.rapidkit/reports/workspace-model.json';
@@ -151,6 +157,8 @@ export type WorkspaceModel = {
     firstClassProjects: number;
     observedProjects: number;
   };
+  facts?: WorkspaceFact[];
+  factFreshness?: FactFreshnessSummary;
   validation?: WorkspaceModelValidationResult;
 };
 
@@ -441,6 +449,16 @@ async function projectEvidenceRefs(
         );
   return {
     doctor: legacyProjectDoctor,
+    remediationPlan: await evidenceRef(
+      workspacePath,
+      `${projectReportPrefix}/doctor-remediation-plan-last-run.json`,
+      includeEvidence
+    ),
+    fixResult: await evidenceRef(
+      workspacePath,
+      `${projectReportPrefix}/doctor-fix-result-last-run.json`,
+      includeEvidence
+    ),
     analyze: await evidenceRef(
       workspacePath,
       `${projectReportPrefix}/analyze-last-run.json`,
@@ -777,6 +795,267 @@ export function validateWorkspaceModelStrict(
   return validateWorkspaceModel(model);
 }
 
+function modelFactSourcePath(pathParts: string[]): string {
+  return pathParts.join('.');
+}
+
+export function buildWorkspaceModelFacts(model: WorkspaceModel, now: Date): WorkspaceFact[] {
+  const sourceArtifact = WORKSPACE_MODEL_REPORT_PATH;
+  const generatedAt = model.generatedAt;
+  const facts: WorkspaceFact[] = [
+    buildWorkspaceFact({
+      id: 'workspace.name',
+      label: 'Workspace name',
+      scope: 'workspace',
+      value: model.workspace.name,
+      freshness: {
+        kind: 'durable',
+        category: 'structure',
+        generatedAt,
+        now,
+        sourceArtifact,
+        sourcePath: modelFactSourcePath(['workspace', 'name']),
+        reason: 'Workspace identity is structural metadata and changes through workspace setup.',
+      },
+    }),
+    buildWorkspaceFact({
+      id: 'workspace.type',
+      label: 'Workspace type',
+      scope: 'workspace',
+      value: model.identity.workspaceType,
+      freshness: {
+        kind: 'derived',
+        category: 'structure',
+        generatedAt,
+        now,
+        sourceArtifact,
+        sourcePath: modelFactSourcePath(['identity', 'workspaceType']),
+        reason: 'Workspace type is derived from the current project inventory.',
+      },
+    }),
+    buildWorkspaceFact({
+      id: 'workspace.projectCount',
+      label: 'Project count',
+      scope: 'workspace',
+      value: model.summary.projectCount,
+      freshness: {
+        kind: 'derived',
+        category: 'structure',
+        generatedAt,
+        now,
+        sourceArtifact,
+        sourcePath: modelFactSourcePath(['summary', 'projectCount']),
+        reason:
+          'Project count is derived from workspace discovery and should be refreshed after structural changes.',
+      },
+    }),
+    buildWorkspaceFact({
+      id: 'workspace.runtimeFamilies',
+      label: 'Runtime families',
+      scope: 'workspace',
+      value: model.identity.runtimeFamilies,
+      freshness: {
+        kind: 'derived',
+        category: 'structure',
+        generatedAt,
+        now,
+        sourceArtifact,
+        sourcePath: modelFactSourcePath(['identity', 'runtimeFamilies']),
+        reason: 'Runtime coverage is inferred from project surfaces.',
+      },
+    }),
+    buildWorkspaceFact({
+      id: 'workspace.policyMode',
+      label: 'Workspace policy mode',
+      scope: 'policy',
+      value: model.policies.mode,
+      freshness: {
+        kind: 'durable',
+        category: 'structure',
+        generatedAt,
+        now,
+        sourceArtifact,
+        sourcePath: modelFactSourcePath(['policies', 'mode']),
+        reason: 'Policy mode is configuration, not runtime state.',
+      },
+    }),
+    buildWorkspaceFact({
+      id: 'workspace.contract.exists',
+      label: 'Workspace contract presence',
+      scope: 'contract',
+      value: model.contracts.exists,
+      freshness: {
+        kind: 'derived',
+        category: 'structure',
+        generatedAt,
+        now,
+        sourceArtifact,
+        sourcePath: modelFactSourcePath(['contracts', 'exists']),
+        reason:
+          'Contract presence is derived from workspace files and should be refreshed before release gating.',
+      },
+    }),
+  ];
+
+  if (model.graph) {
+    facts.push(
+      buildWorkspaceFact({
+        id: 'graph.edgeCount',
+        label: 'Dependency graph edge count',
+        scope: 'graph',
+        value: model.graph.stats.edgeCount,
+        freshness: {
+          kind: 'derived',
+          category: 'structure',
+          generatedAt: model.graph.generatedAt ?? generatedAt,
+          now,
+          sourceArtifact,
+          sourcePath: modelFactSourcePath(['graph', 'stats', 'edgeCount']),
+          reason: 'Graph topology is derived from manifests, imports, and workspace contracts.',
+        },
+      }),
+      buildWorkspaceFact({
+        id: 'graph.evidenceCoverageRatio',
+        label: 'Dependency graph evidence coverage',
+        scope: 'graph',
+        value: model.graph.stats.evidenceCoverageRatio,
+        freshness: {
+          kind: 'derived',
+          category: 'structure',
+          generatedAt: model.graph.generatedAt ?? generatedAt,
+          now,
+          sourceArtifact,
+          sourcePath: modelFactSourcePath(['graph', 'stats', 'evidenceCoverageRatio']),
+          reason:
+            'Graph evidence coverage changes when dependency evidence or contract edges change.',
+        },
+      })
+    );
+  }
+
+  for (const [index, project] of model.projects.entries()) {
+    const projectSource = `projects[${index}]`;
+    const projectFreshness = {
+      kind: 'derived' as const,
+      category: 'structure' as const,
+      generatedAt,
+      now,
+      sourceArtifact,
+      reason:
+        'Project facts are derived from workspace discovery, project metadata, and framework probes.',
+    };
+    facts.push(
+      buildWorkspaceFact({
+        id: `project.${project.name}.kind`,
+        label: `${project.name} kind`,
+        scope: 'project',
+        project: project.name,
+        value: project.kind,
+        freshness: {
+          ...projectFreshness,
+          sourcePath: modelFactSourcePath([projectSource, 'kind']),
+        },
+      }),
+      buildWorkspaceFact({
+        id: `project.${project.name}.runtime`,
+        label: `${project.name} runtime`,
+        scope: 'project',
+        project: project.name,
+        value: project.runtime,
+        freshness: {
+          ...projectFreshness,
+          sourcePath: modelFactSourcePath([projectSource, 'runtime']),
+        },
+      }),
+      buildWorkspaceFact({
+        id: `project.${project.name}.framework`,
+        label: `${project.name} framework`,
+        scope: 'project',
+        project: project.name,
+        value: project.frameworkDisplayName,
+        freshness: {
+          ...projectFreshness,
+          sourcePath: modelFactSourcePath([projectSource, 'frameworkDisplayName']),
+        },
+      }),
+      buildWorkspaceFact({
+        id: `project.${project.name}.supportTier`,
+        label: `${project.name} support tier`,
+        scope: 'project',
+        project: project.name,
+        value: project.supportTier,
+        freshness: {
+          ...projectFreshness,
+          sourcePath: modelFactSourcePath([projectSource, 'supportTier']),
+        },
+      }),
+      buildWorkspaceFact({
+        id: `project.${project.name}.safeFleetStages`,
+        label: `${project.name} safe fleet stages`,
+        scope: 'command',
+        project: project.name,
+        value: project.commands.fleetStages,
+        freshness: {
+          ...projectFreshness,
+          sourcePath: modelFactSourcePath([projectSource, 'commands', 'fleetStages']),
+          reason: 'Safe command availability is derived from package and project command surfaces.',
+        },
+      })
+    );
+
+    for (const [key, ref] of Object.entries(project.evidence)) {
+      facts.push(
+        buildWorkspaceFact({
+          id: `project.${project.name}.evidence.${key}`,
+          label: `${project.name} ${key} evidence`,
+          scope: 'evidence',
+          project: project.name,
+          value: ref
+            ? { path: ref.path, exists: ref.exists, status: ref.status ?? null }
+            : { exists: false },
+          freshness: {
+            kind: ref?.exists ? 'evidence-backed' : 'verify-before-use',
+            category: 'verification',
+            generatedAt: ref?.generatedAt ?? generatedAt,
+            now,
+            sourceArtifact: ref?.path ?? sourceArtifact,
+            sourcePath: modelFactSourcePath([projectSource, 'evidence', key]),
+            verifyBeforeUse: true,
+            reason: ref?.exists
+              ? 'Evidence reports can expire or become stale after source changes.'
+              : 'Missing evidence must be generated before this fact is used for verification.',
+          },
+        })
+      );
+    }
+  }
+
+  for (const [key, ref] of Object.entries(model.evidence)) {
+    facts.push(
+      buildWorkspaceFact({
+        id: `workspace.evidence.${key}`,
+        label: `Workspace ${key} evidence`,
+        scope: 'evidence',
+        value: ref ? { path: ref.path, exists: ref.exists, status: ref.status ?? null } : null,
+        freshness: {
+          kind: ref?.exists ? 'evidence-backed' : 'verify-before-use',
+          category: 'verification',
+          generatedAt: ref?.generatedAt ?? generatedAt,
+          now,
+          sourceArtifact: ref?.path ?? sourceArtifact,
+          sourcePath: modelFactSourcePath(['evidence', key]),
+          verifyBeforeUse: true,
+          reason: ref?.exists
+            ? 'Workspace evidence can expire or become stale after project, dependency, or policy changes.'
+            : 'Missing workspace evidence must be generated before release or repair decisions.',
+        },
+      })
+    );
+  }
+
+  return facts;
+}
+
 export async function buildWorkspaceModel(
   input: BuildWorkspaceModelOptions
 ): Promise<WorkspaceModel> {
@@ -891,6 +1170,21 @@ export async function buildWorkspaceModel(
         '.rapidkit/reports/doctor-last-run.json',
         includeEvidence
       ),
+      projectDoctor: await evidenceRef(
+        workspacePath,
+        '.rapidkit/reports/doctor-project-last-run.json',
+        includeEvidence
+      ),
+      doctorRemediationPlan: await evidenceRef(
+        workspacePath,
+        '.rapidkit/reports/doctor-remediation-plan-last-run.json',
+        includeEvidence
+      ),
+      doctorFixResult: await evidenceRef(
+        workspacePath,
+        '.rapidkit/reports/doctor-fix-result-last-run.json',
+        includeEvidence
+      ),
       analyze: await evidenceRef(
         workspacePath,
         '.rapidkit/reports/analyze-last-run.json',
@@ -924,8 +1218,16 @@ export async function buildWorkspaceModel(
   const modelWithGraph: Omit<WorkspaceModel, 'validation'> = { ...model, graph };
 
   const validation = validateWorkspaceModel(modelWithGraph);
+  const facts = buildWorkspaceModelFacts({ ...modelWithGraph, validation }, now);
+  const factFreshness = summarizeFactFreshness({
+    facts,
+    generatedAt: now.toISOString(),
+    now,
+  });
   return {
     ...modelWithGraph,
+    facts,
+    factFreshness,
     validation,
   };
 }

@@ -19,6 +19,23 @@ const DEFAULT_SKIP_DIRS = new Set([
   '.venv',
 ]);
 
+function shouldSkipDirectory(dirName: string, skipDirs: Set<string>): boolean {
+  if (skipDirs.has(dirName)) {
+    return true;
+  }
+
+  const lowerName = dirName.toLowerCase();
+  if (lowerName === 'dist' || lowerName.startsWith('dist-') || lowerName.startsWith('dist_')) {
+    return true;
+  }
+
+  if (lowerName === 'build' || lowerName.startsWith('build-') || lowerName.startsWith('build_')) {
+    return true;
+  }
+
+  return false;
+}
+
 async function pathExists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath);
@@ -77,7 +94,7 @@ export async function discoverWorkspaceProjects(
       if (!includeHiddenDirs && entry.name.startsWith('.')) {
         continue;
       }
-      if (skipDirs.has(entry.name)) {
+      if (shouldSkipDirectory(entry.name, skipDirs)) {
         continue;
       }
       queue.push(path.join(currentPath, entry.name));

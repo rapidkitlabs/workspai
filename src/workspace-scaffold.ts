@@ -15,6 +15,9 @@ export function isScaffoldBlockerReason(text: string): boolean {
     lower.includes('projects.missing') ||
     lower.includes('not yet run') ||
     lower.includes('doctor-last-run') ||
+    lower.includes('doctor-project-last-run') ||
+    lower.includes('doctor-remediation-plan-last-run') ||
+    lower.includes('doctor-fix-result-last-run') ||
     lower.includes('pipeline-last-run') ||
     lower.includes('release-readiness') ||
     lower.includes('analyze-last-run') ||

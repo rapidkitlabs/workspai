@@ -1379,8 +1379,16 @@ describe('Runtime Adapters', () => {
       await adapter.runTest('/tmp/node-project');
       await adapter.runStart('/tmp/node-project');
 
-      expect(run).toHaveBeenCalledWith('npm', ['run', 'test'], '/tmp/node-project');
-      expect(run).toHaveBeenCalledWith('npm', ['run', 'start'], '/tmp/node-project');
+      expect(run).toHaveBeenCalledWith(
+        'npm',
+        ['run-script', 'test', '--foreground-scripts'],
+        '/tmp/node-project'
+      );
+      expect(run).toHaveBeenCalledWith(
+        'npm',
+        ['run-script', 'start', '--foreground-scripts'],
+        '/tmp/node-project'
+      );
     });
 
     it('resolves vite preview for start lifecycle command', async () => {
@@ -1395,7 +1403,11 @@ describe('Runtime Adapters', () => {
       const result = await adapter.runStart('/tmp/node-project');
 
       expect(result.exitCode).toBe(0);
-      expect(run).toHaveBeenCalledWith('npm', ['run', 'preview'], '/tmp/node-project');
+      expect(run).toHaveBeenCalledWith(
+        'npm',
+        ['run-script', 'preview', '--foreground-scripts'],
+        '/tmp/node-project'
+      );
     });
   });
 

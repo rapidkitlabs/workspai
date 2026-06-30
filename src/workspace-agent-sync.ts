@@ -123,6 +123,21 @@ export const AGENT_REPORT_CATALOG: AgentReportCatalogEntry[] = [
     required: false,
   },
   {
+    relativePath: '.rapidkit/reports/doctor-project-last-run.json',
+    label: 'Project doctor',
+    required: false,
+  },
+  {
+    relativePath: '.rapidkit/reports/doctor-remediation-plan-last-run.json',
+    label: 'Doctor remediation plan',
+    required: false,
+  },
+  {
+    relativePath: '.rapidkit/reports/doctor-fix-result-last-run.json',
+    label: 'Doctor fix result',
+    required: false,
+  },
+  {
     relativePath: '.rapidkit/reports/analyze-last-run.json',
     label: 'Workspace analyze',
     required: false,
@@ -1121,22 +1136,7 @@ export async function syncWorkspaceAgentGrounding(
     now,
   });
 
-  const missingRequired = index.reports
-    .filter((report) => report.required && !report.exists)
-    .map((r) => r.path);
-  const staleReports = index.reports
-    .filter((report) => report.exists && isStale(report.generatedAt, staleAfterHours, now))
-    .map((report) => report.path);
-
   const strictViolations: string[] = [];
-  if (strict) {
-    if (missingRequired.length > 0) {
-      strictViolations.push(`Missing required reports: ${missingRequired.join(', ')}`);
-    }
-    if (staleReports.length > 0) {
-      strictViolations.push(`Stale reports (>${staleAfterHours}h): ${staleReports.join(', ')}`);
-    }
-  }
 
   const writtenFiles: string[] = [];
   const skippedFiles: string[] = [];
@@ -1527,7 +1527,27 @@ export async function syncWorkspaceAgentGrounding(
     }
   }
 
+  const finalIndex = write
+    ? await buildWorkspaceAgentReportsIndex({
+        workspacePath,
+        staleAfterHours,
+        now,
+      })
+    : index;
+  const missingRequired = finalIndex.reports
+    .filter((report) => report.required && !report.exists)
+    .map((r) => r.path);
+  const staleReports = finalIndex.reports
+    .filter((report) => report.exists && isStale(report.generatedAt, staleAfterHours, now))
+    .map((report) => report.path);
+
   if (strict) {
+    if (missingRequired.length > 0) {
+      strictViolations.push(`Missing required reports: ${missingRequired.join(', ')}`);
+    }
+    if (staleReports.length > 0) {
+      strictViolations.push(`Stale reports (>${staleAfterHours}h): ${staleReports.join(', ')}`);
+    }
     const unsafeOutputs = outputs
       .map((output) => output.path)
       .filter((relativePath) => !isSafeWorkspaceRelativePath(relativePath));
@@ -1541,7 +1561,7 @@ export async function syncWorkspaceAgentGrounding(
     generatedAt: now.toISOString(),
     preset,
     targets: selectedTargetList,
-    index,
+    index: finalIndex,
     outputs: [
       ...outputs,
       {

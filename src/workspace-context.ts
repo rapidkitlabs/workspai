@@ -9,6 +9,13 @@ import {
   type WorkspaceModelProject,
 } from './workspace-model.js';
 import { attachRunCorrelation } from './observability/run-correlation.js';
+import {
+  buildWorkspaceFact,
+  summarizeFactFreshness,
+  type FactFreshnessContract,
+  type FactFreshnessSummary,
+  type WorkspaceFact,
+} from './contracts/fact-freshness-contract.js';
 
 export const WORKSPACE_CONTEXT_SCHEMA_VERSION = 'workspace-context.v1';
 export const WORKSPACE_CONTEXT_AGENT_REPORT_PATH = '.rapidkit/reports/workspace-context-agent.json';
@@ -22,6 +29,7 @@ export type WorkspaceContextSafeCommand = {
   execute: string;
   description: string;
   project?: string;
+  freshness: FactFreshnessContract;
 };
 
 export type WorkspaceContextProjectSummary = {
@@ -35,6 +43,7 @@ export type WorkspaceContextProjectSummary = {
   supportTier: string;
   safeCommands: string[];
   importantFiles: string[];
+  facts: WorkspaceFact[];
 };
 
 export type WorkspaceAgentContext = {
@@ -55,6 +64,8 @@ export type WorkspaceAgentContext = {
   };
   projects: WorkspaceContextProjectSummary[];
   safeCommands: WorkspaceContextSafeCommand[];
+  facts: WorkspaceFact[];
+  factFreshness: FactFreshnessSummary;
   evidence: {
     available: string[];
     missing: string[];
@@ -109,7 +120,11 @@ function displayRapidkitCommand(args: string): string {
 }
 
 function command(
-  input: Omit<WorkspaceContextSafeCommand, 'display' | 'execute'> & { args: string }
+  input: Omit<WorkspaceContextSafeCommand, 'display' | 'execute' | 'freshness'> & {
+    args: string;
+    generatedAt: string;
+    now: Date;
+  }
 ): WorkspaceContextSafeCommand {
   return {
     id: input.id,
@@ -118,6 +133,25 @@ function command(
     execute: pinnedRapidkitCommand(input.args),
     description: input.description,
     ...(input.project ? { project: input.project } : {}),
+    freshness: buildWorkspaceFact({
+      id: `command.${input.id}`,
+      label: `${input.id} command`,
+      scope: 'command',
+      value: {
+        display: displayRapidkitCommand(input.args),
+        execute: pinnedRapidkitCommand(input.args),
+      },
+      ...(input.project ? { project: input.project } : {}),
+      freshness: {
+        kind: 'derived',
+        category: 'structure',
+        generatedAt: input.generatedAt,
+        now: input.now,
+        sourceArtifact: '.rapidkit/reports/workspace-model.json',
+        sourcePath: `safeCommands.${input.id}`,
+        reason: 'Safe command surfaces are derived from workspace model command capabilities.',
+      },
+    }).freshness,
   };
 }
 
@@ -139,38 +173,45 @@ function projectScopeCandidates(project: WorkspaceModelProject): string[] {
 
 function buildSafeCommands(
   model: WorkspaceModel,
-  activeProject?: WorkspaceModelProject
+  activeProject: WorkspaceModelProject | undefined,
+  now: Date
 ): WorkspaceContextSafeCommand[] {
+  const commandContext = { generatedAt: model.generatedAt, now };
   const commands: WorkspaceContextSafeCommand[] = [
     command({
       id: 'workspace.model',
       scope: 'workspace',
       args: 'workspace model --json',
       description: 'Read the canonical workspace intelligence model.',
+      ...commandContext,
     }),
     command({
       id: 'workspace.doctor',
       scope: 'workspace',
       args: 'doctor workspace --json',
       description: 'Check workspace health before claiming verification.',
+      ...commandContext,
     }),
     command({
       id: 'workspace.pipeline',
       scope: 'workspace',
       args: 'pipeline --json',
       description: 'Run the governed sync, doctor, analyze, readiness, and autopilot loop.',
+      ...commandContext,
     }),
     command({
       id: 'workspace.contract.verify',
       scope: 'workspace',
       args: 'workspace contract verify --json',
       description: 'Verify workspace contract and dependency edges.',
+      ...commandContext,
     }),
     command({
       id: 'workspace.verify',
       scope: 'workspace',
       args: 'workspace verify --json',
       description: 'Evaluate evidence freshness and verification gates before release decisions.',
+      ...commandContext,
     }),
   ];
 
@@ -184,6 +225,7 @@ function buildSafeCommands(
           project: project.name,
           args: projectCommandArgs(project, 'test'),
           description: `Run tests for ${project.name} through workspace orchestration.`,
+          ...commandContext,
         })
       );
     }
@@ -195,6 +237,7 @@ function buildSafeCommands(
           project: project.name,
           args: projectCommandArgs(project, 'build'),
           description: `Build ${project.name} through workspace orchestration.`,
+          ...commandContext,
         })
       );
     }
@@ -309,24 +352,68 @@ export async function buildWorkspaceAgentContext(
       .join(', ');
     throw new Error(`Workspace context strict validation failed: ${summary}`);
   }
-  const projects = (activeProject ? [activeProject] : model.projects).map((project) => ({
-    name: project.name,
-    path: project.path,
-    kind: project.kind,
-    runtime: project.runtime,
-    framework: project.frameworkDisplayName,
-    ...(project.generator ? { generator: project.generator } : {}),
-    createCapability: project.createCapability,
-    supportTier: project.supportTier,
-    safeCommands: summarizeProjectSafeCommands(project),
-    importantFiles: project.importantFiles,
-  }));
+  const now = input.now ?? new Date();
+  const baseFacts = model.facts ?? [];
+  const projectSet = new Set(
+    (activeProject ? [activeProject] : model.projects).map((item) => item.name)
+  );
+  const scopedModelFacts = baseFacts.filter((fact) => {
+    if (!fact.project) {
+      return true;
+    }
+    return projectSet.has(fact.project);
+  });
+  const projects = (activeProject ? [activeProject] : model.projects).map((project) => {
+    const projectFacts = scopedModelFacts.filter((fact) => fact.project === project.name);
+    return {
+      name: project.name,
+      path: project.path,
+      kind: project.kind,
+      runtime: project.runtime,
+      framework: project.frameworkDisplayName,
+      ...(project.generator ? { generator: project.generator } : {}),
+      createCapability: project.createCapability,
+      supportTier: project.supportTier,
+      safeCommands: summarizeProjectSafeCommands(project),
+      importantFiles: project.importantFiles,
+      facts: projectFacts,
+    };
+  });
   const evidence = evidenceState(model);
   const workspaceSummary = summarizeWorkspace(model);
+  const safeCommands = buildSafeCommands(model, activeProject, now);
+  const commandFacts = safeCommands.map((safeCommand) =>
+    buildWorkspaceFact({
+      id: `context.command.${safeCommand.id}`,
+      label: `${safeCommand.id} safe command`,
+      scope: 'command',
+      value: {
+        display: safeCommand.display,
+        execute: safeCommand.execute,
+        scope: safeCommand.scope,
+      },
+      ...(safeCommand.project ? { project: safeCommand.project } : {}),
+      freshness: {
+        kind: 'derived',
+        category: 'structure',
+        generatedAt: model.generatedAt,
+        now,
+        sourceArtifact: '.rapidkit/reports/workspace-context-agent.json',
+        sourcePath: `safeCommands.${safeCommand.id}`,
+        reason: 'Context safe commands are derived from workspace model command capabilities.',
+      },
+    })
+  );
+  const facts = [...scopedModelFacts, ...commandFacts];
+  const factFreshness = summarizeFactFreshness({
+    facts,
+    generatedAt: now.toISOString(),
+    now,
+  });
 
   return {
     schemaVersion: WORKSPACE_CONTEXT_SCHEMA_VERSION,
-    generatedAt: (input.now ?? new Date()).toISOString(),
+    generatedAt: now.toISOString(),
     agent,
     workspaceSummary,
     modelRef: '.rapidkit/reports/workspace-model.json',
@@ -341,7 +428,9 @@ export async function buildWorkspaceAgentContext(
       ...(activeProject ? { activeProject: activeProject.name } : {}),
     },
     projects,
-    safeCommands: buildSafeCommands(model, activeProject),
+    safeCommands,
+    facts,
+    factFreshness,
     evidence,
     policies: {
       mode: model.policies.mode,
@@ -358,10 +447,19 @@ export async function buildWorkspaceAgentContext(
       'Prefer workspace-level evidence over generic framework assumptions.',
       'Use `display` commands when explaining steps to a human.',
       'Use `execute` commands when launching commands from automation or tooling.',
+      'Treat `facts[].freshness.verifyBeforeUse` as a hard refresh requirement before using that fact in advice, fixes, or release decisions.',
+      'Do not carry extracted facts beyond their freshness contract; re-read or regenerate evidence when the contract says stale, unknown, live, or verify-before-use.',
       'Keep project-scoped advice tied to the active project scope.',
       'Regenerate stale grounding with `npx rapidkit workspace agent-sync --write --refresh-context`.',
     ],
-    unsafeAssumptions: unsafeAssumptions(model),
+    unsafeAssumptions: [
+      ...unsafeAssumptions(model),
+      ...(factFreshness.verifyBeforeUseFacts > 0
+        ? [
+            `${factFreshness.verifyBeforeUseFacts} fact(s) require verification before use; do not treat them as durable workspace structure.`,
+          ]
+        : []),
+    ],
     humanSummary: [
       workspaceSummary,
       `Evidence available: ${evidence.available.length}. Missing evidence groups: ${evidence.missing.join(', ') || 'none'}.`,

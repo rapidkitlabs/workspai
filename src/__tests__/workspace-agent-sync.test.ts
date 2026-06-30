@@ -81,6 +81,13 @@ describe('workspace agent sync', () => {
 
     expect(index.schemaVersion).toBe('rapidkit-agent-reports-index.v1');
     expect(index.readOrder[0]).toBe(WORKSPACE_CONTEXT_AGENT_REPORT_PATH);
+    expect(index.readOrder).toEqual(
+      expect.arrayContaining([
+        '.rapidkit/reports/doctor-project-last-run.json',
+        '.rapidkit/reports/doctor-remediation-plan-last-run.json',
+        '.rapidkit/reports/doctor-fix-result-last-run.json',
+      ])
+    );
     expect(index.blockers).toContain('pipeline stage failed');
     expect(
       index.reports.find((report) => report.path === WORKSPACE_CONTEXT_AGENT_REPORT_PATH)?.exists

@@ -14,7 +14,7 @@
         "required": ["generatedAt"],
         "properties": {
           "generatedAt": { "type": "string", "format": "date-time" },
-          "kind": { "enum": ["verify", "agent-action"] },
+          "kind": { "enum": ["verify", "agent-action", "doctor-fix"] },
           "verdict": { "enum": ["ready", "needs-attention", "blocked"] },
           "risk": { "type": "string" },
           "affectedProjects": { "type": "integer", "minimum": 0 },
@@ -26,7 +26,11 @@
           "scope": { "type": "string" },
           "summary": { "type": "string" },
           "outcome": { "enum": ["ok", "failed"] },
-          "evidenceSha256": { "type": "string" }
+          "evidenceSha256": { "type": "string" },
+          "applied": { "type": "integer", "minimum": 0 },
+          "failed": { "type": "integer", "minimum": 0 },
+          "skipped": { "type": "integer", "minimum": 0 },
+          "remainingBlockers": { "type": "integer", "minimum": 0 }
         },
         "additionalProperties": true
       }

@@ -123,6 +123,7 @@ In RapidKit, Workspace Intelligence is not a chat feature. It is the determinist
 - **Impact** — what changed and which projects, commands, and release gates are affected
 - **Verify** — which evidence proves the workspace is ready, blocked, or needs attention
 - **Sync** — how developers, CI, Workspai, and AI agents stay grounded in the same truth
+- **Freshness** — which facts are durable, derived, evidence-backed, live, or must be verified before use
 
 ## From Code to Shared Understanding
 
@@ -162,18 +163,18 @@ For the visual experience, install the [Workspai VS Code extension](https://mark
 
 ## Typical workflows
 
-| Question                                      | Command                                        |
-| --------------------------------------------- | ---------------------------------------------- |
-| What projects exist in this workspace?        | `workspace model --json`                       |
-| What context should AI agents receive?        | `workspace context --for-agent --json --write` |
-| What breaks if I change this?                 | `workspace impact --from <snapshot>`           |
-| Why is release blocked?                       | `workspace explain release-blocked --json --write` |
+| Question                                      | Command                                                                                      |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| What projects exist in this workspace?        | `workspace model --json`                                                                     |
+| What context should AI agents receive?        | `workspace context --for-agent --json --write`                                               |
+| What breaks if I change this?                 | `workspace impact --from <snapshot>`                                                         |
+| Why is release blocked?                       | `workspace explain release-blocked --json --write`                                           |
 | Trace a diff through blast radius and gates?  | `workspace trace --from .rapidkit/reports/workspace-model-diff-last-run.json --json --write` |
-| Can I safely release?                         | `pipeline --json --strict`                     |
-| How do I align AI tools and CI?               | `workspace agent-sync --write`                 |
-| Expose workspace evidence to MCP clients?     | `workspace mcp serve`                          |
-| How do I onboard an existing project?         | `adopt`                                        |
-| How do I bring repositories into a workspace? | `import`                                       |
+| Can I safely release?                         | `pipeline --json --strict`                                                                   |
+| How do I align AI tools and CI?               | `workspace agent-sync --write`                                                               |
+| Expose workspace evidence to MCP clients?     | `workspace mcp serve`                                                                        |
+| How do I onboard an existing project?         | `adopt`                                                                                      |
+| How do I bring repositories into a workspace? | `import`                                                                                     |
 
 ### Existing project
 
@@ -307,23 +308,23 @@ assistance, and release decisions backed by evidence instead of guesswork.
 
 Workspace Intelligence provides a shared understanding of projects, dependencies, operational context, and release readiness for developers, CI pipelines, and AI agents.
 
-| Command                                           | Purpose                                                                              |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `workspace model [--cache\|--incremental] --json` | Canonical workspace model (graph-aware, incremental rebuilds)                        |
-| `workspace context --for-agent --json --write`    | Agent-ready context pack + auto agent grounding sync                                 |
-| `workspace agent-sync --write`                    | Agent Customization Pack (AGENTS.md, Copilot, Cursor, Claude, INDEX, skills, agents) |
-| `workspace snapshot --json`                       | Persist model snapshot                                                               |
-| `workspace diff --from <file\|git[:ref]> --json`  | Diff against snapshot or git                                                         |
-| `workspace impact --from <file> --json`           | Graph-aware transitive blast-radius evidence                                         |
-| `workspace verify [--strict] --json`              | Definitive verification gate (subgraph + freshness + policy + fleet evidence)        |
-| `workspace explain <target> [--write] --json`     | Human narrative for release blockers, projects, or trace slices                      |
-| `workspace why <target>`                          | Alias of `workspace explain`                                                         |
-| `workspace trace --from <diff> [--write] --json`  | Diff → impact → gates narrative for agents and IDE handoff                           |
-| `workspace feedback record --json`                | Append structured agent action outcomes to intelligence history                      |
-| `workspace mcp serve`                             | Read-mostly stdio MCP bridge over workspace evidence                                 |
-| `workspace graph <emit\|explain\|dot\|mermaid>`   | Inspect and visualize the dependency graph                                           |
-| `workspace watch [--json] [--once]`               | Daemon mode: keep model + graph in memory, stream change events                      |
-| `workspace run <stage> [--scope project:X] [--reuse-passed]` | Fleet init/test/build/start or custom stages from `.rapidkit/context.json` |
+| Command                                                      | Purpose                                                                              |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `workspace model [--cache\|--incremental] --json`            | Canonical workspace model (graph-aware, incremental rebuilds)                        |
+| `workspace context --for-agent --json --write`               | Agent-ready context pack + auto agent grounding sync                                 |
+| `workspace agent-sync --write`                               | Agent Customization Pack (AGENTS.md, Copilot, Cursor, Claude, INDEX, skills, agents) |
+| `workspace snapshot --json`                                  | Persist model snapshot                                                               |
+| `workspace diff --from <file\|git[:ref]> --json`             | Diff against snapshot or git                                                         |
+| `workspace impact --from <file> --json`                      | Graph-aware transitive blast-radius evidence                                         |
+| `workspace verify [--strict] --json`                         | Definitive verification gate (subgraph + freshness + policy + fleet evidence)        |
+| `workspace explain <target> [--write] --json`                | Human narrative for release blockers, projects, or trace slices                      |
+| `workspace why <target>`                                     | Alias of `workspace explain`                                                         |
+| `workspace trace --from <diff> [--write] --json`             | Diff → impact → gates narrative for agents and IDE handoff                           |
+| `workspace feedback record --json`                           | Append structured agent action outcomes to intelligence history                      |
+| `workspace mcp serve`                                        | Read-mostly stdio MCP bridge over workspace evidence                                 |
+| `workspace graph <emit\|explain\|dot\|mermaid>`              | Inspect and visualize the dependency graph                                           |
+| `workspace watch [--json] [--once]`                          | Daemon mode: keep model + graph in memory, stream change events                      |
+| `workspace run <stage> [--scope project:X] [--reuse-passed]` | Fleet init/test/build/start or custom stages from `.rapidkit/context.json`           |
 
 JSON schemas: `contracts/workspace-intelligence/`. Command coexistence and naming:
 [docs/contracts/NAMING_AND_COEXISTENCE.md](docs/contracts/NAMING_AND_COEXISTENCE.md).
@@ -364,6 +365,9 @@ radius, gating, and visualization:
 - **Transitive freshness** — a deterministic `fresh | stale | unknown` verdict chained
   through the graph: a dependency change makes every dependent stale, not just by
   timestamp.
+- **Fact freshness contracts** — `workspace model` and agent context packs mark each
+  workspace fact as durable, derived, evidence-backed, live, or verify-before-use so
+  agents do not reuse stale state as if it were structure.
 - **Policy violations** — model/contract violations are surfaced as structured
   `policyViolations[]` (not just an exit code) so IDEs and CI can render blockers.
 - **Health history** — every verify run appends to a bounded
@@ -401,31 +405,31 @@ npx rapidkit workspace agent-sync --write --strict --json
 npm run check:agent-customization-drift -- --workspace <workspace-root>
 ```
 
-| Artifact / file                                                         | Purpose                                                  |
-| ----------------------------------------------------------------------- | -------------------------------------------------------- |
-| `.rapidkit/reports/agent-customization-pack.json`                       | Versioned output inventory, target matrix, drift state   |
+| Artifact / file                                                         | Purpose                                                     |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `.rapidkit/reports/agent-customization-pack.json`                       | Versioned output inventory, target matrix, drift state      |
 | `.rapidkit/reports/workspace-explain-last-run.json`                     | Unified explain / trace narrative for blockers and projects |
-| `.rapidkit/reports/workspace-skills-index.json`                        | Index of operational playbooks (`.rapidkit/skills/*.md`)      |
-| `.rapidkit/skills/rapidkit-*.md`                                       | Operational playbooks (generated by agent-sync)               |
-| `.rapidkit/reports/rapidkit-mcp-design.json`                            | Read-mostly MCP-ready tool design manifest               |
-| `.rapidkit/reports/INDEX.json`                                          | Read order, blockers, report timestamps                  |
-| `.rapidkit/reports/workspace-context-agent.json`                        | Canonical agent context pack                             |
-| `.rapidkit/AGENT-GROUNDING.md`                                          | Tool-agnostic grounding doc                              |
-| `AGENTS.md`                                                             | Open standard for all agents (managed RapidKit section)  |
-| `.github/copilot-instructions.md`                                       | GitHub Copilot / VS Code Chat always-on rules            |
-| `.github/instructions/rapidkit-workspace.instructions.md`               | Copilot workspace scope and command discipline           |
-| `.github/instructions/rapidkit-evidence.instructions.md`                | Copilot scoped rules for `.rapidkit/**`                  |
-| `.github/prompts/rapidkit-diagnose.prompt.md`                           | Copilot reusable diagnose prompt                         |
-| `.github/skills/rapidkit-workspace-intelligence/SKILL.md`               | Workspace Intelligence skill workflow                    |
-| `.github/skills/rapidkit-workspace-intelligence/resources/mcp-tools.md` | Future MCP tool design reference                         |
-| `.github/agents/workspai-advisor.agent.md`                              | Read-only workspace advisor agent                        |
-| `.github/agents/workspai-repair.agent.md`                               | Blocker repair agent                                     |
-| `.github/agents/workspai-release.agent.md`                              | Release safety agent                                     |
-| `.github/agents/workspai-project-onboarder.agent.md`                    | Project onboarding agent                                 |
-| `.cursor/rules/rapidkit-grounding.mdc`                                  | Cursor always-on project rule                            |
-| `CLAUDE.md`                                                             | Claude Code entry (`@AGENTS.md` + managed notes)         |
-| `.claude/rules/rapidkit-evidence.md`                                    | Claude Code scoped evidence rules                        |
-| `.vscode/rapidkit-agent-hooks.json`                                     | Optional advisory VS Code hooks (`--experimental-hooks`) |
+| `.rapidkit/reports/workspace-skills-index.json`                         | Index of operational playbooks (`.rapidkit/skills/*.md`)    |
+| `.rapidkit/skills/rapidkit-*.md`                                        | Operational playbooks (generated by agent-sync)             |
+| `.rapidkit/reports/rapidkit-mcp-design.json`                            | Read-mostly MCP-ready tool design manifest                  |
+| `.rapidkit/reports/INDEX.json`                                          | Read order, blockers, report timestamps                     |
+| `.rapidkit/reports/workspace-context-agent.json`                        | Canonical agent context pack                                |
+| `.rapidkit/AGENT-GROUNDING.md`                                          | Tool-agnostic grounding doc                                 |
+| `AGENTS.md`                                                             | Open standard for all agents (managed RapidKit section)     |
+| `.github/copilot-instructions.md`                                       | GitHub Copilot / VS Code Chat always-on rules               |
+| `.github/instructions/rapidkit-workspace.instructions.md`               | Copilot workspace scope and command discipline              |
+| `.github/instructions/rapidkit-evidence.instructions.md`                | Copilot scoped rules for `.rapidkit/**`                     |
+| `.github/prompts/rapidkit-diagnose.prompt.md`                           | Copilot reusable diagnose prompt                            |
+| `.github/skills/rapidkit-workspace-intelligence/SKILL.md`               | Workspace Intelligence skill workflow                       |
+| `.github/skills/rapidkit-workspace-intelligence/resources/mcp-tools.md` | Future MCP tool design reference                            |
+| `.github/agents/workspai-advisor.agent.md`                              | Read-only workspace advisor agent                           |
+| `.github/agents/workspai-repair.agent.md`                               | Blocker repair agent                                        |
+| `.github/agents/workspai-release.agent.md`                              | Release safety agent                                        |
+| `.github/agents/workspai-project-onboarder.agent.md`                    | Project onboarding agent                                    |
+| `.cursor/rules/rapidkit-grounding.mdc`                                  | Cursor always-on project rule                               |
+| `CLAUDE.md`                                                             | Claude Code entry (`@AGENTS.md` + managed notes)            |
+| `.claude/rules/rapidkit-evidence.md`                                    | Claude Code scoped evidence rules                           |
+| `.vscode/rapidkit-agent-hooks.json`                                     | Optional advisory VS Code hooks (`--experimental-hooks`)    |
 
 The pack also publishes a standard answer contract for agent-facing output:
 

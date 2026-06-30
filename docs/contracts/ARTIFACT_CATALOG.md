@@ -21,31 +21,48 @@ Canonical map of **on-disk artifacts** produced by `rapidkit-npm` commands. Dash
 
 ## Governance evidence loop
 
-| Command             | Primary artifact                                    | Schema version                 | JSON Schema                                   |
-| ------------------- | --------------------------------------------------- | ------------------------------ | --------------------------------------------- |
-| `doctor workspace`  | `.rapidkit/reports/doctor-last-run.json`            | `doctor-workspace-evidence-v1` | `contracts/doctor-workspace-evidence.v1.json` |
-| `doctor project`    | `.rapidkit/reports/doctor-project-last-run.json`    | `doctor-project-evidence-v1`   | `contracts/doctor-project-evidence.v1.json`   |
-| `analyze`           | `.rapidkit/reports/analyze-last-run.json`           | `rapidkit-analyze-v1`          | `contracts/analyze-last-run.v1.json`          |
-| `readiness`         | `.rapidkit/reports/release-readiness-last-run.json` | `release-readiness-v1`         | `contracts/release-readiness.v1.json`         |
-| `pipeline`          | `.rapidkit/reports/pipeline-last-run.json`          | `rapidkit-pipeline-v1`         | `contracts/pipeline-last-run.v1.json`         |
-| `autopilot release` | `.rapidkit/reports/autopilot-release-last-run.json` | `autopilot-release-v1`         | —                                             |
-|                     | `.rapidkit/reports/autopilot-release.json`          | (alias, same payload)          | —                                             |
+| Command                  | Primary artifact                                          | Schema version                  | JSON Schema                                                  |
+| ------------------------ | --------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------ |
+| `doctor workspace`       | `.rapidkit/reports/doctor-last-run.json`                  | `doctor-workspace-evidence-v1`  | `contracts/doctor-workspace-evidence.v1.json`                |
+| `doctor project`         | `.rapidkit/reports/doctor-project-last-run.json`          | `doctor-project-evidence-v1`    | `contracts/doctor-project-evidence.v1.json`                  |
+| `doctor * --plan`        | `.rapidkit/reports/doctor-remediation-plan-last-run.json` | `doctor-remediation-plan-v2`    | `contracts/doctor-remediation-plan.v1.json`                  |
+| `doctor * --fix/--apply` | `.rapidkit/reports/doctor-fix-result-last-run.json`       | `rapidkit-doctor-fix-result-v1` | `contracts/workspace-intelligence/doctor-fix-result.v1.json` |
+| `analyze`                | `.rapidkit/reports/analyze-last-run.json`                 | `rapidkit-analyze-v1`           | `contracts/analyze-last-run.v1.json`                         |
+| `readiness`              | `.rapidkit/reports/release-readiness-last-run.json`       | `release-readiness-v1`          | `contracts/release-readiness.v1.json`                        |
+| `pipeline`               | `.rapidkit/reports/pipeline-last-run.json`                | `rapidkit-pipeline-v1`          | `contracts/pipeline-last-run.v1.json`                        |
+| `autopilot release`      | `.rapidkit/reports/autopilot-release-last-run.json`       | `autopilot-release-v1`          | —                                                            |
+|                          | `.rapidkit/reports/autopilot-release.json`                | (alias, same payload)           | —                                                            |
 
 Side/cache (not gates): `.rapidkit/reports/doctor-workspace-cache.json` (`doctor-workspace-cache-v2`).
 
+Doctor Studio handoff:
+`doctor-remediation-plan-v2` (`contracts/doctor-remediation-plan.v1.json`) is emitted in JSON
+responses and persisted to `.rapidkit/reports/doctor-remediation-plan-last-run.json` by
+`doctor workspace|project --plan`, `--fix`, and `--apply` so IDEs can render approved commands,
+typed file edits, diff previews, ordered phases, step dependencies, rollback, and verification
+steps without inferring them. `doctor-fix-result-last-run.json` records the approved execution
+outcome, and fix/apply runs append a `kind: doctor-fix` entry to
+`workspace-intelligence-history.json`.
+
+When `doctor project` runs inside a workspace, the workspace report remains the canonical
+governance artifact and Doctor mirrors `doctor-project-last-run.json`,
+`doctor-remediation-plan-last-run.json`, and `doctor-fix-result-last-run.json` into the scoped
+project's `.rapidkit/reports/` directory. This keeps Studio, agents, and project-local operators on
+the same evidence without losing the workspace source of truth.
+
 ## Workspace intelligence
 
-| Command                          | Artifact                                                                                                                                                                           | Schema                                 | Contract file                                              |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------- |
-| `workspace model --write`        | `workspace-model.json`                                                                                                                                                             | `workspace-model.v1`                   | `contracts/workspace-intelligence/workspace-model.v1.json` |
-| `workspace snapshot`             | `workspace-model-snapshot.json`                                                                                                                                                    | `workspace-model-snapshot.v1`          | `workspace-model-snapshot.v1.json`                         |
-| `workspace diff`                 | `workspace-model-diff-last-run.json`                                                                                                                                               | `workspace-model-diff.v1`              | `workspace-model-diff.v1.json`                             |
-| `workspace impact --from <diff>` | `workspace-impact-last-run.json`                                                                                                                                                   | `workspace-impact.v1`                  | `workspace-impact.v1.json`                                 |
-| `workspace verify`               | `workspace-verify-last-run.json`                                                                                                                                                   | `workspace-verify.v1`                  | `workspace-verify.v1.json`                                 |
-| `workspace context --write`      | `workspace-context-agent.json`                                                                                                                                                     | `workspace-context.v1`                 | `workspace-context.v1.json`                                |
-| `workspace agent-sync --write`   | `reports/INDEX.json`, `reports/agent-customization-pack.json`, `reports/rapidkit-mcp-design.json`, `reports/workspace-skills-index.json`, `.rapidkit/skills/*.md`, `.rapidkit/AGENT-GROUNDING.md`, `AGENTS.md`, Copilot/Cursor/Claude/VS Code agent surfaces | `rapidkit-agent-customization-pack.v1` | `contracts/agent-customization-pack.v1.json`               |
-| `workspace explain --write`      | `workspace-explain-last-run.json`                                                                                                                                                  | `workspace-explain.v1`                 | `contracts/workspace-intelligence/workspace-explain.v1.json` |
-| `workspace feedback record`      | `workspace-intelligence-history.json` (`kind: agent-action`)                                                                                                                       | `workspace-intelligence-history.v1`  | `contracts/workspace-intelligence/workspace-intelligence-history.v1.json` |
+| Command                                        | Artifact                                                                                                                                                                                                                                                     | Schema                                 | Contract file                                                             |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- | ------------------------------------------------------------------------- |
+| `workspace model --write`                      | `workspace-model.json`                                                                                                                                                                                                                                       | `workspace-model.v1`                   | `contracts/workspace-intelligence/workspace-model.v1.json`                |
+| `workspace snapshot`                           | `workspace-model-snapshot.json`                                                                                                                                                                                                                              | `workspace-model-snapshot.v1`          | `workspace-model-snapshot.v1.json`                                        |
+| `workspace diff`                               | `workspace-model-diff-last-run.json`                                                                                                                                                                                                                         | `workspace-model-diff.v1`              | `workspace-model-diff.v1.json`                                            |
+| `workspace impact --from <diff>`               | `workspace-impact-last-run.json`                                                                                                                                                                                                                             | `workspace-impact.v1`                  | `workspace-impact.v1.json`                                                |
+| `workspace verify`                             | `workspace-verify-last-run.json`                                                                                                                                                                                                                             | `workspace-verify.v1`                  | `workspace-verify.v1.json`                                                |
+| `workspace context --write`                    | `workspace-context-agent.json`                                                                                                                                                                                                                               | `workspace-context.v1`                 | `workspace-context.v1.json`                                               |
+| `workspace agent-sync --write`                 | `reports/INDEX.json`, `reports/agent-customization-pack.json`, `reports/rapidkit-mcp-design.json`, `reports/workspace-skills-index.json`, `.rapidkit/skills/*.md`, `.rapidkit/AGENT-GROUNDING.md`, `AGENTS.md`, Copilot/Cursor/Claude/VS Code agent surfaces | `rapidkit-agent-customization-pack.v1` | `contracts/agent-customization-pack.v1.json`                              |
+| `workspace explain --write`                    | `workspace-explain-last-run.json`                                                                                                                                                                                                                            | `workspace-explain.v1`                 | `contracts/workspace-intelligence/workspace-explain.v1.json`              |
+| `workspace feedback record` / `doctor * --fix` | `workspace-intelligence-history.json` (`kind: agent-action`, `doctor-fix`)                                                                                                                                                                                   | `workspace-intelligence-history.v1`    | `contracts/workspace-intelligence/workspace-intelligence-history.v1.json` |
 
 **CLI semantics:** `workspace diff --from` expects a **model or snapshot** baseline. `workspace impact --from` expects a **diff report**.
 
@@ -171,6 +188,28 @@ Canonical source: `src/contracts/freshness-metadata-contract.ts`
 (`computeInputsHash`, `buildFreshnessMetadata`, `assessFreshness`). Verdicts:
 `fresh` (hashes match), `stale` (hashes differ), `unknown` (either side missing,
 e.g. legacy reports).
+
+### Fact freshness (`rapidkit-fact-freshness-v1`)
+
+Artifact-level freshness answers "is this report still valid?" Fact-level freshness answers
+"may an agent safely remember this specific claim?" `workspace model` and
+`workspace context --for-agent --write` now emit `facts[]` plus a `factFreshness` summary so
+agents, Workspai, and CI can distinguish durable structure from perishable evidence.
+
+| Kind                | Meaning                                                                  |
+| ------------------- | ------------------------------------------------------------------------ |
+| `durable`           | Structural configuration such as workspace identity or policy mode       |
+| `derived`           | Inferred structure such as project count, runtime, framework, commands   |
+| `evidence-backed`   | A fact backed by a report that can expire or become stale                |
+| `live`              | Runtime state that must be re-observed quickly                           |
+| `verify-before-use` | Missing, stale, or release-sensitive fact that must be regenerated first |
+
+Every fact carries `category` (`structure`, `verification`, `state`), `generatedAt`,
+`ttlSeconds`, `status`, `verifyBeforeUse`, `sourceArtifact`, optional `sourcePath`, and a
+stable `inputsHash` for the fact value. Consumers must treat `verifyBeforeUse: true` as a hard
+refresh boundary before advice, edits, or release decisions. Canonical source:
+`src/contracts/fact-freshness-contract.ts`; JSON Schema:
+`contracts/workspace-intelligence/fact-freshness.v1.json`.
 
 ### Run correlation (`runId`)
 

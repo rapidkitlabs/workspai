@@ -4,10 +4,20 @@
   "title": "Doctor fix execution result",
   "type": "object",
   "additionalProperties": true,
-  "required": ["schemaVersion", "appliedFixes", "remainingBlockers", "verifyRecommended"],
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "appliedFixes",
+    "remainingBlockers",
+    "verifyRecommended"
+  ],
   "properties": {
     "schemaVersion": {
       "const": "rapidkit-doctor-fix-result-v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
     },
     "appliedFixes": {
       "type": "array",

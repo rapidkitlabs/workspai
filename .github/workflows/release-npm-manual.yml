@@ -170,3 +170,22 @@ jobs:
         shell: bash
         run: |
           echo "Published ${{ steps.version_guard.outputs.package_name }}@${{ steps.version_guard.outputs.package_version }} with dist-tag '${{ github.event.inputs.dist_tag }}'."
+
+      - name: Refresh Workspai changelog cache
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        continue-on-error: true
+        env:
+          WORKSPAI_CHANGELOG_WEBHOOK_URL: ${{ secrets.WORKSPAI_CHANGELOG_WEBHOOK_URL }}
+          WORKSPAI_CHANGELOG_WEBHOOK_SECRET: ${{ secrets.WORKSPAI_CHANGELOG_WEBHOOK_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${WORKSPAI_CHANGELOG_WEBHOOK_URL:-}" ] || [ -z "${WORKSPAI_CHANGELOG_WEBHOOK_SECRET:-}" ]; then
+            echo "Workspai changelog webhook is not configured; skipping cache refresh."
+            exit 0
+          fi
+          curl -fsS -X POST "${WORKSPAI_CHANGELOG_WEBHOOK_URL}" \
+            -H "Authorization: Bearer ${WORKSPAI_CHANGELOG_WEBHOOK_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "{\"source\":\"npm\",\"version\":\"${{ steps.version_guard.outputs.package_version }}\"}"
+          echo "Workspai changelog cache refresh requested."

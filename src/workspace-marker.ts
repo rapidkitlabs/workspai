@@ -6,7 +6,7 @@
  * all RapidKit tools (npm, VS Code Extension, future CLI tools, etc.)
  */
 
-import * as fsExtra from 'fs-extra';
+import fsExtra from 'fs-extra';
 import path from 'path';
 
 export interface WorkspaceMarker {

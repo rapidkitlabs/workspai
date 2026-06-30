@@ -72,7 +72,27 @@ describe('workspace agent context', () => {
     expect(context.projects.find((project) => project.name === 'web')?.safeCommands).toEqual([]);
     expect(context.workspaceSummary).toContain('full-stack-workspace');
     expect(context.agentInstructions.join('\n')).toContain('Use `display` commands');
+    expect(context.agentInstructions.join('\n')).toContain('freshness.verifyBeforeUse');
     expect(context.unsafeAssumptions.join('\n')).toContain('Do not claim a command passed');
+    expect(context.factFreshness).toMatchObject({
+      schemaVersion: 'rapidkit-fact-freshness-v1',
+      totalFacts: expect.any(Number),
+    });
+    expect(context.facts.map((fact) => fact.id)).toEqual(
+      expect.arrayContaining([
+        'workspace.projectCount',
+        'project.api.framework',
+        'project.web.runtime',
+        'workspace.evidence.pipeline',
+      ])
+    );
+    expect(
+      context.facts.find((fact) => fact.id === 'workspace.evidence.pipeline')?.freshness
+    ).toMatchObject({
+      kind: 'verify-before-use',
+      category: 'verification',
+      verifyBeforeUse: true,
+    });
   });
 
   it('separates simple display commands from pinned execution commands', async () => {
@@ -89,6 +109,11 @@ describe('workspace agent context', () => {
     expect(doctor).toMatchObject({
       display: 'npx rapidkit doctor workspace --json',
       execute: 'npx --yes --package rapidkit rapidkit doctor workspace --json',
+      freshness: {
+        schemaVersion: 'rapidkit-fact-freshness-v1',
+        kind: 'derived',
+        category: 'structure',
+      },
     });
     expect(context.safeCommands.find((item) => item.id === 'workspace.verify')).toMatchObject({
       display: 'npx rapidkit workspace verify --json',
@@ -116,6 +141,8 @@ describe('workspace agent context', () => {
     expect(context.scope.activeProject).toBe('api');
     expect(context.projects).toHaveLength(1);
     expect(context.projects[0].name).toBe('api');
+    expect(context.projects[0].facts.every((fact) => fact.project === 'api')).toBe(true);
+    expect(context.facts.some((fact) => fact.project === 'worker')).toBe(false);
     expect(context.safeCommands.every((item) => !item.project || item.project === 'api')).toBe(
       true
     );

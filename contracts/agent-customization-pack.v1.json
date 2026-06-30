@@ -116,6 +116,21 @@
       "required": false
     },
     {
+      "path": ".rapidkit/reports/doctor-project-last-run.json",
+      "label": "Project doctor",
+      "required": false
+    },
+    {
+      "path": ".rapidkit/reports/doctor-remediation-plan-last-run.json",
+      "label": "Doctor remediation plan",
+      "required": false
+    },
+    {
+      "path": ".rapidkit/reports/doctor-fix-result-last-run.json",
+      "label": "Doctor fix result",
+      "required": false
+    },
+    {
       "path": ".rapidkit/reports/analyze-last-run.json",
       "label": "Workspace analyze",
       "required": false

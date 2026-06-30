@@ -26,6 +26,7 @@ describe('doctor-fix-result contract', () => {
     });
 
     expect(result.schemaVersion).toBe(DOCTOR_FIX_RESULT_SCHEMA_VERSION);
+    expect(Date.parse(result.generatedAt)).not.toBeNaN();
     expect(result.appliedFixes).toHaveLength(1);
     expect(result.remainingBlockers).toEqual(['demo: missing tests']);
     expect(result.verifyRecommended).toBe(DOCTOR_FIX_VERIFY_RECOMMENDED);
@@ -46,6 +47,7 @@ describe('doctor-fix-result contract', () => {
     expect(
       isDoctorFixExecutionResult({
         schemaVersion: 'bogus',
+        generatedAt: new Date().toISOString(),
         appliedFixes: [],
         remainingBlockers: [],
         verifyRecommended: DOCTOR_FIX_VERIFY_RECOMMENDED,

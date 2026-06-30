@@ -7,6 +7,7 @@ import { buildKitPickerChoices } from './cli-ui/kit-picker-choices.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+import vm from 'vm';
 import { logger } from './logger.js';
 import { checkForUpdates, getVersion } from './update-checker.js';
 import {
@@ -26,6 +27,7 @@ import {
   getCachedCoreTopLevelCommands,
   resolveRapidkitPython,
   runCoreRapidkit,
+  runCoreRapidkitCapture,
   runCoreRapidkitStreamed,
 } from './core-bridge/pythonRapidkitExec.js';
 import { BOOTSTRAP_CORE_COMMANDS_SET } from './core-bridge/bootstrapCoreCommands.js';
@@ -1593,7 +1595,7 @@ async function syncWorkspaceContractAfterProjectChange(
         chalk.gray(`ℹ️  Workspace contract synced (${result.contract.projects.length} project(s)).`)
       );
     }
-    if (result.verification.status !== 'passed') {
+    if (!options?.silent && result.verification.status !== 'passed') {
       console.log(chalk.yellow('⚠️  Workspace contract verification failed after project sync.'));
       for (const violation of result.verification.violations) {
         console.log(chalk.gray(`   Violation: ${violation}`));
@@ -1614,11 +1616,11 @@ export interface DoctorWorkspaceShadowDiagnostic {
 }
 
 export async function detectWindowsDoctorWorkspaceShadow(
-  params: { scope?: string; workspaceFlag?: boolean },
+  params: { scope?: string; workspaceFlag?: boolean | string },
   cwd: string = process.cwd(),
   platform: NodeJS.Platform = process.platform
 ): Promise<DoctorWorkspaceShadowDiagnostic> {
-  const workspaceMode = params.workspaceFlag || params.scope === 'workspace';
+  const workspaceMode = Boolean(params.workspaceFlag) || params.scope === 'workspace';
   if (!workspaceMode || !isWindowsPlatform(platform)) {
     return { detected: false };
   }
@@ -1893,30 +1895,258 @@ async function withWorkspaceDependencyPolicyContext<T>(
 async function runCommandInCwd(
   command: string,
   commandArgs: string[],
-  cwd: string
+  cwd: string,
+  options: { timeoutMs?: number } = {}
 ): Promise<number> {
   const { buildPackageRunnerSubprocessEnv, resolvePackageRunnerInvocation } = await import(
     './utils/platform-capabilities.js'
   );
-  const invocation = resolvePackageRunnerInvocation(command);
+  const nodeEvalScript = resolveDirectNodeEvalScript(command, commandArgs, cwd);
+  const invocation = nodeEvalScript
+    ? { command: process.execPath, prefixArgs: ['-e', nodeEvalScript] }
+    : resolvePackageRunnerInvocation(command);
   const executable = invocation.command;
+  const spawnArgs = nodeEvalScript
+    ? invocation.prefixArgs
+    : [...invocation.prefixArgs, ...commandArgs];
+  const spawnEnv = buildPackageRunnerSubprocessEnv();
+  if (nodeEvalScript) {
+    if (process.env.RAPIDKIT_NPM_DEBUG_ARGS === '1') {
+      process.stderr.write(
+        `[rapidkit-npm] runCommandInCwd.nodeEval=${JSON.stringify({
+          cwd,
+          scriptBytes: nodeEvalScript.length,
+        })}\n`
+      );
+    }
+    try {
+      vm.runInThisContext(nodeEvalScript, {
+        filename: path.join(cwd, 'package.json#script'),
+      });
+      return 0;
+    } catch (error) {
+      process.stderr.write(
+        `${error instanceof Error ? error.stack || error.message : String(error)}\n`
+      );
+      return 1;
+    }
+  }
+  const captureForStructuredParent =
+    process.argv.includes('--json') ||
+    process.env.RAPIDKIT_WORKSPACE_RUN_CHILD === '1' ||
+    process.env.RAPIDKIT_SUPPRESS_RUN_COMMAND_OUTPUT === '1';
+  const inheritChildOutput =
+    !captureForStructuredParent &&
+    command === 'npm' &&
+    (commandArgs[0] === 'run' || commandArgs[0] === 'run-script' || commandArgs[0] === 'install');
+  const readNpmFailureLogExcerpt = (): string => {
+    const cacheDir = spawnEnv.npm_config_cache;
+    if (!cacheDir) return '';
+    const logsDir = path.join(cacheDir, '_logs');
+    try {
+      const entries = fs
+        .readdirSync(logsDir)
+        .filter((entry) => entry.endsWith('.log'))
+        .map((entry) => {
+          const filePath = path.join(logsDir, entry);
+          return { filePath, mtimeMs: fs.statSync(filePath).mtimeMs };
+        })
+        .sort((a, b) => b.mtimeMs - a.mtimeMs);
+      const latest = entries[0]?.filePath;
+      if (!latest) return '';
+      const raw = fs.readFileSync(latest, 'utf-8');
+      return raw
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) =>
+          /(?:^|\s)(?:npm\s+)?(?:error|verbose\s+(?:stack|cwd|os|node|npm|exit|code))\b/i.test(line)
+        )
+        .slice(0, 12)
+        .join('\n');
+    } catch {
+      return '';
+    }
+  };
+  const envTimeoutMs = Number.parseInt(process.env.RAPIDKIT_CHILD_COMMAND_TIMEOUT_MS || '', 10);
+  const effectiveTimeoutMs =
+    options.timeoutMs && options.timeoutMs > 0
+      ? options.timeoutMs
+      : Number.isFinite(envTimeoutMs) && envTimeoutMs > 0
+        ? envTimeoutMs
+        : undefined;
+
   return await new Promise<number>((resolve) => {
-    const child = spawn(executable, [...invocation.prefixArgs, ...commandArgs], {
-      stdio: ['ignore', 'pipe', 'pipe'],
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let settled = false;
+    let timeout: NodeJS.Timeout | null = null;
+    let child: ReturnType<typeof spawn> | null = null;
+    const cleanupChildHandles = () => {
+      try {
+        child?.stdout?.destroy();
+      } catch {
+        // Best-effort cleanup after timeout.
+      }
+      try {
+        child?.stderr?.destroy();
+      } catch {
+        // Best-effort cleanup after timeout.
+      }
+      try {
+        child?.stdin?.destroy();
+      } catch {
+        // Best-effort cleanup after timeout.
+      }
+      try {
+        child?.removeAllListeners('close');
+        child?.removeAllListeners('error');
+        child?.unref();
+      } catch {
+        // Best-effort cleanup after timeout.
+      }
+    };
+    if (process.env.RAPIDKIT_NPM_DEBUG_ARGS === '1') {
+      process.stderr.write(
+        `[rapidkit-npm] runCommandInCwd=${JSON.stringify({
+          executable,
+          args: spawnArgs,
+          cwd,
+          directNodeEvalScript: nodeEvalScript !== null,
+          npmEnv: Object.fromEntries(
+            Object.entries(spawnEnv).filter(([key]) =>
+              [
+                'npm_config_if_present',
+                'npm_config_ignore_scripts',
+                'npm_config_loglevel',
+                'npm_config_silent',
+                'npm_config_json',
+                'npm_lifecycle_event',
+                'npm_lifecycle_script',
+              ].includes(key)
+            )
+          ),
+        })}\n`
+      );
+    }
+    child = spawn(executable, spawnArgs, {
+      stdio: inheritChildOutput ? 'inherit' : ['ignore', 'pipe', 'pipe'],
       cwd,
       shell: shouldUseShellExecution(),
-      env: buildPackageRunnerSubprocessEnv(),
+      env: spawnEnv,
+      detached: !isWindowsPlatform(),
     });
+    if (effectiveTimeoutMs && effectiveTimeoutMs > 0) {
+      timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        if (!isWindowsPlatform() && child.pid) {
+          try {
+            process.kill(-child.pid, 'SIGTERM');
+          } catch {
+            child.kill('SIGTERM');
+          }
+        } else {
+          child.kill('SIGTERM');
+        }
+        cleanupChildHandles();
+        if (process.env.RAPIDKIT_SUPPRESS_RUN_COMMAND_OUTPUT !== '1') {
+          process.stderr.write(
+            `RapidKit command timed out after ${effectiveTimeoutMs}ms: ${executable} ${spawnArgs.join(' ')}\n`
+          );
+        }
+        resolve(124);
+      }, effectiveTimeoutMs);
+    }
 
-    child.stdout?.on('data', (chunk: Buffer) => {
-      process.stdout.write(chunk);
+    if (!inheritChildOutput) {
+      child.stdout?.on('data', (chunk: Buffer) => {
+        stdoutChunks.push(chunk);
+      });
+      child.stderr?.on('data', (chunk: Buffer) => {
+        stderrChunks.push(chunk);
+      });
+    }
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      const stdout = Buffer.concat(stdoutChunks);
+      const stderr = Buffer.concat(stderrChunks);
+      const npmFailureExcerpt =
+        code && code !== 0 && stdout.length === 0 && stderr.length === 0 && command === 'npm'
+          ? readNpmFailureLogExcerpt()
+          : '';
+      if (process.env.RAPIDKIT_NPM_DEBUG_ARGS === '1') {
+        process.stderr.write(
+          `[rapidkit-npm] runCommandInCwd.close=${JSON.stringify({ code, stdoutBytes: stdout.length, stderrBytes: stderr.length, npmFailureExcerptBytes: npmFailureExcerpt.length })}\n`
+        );
+      }
+      if (process.env.RAPIDKIT_SUPPRESS_RUN_COMMAND_OUTPUT !== '1') {
+        if (stdout.length > 0) {
+          process.stdout.write(stdout);
+        }
+        if (stderr.length > 0) {
+          process.stderr.write(stderr);
+        } else if (npmFailureExcerpt) {
+          process.stderr.write(`${npmFailureExcerpt}\n`);
+        }
+      }
+      resolve(code ?? 1);
     });
-    child.stderr?.on('data', (chunk: Buffer) => {
-      process.stderr.write(chunk);
+    child.on('error', () => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      resolve(1);
     });
-    child.on('close', (code) => resolve(code ?? 1));
-    child.on('error', () => resolve(1));
   });
+}
+
+function resolveDirectNodeEvalScript(
+  command: string,
+  commandArgs: string[],
+  cwd: string
+): string | null {
+  if (command !== 'npm') {
+    return null;
+  }
+  const action = commandArgs[0];
+  if (action !== 'run' && action !== 'run-script') {
+    return null;
+  }
+  const scriptName = commandArgs.find((arg, index) => index > 0 && !arg.startsWith('-'));
+  if (!scriptName) {
+    return null;
+  }
+  const packageJsonPath = path.join(cwd, 'package.json');
+  if (!fs.existsSync(packageJsonPath)) {
+    return null;
+  }
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as {
+      scripts?: Record<string, unknown>;
+    };
+    const script = packageJson.scripts?.[scriptName];
+    if (typeof script !== 'string') {
+      return null;
+    }
+    return parseNodeEvalScript(script);
+  } catch {
+    return null;
+  }
+}
+
+function parseNodeEvalScript(script: string): string | null {
+  const trimmed = script.trim();
+  const doubleQuoted = trimmed.match(/^node\s+(?:-e|--eval)\s+"((?:\\.|[^"\\])*)"$/);
+  if (doubleQuoted) {
+    return doubleQuoted[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  const singleQuoted = trimmed.match(/^node\s+(?:-e|--eval)\s+'((?:\\.|[^'\\])*)'$/);
+  if (singleQuoted) {
+    return singleQuoted[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+  }
+  return null;
 }
 
 async function writeJsonFile(filePath: string, payload: unknown): Promise<void> {
@@ -2241,6 +2471,7 @@ export async function handleAdoptCommand(
 
 export async function installWorkspaceDependencies(workspacePath: string): Promise<number> {
   const PYTHON_REQUIRED_PROFILES = new Set(['python-only', 'polyglot', 'enterprise']);
+  const dependencyTimeoutMs = resolveWorkspaceDependencyTimeoutMs();
 
   let workspaceProfile = 'minimal';
   try {
@@ -2334,15 +2565,21 @@ export async function installWorkspaceDependencies(workspacePath: string): Promi
         hasLocalRapidKitPath && testLocalPath
           ? ['-m', 'pip', 'install', testLocalPath, '--quiet', '--disable-pip-version-check']
           : ['-m', 'pip', 'install', 'rapidkit-core', '--quiet', '--disable-pip-version-check'];
-      const pipCode = await runCommandInCwd(venvBin, pipArgs, workspacePath);
+      const pipCode = await runCommandInCwd(venvBin, pipArgs, workspacePath, {
+        timeoutMs: dependencyTimeoutMs,
+      });
       if (pipCode !== 0) return pipCode;
     } else {
       // Legacy / no stub: use Poetry to install (original behaviour).
-      const installCode = await runCommandInCwd('poetry', ['install', '--no-root'], workspacePath);
+      const installCode = await runCommandInCwd('poetry', ['install', '--no-root'], workspacePath, {
+        timeoutMs: dependencyTimeoutMs,
+      });
       if (installCode !== 0) return installCode;
 
       // Also add rapidkit-core explicitly if it isn't already installed.
-      const addCode = await runCommandInCwd('poetry', ['add', 'rapidkit-core'], workspacePath);
+      const addCode = await runCommandInCwd('poetry', ['add', 'rapidkit-core'], workspacePath, {
+        timeoutMs: dependencyTimeoutMs,
+      });
       if (addCode !== 0) return addCode;
     }
 
@@ -2361,6 +2598,17 @@ export async function installWorkspaceDependencies(workspacePath: string): Promi
   }
 
   return 0;
+}
+
+function resolveWorkspaceDependencyTimeoutMs(): number {
+  const raw = process.env.RAPIDKIT_WORKSPACE_DEPS_TIMEOUT_MS;
+  if (raw) {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return 120_000;
 }
 
 async function collectWorkspaceProjects(workspacePath: string): Promise<string[]> {
@@ -3243,11 +3491,130 @@ export async function handleBootstrapCommand(
       return 1;
     }
 
+    const deterministicJsonEnterpriseViolation = jsonMode && profile === 'enterprise' && !ciMode;
+    if (deterministicJsonEnterpriseViolation) {
+      const report = enrichBootstrapComplianceReport(
+        {
+          ...baseReport,
+          result: 'blocked',
+          initExitCode: null,
+          complianceOnly: false,
+          bootstrapRuntimeSkipped: {
+            reason:
+              'enterprise JSON bootstrap requires --ci for deterministic non-interactive execution.',
+            nextAction: 'npx rapidkit bootstrap --profile enterprise --ci --json',
+          },
+        },
+        1,
+        checks
+      );
+
+      await fsExtra.ensureDir(reportDir);
+      await writeJsonFile(reportPath, report);
+      await writeJsonFile(latestReportPath, report);
+
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      return 1;
+    }
+
+    const captureBootstrapInitOutput = async (
+      fn: () => Promise<number>
+    ): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+      const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+      const originalStderrWrite = process.stderr.write.bind(process.stderr);
+      const stdoutChunks: string[] = [];
+      const stderrChunks: string[] = [];
+
+      process.stdout.write = ((
+        chunk: unknown,
+        encodingOrCallback?: unknown,
+        callback?: unknown
+      ) => {
+        const cb =
+          typeof encodingOrCallback === 'function'
+            ? encodingOrCallback
+            : typeof callback === 'function'
+              ? callback
+              : undefined;
+        stdoutChunks.push(
+          typeof chunk === 'string'
+            ? chunk
+            : chunk instanceof Uint8Array
+              ? Buffer.from(chunk).toString('utf8')
+              : String(chunk)
+        );
+        cb?.();
+        return true;
+      }) as typeof process.stdout.write;
+
+      process.stderr.write = ((
+        chunk: unknown,
+        encodingOrCallback?: unknown,
+        callback?: unknown
+      ) => {
+        const cb =
+          typeof encodingOrCallback === 'function'
+            ? encodingOrCallback
+            : typeof callback === 'function'
+              ? callback
+              : undefined;
+        stderrChunks.push(
+          typeof chunk === 'string'
+            ? chunk
+            : chunk instanceof Uint8Array
+              ? Buffer.from(chunk).toString('utf8')
+              : String(chunk)
+        );
+        cb?.();
+        return true;
+      }) as typeof process.stderr.write;
+
+      try {
+        const exitCode = await fn();
+        return {
+          exitCode,
+          stdout: stdoutChunks.join(''),
+          stderr: stderrChunks.join(''),
+        };
+      } finally {
+        process.stdout.write = originalStdoutWrite as typeof process.stdout.write;
+        process.stderr.write = originalStderrWrite as typeof process.stderr.write;
+      }
+    };
+
+    const summarizeCapturedOutput = (raw: string): { bytes: number; excerpt: string[] } => {
+      const lines = raw
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      return {
+        bytes: Buffer.byteLength(raw),
+        excerpt: lines.slice(0, 12),
+      };
+    };
+
     // JSON + --compliance-only skips init to keep stdout clean for compliance-only CI gates.
     let initExitCode = 0;
+    let initOutput:
+      | {
+          captured: true;
+          stdout: { bytes: number; excerpt: string[] };
+          stderr: { bytes: number; excerpt: string[] };
+        }
+      | undefined;
     const skipInit = jsonMode && complianceOnly;
     if (!skipInit) {
-      initExitCode = await initRunner(initArgs);
+      if (jsonMode) {
+        const captured = await captureBootstrapInitOutput(() => initRunner(initArgs));
+        initExitCode = captured.exitCode;
+        initOutput = {
+          captured: true,
+          stdout: summarizeCapturedOutput(captured.stdout),
+          stderr: summarizeCapturedOutput(captured.stderr),
+        };
+      } else {
+        initExitCode = await initRunner(initArgs);
+      }
     }
     const failedCheckCount = checks.filter((c) => c.status === 'failed').length;
     const resultValue =
@@ -3259,6 +3626,7 @@ export async function handleBootstrapCommand(
         result: resultValue,
         initExitCode,
         complianceOnly: jsonMode && complianceOnly,
+        ...(initOutput ? { initOutput } : {}),
       },
       exitCode,
       checks
@@ -3307,9 +3675,24 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
   }
 
   const runtime = (args[1] || '').toLowerCase();
+  const jsonMode = args.includes('--json');
   const warmDeps = args.includes('--warm-deps') || args.includes('--warm-dependencies');
   if (!runtime || !['python', 'node', 'go', 'java', 'dotnet'].includes(runtime)) {
-    console.log(chalk.yellow('Usage: rapidkit setup <python|node|go|java|dotnet> [--warm-deps]'));
+    if (jsonMode) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            command: 'setup',
+            result: 'error',
+            error: 'Usage: rapidkit setup <python|node|go|java|dotnet> [--warm-deps]',
+          },
+          null,
+          2
+        )}\n`
+      );
+    } else {
+      console.log(chalk.yellow('Usage: rapidkit setup <python|node|go|java|dotnet> [--warm-deps]'));
+    }
     return 1;
   }
 
@@ -3448,6 +3831,63 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
   // Use system Python (no cwd) to bypass workspace-venv runner discovery.
   // Workspace-local venv rapidkit versions may have a double-print bug in doctor check;
   // system-level rapidkit is always preferred for host environment diagnostics.
+  if (jsonMode) {
+    const previousSuppress = process.env.RAPIDKIT_SUPPRESS_RUN_COMMAND_OUTPUT;
+    process.env.RAPIDKIT_SUPPRESS_RUN_COMMAND_OUTPUT = '1';
+    try {
+      const adapter = getRuntimeAdapter(runtime as 'python' | 'node' | 'go' | 'java' | 'dotnet', {
+        runCommandInCwd,
+        runCoreRapidkit: async (adapterArgs, opts) => {
+          const result = await runCoreRapidkitCapture(adapterArgs, { ...opts, cwd: undefined });
+          return result.exitCode;
+        },
+      });
+      const prereq = await adapter.checkPrereqs();
+      const workspacePath = findWorkspaceUp(process.cwd());
+      let version: string | null = null;
+      if (runtime === 'node' && prereq.exitCode === 0) {
+        version = process.version;
+      }
+      if (workspacePath && version) {
+        const lockPath = path.join(workspacePath, '.rapidkit', 'toolchain.lock');
+        let lock: Record<string, unknown> = {};
+        try {
+          lock = JSON.parse(await fs.promises.readFile(lockPath, 'utf-8'));
+        } catch {
+          /* file may not exist yet */
+        }
+        if (!lock.runtime || typeof lock.runtime !== 'object') lock.runtime = {};
+        (lock.runtime as Record<string, unknown>)[runtime] = {
+          version,
+          detectedAt: new Date().toISOString(),
+        };
+        await fsExtra.ensureDir(path.dirname(lockPath));
+        await fs.promises.writeFile(lockPath, JSON.stringify(lock, null, 2) + '\n', 'utf-8');
+      }
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            command: 'setup',
+            runtime,
+            result: prereq.exitCode === 0 ? 'ok' : 'failed',
+            exitCode: prereq.exitCode,
+            workspacePath,
+            version,
+            warmDeps,
+          },
+          null,
+          2
+        )}\n`
+      );
+      return prereq.exitCode;
+    } finally {
+      if (typeof previousSuppress === 'undefined') {
+        delete process.env.RAPIDKIT_SUPPRESS_RUN_COMMAND_OUTPUT;
+      } else {
+        process.env.RAPIDKIT_SUPPRESS_RUN_COMMAND_OUTPUT = previousSuppress;
+      }
+    }
+  }
   const adapter = getRuntimeAdapter(runtime as 'python' | 'node' | 'go' | 'java' | 'dotnet', {
     runCommandInCwd,
     runCoreRapidkit: (adapterArgs, opts) =>
@@ -3798,6 +4238,8 @@ export async function handleCacheCommand(args: string[]): Promise<number> {
   }
 
   const action = (args[1] || 'status').toLowerCase();
+  const jsonMode = args.includes('--json');
+  const dryRun = args.includes('--dry-run');
   const cache = Cache.getInstance();
   const workspacePath = findWorkspaceUp(process.cwd());
 
@@ -3821,6 +4263,27 @@ export async function handleCacheCommand(args: string[]): Promise<number> {
   }
 
   if (action === 'status') {
+    const statusPayload = {
+      command: 'cache',
+      action,
+      result: 'ok',
+      timestamp: new Date().toISOString(),
+      workspacePath,
+      cache: {
+        enabled: true,
+        strategy: cacheConfig.strategy,
+        selfHeal: cacheConfig.self_heal,
+        pruneOnBootstrap: cacheConfig.prune_on_bootstrap,
+        verifyIntegrity: cacheConfig.verify_integrity,
+        inMemory: true,
+      },
+    };
+
+    if (jsonMode) {
+      process.stdout.write(`${JSON.stringify(statusPayload, null, 2)}\n`);
+      return 0;
+    }
+
     console.log(chalk.cyan('RapidKit cache is enabled'));
     console.log(chalk.cyan('RapidKit cache status'));
     if (workspacePath) {
@@ -3840,6 +4303,26 @@ export async function handleCacheCommand(args: string[]): Promise<number> {
   if (action === 'clear') {
     // Full cache wipe — removes all cached entries
     await cache.clear();
+    if (jsonMode) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            command: 'cache',
+            action,
+            result: 'ok',
+            timestamp: new Date().toISOString(),
+            workspacePath,
+            cache: {
+              cleared: true,
+              strategy: cacheConfig.strategy,
+            },
+          },
+          null,
+          2
+        )}\n`
+      );
+      return 0;
+    }
     console.log(chalk.green('Cache clear completed'));
     console.log(chalk.green('\u2705 Cache cleared (all entries removed).'));
     return 0;
@@ -3847,7 +4330,41 @@ export async function handleCacheCommand(args: string[]): Promise<number> {
 
   if (action === 'prune') {
     // Prune stale entries only (honour cache-config strategy)
-    await cache.clear();
+    if (!dryRun) {
+      await cache.clear();
+    }
+    if (jsonMode) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            command: 'cache',
+            action,
+            result: 'ok',
+            timestamp: new Date().toISOString(),
+            workspacePath,
+            dryRun,
+            cache: {
+              pruned: !dryRun,
+              strategy: cacheConfig.strategy,
+              pruneOnBootstrap: cacheConfig.prune_on_bootstrap,
+            },
+            nextActions: cacheConfig.prune_on_bootstrap
+              ? []
+              : [
+                  'Set prune_on_bootstrap: true in .rapidkit/cache-config.yml to auto-prune on bootstrap.',
+                ],
+          },
+          null,
+          2
+        )}\n`
+      );
+      return 0;
+    }
+    if (dryRun) {
+      console.log(chalk.green('Cache prune dry run completed'));
+      console.log(chalk.gray('  No cache entries were removed.'));
+      return 0;
+    }
     console.log(chalk.green('\u2705 Cache pruned (stale entries removed).'));
     if (!cacheConfig.prune_on_bootstrap) {
       console.log(
@@ -3862,6 +4379,27 @@ export async function handleCacheCommand(args: string[]): Promise<number> {
   if (action === 'repair') {
     // Self-heal: attempt to restore a consistent cache state
     if (!cacheConfig.self_heal) {
+      if (jsonMode) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              command: 'cache',
+              action,
+              result: 'skipped',
+              timestamp: new Date().toISOString(),
+              workspacePath,
+              reason: 'self_heal is disabled in .rapidkit/cache-config.yml',
+              cache: {
+                selfHeal: cacheConfig.self_heal,
+                verifyIntegrity: cacheConfig.verify_integrity,
+              },
+            },
+            null,
+            2
+          )}\n`
+        );
+        return 0;
+      }
       console.log(
         chalk.yellow(
           '\u26a0\ufe0f  self_heal is disabled in .rapidkit/cache-config.yml — skipping repair.'
@@ -3870,6 +4408,27 @@ export async function handleCacheCommand(args: string[]): Promise<number> {
       return 0;
     }
     await cache.clear();
+    if (jsonMode) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            command: 'cache',
+            action,
+            result: 'ok',
+            timestamp: new Date().toISOString(),
+            workspacePath,
+            cache: {
+              repaired: true,
+              selfHeal: cacheConfig.self_heal,
+              verifyIntegrity: cacheConfig.verify_integrity,
+            },
+          },
+          null,
+          2
+        )}\n`
+      );
+      return 0;
+    }
     console.log(chalk.green('\u2705 Cache repaired (self-heal applied, stale entries evicted).'));
     if (cacheConfig.verify_integrity) {
       console.log(chalk.gray('  Integrity verification is enabled in cache-config.yml.'));
@@ -3885,7 +4444,8 @@ async function handleWorkspacePolicyCommand(
   workspacePath: string,
   subaction?: string,
   key?: string,
-  value?: string
+  value?: string,
+  jsonMode = false
 ): Promise<number> {
   const action = (subaction || 'show').toLowerCase();
   const policyPath = path.join(workspacePath, '.rapidkit', 'policies.yml');
@@ -3893,6 +4453,24 @@ async function handleWorkspacePolicyCommand(
   if (action === 'show' || action === 'status' || action === 'get') {
     const rawPolicy = await readWorkspacePolicyFile(workspacePath);
     const policy = parseWorkspacePolicy(rawPolicy);
+    if (jsonMode) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            command: 'workspace policy',
+            action,
+            result: 'ok',
+            timestamp: new Date().toISOString(),
+            workspacePath,
+            policyPath,
+            policy,
+          },
+          null,
+          2
+        )}\n`
+      );
+      return 0;
+    }
     console.log(chalk.cyan(`Policy file: ${policyPath}`));
     console.log(chalk.gray(`  mode: ${policy.mode}`));
     console.log(chalk.gray(`  dependency_sharing_mode: ${policy.dependency_sharing_mode}`));
@@ -3928,12 +4506,64 @@ async function handleWorkspacePolicyCommand(
   }
 
   if (action !== 'set') {
+    if (jsonMode) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            command: 'workspace policy',
+            action,
+            result: 'error',
+            timestamp: new Date().toISOString(),
+            workspacePath,
+            policyPath,
+            error: {
+              code: 'workspace.policy.unknown_action',
+              message: `Unknown workspace policy action: ${subaction || ''}`,
+            },
+            allowedActions: ['show', 'status', 'get', 'set'],
+          },
+          null,
+          2
+        )}\n`
+      );
+      return 1;
+    }
     console.log(chalk.red(`Unknown workspace policy action: ${subaction || ''}`));
     console.log(chalk.gray('Available: show, set'));
     return 1;
   }
 
   if (!key || typeof value === 'undefined') {
+    if (jsonMode) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            command: 'workspace policy',
+            action,
+            result: 'error',
+            timestamp: new Date().toISOString(),
+            workspacePath,
+            policyPath,
+            error: {
+              code: 'workspace.policy.missing_arguments',
+              message: 'Usage: rapidkit workspace policy set <key> <value>',
+            },
+            allowedKeys: [
+              'mode',
+              'dependency_sharing_mode',
+              'rules.enforce_workspace_marker',
+              'rules.enforce_toolchain_lock',
+              'rules.disallow_untrusted_tool_sources',
+              'rules.enforce_compatibility_matrix',
+              'rules.require_mirror_lock_for_offline',
+            ],
+          },
+          null,
+          2
+        )}\n`
+      );
+      return 1;
+    }
     console.log(chalk.yellow('Usage: rapidkit workspace policy set <key> <value>'));
     console.log(chalk.gray('Allowed keys:'));
     console.log(chalk.gray('  mode (warn|strict)'));
@@ -3955,6 +4585,27 @@ async function handleWorkspacePolicyCommand(
   if (normalizedKey === 'mode') {
     const normalizedMode = value.trim().toLowerCase();
     if (normalizedMode !== 'warn' && normalizedMode !== 'strict') {
+      if (jsonMode) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              command: 'workspace policy',
+              action,
+              result: 'error',
+              timestamp: new Date().toISOString(),
+              workspacePath,
+              policyPath,
+              error: {
+                code: 'workspace.policy.invalid_mode',
+                message: 'Invalid mode. Use: warn | strict',
+              },
+            },
+            null,
+            2
+          )}\n`
+        );
+        return 1;
+      }
       console.log(chalk.red('❌ Invalid mode. Use: warn | strict'));
       return 1;
     }
@@ -3970,6 +4621,28 @@ async function handleWorkspacePolicyCommand(
       normalizedMode !== 'shared-runtime-caches' &&
       normalizedMode !== 'shared-node-deps'
     ) {
+      if (jsonMode) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              command: 'workspace policy',
+              action,
+              result: 'error',
+              timestamp: new Date().toISOString(),
+              workspacePath,
+              policyPath,
+              error: {
+                code: 'workspace.policy.invalid_dependency_sharing_mode',
+                message:
+                  'Invalid dependency_sharing_mode. Use: isolated | shared-runtime-caches | shared-node-deps',
+              },
+            },
+            null,
+            2
+          )}\n`
+        );
+        return 1;
+      }
       console.log(
         chalk.red(
           '❌ Invalid dependency_sharing_mode. Use: isolated | shared-runtime-caches | shared-node-deps'
@@ -3985,22 +4658,104 @@ async function handleWorkspacePolicyCommand(
   } else if (normalizedKey.startsWith('rules.')) {
     const ruleKey = normalizedKey.slice('rules.'.length) as WorkspacePolicyRuleKey;
     if (!(ruleKey in WORKSPACE_POLICY_RULE_DEFAULTS)) {
+      if (jsonMode) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              command: 'workspace policy',
+              action,
+              result: 'error',
+              timestamp: new Date().toISOString(),
+              workspacePath,
+              policyPath,
+              error: {
+                code: 'workspace.policy.unknown_rule',
+                message: `Unknown policy rule: ${ruleKey}`,
+              },
+            },
+            null,
+            2
+          )}\n`
+        );
+        return 1;
+      }
       console.log(chalk.red(`❌ Unknown policy rule: ${ruleKey}`));
       return 1;
     }
     const parsedBool = parsePolicyBooleanLiteral(value);
     if (parsedBool === null) {
+      if (jsonMode) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              command: 'workspace policy',
+              action,
+              result: 'error',
+              timestamp: new Date().toISOString(),
+              workspacePath,
+              policyPath,
+              error: {
+                code: 'workspace.policy.invalid_boolean',
+                message: 'Rule values must be boolean: true | false',
+              },
+            },
+            null,
+            2
+          )}\n`
+        );
+        return 1;
+      }
       console.log(chalk.red('❌ Rule values must be boolean: true | false'));
       return 1;
     }
     nextPolicy = replaceOrInsertRulePolicyLine(nextPolicy, ruleKey, parsedBool);
   } else {
+    if (jsonMode) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            command: 'workspace policy',
+            action,
+            result: 'error',
+            timestamp: new Date().toISOString(),
+            workspacePath,
+            policyPath,
+            error: {
+              code: 'workspace.policy.unknown_key',
+              message: `Unknown policy key: ${normalizedKey}`,
+            },
+          },
+          null,
+          2
+        )}\n`
+      );
+      return 1;
+    }
     console.log(chalk.red(`❌ Unknown policy key: ${normalizedKey}`));
     return 1;
   }
 
   await writeWorkspacePolicyFile(workspacePath, nextPolicy);
   const updated = parseWorkspacePolicy(nextPolicy);
+  if (jsonMode) {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          command: 'workspace policy',
+          action,
+          result: 'ok',
+          timestamp: new Date().toISOString(),
+          workspacePath,
+          policyPath,
+          updatedKey: normalizedKey,
+          policy: updated,
+        },
+        null,
+        2
+      )}\n`
+    );
+    return 0;
+  }
   console.log(chalk.green(`✅ Updated ${normalizedKey} in .rapidkit/policies.yml`));
   console.log(chalk.gray(`  mode: ${updated.mode}`));
   console.log(chalk.gray(`  dependency_sharing_mode: ${updated.dependency_sharing_mode}`));
@@ -4076,9 +4831,11 @@ export async function handleMirrorCommand(args: string[]): Promise<number> {
           JSON.stringify(defaultConfig, null, 2) + '\n',
           'utf-8'
         );
-        console.log(
-          chalk.gray('  mirror-config.json created with defaults (.rapidkit/mirror-config.json)')
-        );
+        if (!jsonMode) {
+          console.log(
+            chalk.gray('  mirror-config.json created with defaults (.rapidkit/mirror-config.json)')
+          );
+        }
       } catch {
         /* non-fatal */
       }
@@ -6004,11 +6761,15 @@ program
   .description(
     '🩺 Check RapidKit system health by default; use workspace or project for scoped checks'
   )
-  .option('--workspace', 'Check entire workspace (including all projects)')
+  .option(
+    '--workspace [path]',
+    'Check entire workspace, optionally from an explicit workspace path'
+  )
   .option('--project', 'Check only the current project (or nearest parent project)')
   .option('--json', 'Output results in JSON format (for CI/CD pipelines)')
   .option('--strict', 'Exit 1 on health errors or warnings (workspace/project scope)')
   .option('--ci', 'CI gate: exit 1 on errors, exit 2 on warnings only')
+  .option('--profile <profile>', 'Doctor policy profile: local | ci | release | enterprise-strict')
   .option('--fix', 'Automatically fix common issues (with confirmation)')
   .option('--plan', 'Generate remediation plan without applying changes')
   .option('--apply', 'Apply remediation plan non-interactively')
@@ -6016,11 +6777,12 @@ program
     async (
       scope: string | undefined,
       options: {
-        workspace?: boolean;
+        workspace?: boolean | string;
         project?: boolean;
         json?: boolean;
         strict?: boolean;
         ci?: boolean;
+        profile?: string;
         fix?: boolean;
         plan?: boolean;
         apply?: boolean;
@@ -6040,6 +6802,16 @@ program
       if (options.plan && (options.fix || options.apply)) {
         console.log(
           chalk.red('Invalid doctor flags: --plan cannot be combined with --fix or --apply')
+        );
+        process.exit(1);
+      }
+
+      const allowedDoctorProfiles = new Set(['local', 'ci', 'release', 'enterprise-strict']);
+      if (options.profile && !allowedDoctorProfiles.has(options.profile)) {
+        console.log(
+          chalk.red(
+            `Invalid doctor profile: ${options.profile}. Use local, ci, release, or enterprise-strict.`
+          )
         );
         process.exit(1);
       }
@@ -6075,6 +6847,7 @@ program
         project: options.project || scope === 'project',
         strict: options.strict === true,
         ci: options.ci === true,
+        profile: options.profile,
       });
       if (exitCode !== 0) {
         process.exit(exitCode);
@@ -6214,7 +6987,7 @@ program
 
       const cwd = path.resolve(process.cwd());
       const root = path.resolve(workspacePath);
-      if (cwd !== root) {
+      if (cwd !== root && !actionOptions.json) {
         console.log(
           chalk.gray(
             `ℹ Using workspace root ${workspacePath} for "${actionName}" (current directory: ${cwd}).`
@@ -6255,7 +7028,7 @@ program
 
     if (action === 'list') {
       const { listWorkspaces } = await import('./workspace.js');
-      await listWorkspaces();
+      await listWorkspaces({ json: actionOptions.json === true || hasRawFlag('--json') });
     } else if (action === 'model') {
       const workspacePath = requireWorkspaceRootForAction('model');
       const { buildWorkspaceModelCached, buildWorkspaceModelIncremental, writeWorkspaceModel } =
@@ -6508,6 +7281,30 @@ program
       const workspacePath = requireWorkspaceRootForAction('diff');
       const fromPath = actionOptions.from || subaction;
       if (!fromPath) {
+        if (actionOptions.json === true || hasRawFlag('--json')) {
+          console.log(
+            JSON.stringify(
+              {
+                schemaVersion: 'workspace-diff-error-v1',
+                command: 'workspace diff',
+                status: 'error',
+                workspacePath,
+                error: {
+                  code: 'workspace.diff.from.required',
+                  message: 'workspace diff requires --from <snapshot-or-model-report|git[:ref]>.',
+                },
+                examples: [
+                  'npx rapidkit workspace diff --from .rapidkit/reports/workspace-model-snapshot.json --json',
+                  'npx rapidkit workspace diff --from .rapidkit/reports/workspace-model.json --json',
+                  'npx rapidkit workspace diff --from git --json',
+                ],
+              },
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
         console.log(
           chalk.red('❌ workspace diff requires --from <snapshot-or-model-report|git[:ref]>')
         );
@@ -6536,13 +7333,44 @@ program
       const { diffWorkspaceModel, writeWorkspaceModelDiff } = await import(
         './workspace-intelligence.js'
       );
-      const diff = await diffWorkspaceModel({
-        workspacePath,
-        fromPath,
-        includeAbsolutePaths: actionOptions.includePaths === true || hasRawFlag('--include-paths'),
-        includeEvidence: actionOptions.includeEvidence === true || hasRawFlag('--include-evidence'),
-        observableScanDepth: workspaceModelScanDepth(),
-      });
+      let diff: Awaited<ReturnType<typeof diffWorkspaceModel>>;
+      try {
+        diff = await diffWorkspaceModel({
+          workspacePath,
+          fromPath,
+          includeAbsolutePaths:
+            actionOptions.includePaths === true || hasRawFlag('--include-paths'),
+          includeEvidence:
+            actionOptions.includeEvidence === true || hasRawFlag('--include-evidence'),
+          observableScanDepth: workspaceModelScanDepth(),
+        });
+      } catch (error) {
+        if (actionOptions.json === true || hasRawFlag('--json')) {
+          console.log(
+            JSON.stringify(
+              {
+                schemaVersion: 'workspace-diff-error-v1',
+                command: 'workspace diff',
+                status: 'error',
+                workspacePath,
+                fromPath,
+                error: {
+                  code: 'workspace.diff.input_unreadable',
+                  message: (error as Error).message,
+                },
+                nextActions: [
+                  'npx rapidkit workspace snapshot create --json',
+                  'npx rapidkit workspace diff --from .rapidkit/reports/workspace-model-snapshot.json --json',
+                ],
+              },
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
+        throw error;
+      }
       const outputPath = await writeWorkspaceModelDiff(diff, workspacePath);
       if (actionOptions.json) {
         console.log(JSON.stringify({ ...diff, outputPath }, null, 2));
@@ -6576,6 +7404,29 @@ program
       const workspacePath = requireWorkspaceRootForAction('impact');
       const fromPath = actionOptions.from || subaction;
       if (!fromPath) {
+        if (actionOptions.json === true || hasRawFlag('--json')) {
+          console.log(
+            JSON.stringify(
+              {
+                schemaVersion: 'workspace-impact-error-v1',
+                command: 'workspace impact',
+                status: 'error',
+                workspacePath,
+                error: {
+                  code: 'workspace.impact.from.required',
+                  message: 'workspace impact requires --from <workspace-diff-report>.',
+                },
+                examples: [
+                  'npx rapidkit workspace diff --from .rapidkit/reports/workspace-model-snapshot.json --json',
+                  'npx rapidkit workspace impact --from .rapidkit/reports/workspace-model-diff-last-run.json --json',
+                ],
+              },
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
         console.log(
           chalk.red('❌ workspace impact requires --from <snapshot-model-or-diff-report>')
         );
@@ -6589,14 +7440,46 @@ program
       const { buildWorkspaceImpact, writeWorkspaceImpact } = await import(
         './workspace-intelligence.js'
       );
-      const impact = await buildWorkspaceImpact({
-        workspacePath,
-        fromPath,
-        scope: actionOptions.scope,
-        includeAbsolutePaths: actionOptions.includePaths === true || hasRawFlag('--include-paths'),
-        includeEvidence: actionOptions.includeEvidence === true || hasRawFlag('--include-evidence'),
-        observableScanDepth: workspaceModelScanDepth(),
-      });
+      let impact: Awaited<ReturnType<typeof buildWorkspaceImpact>>;
+      try {
+        impact = await buildWorkspaceImpact({
+          workspacePath,
+          fromPath,
+          scope: actionOptions.scope,
+          includeAbsolutePaths:
+            actionOptions.includePaths === true || hasRawFlag('--include-paths'),
+          includeEvidence:
+            actionOptions.includeEvidence === true || hasRawFlag('--include-evidence'),
+          observableScanDepth: workspaceModelScanDepth(),
+        });
+      } catch (error) {
+        if (actionOptions.json === true || hasRawFlag('--json')) {
+          console.log(
+            JSON.stringify(
+              {
+                schemaVersion: 'workspace-impact-error-v1',
+                command: 'workspace impact',
+                status: 'error',
+                workspacePath,
+                fromPath,
+                error: {
+                  code: 'workspace.impact.input_unreadable',
+                  message: (error as Error).message,
+                },
+                nextActions: [
+                  'npx rapidkit workspace snapshot create --json',
+                  'npx rapidkit workspace diff --from .rapidkit/reports/workspace-model-snapshot.json --json',
+                  'npx rapidkit workspace impact --from .rapidkit/reports/workspace-model-diff-last-run.json --json',
+                ],
+              },
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
+        throw error;
+      }
       const outputPath = await writeWorkspaceImpact(impact, workspacePath);
       if (actionOptions.json) {
         console.log(JSON.stringify({ ...impact, outputPath }, null, 2));
@@ -6701,11 +7584,31 @@ program
         observableScanDepth: workspaceModelScanDepth(),
       });
       const graph = model.graph;
+      const mode = (subaction || 'emit').toLowerCase();
       if (!graph) {
+        if (actionOptions.json) {
+          console.log(
+            JSON.stringify(
+              {
+                command: 'workspace graph',
+                action: mode,
+                result: 'error',
+                workspacePath,
+                timestamp: new Date().toISOString(),
+                error: {
+                  code: 'workspace.graph.missing',
+                  message: 'Workspace model did not produce a dependency graph.',
+                },
+              },
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
         console.log(chalk.red('❌ Workspace model did not produce a dependency graph.'));
         process.exit(1);
       }
-      const mode = (subaction || 'emit').toLowerCase();
 
       if (mode === 'dot') {
         console.log(renderGraphDot(graph));
@@ -6718,6 +7621,29 @@ program
       if (mode === 'explain') {
         const project = (actionOptions.scope?.replace(/^project:/, '') || key || '').trim();
         if (!project) {
+          if (actionOptions.json) {
+            console.log(
+              JSON.stringify(
+                {
+                  command: 'workspace graph explain',
+                  result: 'error',
+                  workspacePath,
+                  timestamp: new Date().toISOString(),
+                  error: {
+                    code: 'workspace.graph.explain.missing_project',
+                    message: 'workspace graph explain requires a project.',
+                  },
+                  usage: [
+                    'npx rapidkit workspace graph explain <project> --json',
+                    'npx rapidkit workspace graph explain --scope project:<name> --json',
+                  ],
+                },
+                null,
+                2
+              )
+            );
+            process.exit(1);
+          }
           console.log(chalk.red('❌ workspace graph explain requires a project.'));
           console.log(chalk.gray('   npx rapidkit workspace graph explain <project> --json'));
           console.log(chalk.gray('   npx rapidkit workspace graph explain --scope project:<name>'));
@@ -6942,7 +7868,13 @@ program
       }
     } else if (action === 'policy') {
       const workspacePath = requireWorkspaceRootForAction('policy');
-      const code = await handleWorkspacePolicyCommand(workspacePath, subaction, key, value);
+      const code = await handleWorkspacePolicyCommand(
+        workspacePath,
+        subaction,
+        key,
+        value,
+        actionOptions.json === true || hasRawFlag('--json')
+      );
       if (code !== 0) process.exit(code);
     } else if (action === 'contract') {
       const workspacePath = requireWorkspaceRootForAction('contract');
@@ -7056,6 +7988,25 @@ program
         );
         process.exit(1);
       } catch (error) {
+        if (actionOptions.json) {
+          console.log(
+            JSON.stringify(
+              {
+                command: `workspace contract ${contractAction}`,
+                result: 'error',
+                workspacePath,
+                timestamp: new Date().toISOString(),
+                error: {
+                  code: `workspace.contract.${contractAction}.failed`,
+                  message: (error as Error).message,
+                },
+              },
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
         console.log(
           chalk.red(`❌ Workspace contract ${contractAction} failed: ${(error as Error).message}`)
         );
@@ -7072,6 +8023,28 @@ program
         includeDoctorEvidence: actionOptions.doctor !== false,
         includeBlueprint: actionOptions.blueprint !== false,
       });
+
+      if (actionOptions.json) {
+        console.log(
+          JSON.stringify(
+            {
+              command: 'workspace share',
+              result: 'ok',
+              timestamp: new Date().toISOString(),
+              workspacePath,
+              bundlePath,
+              options: {
+                includePaths: actionOptions.includePaths === true,
+                includeDoctorEvidence: actionOptions.doctor !== false,
+                includeBlueprint: actionOptions.blueprint !== false,
+              },
+            },
+            null,
+            2
+          )
+        );
+        return;
+      }
 
       console.log(chalk.green(`✔ Workspace share bundle exported: ${bundlePath}`));
       console.log(
@@ -7211,6 +8184,26 @@ program
           process.exit(1);
         }
       } catch (error) {
+        if (actionOptions.json) {
+          console.log(
+            JSON.stringify(
+              {
+                schemaVersion: 'workspace-archive-error-v1',
+                command: `workspace archive ${subaction}`,
+                status: 'error',
+                timestamp: new Date().toISOString(),
+                archivePathOrUrl,
+                error: {
+                  code: `workspace.archive.${subaction}.failed`,
+                  message: (error as Error).message,
+                },
+              },
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
         console.log(
           chalk.red(`❌ Workspace archive ${subaction} failed: ${(error as Error).message}`)
         );
@@ -7255,6 +8248,28 @@ program
           console.log(chalk.gray(`   Workspace: ${result.manifest.workspaceName}`));
         }
       } catch (error) {
+        if (actionOptions.json) {
+          console.log(
+            JSON.stringify(
+              {
+                schemaVersion: 'workspace-archive-error-v1',
+                command: `workspace ${action}`,
+                status: 'error',
+                timestamp: new Date().toISOString(),
+                archivePathOrUrl,
+                outputPath: actionOptions.output ?? null,
+                dryRun: actionOptions.dryRun === true || hasRawFlag('--dry-run'),
+                error: {
+                  code: `workspace.${action}.failed`,
+                  message: (error as Error).message,
+                },
+              },
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
         console.log(chalk.red(`❌ Workspace ${action} failed: ${(error as Error).message}`));
         process.exit(1);
       }
@@ -7297,9 +8312,16 @@ program
         : undefined;
 
       if (stageName === 'init') {
-        const workspaceInitCode = await installWorkspaceDependencies(workspacePath);
-        if (workspaceInitCode !== 0) {
-          process.exit(workspaceInitCode);
+        if (actionOptions.json === true) {
+          // Machine-readable workspace run must always reach the fleet report.
+          // Workspace-level dependency bootstrap can be long-running and belongs
+          // to `rapidkit bootstrap` / `rapidkit setup`; project init remains
+          // covered by runWorkspaceStage below.
+        } else {
+          const workspaceInitCode = await installWorkspaceDependencies(workspacePath);
+          if (workspaceInitCode !== 0) {
+            process.exit(workspaceInitCode);
+          }
         }
       }
 
@@ -7487,6 +8509,27 @@ program
       const workspacePath = requireWorkspaceRootForAction('mcp');
       const mode = (subaction || 'serve').toLowerCase();
       if (mode !== 'serve') {
+        if (actionOptions.json) {
+          console.log(
+            JSON.stringify(
+              {
+                command: 'workspace mcp',
+                action: mode,
+                result: 'error',
+                workspacePath,
+                timestamp: new Date().toISOString(),
+                error: {
+                  code: 'workspace.mcp.unknown_action',
+                  message: `Unknown mcp action: ${mode}`,
+                },
+                availableActions: ['serve'],
+              },
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
         console.log(chalk.red(`Unknown mcp action: ${mode}`));
         console.log(chalk.gray('Available: serve'));
         process.exit(1);

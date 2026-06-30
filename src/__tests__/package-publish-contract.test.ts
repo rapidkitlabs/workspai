@@ -53,6 +53,11 @@ describe('npm publish contract', () => {
     expect(prepack).toContain('scripts/prepare-mock-embeddings.mjs');
     expect(prepack).toContain('scripts/verify-package-cli.mjs');
     expect(prepack).toContain(enterpriseSmokeScript);
+
+    const smoke = fs.readFileSync(path.join(process.cwd(), enterpriseSmokeScript), 'utf8');
+    expect(smoke).toContain('REQUIRED_PACKAGE_FILES');
+    expect(smoke).toContain('assertPackageFilesPolicy(missingRequired)');
+    expect(smoke).toContain('ignored generated asset');
   });
 
   it('ships and runs a Windows CLI resolution guard on install', () => {

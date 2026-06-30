@@ -3,6 +3,7 @@ import fsExtra from 'fs-extra';
 
 import type { WorkspaceVerify } from './workspace-verify.js';
 import type { AgentActionOutcomeRecord } from './contracts/agent-action-outcome-contract.js';
+import type { DoctorFixExecutionResult } from './contracts/doctor-fix-result-contract.js';
 
 /**
  * Lightweight health/impact history with retention (roadmap 1.21).
@@ -13,15 +14,15 @@ import type { AgentActionOutcomeRecord } from './contracts/agent-action-outcome-
  * `DEFAULT_HISTORY_RETENTION` most-recent entries to keep it cheap to read/write
  * and to avoid unbounded growth.
  *
- * Phase 4.C adds optional `kind: agent-action` entries (additive; readers ignore
- * unknown kinds).
+ * Later phases add optional `kind: agent-action` and `kind: doctor-fix`
+ * entries (additive; readers ignore unknown kinds).
  */
 
 export const WORKSPACE_HISTORY_SCHEMA_VERSION = 'workspace-intelligence-history.v1' as const;
 export const WORKSPACE_HISTORY_PATH = '.rapidkit/reports/workspace-intelligence-history.json';
 export const DEFAULT_HISTORY_RETENTION = 50;
 
-export type WorkspaceHistoryEntryKind = 'verify' | 'agent-action';
+export type WorkspaceHistoryEntryKind = 'verify' | 'agent-action' | 'doctor-fix';
 
 export type WorkspaceHistoryVerifyEntry = {
   /** Omitted on legacy entries; treat as `verify`. */
@@ -46,7 +47,22 @@ export type WorkspaceHistoryAgentActionEntry = {
   evidenceSha256?: string;
 };
 
-export type WorkspaceHistoryEntry = WorkspaceHistoryVerifyEntry | WorkspaceHistoryAgentActionEntry;
+export type WorkspaceHistoryDoctorFixEntry = {
+  kind: 'doctor-fix';
+  generatedAt: string;
+  scope: 'workspace' | 'project';
+  summary: string;
+  outcome: 'ok' | 'failed';
+  applied: number;
+  failed: number;
+  skipped: number;
+  remainingBlockers: number;
+};
+
+export type WorkspaceHistoryEntry =
+  | WorkspaceHistoryVerifyEntry
+  | WorkspaceHistoryAgentActionEntry
+  | WorkspaceHistoryDoctorFixEntry;
 
 export type WorkspaceHistoryFile = {
   schemaVersion: typeof WORKSPACE_HISTORY_SCHEMA_VERSION;
@@ -80,6 +96,27 @@ export function normalizeHistoryEntry(raw: unknown): WorkspaceHistoryEntry | nul
       ...(typeof record.evidenceSha256 === 'string'
         ? { evidenceSha256: record.evidenceSha256 }
         : {}),
+    };
+  }
+  if (record.kind === 'doctor-fix') {
+    if (
+      (record.scope !== 'workspace' && record.scope !== 'project') ||
+      typeof record.summary !== 'string' ||
+      (record.outcome !== 'ok' && record.outcome !== 'failed')
+    ) {
+      return null;
+    }
+    return {
+      kind: 'doctor-fix',
+      generatedAt: record.generatedAt,
+      scope: record.scope,
+      summary: record.summary,
+      outcome: record.outcome,
+      applied: typeof record.applied === 'number' ? record.applied : 0,
+      failed: typeof record.failed === 'number' ? record.failed : 0,
+      skipped: typeof record.skipped === 'number' ? record.skipped : 0,
+      remainingBlockers:
+        typeof record.remainingBlockers === 'number' ? record.remainingBlockers : 0,
     };
   }
   if (
@@ -130,6 +167,29 @@ export function historyEntryFromAgentAction(
     summary: outcome.summary,
     outcome: outcome.outcome,
     ...(outcome.evidenceSha256 ? { evidenceSha256: outcome.evidenceSha256 } : {}),
+  };
+}
+
+export function historyEntryFromDoctorFixResult(
+  result: DoctorFixExecutionResult,
+  scope: 'workspace' | 'project'
+): WorkspaceHistoryDoctorFixEntry {
+  const applied = result.appliedFixes.filter((fix) => fix.outcome === 'applied').length;
+  const failed = result.appliedFixes.filter((fix) => fix.outcome === 'failed').length;
+  const skipped = result.appliedFixes.filter((fix) => fix.outcome === 'skipped').length;
+  const guidance = result.appliedFixes.filter((fix) => fix.outcome === 'guidance').length;
+  const remainingBlockers = result.remainingBlockers.length;
+  const outcome = failed > 0 || remainingBlockers > 0 ? 'failed' : 'ok';
+  return {
+    kind: 'doctor-fix',
+    generatedAt: result.generatedAt,
+    scope,
+    summary: `${applied} applied, ${failed} failed, ${skipped} skipped, ${guidance} guidance, ${remainingBlockers} blocker(s) remaining`,
+    outcome,
+    applied,
+    failed,
+    skipped,
+    remainingBlockers,
   };
 }
 

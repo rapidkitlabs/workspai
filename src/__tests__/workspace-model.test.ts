@@ -56,6 +56,13 @@ describe('workspace intelligence model', () => {
       status: 'warning',
       errors: 0,
     });
+    expect(model.factFreshness).toMatchObject({
+      schemaVersion: 'rapidkit-fact-freshness-v1',
+      totalFacts: expect.any(Number),
+    });
+    expect(model.facts?.map((fact) => fact.id)).toEqual(
+      expect.arrayContaining(['workspace.name', 'workspace.projectCount'])
+    );
     expect(model.validation?.issues.map((issue) => issue.code)).toContain(
       'workspace.projects.empty'
     );
@@ -117,11 +124,43 @@ describe('workspace intelligence model', () => {
       path.join(workspacePath, 'orders-api', 'pyproject.toml'),
       '[project]\nname = "orders-api"\n'
     );
+    await fsExtra.writeFile(
+      path.join(workspacePath, 'orders-api', 'Dockerfile'),
+      'FROM python:3.12\n'
+    );
     await fsExtra.outputJson(
       path.join(workspacePath, 'orders-api', '.rapidkit', 'reports', 'doctor-last-run.json'),
       {
         status: 'pass',
         generatedAt: '2026-06-14T01:00:00.000Z',
+      }
+    );
+    await fsExtra.outputJson(
+      path.join(
+        workspacePath,
+        'orders-api',
+        '.rapidkit',
+        'reports',
+        'doctor-remediation-plan-last-run.json'
+      ),
+      {
+        schemaVersion: 'doctor-remediation-plan-v2',
+        status: 'planned',
+        generatedAt: '2026-06-14T01:01:00.000Z',
+      }
+    );
+    await fsExtra.outputJson(
+      path.join(
+        workspacePath,
+        'orders-api',
+        '.rapidkit',
+        'reports',
+        'doctor-fix-result-last-run.json'
+      ),
+      {
+        schemaVersion: 'rapidkit-doctor-fix-result-v1',
+        verdict: 'completed',
+        generatedAt: '2026-06-14T01:02:00.000Z',
       }
     );
 
@@ -157,6 +196,18 @@ describe('workspace intelligence model', () => {
           status: 'pass',
           generatedAt: '2026-06-14T01:00:00.000Z',
         },
+        remediationPlan: {
+          path: 'orders-api/.rapidkit/reports/doctor-remediation-plan-last-run.json',
+          exists: true,
+          status: 'planned',
+          generatedAt: '2026-06-14T01:01:00.000Z',
+        },
+        fixResult: {
+          path: 'orders-api/.rapidkit/reports/doctor-fix-result-last-run.json',
+          exists: true,
+          status: 'completed',
+          generatedAt: '2026-06-14T01:02:00.000Z',
+        },
       },
     });
     expect(model.projects[0].commands.supported).toContain('test');
@@ -172,6 +223,21 @@ describe('workspace intelligence model', () => {
       fleetEligible: false,
     });
     expect(model.projects[0].importantFiles).toContain('.rapidkit/project.json');
+    expect(model.facts?.map((fact) => fact.id)).toEqual(
+      expect.arrayContaining([
+        'project.orders-api.framework',
+        'project.orders-api.safeFleetStages',
+        'project.orders-api.evidence.doctor',
+        'workspace.evidence.doctor',
+      ])
+    );
+    expect(
+      model.facts?.find((fact) => fact.id === 'project.orders-api.evidence.doctor')?.freshness
+    ).toMatchObject({
+      kind: 'evidence-backed',
+      category: 'verification',
+      verifyBeforeUse: true,
+    });
     expect(model.validation?.issues.map((issue) => issue.code)).toContain(
       'workspace.contract.missing'
     );

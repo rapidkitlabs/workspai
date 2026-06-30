@@ -8,6 +8,11 @@ import {
   type FrontendLifecycleCommand,
   type FrontendPlatformKey,
 } from './frontend-framework-contract.js';
+import {
+  buildMissingPackageScriptRepairCapability,
+  inferFrontendTestScriptValue,
+  type DoctorRepairCapability,
+} from './doctor-repair-capabilities.js';
 
 export type DoctorFrontendProbe = {
   id: string;
@@ -17,6 +22,7 @@ export type DoctorFrontendProbe = {
   scope: 'project-scoped';
   reason: string;
   recommendation?: string;
+  repairCapability?: DoctorRepairCapability;
 };
 
 const NODE_ESLINT_CONFIG_FILES = [
@@ -319,6 +325,15 @@ export async function buildFrontendDoctorProbes(input: {
   for (const command of FRONTEND_LIFECYCLE_COMMANDS) {
     const hasScript = hasLifecycleScript(scripts, frameworkKey, command);
     const required = command === 'dev' || command === 'build';
+    const repairCapability =
+      !hasScript && command === 'test'
+        ? buildMissingPackageScriptRepairCapability({
+            projectPath,
+            frameworkDisplayName: contract.displayName,
+            scriptName: command,
+            scriptValue: inferFrontendTestScriptValue(scripts),
+          })
+        : undefined;
     probes.push({
       id: `frontend-script-${command}`,
       label: `${command} script surface`,
@@ -331,6 +346,7 @@ export async function buildFrontendDoctorProbes(input: {
       recommendation: hasScript
         ? undefined
         : `Add a "${getFrontendLifecycleScriptCandidates(frameworkKey, command)[0] ?? command}" script to package.json.`,
+      repairCapability,
     });
   }
 

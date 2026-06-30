@@ -165,7 +165,7 @@ export class NodeRuntimeAdapter implements RuntimeAdapter {
 
   private scriptArgs(pm: PackageManager, scriptName: string): string[] {
     if (pm === 'npm') {
-      return ['run', scriptName];
+      return ['run-script', scriptName, '--foreground-scripts'];
     }
 
     // pnpm/yarn support `run` consistently across versions.

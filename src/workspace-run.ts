@@ -66,6 +66,7 @@ interface GateResult {
 interface ProjectExecutionResult {
   path: string;
   relativePath: string;
+  projectName: string;
   selected: boolean;
   affected: boolean;
   status: 'passed' | 'failed' | 'skipped';
@@ -78,6 +79,14 @@ interface ProjectExecutionResult {
   // Enterprise features
   errorCategory?: ErrorCategory;
   errorMessage?: string;
+  failureDiagnostic?: {
+    category: ErrorCategory;
+    exitCode: number;
+    command: string;
+    timedOut: boolean;
+    timeoutMs: number;
+    outputExcerpt?: string;
+  };
   healthStatus?: {
     healthy: boolean;
     reason?: string;
@@ -542,7 +551,18 @@ async function shouldEnforceWorkspaceRunGates(
   return match[1] === 'true';
 }
 
-async function runRapidkitSelfCommand(args: string[], cwd: string) {
+function resolveWorkspaceRunStageTimeoutMs(stage: string): number {
+  const raw = process.env.RAPIDKIT_WORKSPACE_RUN_STAGE_TIMEOUT_MS;
+  if (raw) {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return stage === 'init' ? 120_000 : 90_000;
+}
+
+async function runRapidkitSelfCommand(args: string[], cwd: string, timeoutMs?: number) {
   const entrypoint = process.argv[1];
   if (!entrypoint) {
     return {
@@ -552,20 +572,42 @@ async function runRapidkitSelfCommand(args: string[], cwd: string) {
     };
   }
 
-  const result = await execa(process.execPath, [entrypoint, ...args], {
-    cwd,
-    reject: false,
-    env: {
-      ...process.env,
-      RAPIDKIT_WORKSPACE_RUN_CHILD: '1',
-    },
-  });
+  try {
+    const result = await execa(process.execPath, [entrypoint, ...args], {
+      cwd,
+      reject: false,
+      timeout: timeoutMs,
+      env: {
+        ...process.env,
+        RAPIDKIT_WORKSPACE_RUN_CHILD: '1',
+      },
+    });
 
-  return {
-    exitCode: Number(result.exitCode ?? 1),
-    stdout: result.stdout,
-    stderr: result.stderr,
-  };
+    return {
+      exitCode: Number(result.exitCode ?? 1),
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+  } catch (error) {
+    const timedOut =
+      typeof error === 'object' &&
+      error !== null &&
+      'timedOut' in error &&
+      Boolean((error as { timedOut?: unknown }).timedOut);
+    return {
+      exitCode: timedOut ? 124 : 1,
+      stdout:
+        typeof error === 'object' && error !== null && 'stdout' in error
+          ? String((error as { stdout?: unknown }).stdout ?? '')
+          : '',
+      stderr:
+        typeof error === 'object' && error !== null && 'stderr' in error
+          ? String((error as { stderr?: unknown }).stderr ?? '')
+          : error instanceof Error
+            ? error.message
+            : String(error),
+    };
+  }
 }
 
 function isWrapperOwnedRuntime(runtime: RuntimeFamily): boolean {
@@ -733,6 +775,7 @@ async function executeStageCommand(
   message?: string;
   errorCategory?: ErrorCategory;
   healthStatus?: { healthy: boolean; reason?: string };
+  failureDiagnostic?: ProjectExecutionResult['failureDiagnostic'];
 }> {
   const useRapidkitWrapper = !commandOverrides?.[stage] && isWrapperOwnedRuntime(runtime);
 
@@ -814,16 +857,19 @@ async function executeStageCommand(
   let stdout = '';
   let stderr = '';
   let errorCategory: ErrorCategory | undefined;
+  const timeoutMs = resolveWorkspaceRunStageTimeoutMs(stage);
+  const startedAt = Date.now();
 
   try {
     const result = useRapidkitWrapper
       ? stage === 'init' && isVitestRuntime()
         ? await runRapidkitInitInProcess(projectPath)
-        : await runRapidkitSelfCommand([stage], projectPath)
+        : await runRapidkitSelfCommand([stage], projectPath, timeoutMs)
       : await execa(finalCommand, [], {
           cwd: projectPath,
           reject: false,
           shell: true,
+          timeout: timeoutMs,
         });
 
     exitCode = Number(result.exitCode ?? 0);
@@ -833,14 +879,28 @@ async function executeStageCommand(
     // Categorize error if non-zero exit
     if (exitCode !== 0) {
       const output = `${stdout}\n${stderr}`;
-      errorCategory = categorizeError(output);
+      const durationMs = Date.now() - startedAt;
+      const timedOut =
+        exitCode === 124 ||
+        categorizeError(output) === 'timeout' ||
+        (exitCode === 143 && durationMs >= Math.floor(timeoutMs * 0.8));
+      errorCategory = timedOut ? 'timeout' : categorizeError(output);
     }
   } catch (error) {
+    const timedOut =
+      typeof error === 'object' &&
+      error !== null &&
+      'timedOut' in error &&
+      Boolean((error as { timedOut?: unknown }).timedOut);
     return {
-      exitCode: 1,
+      exitCode: timedOut ? 124 : 1,
       command: finalCommand,
-      message: error instanceof Error ? error.message : 'Command execution failed',
-      errorCategory: 'runtime',
+      message: timedOut
+        ? `Stage timed out after ${timeoutMs}ms`
+        : error instanceof Error
+          ? error.message
+          : 'Command execution failed',
+      errorCategory: timedOut ? 'timeout' : 'runtime',
     };
   }
 
@@ -848,13 +908,42 @@ async function executeStageCommand(
   let healthStatus: { healthy: boolean; reason?: string } | undefined;
   // Note: Health checks would be looked up from framework registry
   // For now, we return the exit code result
+  const combinedOutput = `${stdout}\n${stderr}`
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const outputExcerpt = combinedOutput.slice(0, 6).join('\n');
+  const durationMs = Date.now() - startedAt;
+  const timedOut =
+    exitCode === 124 ||
+    errorCategory === 'timeout' ||
+    (exitCode === 143 && durationMs >= Math.floor(timeoutMs * 0.8));
+  const normalizedCategory = exitCode === 0 ? undefined : timedOut ? 'timeout' : errorCategory;
+  const failureDiagnostic =
+    exitCode === 0 || !normalizedCategory
+      ? undefined
+      : {
+          category: normalizedCategory,
+          exitCode,
+          command: finalCommand,
+          timedOut,
+          timeoutMs,
+          ...(outputExcerpt ? { outputExcerpt } : {}),
+        };
 
   return {
     exitCode,
     command: finalCommand,
-    errorCategory,
+    errorCategory: normalizedCategory,
     healthStatus,
-    message: exitCode !== 0 ? `Stage failed with exit code ${exitCode}` : undefined,
+    failureDiagnostic,
+    message: timedOut
+      ? `Stage timed out after ${timeoutMs}ms`
+      : exitCode !== 0
+        ? outputExcerpt
+          ? `Stage failed with exit code ${exitCode}: ${combinedOutput[0]}`
+          : `Stage failed with exit code ${exitCode}`
+        : undefined,
   };
 }
 
@@ -1085,11 +1174,13 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
 
   const executionRows = new Map<string, ProjectExecutionResult>();
   for (const projectPath of projectPaths) {
+    const relativePath = normalizePathForMatch(path.relative(workspacePath, projectPath));
     const insideScope = scopedProjectPaths.includes(projectPath);
     const selected = insideScope && affectedProjects.has(projectPath);
     executionRows.set(projectPath, {
       path: projectPath,
-      relativePath: normalizePathForMatch(path.relative(workspacePath, projectPath)),
+      relativePath,
+      projectName: path.basename(relativePath) || path.basename(projectPath),
       selected,
       affected: selected,
       status: 'skipped',
@@ -1194,6 +1285,7 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
       row.executionCommand = execResult.command;
       row.errorCategory = execResult.errorCategory;
       row.healthStatus = execResult.healthStatus;
+      row.failureDiagnostic = execResult.failureDiagnostic;
       row.durationMs = Date.now() - started;
       row.exitCode = execResult.exitCode;
 

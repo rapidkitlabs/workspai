@@ -591,9 +591,13 @@ export async function evaluateReleaseReadiness(
 ): Promise<ReleaseReadinessContract> {
   const startPath = path.resolve(options.startPath ?? process.cwd());
   const workspacePath = findWorkspaceRootUp(startPath) ?? startPath;
-  const projectPath = resolveReadinessProjectPath(startPath, workspacePath);
-  const projectRuntime = detectProjectRuntime(projectPath);
   const hasRegisteredProjects = (await resolveRegisteredWorkspaceProjectCount(workspacePath)) > 0;
+  const projectPath =
+    hasRegisteredProjects && isWorkspaceShellDirectory(startPath)
+      ? workspacePath
+      : resolveReadinessProjectPath(startPath, workspacePath);
+  const projectRuntime =
+    projectPath === workspacePath ? 'unknown' : detectProjectRuntime(projectPath);
   const effectiveRuntime = hasRegisteredProjects ? projectRuntime : 'unknown';
 
   const envGate = buildEnvGate(workspacePath, effectiveRuntime, { hasRegisteredProjects });

@@ -1,8 +1,11 @@
 import { CLI_LOG_EVENT_SCHEMA_VERSION } from './cli-log-event-contract.js';
+import { FACT_FRESHNESS_SCHEMA_VERSION } from './fact-freshness-contract.js';
 import { FRESHNESS_METADATA_SCHEMA_VERSION } from './freshness-metadata-contract.js';
 import { RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION } from './runtime-command-surface-contract.js';
 import { BLOCKER_RESOLUTION_SCHEMA_VERSION } from './blocker-resolution-contract.js';
 import { AGENT_ACTION_OUTCOME_SCHEMA_VERSION } from './agent-action-outcome-contract.js';
+import { DOCTOR_FIX_RESULT_SCHEMA_VERSION } from './doctor-fix-result-contract.js';
+import { DOCTOR_REMEDIATION_PLAN_SCHEMA_VERSION } from './doctor-remediation-plan-contract.js';
 import { WORKSPACE_EXPLAIN_SCHEMA_VERSION } from './workspace-explain-contract.js';
 import { WORKSPACE_OPERATIONAL_SKILL_SCHEMA_VERSION } from './workspace-operational-skill-contract.js';
 import { WORKSPACE_SKILLS_INDEX_SCHEMA_VERSION } from './workspace-skills-index-contract.js';
@@ -20,6 +23,7 @@ export function getPublishedContractVersions() {
     runtimeCommandSurface: RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION,
     cliLogEvent: CLI_LOG_EVENT_SCHEMA_VERSION,
     freshnessMetadata: FRESHNESS_METADATA_SCHEMA_VERSION,
+    factFreshness: FACT_FRESHNESS_SCHEMA_VERSION,
     blockerResolution: BLOCKER_RESOLUTION_SCHEMA_VERSION,
     workspaceModel: WORKSPACE_MODEL_SCHEMA_VERSION,
     workspaceImpact: WORKSPACE_IMPACT_SCHEMA_VERSION,
@@ -32,6 +36,8 @@ export function getPublishedContractVersions() {
     workspaceSkillsIndex: WORKSPACE_SKILLS_INDEX_SCHEMA_VERSION,
     workspaceExplain: WORKSPACE_EXPLAIN_SCHEMA_VERSION,
     agentActionOutcome: AGENT_ACTION_OUTCOME_SCHEMA_VERSION,
+    doctorRemediationPlan: DOCTOR_REMEDIATION_PLAN_SCHEMA_VERSION,
+    doctorFixResult: DOCTOR_FIX_RESULT_SCHEMA_VERSION,
   };
 }
 

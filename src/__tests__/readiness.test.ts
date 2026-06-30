@@ -47,7 +47,7 @@ afterEach(async () => {
 });
 
 describe('release readiness', () => {
-  it('resolves workspace shell cwd to registered child project for env gate', async () => {
+  it('keeps workspace shell cwd scoped to the workspace for workspace release gates', async () => {
     const workspace = await makeWorkspace();
     const projectDir = path.join(workspace, 'admin-api');
     await fsExtra.ensureDir(projectDir);
@@ -104,7 +104,7 @@ describe('release readiness', () => {
 
     const readiness = await evaluateReleaseReadiness({ startPath: workspace, writeReport: false });
 
-    expect(readiness.projectPath).toBe(projectDir);
+    expect(readiness.projectPath).toBe(workspace);
     expect(readiness.gates.find((gate) => gate.gate === 'env')?.status).toBe('pass');
   });
 
