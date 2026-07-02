@@ -68,7 +68,7 @@ describe('doctor remediation canary matrix', () => {
         return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'rapidkit') {
-        return { stdout: 'RapidKit Version: 0.41.2', stderr: '', exitCode: 0 } as any;
+        return { stdout: 'RapidKit Version: 0.41.3', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'go' && args?.[0] === 'version') {
         return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;

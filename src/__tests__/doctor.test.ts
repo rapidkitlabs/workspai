@@ -1263,7 +1263,7 @@ describe('Doctor Command', () => {
         return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'rapidkit') {
-        return { stdout: 'RapidKit Version: 0.41.2', stderr: '', exitCode: 0 } as any;
+        return { stdout: 'RapidKit Version: 0.41.3', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'npm' && Array.isArray(args) && args[0] === 'audit') {
         return {
@@ -1408,7 +1408,7 @@ describe('Doctor Command', () => {
         return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'rapidkit') {
-        return { stdout: 'RapidKit Version: 0.41.2', stderr: '', exitCode: 0 } as any;
+        return { stdout: 'RapidKit Version: 0.41.3', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'npm' && Array.isArray(args) && args[0] === 'audit') {
         return {
@@ -1576,7 +1576,7 @@ describe('Doctor Command', () => {
         return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'rapidkit') {
-        return { stdout: 'RapidKit Version: 0.41.2', stderr: '', exitCode: 0 } as any;
+        return { stdout: 'RapidKit Version: 0.41.3', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'npm' && Array.isArray(args) && args[0] === 'audit') {
         return {
@@ -1697,7 +1697,7 @@ describe('Doctor Command', () => {
         return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'rapidkit') {
-        return { stdout: 'RapidKit Version: 0.41.2', stderr: '', exitCode: 0 } as any;
+        return { stdout: 'RapidKit Version: 0.41.3', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'npm' && Array.isArray(args) && args[0] === 'audit') {
         return {
@@ -1859,7 +1859,7 @@ describe('Doctor Command', () => {
         return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'rapidkit') {
-        return { stdout: 'RapidKit Version: 0.41.2', stderr: '', exitCode: 0 } as any;
+        return { stdout: 'RapidKit Version: 0.41.3', stderr: '', exitCode: 0 } as any;
       }
       return { stdout: '', stderr: '', exitCode: 0 } as any;
     });
@@ -1979,7 +1979,7 @@ describe('Doctor Command', () => {
         return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'rapidkit') {
-        return { stdout: 'RapidKit Version: 0.41.2', stderr: '', exitCode: 0 } as any;
+        return { stdout: 'RapidKit Version: 0.41.3', stderr: '', exitCode: 0 } as any;
       }
       if (cmd === 'npm' && Array.isArray(args) && args[0] === 'audit') {
         return {

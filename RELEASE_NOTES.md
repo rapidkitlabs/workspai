@@ -1,6 +1,66 @@
 # Release Notes
 
-## Latest Release: v0.41.2 (June 28, 2026)
+## Latest Release: v0.41.3 (July 2, 2026)
+
+### Enterprise Doctor Evidence and Studio Remediation Contracts
+
+This patch release hardens RapidKit's npm source-of-truth layer for Workspai
+Studio, enterprise workspace governance, and agent-facing evidence. Doctor now
+emits deeper multi-language, multi-framework project signals; repair planning is
+structured as an ordered remediation contract; and Workspace Intelligence
+artifacts carry fact-level freshness metadata so humans and agents know which
+facts are durable, derived, evidence-backed, live, or verification-gated.
+
+**What's New:**
+
+- **Enterprise Doctor evidence**
+  - `doctor workspace`, `doctor workspace --fix`, `doctor project`, and
+    `doctor project --fix` now inspect broader project surfaces: dependency
+    contracts, env/config baselines, tests, quality tooling, security tooling,
+    container/deployment files, migrations, health probes, and runtime
+    entrypoints.
+  - Doctor output is more reliable across frontend, backend, and polyglot
+    workspaces, with canary coverage for multi-stack scenarios.
+
+- **Studio-ready remediation**
+  - New `doctor-remediation-plan.v1` contract describes ordered safe and guarded
+    repair steps, file hints, verification commands, rollback metadata, and
+    repair capability state.
+  - Doctor repair capabilities now favor the smallest safe edit first while
+    keeping higher-risk steps review-gated for Workspai Studio.
+
+- **Fact freshness**
+  - New `fact-freshness.v1` contract extends freshness from artifact-level
+    metadata down to the facts that agents actually reason over.
+  - Workspace context, model, history, verify, and agent-sync outputs now expose
+    the newer freshness and remediation evidence in structured form.
+
+- **Enterprise CLI gates**
+  - CLI routing and release gates are hardened around npm-vs-Python RapidKit
+    command ownership, package smoke, manual release workflows, and Studio-safe
+    repair command execution.
+
+**Breaking changes:** None.
+
+**Verification:**
+
+- `npm run typecheck`
+- `npm run validate:contracts`
+- `npm test`
+- `npm run smoke:enterprise-package`
+- `npm run prepack`
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.41.3
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.41.3.md)
+
+---
+
+## Previous Release: v0.41.2 (June 28, 2026)
 
 ### Workspace Intelligence Contract and Publish Smoke Hardening
 

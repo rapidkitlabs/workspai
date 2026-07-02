@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.3] - 2026-07-02
+
+### Added
+
+- Added `doctor-remediation-plan.v1` as the Studio-ready repair contract for
+  ordered safe/guarded remediation steps, verification commands, file hints,
+  rollback metadata, and policy-aware repair capability state.
+- Added `fact-freshness.v1` and fact-level freshness metadata across Workspace
+  Intelligence artifacts so agents can distinguish durable facts, derived facts,
+  evidence-backed facts, live facts, and facts that require verification before
+  use.
+- Added multi-stack doctor canary coverage for frontend, backend, and polyglot
+  project surfaces.
+
+### Changed
+
+- Deepened `doctor workspace`, `doctor workspace --fix`, `doctor project`, and
+  `doctor project --fix` with broader language/framework/runtime probes for
+  dependency contracts, environment/config baselines, tests, quality tooling,
+  security tooling, containers, deployment surfaces, migrations, health probes,
+  and runtime entrypoints.
+- Hardened doctor repair planning so Workspai Studio can present the smallest
+  safe repair first, preserve guarded steps for review, and verify from the
+  correct workspace/project scope.
+- Extended Workspace Intelligence model, context, history, verify, and agent
+  sync outputs to carry the newer doctor, remediation, and freshness evidence
+  without forcing consumers to infer it from display text.
+- Hardened CLI routing and enterprise gates around npm-vs-Python RapidKit
+  command ownership, package smoke, and manual release workflow validation.
+
+### Fixed
+
+- Fixed stale or misleading doctor/project evidence paths in mixed workspace
+  and project scopes.
+- Fixed doctor status normalization around warning/error severities so TypeScript
+  and downstream JSON consumers agree on status values.
+- Fixed repair command safety gaps where Studio-facing consumers needed a
+  deterministic repair action instead of shell-chained command text.
+
+### Verification
+
+- `npm run typecheck`
+- `npm run validate:contracts`
+- `npm test`
+- `npm run smoke:enterprise-package`
+- `npm run prepack`
+
 ## [0.41.2] - 2026-06-28
 
 ### Added
