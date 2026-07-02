@@ -22,6 +22,9 @@ describe('extension-cli-compatibility contract', () => {
     expect(contract.publishedContractSchemas.doctorRemediationPlan).toBe(
       'doctor-remediation-plan-v2'
     );
+    expect(contract.publishedContractSchemas.artifactRemediationPlan).toBe(
+      'artifact-remediation-plan-v1'
+    );
     expect(contract.publishedContractSchemas.factFreshness).toBe('rapidkit-fact-freshness-v1');
     expect(contract.publishedContractSchemas.doctorFixResult).toBe('rapidkit-doctor-fix-result-v1');
   });

@@ -6,6 +6,7 @@ import { BLOCKER_RESOLUTION_SCHEMA_VERSION } from './blocker-resolution-contract
 import { AGENT_ACTION_OUTCOME_SCHEMA_VERSION } from './agent-action-outcome-contract.js';
 import { DOCTOR_FIX_RESULT_SCHEMA_VERSION } from './doctor-fix-result-contract.js';
 import { DOCTOR_REMEDIATION_PLAN_SCHEMA_VERSION } from './doctor-remediation-plan-contract.js';
+import { ARTIFACT_REMEDIATION_PLAN_SCHEMA_VERSION } from './artifact-remediation-plan-contract.js';
 import { WORKSPACE_EXPLAIN_SCHEMA_VERSION } from './workspace-explain-contract.js';
 import { WORKSPACE_OPERATIONAL_SKILL_SCHEMA_VERSION } from './workspace-operational-skill-contract.js';
 import { WORKSPACE_SKILLS_INDEX_SCHEMA_VERSION } from './workspace-skills-index-contract.js';
@@ -37,6 +38,7 @@ export function getPublishedContractVersions() {
     workspaceExplain: WORKSPACE_EXPLAIN_SCHEMA_VERSION,
     agentActionOutcome: AGENT_ACTION_OUTCOME_SCHEMA_VERSION,
     doctorRemediationPlan: DOCTOR_REMEDIATION_PLAN_SCHEMA_VERSION,
+    artifactRemediationPlan: ARTIFACT_REMEDIATION_PLAN_SCHEMA_VERSION,
     doctorFixResult: DOCTOR_FIX_RESULT_SCHEMA_VERSION,
   };
 }

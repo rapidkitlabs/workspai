@@ -27,6 +27,7 @@ Canonical map of **on-disk artifacts** produced by `rapidkit-npm` commands. Dash
 | `doctor project`         | `.rapidkit/reports/doctor-project-last-run.json`          | `doctor-project-evidence-v1`    | `contracts/doctor-project-evidence.v1.json`                  |
 | `doctor * --plan`        | `.rapidkit/reports/doctor-remediation-plan-last-run.json` | `doctor-remediation-plan-v2`    | `contracts/doctor-remediation-plan.v1.json`                  |
 | `doctor * --fix/--apply` | `.rapidkit/reports/doctor-fix-result-last-run.json`       | `rapidkit-doctor-fix-result-v1` | `contracts/workspace-intelligence/doctor-fix-result.v1.json` |
+| `workspace remediation-plan --write` | `.rapidkit/reports/artifact-remediation-plan-last-run.json` | `artifact-remediation-plan-v1` | `contracts/artifact-remediation-plan.v1.json` |
 | `analyze`                | `.rapidkit/reports/analyze-last-run.json`                 | `rapidkit-analyze-v1`           | `contracts/analyze-last-run.v1.json`                         |
 | `readiness`              | `.rapidkit/reports/release-readiness-last-run.json`       | `release-readiness-v1`          | `contracts/release-readiness.v1.json`                        |
 | `pipeline`               | `.rapidkit/reports/pipeline-last-run.json`                | `rapidkit-pipeline-v1`          | `contracts/pipeline-last-run.v1.json`                        |
@@ -43,6 +44,16 @@ typed file edits, diff previews, ordered phases, step dependencies, rollback, an
 steps without inferring them. `doctor-fix-result-last-run.json` records the approved execution
 outcome, and fix/apply runs append a `kind: doctor-fix` entry to
 `workspace-intelligence-history.json`.
+
+Artifact remediation handoff:
+`artifact-remediation-plan-v1` (`contracts/artifact-remediation-plan.v1.json`) is emitted by
+`workspace remediation-plan --json` and persisted with `--write`. Add `--ci` to produce
+CI-oriented verify commands where the underlying command supports stricter gates. It is the cross-card Studio
+handoff for governance artifacts outside Doctor: Bootstrap compliance, Analyze, Readiness,
+Pipeline, Workspace Run, Workspace Verify, and Doctor plan bridging. Consumers should ask npm for
+this plan before inventing per-card repair logic. The plan carries ordered actions, safe file
+operations where deterministic, refresh/verify commands, risk, approval state, and rollback
+strategy.
 
 When `doctor project` runs inside a workspace, the workspace report remains the canonical
 governance artifact and Doctor mirrors `doctor-project-last-run.json`,

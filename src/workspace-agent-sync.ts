@@ -133,6 +133,11 @@ export const AGENT_REPORT_CATALOG: AgentReportCatalogEntry[] = [
     required: false,
   },
   {
+    relativePath: '.rapidkit/reports/artifact-remediation-plan-last-run.json',
+    label: 'Artifact remediation plan',
+    required: false,
+  },
+  {
     relativePath: '.rapidkit/reports/doctor-fix-result-last-run.json',
     label: 'Doctor fix result',
     required: false,

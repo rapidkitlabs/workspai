@@ -170,6 +170,7 @@ For the visual experience, install the [Workspai VS Code extension](https://mark
 | What breaks if I change this?                 | `workspace impact --from <snapshot>`                                                         |
 | Why is release blocked?                       | `workspace explain release-blocked --json --write`                                           |
 | Trace a diff through blast radius and gates?  | `workspace trace --from .rapidkit/reports/workspace-model-diff-last-run.json --json --write` |
+| What should Studio do for blocked artifacts?  | `workspace remediation-plan --ci --json --write`                                             |
 | Can I safely release?                         | `pipeline --json --strict`                                                                   |
 | How do I align AI tools and CI?               | `workspace agent-sync --write`                                                               |
 | Expose workspace evidence to MCP clients?     | `workspace mcp serve`                                                                        |
@@ -317,6 +318,7 @@ Workspace Intelligence provides a shared understanding of projects, dependencies
 | `workspace diff --from <file\|git[:ref]> --json`             | Diff against snapshot or git                                                         |
 | `workspace impact --from <file> --json`                      | Graph-aware transitive blast-radius evidence                                         |
 | `workspace verify [--strict] --json`                         | Definitive verification gate (subgraph + freshness + policy + fleet evidence)        |
+| `workspace remediation-plan [--ci] --json --write`           | Cross-artifact Studio repair plan for blocked governance cards                       |
 | `workspace explain <target> [--write] --json`                | Human narrative for release blockers, projects, or trace slices                      |
 | `workspace why <target>`                                     | Alias of `workspace explain`                                                         |
 | `workspace trace --from <diff> [--write] --json`             | Diff → impact → gates narrative for agents and IDE handoff                           |
@@ -414,6 +416,9 @@ npm run check:agent-customization-drift -- --workspace <workspace-root>
 | `.rapidkit/reports/rapidkit-mcp-design.json`                            | Read-mostly MCP-ready tool design manifest                  |
 | `.rapidkit/reports/INDEX.json`                                          | Read order, blockers, report timestamps                     |
 | `.rapidkit/reports/workspace-context-agent.json`                        | Canonical agent context pack                                |
+| `.rapidkit/reports/artifact-remediation-plan-last-run.json`             | Cross-artifact Studio repair plan                           |
+| `.rapidkit/reports/doctor-remediation-plan-last-run.json`               | Doctor-specific ordered repair plan                         |
+| `.rapidkit/reports/doctor-fix-result-last-run.json`                     | Doctor fix/apply execution result                           |
 | `.rapidkit/AGENT-GROUNDING.md`                                          | Tool-agnostic grounding doc                                 |
 | `AGENTS.md`                                                             | Open standard for all agents (managed RapidKit section)     |
 | `.github/copilot-instructions.md`                                       | GitHub Copilot / VS Code Chat always-on rules               |

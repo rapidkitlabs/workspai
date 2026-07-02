@@ -34,6 +34,10 @@ const GOVERNANCE_ARTIFACT_SCHEMAS = [
     schemaVersion: 'doctor-remediation-plan-v2',
   },
   {
+    fileName: 'artifact-remediation-plan.v1.json',
+    schemaVersion: 'artifact-remediation-plan-v1',
+  },
+  {
     fileName: 'analyze-last-run.v1.json',
     schemaVersion: 'rapidkit-analyze-v1',
   },
@@ -213,6 +217,45 @@ describe('governance artifact JSON schemas', () => {
         expect.objectContaining({
           properties: expect.objectContaining({
             type: expect.objectContaining({ const: 'makefile-target' }),
+          }),
+        }),
+      ])
+    );
+  });
+
+  it('defines cross-artifact remediation plan contract for Studio handoff', () => {
+    const schema = readSchema('artifact-remediation-plan.v1.json');
+    const defs = schema.$defs as Record<string, any>;
+    expect(schemaConst(schema)).toBe('artifact-remediation-plan-v1');
+    expect(schema.required).toEqual(
+      expect.arrayContaining(['workspace', 'source', 'summary', 'actions'])
+    );
+    expect(defs.action.required).toEqual(
+      expect.arrayContaining([
+        'artifactKind',
+        'cardId',
+        'mode',
+        'risk',
+        'verifyCommand',
+        'rollback',
+      ])
+    );
+    expect(defs.action.properties.mode.enum).toEqual(
+      expect.arrayContaining(['edit-file', 'run-command', 'verify-before-fix'])
+    );
+    expect(defs.action.properties.status.enum).toEqual(
+      expect.arrayContaining(['ready', 'review-required', 'guidance-only'])
+    );
+    expect(defs.operation.oneOf).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          properties: expect.objectContaining({
+            type: expect.objectContaining({ const: 'file-create' }),
+          }),
+        }),
+        expect.objectContaining({
+          properties: expect.objectContaining({
+            type: expect.objectContaining({ const: 'run-command' }),
           }),
         }),
       ])

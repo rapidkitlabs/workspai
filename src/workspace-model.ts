@@ -1180,6 +1180,11 @@ export async function buildWorkspaceModel(
         '.rapidkit/reports/doctor-remediation-plan-last-run.json',
         includeEvidence
       ),
+      artifactRemediationPlan: await evidenceRef(
+        workspacePath,
+        '.rapidkit/reports/artifact-remediation-plan-last-run.json',
+        includeEvidence
+      ),
       doctorFixResult: await evidenceRef(
         workspacePath,
         '.rapidkit/reports/doctor-fix-result-last-run.json',

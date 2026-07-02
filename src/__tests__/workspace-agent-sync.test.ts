@@ -85,6 +85,7 @@ describe('workspace agent sync', () => {
       expect.arrayContaining([
         '.rapidkit/reports/doctor-project-last-run.json',
         '.rapidkit/reports/doctor-remediation-plan-last-run.json',
+        '.rapidkit/reports/artifact-remediation-plan-last-run.json',
         '.rapidkit/reports/doctor-fix-result-last-run.json',
       ])
     );

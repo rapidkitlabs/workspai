@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.4] - 2026-07-03
+
+### Added
+
+- Added `workspace remediation-plan [--json] [--write] [--ci] [--include-paths]` to build a
+  cross-artifact Studio repair plan from blocked governance reports in
+  `.rapidkit/reports/`.
+- Added `artifact-remediation-plan.v1` (`contracts/artifact-remediation-plan.v1.json`) with
+  ordered safe/guarded/invasive actions, file operations, verify commands, rollback
+  metadata, and approval state for Bootstrap, Doctor, Analyze, Readiness, Pipeline,
+  Workspace Run, and Workspace Verify cards.
+- Published the new command on `runtime-command-surface.v1`, extension CLI compatibility,
+  agent customization pack, workspace model evidence refs, and agent-sync catalog entries.
+
+### Changed
+
+- Updated operational skills and README guidance so agents read
+  `artifact-remediation-plan-last-run.json` before inventing per-card repair logic.
+- Documented the artifact catalog entry and commands reference for the remediation-plan
+  handoff path.
+
+### Verification
+
+- `npm run typecheck`
+- `npm run validate:contracts`
+- `npm test`
+- `npm run smoke:enterprise-package`
+- `npm run prepack`
+
 ## [0.41.3] - 2026-07-02
 
 ### Added

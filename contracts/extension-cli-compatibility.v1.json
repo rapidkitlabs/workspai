@@ -1,7 +1,7 @@
 {
   "schemaVersion": "rapidkit-extension-cli-compatibility.v1",
   "cli": "rapidkit-npm",
-  "minimumVerifiedCliVersion": "0.41.3",
+  "minimumVerifiedCliVersion": "0.41.4",
   "publishedContractSchemas": {
     "runtimeCommandSurface": "rapidkit-runtime-command-surface-v1",
     "cliLogEvent": "cli-log-event-v1",
@@ -20,6 +20,7 @@
     "workspaceExplain": "workspace-explain.v1",
     "agentActionOutcome": "agent-action-outcome.v1",
     "doctorRemediationPlan": "doctor-remediation-plan-v2",
+    "artifactRemediationPlan": "artifact-remediation-plan-v1",
     "doctorFixResult": "rapidkit-doctor-fix-result-v1"
   }
 }

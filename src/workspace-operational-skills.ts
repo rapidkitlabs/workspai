@@ -47,7 +47,7 @@ const SKILL_TEMPLATES: SkillTemplate[] = [
     steps: [
       'Read `.rapidkit/reports/INDEX.json` and identify fail/warn reports for the scoped project.',
       'Read `.rapidkit/reports/doctor-last-run.json`, `doctor-project-last-run.json`, and project-scoped run evidence if present.',
-      'If a fix was requested, read `doctor-remediation-plan-last-run.json` before editing and `doctor-fix-result-last-run.json` before claiming completion.',
+      'If a fix was requested, read `artifact-remediation-plan-last-run.json` for cross-artifact next steps, then `doctor-remediation-plan-last-run.json` for Doctor-specific file edits.',
       'Map the failure to workspace vs project scope; cite exit codes and blocker messages.',
       'Propose the smallest safe fix (config, env, dependency) with explicit verification commands.',
     ],
@@ -60,6 +60,7 @@ const SKILL_TEMPLATES: SkillTemplate[] = [
     steps: [
       'Read `.rapidkit/reports/release-readiness-last-run.json` and `pipeline-last-run.json`.',
       'Read `.rapidkit/reports/workspace-verify-last-run.json` for verdict and blocking reasons.',
+      'Read `.rapidkit/reports/artifact-remediation-plan-last-run.json` when a Studio or agent repair path is needed.',
       'List blocking gates first; never claim ready without cited report fields.',
       'Provide one safe next command and a verification checklist.',
     ],

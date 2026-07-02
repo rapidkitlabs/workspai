@@ -1,6 +1,56 @@
 # Release Notes
 
-## Latest Release: v0.41.3 (July 2, 2026)
+## Latest Release: v0.41.4 (July 3, 2026)
+
+### Cross-Artifact Studio Remediation Plan
+
+This patch release adds a workspace-level repair contract for Workspai Studio and
+agent consumers. Instead of scraping individual governance cards, npm can now emit
+one ordered remediation plan across Bootstrap, Doctor, Analyze, Readiness, Pipeline,
+Workspace Run, and Workspace Verify evidence.
+
+**What's New:**
+
+- **`workspace remediation-plan`**
+  - New command: `rapidkit workspace remediation-plan [--json] [--write] [--ci] [--include-paths]`
+  - Scans `.rapidkit/reports/` and builds a Studio-ready action list with risk,
+    approval state, verify commands, and deterministic file operations where safe.
+  - `--ci` produces stricter verify-oriented command plans where supported.
+
+- **`artifact-remediation-plan.v1`**
+  - New schema at `contracts/artifact-remediation-plan.v1.json`
+  - Persists to `.rapidkit/reports/artifact-remediation-plan-last-run.json`
+  - Bridges Doctor-specific plans with cross-card governance repair for dashboard
+    and Studio handoff consumers.
+
+- **Published contract surface**
+  - Added to `runtime-command-surface.v1`, `extension-cli-compatibility.v1`,
+    `agent-customization-pack.v1`, workspace model evidence refs, and agent-sync
+    catalog entries.
+  - Operational skills now direct agents to read the artifact remediation plan
+    before per-card improvisation.
+
+**Breaking changes:** None.
+
+**Verification:**
+
+- `npm run typecheck`
+- `npm run validate:contracts`
+- `npm test`
+- `npm run smoke:enterprise-package`
+- `npm run prepack`
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.41.4
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.41.4.md)
+
+---
+
+## Previous Release: v0.41.3 (July 2, 2026)
 
 ### Enterprise Doctor Evidence and Studio Remediation Contracts
 

@@ -6924,6 +6924,7 @@ program
     'Skip projects that already passed this stage in workspace-run-last.json'
   )
   .option('--json', 'Emit machine-readable JSON output')
+  .option('--ci', 'Build CI-oriented command plans where supported')
   .option('--strict', 'Return non-zero exit on warn/fail gate outcomes')
   .option('--no-gates', 'Skip doctor/readiness pre-run gates')
   .action(async function (
@@ -6965,6 +6966,7 @@ program
       continueOnError?: boolean;
       reusePassed?: boolean;
       json?: boolean;
+      ci?: boolean;
       strict?: boolean;
       gates?: boolean;
       cache?: boolean;
@@ -7143,6 +7145,53 @@ program
 
       if (strictRequested && result.strictViolations.length > 0) {
         process.exit(1);
+      }
+    } else if (action === 'remediation-plan') {
+      const workspacePath = requireWorkspaceRootForAction('remediation-plan');
+      const { buildArtifactRemediationPlan, writeArtifactRemediationPlan } = await import(
+        './artifact-remediation-plan.js'
+      );
+      const plan = await buildArtifactRemediationPlan({
+        workspacePath,
+        includeAbsolutePaths: actionOptions.includePaths === true || hasRawFlag('--include-paths'),
+        ciMode: actionOptions.ci === true || hasRawFlag('--ci'),
+      });
+      let outputPath: string | undefined;
+      if (actionOptions.write === true || hasRawFlag('--write')) {
+        outputPath = await writeArtifactRemediationPlan(plan, workspacePath);
+      }
+      if (actionOptions.json === true || hasRawFlag('--json')) {
+        console.log(JSON.stringify({ ...plan, ...(outputPath ? { outputPath } : {}) }, null, 2));
+        return;
+      }
+      console.log(chalk.green(`✔ Artifact remediation plan: ${plan.workspace.name}`));
+      console.log(chalk.gray(`   Artifacts scanned: ${plan.summary.artifactsScanned}`));
+      console.log(chalk.gray(`   Cards covered: ${plan.summary.cardsCovered}`));
+      console.log(chalk.gray(`   CI mode: ${plan.source.ciMode ? 'yes' : 'no'}`));
+      console.log(chalk.gray(`   Actions: ${plan.summary.totalActions}`));
+      console.log(
+        chalk.gray(
+          `   Risk: safe=${plan.summary.risk.safe}, guarded=${plan.summary.risk.guarded}, invasive=${plan.summary.risk.invasive}`
+        )
+      );
+      for (const actionItem of plan.actions.slice(0, 8)) {
+        console.log(
+          chalk.gray(
+            `   • ${actionItem.cardId}: ${actionItem.title} (${actionItem.mode}, ${actionItem.risk})`
+          )
+        );
+      }
+      if (plan.actions.length > 8) {
+        console.log(chalk.gray(`   … ${plan.actions.length - 8} more action(s)`));
+      }
+      if (outputPath) {
+        console.log(chalk.gray(`   Written: ${outputPath}`));
+      } else {
+        console.log(
+          chalk.gray(
+            '   Add --write to persist .rapidkit/reports/artifact-remediation-plan-last-run.json'
+          )
+        );
       }
     } else if (action === 'context') {
       const workspacePath = requireWorkspaceRootForAction('context');
