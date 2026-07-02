@@ -1718,6 +1718,7 @@ describe('Doctor Command', () => {
       process.chdir(projectPath);
       const { runDoctor } = await import('../doctor.js');
       await runDoctor({ project: true, fix: true, json: true });
+      const realProjectPath = fsExtra.realpathSync(projectPath);
 
       await expect(fsExtra.pathExists(path.join(projectPath, '.dockerignore'))).resolves.toBe(true);
       await expect(
@@ -1748,19 +1749,19 @@ describe('Doctor Command', () => {
           expect.objectContaining({
             projectName: 'next-app',
             files: expect.arrayContaining([
-              path.join(projectPath, '.env.example'),
-              path.join(projectPath, '.env'),
+              path.join(realProjectPath, '.env.example'),
+              path.join(realProjectPath, '.env'),
             ]),
             operation: expect.objectContaining({
               type: 'file-copy',
-              sourcePath: path.join(projectPath, '.env.example'),
-              path: path.join(projectPath, '.env'),
+              sourcePath: path.join(realProjectPath, '.env.example'),
+              path: path.join(realProjectPath, '.env'),
               overwrite: false,
             }),
           }),
           expect.objectContaining({
             projectName: 'next-app',
-            files: expect.arrayContaining([path.join(projectPath, '.dockerignore')]),
+            files: expect.arrayContaining([path.join(realProjectPath, '.dockerignore')]),
             operation: expect.objectContaining({
               type: 'file-create',
             }),
@@ -1776,7 +1777,7 @@ describe('Doctor Command', () => {
           }),
           expect.objectContaining({
             projectName: 'next-app',
-            files: expect.arrayContaining([path.join(projectPath, '.gitignore')]),
+            files: expect.arrayContaining([path.join(realProjectPath, '.gitignore')]),
             operation: expect.objectContaining({
               type: 'file-append',
             }),
@@ -1871,6 +1872,7 @@ describe('Doctor Command', () => {
       process.chdir(projectPath);
       const { runDoctor } = await import('../doctor.js');
       await runDoctor({ project: true, fix: true, json: true });
+      const realProjectPath = fsExtra.realpathSync(projectPath);
 
       const makefile = await fsExtra.readFile(path.join(projectPath, 'Makefile'), 'utf8');
       expect(makefile).toContain('test:');
@@ -1893,7 +1895,7 @@ describe('Doctor Command', () => {
             issueId: 'surface-test-contract',
             operation: expect.objectContaining({
               type: 'makefile-target',
-              path: path.join(projectPath, 'Makefile'),
+              path: path.join(realProjectPath, 'Makefile'),
               target: 'test',
             }),
           }),
@@ -1901,7 +1903,7 @@ describe('Doctor Command', () => {
             issueId: 'runtime-quality-tooling',
             operation: expect.objectContaining({
               type: 'makefile-target',
-              path: path.join(projectPath, 'Makefile'),
+              path: path.join(realProjectPath, 'Makefile'),
               target: 'quality',
             }),
           }),
@@ -1909,7 +1911,7 @@ describe('Doctor Command', () => {
             issueId: 'runtime-security-tooling',
             operation: expect.objectContaining({
               type: 'makefile-target',
-              path: path.join(projectPath, 'Makefile'),
+              path: path.join(realProjectPath, 'Makefile'),
               target: 'security',
             }),
           }),
@@ -2646,7 +2648,7 @@ describe('Doctor Command', () => {
       const payload = JSON.parse(jsonLine as string);
       expect(payload.scope).toBe('project');
       expect(payload.status).toBe('error');
-      expect(payload.workspace.path).toBe(workspacePath);
+      expect(payload.workspace.path).toBe(fsExtra.realpathSync(workspacePath));
       expect(payload.project).toBeNull();
       expect(payload.error.code).toBe('doctor.project.scope.not_found_in_workspace');
       expect(payload.error.relatedCommands).toContain('npx rapidkit doctor workspace --json');
@@ -3293,7 +3295,7 @@ describe('Doctor Command', () => {
       );
       expect(installCall?.[2]?.env?.POETRY_VIRTUALENVS_IN_PROJECT).toBe('true');
       expect(installCall?.[2]?.env?.POETRY_CACHE_DIR).toBe(
-        path.join(projectPath, '.rapidkit', 'cache', 'pypoetry')
+        path.join(fsExtra.realpathSync(projectPath), '.rapidkit', 'cache', 'pypoetry')
       );
     } finally {
       process.chdir(originalCwd);
