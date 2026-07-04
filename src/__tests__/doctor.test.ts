@@ -416,7 +416,7 @@ describe('Doctor Command', () => {
 
       expect(jsonLine).toBeDefined();
       const payload = JSON.parse(jsonLine as string);
-      expect(payload.workspace.path).toBe(workspacePath);
+      expect(payload.workspace.path).toBe(fsExtra.realpathSync(workspacePath));
       expect(payload.cache.evidencePath).toBe(
         path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json')
       );
@@ -584,7 +584,7 @@ describe('Doctor Command', () => {
 
       expect(jsonLine).toBeDefined();
       const payload = JSON.parse(jsonLine as string);
-      expect(payload.workspace.path).toBe(workspacePath);
+      expect(payload.workspace.path).toBe(fsExtra.realpathSync(workspacePath));
       expect(payload.summary.totalProjects).toBe(0);
       expect(payload.projects).toEqual([]);
       expect(payload.scoreBreakdown).toEqual(
