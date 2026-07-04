@@ -416,7 +416,9 @@ describe('Doctor Command', () => {
 
       expect(jsonLine).toBeDefined();
       const payload = JSON.parse(jsonLine as string);
-      expect(fsExtra.realpathSync(payload.workspace.path)).toBe(fsExtra.realpathSync(workspacePath));
+      expect(fsExtra.realpathSync(payload.workspace.path)).toBe(
+        fsExtra.realpathSync(workspacePath)
+      );
       expect(payload.cache.evidencePath).toBe(
         path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json')
       );
@@ -584,7 +586,9 @@ describe('Doctor Command', () => {
 
       expect(jsonLine).toBeDefined();
       const payload = JSON.parse(jsonLine as string);
-      expect(fsExtra.realpathSync(payload.workspace.path)).toBe(fsExtra.realpathSync(workspacePath));
+      expect(fsExtra.realpathSync(payload.workspace.path)).toBe(
+        fsExtra.realpathSync(workspacePath)
+      );
       expect(payload.summary.totalProjects).toBe(0);
       expect(payload.projects).toEqual([]);
       expect(payload.scoreBreakdown).toEqual(
@@ -662,7 +666,9 @@ describe('Doctor Command', () => {
 
       expect(jsonLine).toBeDefined();
       const payload = JSON.parse(jsonLine as string);
-      expect(fsExtra.realpathSync(payload.workspace.path)).toBe(fsExtra.realpathSync(workspacePath));
+      expect(fsExtra.realpathSync(payload.workspace.path)).toBe(
+        fsExtra.realpathSync(workspacePath)
+      );
       expect(payload.summary.totalProjects).toBe(1);
       expect(payload.projects[0].name).toBe('saas-api');
     } finally {
@@ -2717,7 +2723,9 @@ describe('Doctor Command', () => {
       const payload = JSON.parse(jsonLine as string);
       expect(payload.scope).toBe('project');
       expect(payload.status).toBe('error');
-      expect(fsExtra.realpathSync(payload.workspace.path)).toBe(fsExtra.realpathSync(workspacePath));
+      expect(fsExtra.realpathSync(payload.workspace.path)).toBe(
+        fsExtra.realpathSync(workspacePath)
+      );
       expect(payload.project).toBeNull();
       expect(payload.error.code).toBe('doctor.project.scope.not_found_in_workspace');
       expect(payload.error.relatedCommands).toContain('npx rapidkit doctor workspace --json');
