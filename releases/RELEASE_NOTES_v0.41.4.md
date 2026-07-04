@@ -1,6 +1,6 @@
 # RapidKit v0.41.4 Release Notes
 
-**Release Date:** July 3, 2026
+**Release Date:** July 2, 2026
 
 ## Overview
 

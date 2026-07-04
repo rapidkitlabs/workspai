@@ -7,7 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.41.4] - 2026-07-03
+## [0.41.5] - 2026-07-04
+
+### Changed
+
+- Documented `create workspace <name> [--here|--output <parent-dir>]` in the
+  command reference so custom workspace parents are visible in the CLI contract.
+
+### Fixed
+
+- Fixed `create workspace` duplicate-name checks so an explicitly selected
+  target parent (`Current directory`, `--here`, or `--output <parent-dir>`) is
+  not blocked by a same-name workspace in the managed home. Creating into an
+  already-existing target path is still blocked.
+- Fixed `doctor workspace` so an empty workspace shell is not misclassified as a
+  project because of root-level toolchain files.
+- Fixed default-mode Workspace Verify gate exit codes so `needs-attention`
+  passes with exit code `0`, while strict mode continues to fail non-ready
+  verification.
+
+### Verification
+
+- `npm exec -- vitest run src/__tests__/workspace-create-location.test.ts`
+- `npm run typecheck -- --pretty false`
+- `npm run build`
+
+## [0.41.4] - 2026-07-02
 
 ### Added
 

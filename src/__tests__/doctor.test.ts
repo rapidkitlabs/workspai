@@ -534,6 +534,75 @@ describe('Doctor Command', () => {
     }
   });
 
+  it('should not treat an empty workspace shell as a project because of root toolchain files', async () => {
+    const tempRoot = await fsExtra.mkdtemp(
+      path.join(os.tmpdir(), 'rapidkit-doctor-empty-workspace-shell-')
+    );
+    const workspacePath = path.join(tempRoot, 'enterprise-workspace');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit-workspace'), {
+      signature: 'RAPIDKIT_WORKSPACE',
+      name: 'enterprise-workspace',
+      version: '1.0.0',
+    });
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      name: 'enterprise-workspace',
+      profile: 'enterprise',
+      version: 1,
+    });
+    await fsExtra.writeFile(
+      path.join(workspacePath, 'pyproject.toml'),
+      '[tool.poetry]\nname = "enterprise-workspace"\nversion = "0.1.0"\n'
+    );
+    await fsExtra.writeFile(
+      path.join(workspacePath, 'poetry.toml'),
+      '[virtualenvs]\nin-project = true\n'
+    );
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (args?.[0] === '--version') {
+        return { stdout: `${cmd} 1.0.0`, stderr: '', exitCode: 0 } as any;
+      }
+      if (args?.[0] === '-c') {
+        return { stdout: '0.5.4', stderr: '', exitCode: 0 } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(workspacePath);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ workspace: true, json: true });
+
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string | undefined;
+
+      expect(jsonLine).toBeDefined();
+      const payload = JSON.parse(jsonLine as string);
+      expect(payload.workspace.path).toBe(workspacePath);
+      expect(payload.summary.totalProjects).toBe(0);
+      expect(payload.projects).toEqual([]);
+      expect(payload.scoreBreakdown).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'workspace:projects-discovered',
+            status: 'warn',
+            reason: 'No projects discovered for workspace analysis.',
+          }),
+        ])
+      );
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
   it('should detect workspace root with .rapidkit-workspace marker only', async () => {
     const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rapidkit-doctor-marker-only-'));
     const workspacePath = path.join(tempRoot, 'workspace');

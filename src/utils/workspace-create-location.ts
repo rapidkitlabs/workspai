@@ -70,6 +70,24 @@ export function resolveWorkspaceTargetPath(
   });
 }
 
+export function shouldBlockExistingWorkspaceName(
+  existingWorkspacePath: string | undefined,
+  targetPath: string,
+  options: {
+    outputParent?: string;
+  } = {}
+): boolean {
+  if (!existingWorkspacePath) {
+    return false;
+  }
+
+  if (path.resolve(existingWorkspacePath) === path.resolve(targetPath)) {
+    return true;
+  }
+
+  return options.outputParent === undefined;
+}
+
 export async function resolveWorkspaceOutputParent(
   argv: readonly string[],
   options: {

@@ -1,6 +1,53 @@
 # Release Notes
 
-## Latest Release: v0.41.4 (July 3, 2026)
+## Latest Release: v0.41.5 (July 4, 2026)
+
+### Workspace Creation Location and Governance Gate Fixes
+
+This patch release tightens workspace creation, Doctor workspace discovery, and
+Workspace Verify exit-code behavior for Workspai, CI, and CLI users.
+
+**What's New:**
+
+- **Workspace creation location integrity**
+  - `create workspace` now respects an explicitly selected target parent
+    (`Current directory`, `--here`, or `--output <parent-dir>`) when checking
+    duplicate workspace names.
+  - A workspace with the same name in the managed home no longer blocks creating
+    another workspace in a different explicit parent directory.
+  - Creating into an already-existing target path is still blocked.
+
+- **Doctor empty workspace handling**
+  - `doctor workspace` no longer treats an empty workspace shell as a project
+    just because the workspace root contains toolchain files such as
+    `pyproject.toml` or `poetry.toml`.
+  - Empty workspace shells now report zero discovered projects and a workspace
+    discovery warning instead of misleading project health.
+
+- **Workspace Verify exit codes**
+  - Default-mode `needs-attention` verification now reports a passing gate with
+    exit code `0`.
+  - Strict mode still fails non-ready verification as expected.
+
+**Breaking changes:** None.
+
+**Verification:**
+
+- `npm exec -- vitest run src/__tests__/workspace-create-location.test.ts`
+- `npm run typecheck -- --pretty false`
+- `npm run build`
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.41.5
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.41.5.md)
+
+---
+
+## Previous Release: v0.41.4 (July 2, 2026)
 
 ### Cross-Artifact Studio Remediation Plan
 

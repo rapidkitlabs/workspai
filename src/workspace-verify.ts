@@ -1168,7 +1168,7 @@ export function evaluateWorkspaceVerifyGate(
   return {
     passed: true,
     mode,
-    exitCode: verify.summary.exitCode === 2 ? 0 : verify.summary.exitCode,
+    exitCode: 0,
     reasons,
   };
 }
@@ -1179,14 +1179,5 @@ export function workspaceVerifyExitCode(
 ): number {
   // Back-compat thin wrapper over the definitive gate (1.19).
   const decision = evaluateWorkspaceVerifyGate(verify, options);
-  if (!decision.passed) {
-    return decision.exitCode;
-  }
-  if (verify.summary.verdict === 'blocked') {
-    return 2;
-  }
-  if (options?.strict && verify.summary.verdict !== 'ready') {
-    return 1;
-  }
-  return verify.summary.exitCode;
+  return decision.exitCode;
 }

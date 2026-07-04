@@ -6,7 +6,7 @@ Complete CLI syntax for the RapidKit npm wrapper. For behavior and workflows, se
 
 ```bash
 npx rapidkit create # Prompts: workspace | project
-npx rapidkit create workspace <name> [--profile <profile>] [--author <name>] [--yes]
+npx rapidkit create workspace <name> [--profile <profile>] [--author <name>] [--yes] [--here|--output <parent-dir>]
 npx rapidkit bootstrap [--profile <profile>] [--json] [--compliance-only]
 npx rapidkit setup <python|node|go|java|dotnet> [--warm-deps]
 npx rapidkit pipeline [--json] [--strict] [--skip-verify] [--skip-analyze] [--skip-autopilot] [--autopilot-mode <audit|safe-fix|enforce>]

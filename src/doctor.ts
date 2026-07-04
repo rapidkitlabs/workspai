@@ -57,6 +57,7 @@ import type {
 } from './utils/doctor-repair-capabilities.js';
 import { buildEnterpriseSurfaceProbes } from './utils/doctor-surface-probes.js';
 import { historyEntryFromDoctorFixResult, recordWorkspaceHistory } from './workspace-history.js';
+import { isWorkspaceShellDirectory } from './utils/workspace-root.js';
 
 function uniquePaths(paths: string[]): string[] {
   return [
@@ -1568,7 +1569,11 @@ async function collectWorkspaceProjectPaths(workspacePath: string): Promise<stri
       fallbackProjects.forEach((projectPath) => projectPaths.add(projectPath));
     }
 
-    if (projectPaths.size === 0 && (await hasDoctorProjectSurface(workspacePath))) {
+    if (
+      projectPaths.size === 0 &&
+      !(await isWorkspaceShellDirectory(workspacePath)) &&
+      (await hasDoctorProjectSurface(workspacePath))
+    ) {
       projectPaths.add(workspacePath);
     }
 

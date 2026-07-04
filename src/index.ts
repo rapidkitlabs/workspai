@@ -131,6 +131,7 @@ import {
   formatWorkspaceCdCommand,
   resolveWorkspaceOutputParent,
   resolveWorkspaceTargetPath,
+  shouldBlockExistingWorkspaceName,
 } from './utils/workspace-create-location.js';
 import { createNpmWorkspaceMarker, writeWorkspaceMarker } from './workspace-marker.js';
 import {
@@ -837,7 +838,9 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
       const existingWorkspacePath = findExistingWorkspacePath(workspaceName.trim());
       if (
         !hasDryRun &&
-        ((existingWorkspacePath && (await fsExtra.pathExists(existingWorkspacePath))) ||
+        ((shouldBlockExistingWorkspaceName(existingWorkspacePath, targetPath, { outputParent }) &&
+          existingWorkspacePath &&
+          (await fsExtra.pathExists(existingWorkspacePath))) ||
           (await fsExtra.pathExists(targetPath)))
       ) {
         process.stderr.write(`❌ Workspace "${workspaceName}" already exists\n`);
@@ -5845,7 +5848,10 @@ program
 
         const existingWorkspacePath = !isProjectMode ? findExistingWorkspacePath(name) : undefined;
         if (
-          (existingWorkspacePath && (await fsExtra.pathExists(existingWorkspacePath))) ||
+          (!isProjectMode &&
+            shouldBlockExistingWorkspaceName(existingWorkspacePath, targetPath, { outputParent }) &&
+            existingWorkspacePath &&
+            (await fsExtra.pathExists(existingWorkspacePath))) ||
           (await fsExtra.pathExists(targetPath))
         ) {
           logger.error(`\n❌ Directory "${name}" already exists`);

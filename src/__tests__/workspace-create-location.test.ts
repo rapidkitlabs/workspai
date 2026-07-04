@@ -7,6 +7,7 @@ import {
   resolveWorkspaceOutputParent,
   resolveWorkspaceParentFromArgs,
   resolveWorkspaceTargetPath,
+  shouldBlockExistingWorkspaceName,
 } from '../utils/workspace-create-location.js';
 import { getCanonicalWorkspacesDirectory } from '../utils/workspace-paths.js';
 
@@ -66,5 +67,32 @@ describe('workspace-create-location', () => {
       homeDir: os.homedir(),
     });
     expect(parent).toBeUndefined();
+  });
+
+  it('does not block same-name workspaces in another parent when output parent is explicit', () => {
+    expect(
+      shouldBlockExistingWorkspaceName(
+        '/home/test-user/rapidkit/workspaces/my-workspace',
+        '/tmp/tests/my-workspace',
+        { outputParent: '/tmp/tests' }
+      )
+    ).toBe(false);
+  });
+
+  it('keeps managed-home duplicate protection when output parent is implicit', () => {
+    expect(
+      shouldBlockExistingWorkspaceName(
+        '/home/test-user/rapidkit/workspaces/my-workspace',
+        '/home/test-user/rapidkit/workspaces/my-workspace-2'
+      )
+    ).toBe(true);
+  });
+
+  it('always blocks when the existing workspace path is the target path', () => {
+    expect(
+      shouldBlockExistingWorkspaceName('/tmp/tests/my-workspace', '/tmp/tests/my-workspace', {
+        outputParent: '/tmp/tests',
+      })
+    ).toBe(true);
   });
 });

@@ -73,7 +73,10 @@ describe('workspace verify definitive gate (1.19)', () => {
 
   it('needs-attention passes in default mode but fails strict with exit 1', () => {
     const verify = verifyFixture({ verdict: 'needs-attention', exitCode: 1, freshness: 'fresh' });
-    expect(evaluateWorkspaceVerifyGate(verify).passed).toBe(true);
+    const dflt = evaluateWorkspaceVerifyGate(verify);
+    expect(dflt.passed).toBe(true);
+    expect(dflt.exitCode).toBe(0);
+    expect(workspaceVerifyExitCode(verify)).toBe(0);
     const strict = evaluateWorkspaceVerifyGate(verify, { strict: true });
     expect(strict.passed).toBe(false);
     expect(strict.exitCode).toBe(1);
