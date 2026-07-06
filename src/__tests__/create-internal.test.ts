@@ -8,6 +8,10 @@ import { getPythonCommand } from '../utils';
 import { DirectoryExistsError } from '../errors';
 import { checkRapidkitCoreVersionCompatible } from '../core-bridge/pythonRapidkitExec.js';
 
+function normalizeTestPath(value: unknown): string {
+  return String(value).replace(/\\/g, '/');
+}
+
 vi.mock('fs-extra');
 vi.mock('execa');
 vi.mock('inquirer');
@@ -113,7 +117,7 @@ describe('Create Module - Internal Functions', () => {
 
       const workspaceManifestCall = vi
         .mocked(fsExtra.outputFile)
-        .mock.calls.find((call) => String(call[0]).endsWith('.rapidkit/workspace.json'));
+        .mock.calls.find((call) => normalizeTestPath(call[0]).endsWith('.rapidkit/workspace.json'));
 
       expect(workspaceManifestCall).toBeDefined();
       const manifest = JSON.parse(String(workspaceManifestCall?.[1]));
@@ -127,7 +131,7 @@ describe('Create Module - Internal Functions', () => {
 
       const markerCall = vi
         .mocked(fsExtra.outputFile)
-        .mock.calls.find((call) => String(call[0]).endsWith('.rapidkit-workspace'));
+        .mock.calls.find((call) => normalizeTestPath(call[0]).endsWith('.rapidkit-workspace'));
       const marker = JSON.parse(String(markerCall?.[1]));
       expect(marker.metadata.python).toEqual({
         coreStatus: 'skipped',
@@ -136,7 +140,7 @@ describe('Create Module - Internal Functions', () => {
 
       const toolchainCall = vi
         .mocked(fsExtra.outputFile)
-        .mock.calls.find((call) => String(call[0]).endsWith('.rapidkit/toolchain.lock'));
+        .mock.calls.find((call) => normalizeTestPath(call[0]).endsWith('.rapidkit/toolchain.lock'));
       const toolchain = JSON.parse(String(toolchainCall?.[1]));
       expect(toolchain.runtime.python.core).toEqual({
         status: 'skipped',
@@ -145,7 +149,7 @@ describe('Create Module - Internal Functions', () => {
 
       const launcherCall = vi
         .mocked(fsExtra.outputFile)
-        .mock.calls.find((call) => String(call[0]).endsWith('/rapidkit'));
+        .mock.calls.find((call) => normalizeTestPath(call[0]).endsWith('/rapidkit'));
       expect(String(launcherCall?.[1])).toContain(
         'Python engine installation was intentionally skipped'
       );
@@ -154,7 +158,11 @@ describe('Create Module - Internal Functions', () => {
       expect(
         vi.mocked(fsExtra.outputFile).mock.calls.some((call) => {
           const target = String(call[0]);
-          return target.endsWith('/pyproject.toml') || target.endsWith('/poetry.toml');
+          const normalizedTarget = normalizeTestPath(target);
+          return (
+            normalizedTarget.endsWith('/pyproject.toml') ||
+            normalizedTarget.endsWith('/poetry.toml')
+          );
         })
       ).toBe(false);
 
@@ -183,7 +191,9 @@ describe('Create Module - Internal Functions', () => {
         skipGit: true,
       });
 
-      const writtenFiles = vi.mocked(fsExtra.outputFile).mock.calls.map((call) => String(call[0]));
+      const writtenFiles = vi
+        .mocked(fsExtra.outputFile)
+        .mock.calls.map((call) => normalizeTestPath(call[0]));
       expect(writtenFiles.some((target) => target.endsWith('/pyproject.toml'))).toBe(false);
       expect(writtenFiles.some((target) => target.endsWith('/poetry.toml'))).toBe(false);
       expect(writtenFiles.some((target) => target.endsWith('/.rapidkit/workspace.json'))).toBe(
