@@ -20,6 +20,8 @@ export type BackendRuntimeFamily =
   | 'kotlin'
   | 'deno'
   | 'bun'
+  | 'c'
+  | 'cpp'
   | 'unknown';
 
 export type BackendPlatformKey =
@@ -67,6 +69,8 @@ export type BackendPlatformKey =
   | 'kotlin'
   | 'deno'
   | 'bun'
+  | 'c'
+  | 'cpp'
   | 'unknown';
 
 export type BackendImportStack =
@@ -471,6 +475,22 @@ const BACKEND_CONTRACTS: Record<BackendPlatformKey, BackendContractDescriptor> =
     importStack: 'unknown',
     aliases: ['bun'],
   },
+  c: {
+    key: 'c',
+    runtime: 'c',
+    displayName: 'C',
+    supportTier: 'observed',
+    importStack: 'unknown',
+    aliases: ['c', 'clang', 'gcc'],
+  },
+  cpp: {
+    key: 'cpp',
+    runtime: 'cpp',
+    displayName: 'C++',
+    supportTier: 'observed',
+    importStack: 'unknown',
+    aliases: ['cpp', 'c++', 'cplusplus', 'cc', 'clang++', 'g++'],
+  },
   unknown: {
     key: 'unknown',
     runtime: 'unknown',
@@ -874,6 +894,21 @@ export function detectRuntimeCandidatesFromProject(projectPath: string): Backend
     push('bun');
   }
   if (
+    fs.existsSync(path.join(projectPath, 'CMakeLists.txt')) ||
+    fs.existsSync(path.join(projectPath, 'meson.build')) ||
+    hasFileWithSuffix(projectPath, '.cpp', 3) ||
+    hasFileWithSuffix(projectPath, '.cc', 3) ||
+    hasFileWithSuffix(projectPath, '.cxx', 3) ||
+    hasFileWithSuffix(projectPath, '.hpp', 3) ||
+    hasFileWithSuffix(projectPath, '.hh', 3) ||
+    hasFileWithSuffix(projectPath, '.hxx', 3)
+  ) {
+    push('cpp');
+  }
+  if (hasFileWithSuffix(projectPath, '.c', 3) || hasFileWithSuffix(projectPath, '.h', 3)) {
+    push('c');
+  }
+  if (
     fs.existsSync(path.join(projectPath, 'settings.gradle.kts')) ||
     hasFileWithSuffix(path.join(projectPath, 'src'), '.kt', 3)
   ) {
@@ -981,6 +1016,12 @@ export function detectBackendFrameworkFromProject(
   }
   if (runtimeCandidates.includes('bun')) {
     return buildDetection('bun', 'high', 'marker');
+  }
+  if (runtimeCandidates.includes('cpp')) {
+    return buildDetection('cpp', 'medium', 'marker');
+  }
+  if (runtimeCandidates.includes('c')) {
+    return buildDetection('c', 'medium', 'marker');
   }
   if (runtimeCandidates.length > 0) {
     return buildDetection(normalizeBackendPlatformKey(runtimeCandidates[0]), 'medium', 'runtime');

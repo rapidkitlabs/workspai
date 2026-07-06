@@ -38,14 +38,28 @@ async function writeWorkspaceMarker(
   workspacePath: string,
   workspaceName: string,
   installMethod?: 'poetry' | 'venv' | 'pipx',
-  pythonVersion?: string
+  pythonVersion?: string,
+  bootstrapMeta?: WorkspaceBootstrapMeta
 ): Promise<void> {
-  const markerObj = createNpmWorkspaceMarker(workspaceName, getVersion(), installMethod);
+  const markerObj = createNpmWorkspaceMarker(
+    workspaceName,
+    getVersion(),
+    installMethod,
+    bootstrapMeta?.pythonEngine
+      ? {
+          coreStatus: bootstrapMeta.pythonEngine,
+          ...(bootstrapMeta.pythonEngineReason
+            ? { coreReason: bootstrapMeta.pythonEngineReason }
+            : {}),
+          ...(pythonVersion ? { pythonVersion } : {}),
+        }
+      : undefined
+  );
 
   // Add Python version to marker if provided
-  if (pythonVersion) {
+  if (pythonVersion && !bootstrapMeta?.pythonEngine) {
     if (!markerObj.metadata) markerObj.metadata = {};
-    (markerObj.metadata as Record<string, unknown>).python = { version: pythonVersion };
+    (markerObj.metadata as Record<string, unknown>).python = { pythonVersion };
   }
 
   await writeWorkspaceMarkerToFile(workspacePath, markerObj);
@@ -107,7 +121,7 @@ export function buildWorkspaceManifest(
   installMethod: InstallMethod,
   pythonVersion?: string,
   profile?: string,
-  bootstrapMeta?: { profileRequested?: string; bootstrapNote?: string }
+  bootstrapMeta?: WorkspaceBootstrapMeta
 ): string {
   return JSON.stringify(
     {
@@ -124,6 +138,16 @@ export function buildWorkspaceManifest(
       engine: {
         install_method: installMethod,
         python_version: pythonVersion || null,
+        ...(bootstrapMeta?.pythonEngine
+          ? {
+              python_core: {
+                status: bootstrapMeta.pythonEngine,
+                ...(bootstrapMeta.pythonEngineReason
+                  ? { reason: bootstrapMeta.pythonEngineReason }
+                  : {}),
+              },
+            }
+          : {}),
       },
     },
     null,
@@ -136,7 +160,8 @@ function buildToolchainLock(
   pythonVersion?: string,
   nodeVersion?: string,
   goVersion?: string,
-  dotnetVersion?: string
+  dotnetVersion?: string,
+  bootstrapMeta?: WorkspaceBootstrapMeta
 ): string {
   return JSON.stringify(
     {
@@ -147,6 +172,16 @@ function buildToolchainLock(
         python: {
           version: pythonVersion || null,
           install_method: installMethod,
+          ...(bootstrapMeta?.pythonEngine
+            ? {
+                core: {
+                  status: bootstrapMeta.pythonEngine,
+                  ...(bootstrapMeta.pythonEngineReason
+                    ? { reason: bootstrapMeta.pythonEngineReason }
+                    : {}),
+                },
+              }
+            : {}),
         },
         node: {
           version: nodeVersion || process.version,
@@ -222,7 +257,7 @@ async function writeWorkspaceFoundationFiles(
   installMethod: InstallMethod,
   pythonVersion?: string,
   profile?: string,
-  bootstrapMeta?: { profileRequested?: string; bootstrapNote?: string }
+  bootstrapMeta?: WorkspaceBootstrapMeta
 ): Promise<void> {
   // Detect optional runtimes silently so toolchain.lock is accurate without blocking creation.
   const [goVersion, dotnetVersion] = await Promise.all([detectGoVersion(), detectDotnetVersion()]);
@@ -234,7 +269,14 @@ async function writeWorkspaceFoundationFiles(
   );
   await fsExtra.outputFile(
     path.join(workspacePath, '.rapidkit', 'toolchain.lock'),
-    buildToolchainLock(installMethod, pythonVersion, process.version, goVersion, dotnetVersion),
+    buildToolchainLock(
+      installMethod,
+      pythonVersion,
+      process.version,
+      goVersion,
+      dotnetVersion,
+      bootstrapMeta
+    ),
     'utf-8'
   );
   await fsExtra.outputFile(
@@ -322,7 +364,7 @@ export async function syncWorkspaceFoundationFiles(
       const markerObj = createNpmWorkspaceMarker(workspaceName, getVersion(), installMethod);
       if (pythonVersion) {
         if (!markerObj.metadata) markerObj.metadata = {};
-        (markerObj.metadata as Record<string, unknown>).python = { version: pythonVersion };
+        (markerObj.metadata as Record<string, unknown>).python = { pythonVersion };
       }
       await writeWorkspaceMarkerToFile(workspacePath, markerObj);
       created.push('.rapidkit-workspace');
@@ -341,6 +383,13 @@ export async function syncWorkspaceFoundationFiles(
 }
 
 type InstallMethod = 'poetry' | 'venv' | 'pipx';
+type PythonEngineMode = 'install' | 'skip';
+type WorkspaceBootstrapMeta = {
+  profileRequested?: string;
+  bootstrapNote?: string;
+  pythonEngine?: 'installed' | 'skipped';
+  pythonEngineReason?: string;
+};
 
 export const PYTHON_FREE_WORKSPACE_PROFILES = new Set([
   'go-only',
@@ -728,10 +777,20 @@ async function ensurePoetryAvailable(spinner: CliSpinnerHandle, yes: boolean): P
   }
 }
 
-function workspaceLauncherSh(installMethod: InstallMethod): string {
+function workspaceLauncherSh(
+  installMethod: InstallMethod,
+  options: { pythonEngineSkipped?: boolean } = {}
+): string {
   // Intentionally avoid calling bare `rapidkit` to prevent recursion into the npm wrapper.
   // Prefer the in-workspace venv when present, otherwise fall back to `poetry run rapidkit`.
   const allowPoetry = installMethod === 'poetry';
+  const skippedHint = options.pythonEngineSkipped
+    ? `echo "- Python engine installation was intentionally skipped for this workspace." 1>&2
+echo "- For npm-owned workspace commands, run: npx rapidkit <command>" 1>&2
+echo "- To install the local Python engine later, create a RapidKit module-enabled project, then run: npx rapidkit workspace run init" 1>&2
+`
+    : `echo "- If you used venv: ensure .venv exists (or re-run the installer)." 1>&2
+`;
   return `#!/usr/bin/env sh
 set -eu
 
@@ -764,19 +823,35 @@ for RAPIDKIT_CORE in "$HOME/.local/bin/rapidkit" "$HOME/Library/Python/3.14/bin/
 done
 
 echo "RapidKit launcher could not find a local Python CLI." 1>&2
-echo "- If you used venv: ensure .venv exists (or re-run the installer)." 1>&2
-${
-  allowPoetry
-    ? `echo "- If you used Poetry: run 'poetry install' and retry, or activate the env." 1>&2
+${skippedHint}${
+    options.pythonEngineSkipped
+      ? ''
+      : allowPoetry
+        ? `echo "- If you used Poetry: run 'poetry install' and retry, or activate the env." 1>&2
 `
-    : ''
-}echo "Tip: you can also run: ./.venv/bin/rapidkit --help" 1>&2
-exit 1
+        : ''
+  }${
+    options.pythonEngineSkipped
+      ? `echo "Tip: use 'npx rapidkit workspace model --json' for Workspace Intelligence without the Python engine." 1>&2
+`
+      : `echo "Tip: you can also run: ./.venv/bin/rapidkit --help" 1>&2
+`
+  }exit 1
 `;
 }
 
-function workspaceLauncherCmd(installMethod: InstallMethod): string {
+function workspaceLauncherCmd(
+  installMethod: InstallMethod,
+  options: { pythonEngineSkipped?: boolean } = {}
+): string {
   const allowPoetry = installMethod === 'poetry';
+  const skippedHint = options.pythonEngineSkipped
+    ? `echo - Python engine installation was intentionally skipped for this workspace. 1>&2
+echo - For npm-owned workspace commands, run: npx rapidkit ^<command^> 1>&2
+echo - To install the local Python engine later, create a RapidKit module-enabled project, then run: npx rapidkit workspace run init 1>&2
+`
+    : `echo Tip: run .venv\\Scripts\\rapidkit.exe --help 1>&2
+`;
   // Windows launcher: prefer in-project venv, else fall back to Poetry.
   return `@echo off
 setlocal
@@ -816,31 +891,32 @@ for %%R in ("%USERPROFILE%\\.local\\bin\\rapidkit.exe" "%APPDATA%\\Python\\Scrip
 )
 
 echo RapidKit launcher could not find a local Python CLI. 1>&2
-echo Tip: run .venv\\Scripts\\rapidkit.exe --help 1>&2
-echo Tip: for npm-owned workspace commands, run npx --yes --package rapidkit rapidkit %* from a shell where npm is on PATH. 1>&2
+${skippedHint}echo Tip: for npm-owned workspace commands, run npx --yes --package rapidkit rapidkit %* from a shell where npm is on PATH. 1>&2
 exit /b 1
 `;
 }
 
 export async function writeWorkspaceLauncher(
   workspacePath: string,
-  installMethod: InstallMethod
+  installMethod: InstallMethod,
+  options: { pythonEngineSkipped?: boolean } = {}
 ): Promise<void> {
   // Always create the launcher; it degrades gracefully for pipx installs.
   await fsExtra.outputFile(
     path.join(workspacePath, 'rapidkit'),
-    workspaceLauncherSh(installMethod),
+    workspaceLauncherSh(installMethod, options),
     { encoding: 'utf-8', mode: 0o755 }
   );
   await fsExtra.outputFile(
     path.join(workspacePath, 'rapidkit.cmd'),
-    workspaceLauncherCmd(installMethod),
+    workspaceLauncherCmd(installMethod, options),
     'utf-8'
   );
 }
 
 interface CreateProjectOptions {
   skipGit?: boolean;
+  skipPythonEngine?: boolean;
   testMode?: boolean;
   demoMode?: boolean;
   dryRun?: boolean;
@@ -863,6 +939,7 @@ export async function createProject(
 
   const {
     skipGit = false,
+    skipPythonEngine = false,
     testMode = false,
     demoMode = false,
     dryRun = false,
@@ -961,9 +1038,29 @@ export async function createProject(
     resolvedProfile = 'minimal';
   }
 
-  // Profiles that need Python prompts: python-only, polyglot, enterprise.
-  // For minimal/node-only/go-only we skip Python-specific questions and auto-detect.
+  // Profiles that can use the Python engine: python-only, polyglot, enterprise.
+  // The engine install is optional so users can start with Workspace Intelligence
+  // governance and add rapidkit-core later only when they need Python-backed kits/modules.
   const needsPythonPrompts = !yes && PYTHON_PROFILES.has(resolvedProfile);
+  const pythonEngineMode: PythonEngineMode =
+    PYTHON_PROFILES.has(resolvedProfile) && skipPythonEngine
+      ? 'skip'
+      : needsPythonPrompts
+        ? (
+            (await prompt([
+              {
+                type: 'confirm',
+                name: 'installPythonEngine',
+                message:
+                  'Install the optional RapidKit Python engine now? (needed for Python-backed kits/modules)',
+                default: true,
+              },
+            ])) as { installPythonEngine?: boolean }
+          ).installPythonEngine !== false
+          ? 'install'
+          : 'skip'
+        : 'install';
+  const needsPythonInstallPrompts = needsPythonPrompts && pythonEngineMode === 'install';
   const promptDefaultPythonVersion =
     typeof userConfig.pythonVersion === 'string' && userConfig.pythonVersion.trim().length > 0
       ? userConfig.pythonVersion.trim()
@@ -972,10 +1069,10 @@ export async function createProject(
     userConfig.defaultInstallMethod ||
     'poetry') as InstallMethod;
 
-  const installMethodAvailability = needsPythonPrompts
+  const installMethodAvailability = needsPythonInstallPrompts
     ? await detectInstallMethodAvailability()
     : { poetry: true, pipx: true };
-  const pythonVersionPromptModel = needsPythonPrompts
+  const pythonVersionPromptModel = needsPythonInstallPrompts
     ? await detectPythonVersionPromptModel(promptDefaultPythonVersion)
     : {
         choices: BASELINE_SUPPORTED_PYTHON_VERSIONS.map((v) => ({ name: v, value: v })),
@@ -1006,46 +1103,53 @@ export async function createProject(
   ] as const;
 
   // Step 1: Choose Python version and install method (or auto-select with --yes / non-Python profile)
-  const pythonAnswers: { pythonVersion: string; installMethod: InstallMethod } = needsPythonPrompts
-    ? ((await prompt([
-        {
-          type: 'rawlist',
-          name: 'pythonVersion',
-          message: 'Select Python version for RapidKit:',
-          choices: pythonVersionPromptModel.choices,
-          default: pythonVersionPromptModel.defaultValue,
-        },
-        {
-          type: 'rawlist',
-          name: 'installMethod',
-          message: 'How would you like to manage the workspace environment?',
-          choices: installMethodChoices,
-          default: installMethodPromptDefault,
-        },
-      ])) as { pythonVersion: string; installMethod: InstallMethod })
-    : await (async () => {
-        const resolvedMethod: InstallMethod =
-          providedInstallMethod ||
-          (userConfig.defaultInstallMethod as InstallMethod | undefined) ||
-          (await (async (): Promise<InstallMethod> => {
-            try {
-              await execa('poetry', ['--version'], { timeout: 3000 });
-              return 'poetry';
-            } catch {
-              logger.warn(
-                'Poetry not found — auto-selecting venv. Pass --install-method poetry to override.'
-              );
-              return 'venv';
-            }
-          })());
-        return {
-          pythonVersion: userConfig.pythonVersion || '3.10',
-          installMethod: resolvedMethod,
-        };
-      })();
+  const pythonAnswers: { pythonVersion: string; installMethod: InstallMethod } =
+    needsPythonInstallPrompts
+      ? ((await prompt([
+          {
+            type: 'rawlist',
+            name: 'pythonVersion',
+            message: 'Select Python version for RapidKit:',
+            choices: pythonVersionPromptModel.choices,
+            default: pythonVersionPromptModel.defaultValue,
+          },
+          {
+            type: 'rawlist',
+            name: 'installMethod',
+            message: 'How would you like to manage the workspace environment?',
+            choices: installMethodChoices,
+            default: installMethodPromptDefault,
+          },
+        ])) as { pythonVersion: string; installMethod: InstallMethod })
+      : await (async () => {
+          if (pythonEngineMode === 'skip') {
+            return {
+              pythonVersion: userConfig.pythonVersion || '3.10',
+              installMethod: 'venv' as InstallMethod,
+            };
+          }
+          const resolvedMethod: InstallMethod =
+            providedInstallMethod ||
+            (userConfig.defaultInstallMethod as InstallMethod | undefined) ||
+            (await (async (): Promise<InstallMethod> => {
+              try {
+                await execa('poetry', ['--version'], { timeout: 3000 });
+                return 'poetry';
+              } catch {
+                logger.warn(
+                  'Poetry not found — auto-selecting venv. Pass --install-method poetry to override.'
+                );
+                return 'venv';
+              }
+            })());
+          return {
+            pythonVersion: userConfig.pythonVersion || '3.10',
+            installMethod: resolvedMethod,
+          };
+        })();
 
   // Show version pinning hints
-  if (needsPythonPrompts) {
+  if (needsPythonInstallPrompts) {
     console.log(chalk.gray(`\n📌 Configuration notes:`));
     if (pythonAnswers.pythonVersion === '3.10') {
       console.log(chalk.gray(`  • Python 3.10: Latest stable with widespread compatibility`));
@@ -1089,17 +1193,12 @@ export async function createProject(
       await fsExtra.ensureDir(projectPath);
       spinner2.succeed('Directory created');
 
-      // Workspace marker + foundation files (no Python version recorded).
-      // installMethod = 'venv' so that installWorkspaceDependencies skips Python
-      // dep installation for lite profiles on bare `rapidkit init`.
-      // pyproject.toml + poetry.toml stubs are written so that when the user
-      // later runs `rapidkit bootstrap --profile python-only`, Poetry can pick
-      // them up and install deps without re-initialising the project.
+      // Workspace marker + foundation files only. Python-free profiles should
+      // not create Python engine artifacts; bootstrap/profile changes can add
+      // them later if the user explicitly opts into the Python engine.
       await writeWorkspaceMarker(projectPath, name, 'venv', undefined);
       await writeWorkspaceFoundationFiles(projectPath, name, 'venv', undefined, resolvedProfile);
       await writeWorkspaceGitignore(projectPath);
-      // Write pyproject.toml + poetry.toml stubs — zero network, no venv created.
-      await writePyprojectStub(projectPath, name);
 
       // Lean README for Python-free workspaces
       const profileLabel: Record<string, string> = {
@@ -1226,7 +1325,7 @@ export async function createProject(
         console.log(chalk.white('   npx rapidkit dev\n'));
         console.log(
           chalk.gray(
-            '💡 Python engine will be installed automatically on first `create project nestjs.standard`.'
+            '💡 Node lifecycle commands run through Node tooling. RapidKit module commands for module-enabled kits can install the local Python engine later with workspace run init.'
           )
         );
       } else {
@@ -1253,6 +1352,99 @@ export async function createProject(
       throw _err;
     }
     return; // ← skip Python env setup entirely
+  }
+
+  if (PYTHON_PROFILES.has(resolvedProfile) && pythonEngineMode === 'skip') {
+    const spinner2 = createCliSpinner('Creating workspace', {
+      component: 'create',
+      phase: 'workspace.python-engine-skipped',
+    });
+    try {
+      await fsExtra.ensureDir(projectPath);
+      spinner2.succeed('Directory created');
+
+      const pythonEngineSkipMeta: WorkspaceBootstrapMeta = {
+        bootstrapNote: 'python-engine-skipped',
+        pythonEngine: 'skipped',
+        pythonEngineReason: 'user-opted-out',
+      };
+      await writeWorkspaceMarker(projectPath, name, 'venv', undefined, pythonEngineSkipMeta);
+      await writeWorkspaceFoundationFiles(
+        projectPath,
+        name,
+        'venv',
+        undefined,
+        resolvedProfile,
+        pythonEngineSkipMeta
+      );
+      await writeWorkspaceGitignore(projectPath);
+      await writeWorkspaceLauncher(projectPath, 'venv', { pythonEngineSkipped: true });
+
+      const profileLabel: Record<string, string> = {
+        'python-only': 'Python-aware',
+        polyglot: 'Polyglot',
+        enterprise: 'Enterprise',
+      };
+      await fsExtra.outputFile(
+        path.join(projectPath, 'README.md'),
+        `# ${name}\n\nRapidKit **${profileLabel[resolvedProfile] ?? resolvedProfile}** workspace with Workspace Intelligence enabled and Python engine installation skipped.\n\n` +
+          `## Quick start\n\n` +
+          `\`\`\`bash\n` +
+          `npx rapidkit workspace model --json\n` +
+          `npx rapidkit adopt /path/to/project\n` +
+          `npx rapidkit workspace verify --json\n` +
+          `\`\`\`\n\n` +
+          `## Add the Python engine later\n\n` +
+          `\`\`\`bash\n` +
+          `npx rapidkit create project fastapi.standard api --yes\n` +
+          `npx rapidkit workspace run init\n` +
+          `\`\`\`\n`,
+        'utf-8'
+      );
+
+      if (!skipGit) {
+        spinner2.start('Initializing git repository');
+        try {
+          await execa('git', ['init'], { cwd: projectPath });
+          await execa('git', ['add', '.'], { cwd: projectPath });
+          await execa(
+            'git',
+            ['commit', '-m', `Initial commit: RapidKit workspace (${resolvedProfile})`],
+            {
+              cwd: projectPath,
+            }
+          );
+          spinner2.succeed('Git repository initialized');
+        } catch {
+          spinner2.warn('Could not initialize git repository');
+        }
+      }
+
+      await finalizeWorkspaceOnboarding(projectPath, {
+        workspaceName: name,
+        silent: testMode,
+      });
+
+      console.log(chalk.green('\n✨ Workspace created!\n'));
+      console.log(chalk.cyan('📂 Location:'), chalk.white(projectPath));
+      console.log(chalk.cyan('⚙️  Configuration:'));
+      console.log(chalk.gray(`  • Profile: ${resolvedProfile}`));
+      console.log(chalk.gray('  • Python engine: skipped'));
+      console.log(chalk.gray('  • Workspace Intelligence: enabled'));
+      console.log(chalk.cyan('\n🚀 Get started:\n'));
+      console.log(chalk.white(`   ${formatWorkspaceCdCommand(projectPath)}`));
+      console.log(chalk.white('   npx rapidkit workspace model --json'));
+      console.log(chalk.white('   npx rapidkit adopt /path/to/project'));
+      console.log(chalk.white('   npx rapidkit workspace verify --json\n'));
+      console.log(chalk.cyan('💡 Add Python-backed kits/modules later:\n'));
+      console.log(chalk.gray('   npx rapidkit create project fastapi.standard api --yes'));
+      console.log(chalk.gray('   npx rapidkit workspace run init\n'));
+      return;
+    } catch (_err) {
+      spinner2.fail('Failed to create workspace');
+      console.error(chalk.red('\n❌ Error:'), _err);
+      throw _err;
+    }
   }
 
   // ── Python pre-check (only for python-required profiles) ───────────────────
@@ -1352,7 +1544,6 @@ export async function createProject(
                 bootstrapNote: 'python-free-fallback',
               });
               await writeWorkspaceGitignore(projectPath);
-              await writePyprojectStub(projectPath, name);
 
               const profileLabel: Record<string, string> = {
                 'go-only': 'Go-only',
@@ -1460,7 +1651,6 @@ export async function createProject(
               bootstrapNote: 'python-free-fallback',
             });
             await writeWorkspaceGitignore(projectPath);
-            await writePyprojectStub(projectPath, name);
 
             if (!skipGit) {
               spinner2.start('Initializing git repository');

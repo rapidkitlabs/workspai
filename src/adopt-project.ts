@@ -17,6 +17,15 @@ import {
   type BackendRuntimeFamily,
   type BackendSupportTier,
 } from './utils/backend-framework-contract.js';
+import {
+  collectWorkspaceProfileRuntimes,
+  readWorkspaceManifestProfile,
+  readWorkspaceProfilePolicyMode,
+  resolveWorkspaceProfileCompatibility,
+  resolveWorkspaceProfileProjectCompatibility,
+  type WorkspaceProfileCompatibilityResult,
+  type WorkspaceProfilePolicyMode,
+} from './workspace-profile-compatibility.js';
 
 export interface AdoptProjectOptions {
   workspacePath: string;
@@ -24,6 +33,7 @@ export interface AdoptProjectOptions {
   name?: string;
   dryRun?: boolean;
   enableModules?: boolean;
+  profilePolicyMode?: WorkspaceProfilePolicyMode;
   now?: Date;
 }
 
@@ -44,6 +54,7 @@ export interface AdoptProjectResult {
   projectJsonPath: string;
   adoptJsonPath: string;
   adoptReadinessPath: string;
+  profileCompatibility: WorkspaceProfileCompatibilityResult;
   wroteFiles: boolean;
 }
 
@@ -217,6 +228,31 @@ export async function adoptProjectIntoWorkspace(
     detection,
     enableModules: options.enableModules,
   });
+  const [workspaceProfile, profilePolicyMode] = await Promise.all([
+    readWorkspaceManifestProfile(workspacePath),
+    options.profilePolicyMode
+      ? Promise.resolve(options.profilePolicyMode)
+      : readWorkspaceProfilePolicyMode(workspacePath),
+  ]);
+  const projectProfileCompatibility = resolveWorkspaceProfileProjectCompatibility({
+    profile: workspaceProfile,
+    runtime: detection.runtime,
+    subjectLabel: projectName,
+    mode: profilePolicyMode,
+  });
+  const workspaceProfileCompatibility = resolveWorkspaceProfileCompatibility({
+    profile: workspaceProfile,
+    runtimes: await collectWorkspaceProfileRuntimes(workspacePath, {
+      additionalRuntimes: [detection.runtime],
+    }),
+    mode: profilePolicyMode,
+  });
+  const profileCompatibility = projectProfileCompatibility.ok
+    ? workspaceProfileCompatibility
+    : projectProfileCompatibility;
+  if (!profileCompatibility.ok && profilePolicyMode === 'strict') {
+    throw new Error(profileCompatibility.message);
+  }
   const projectJson = buildAdoptedProjectJson({
     projectName,
     relativePath: paths.relativePath,
@@ -262,6 +298,14 @@ export async function adoptProjectIntoWorkspace(
       copied_source: false,
       module_mutation_enabled: moduleSupport,
       workspace_contract: 'linked-project',
+      profile_compatibility: {
+        ok: profileCompatibility.ok,
+        profile: profileCompatibility.profile,
+        runtimes: profileCompatibility.runtimes,
+        message: profileCompatibility.message,
+        recommended_profile: profileCompatibility.recommendedProfile,
+        recommended_command: profileCompatibility.recommendedCommand,
+      },
     },
   };
   const readinessPayload = buildImportReadinessReport({
@@ -316,6 +360,7 @@ export async function adoptProjectIntoWorkspace(
     projectJsonPath,
     adoptJsonPath,
     adoptReadinessPath,
+    profileCompatibility,
     wroteFiles: options.dryRun !== true,
   };
 }

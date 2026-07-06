@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { resolveImportModuleSupport } from '../utils/import-module-support';
 
 describe('resolveImportModuleSupport', () => {
-  it('keeps existing module_support when already enabled', () => {
+  it('keeps existing module_support for RapidKit module-enabled kits', () => {
     expect(
       resolveImportModuleSupport({
-        existingProjectJson: { module_support: true },
+        existingProjectJson: { kit_name: 'fastapi.standard', module_support: true },
         detection: {
           key: 'fastapi',
           runtime: 'python',
@@ -21,7 +21,25 @@ describe('resolveImportModuleSupport', () => {
     ).toBe(true);
   });
 
-  it('enables module support for first-class runtimes when --enable-modules is set', () => {
+  it('does not keep standalone module_support without a RapidKit module-enabled kit', () => {
+    expect(
+      resolveImportModuleSupport({
+        existingProjectJson: { runtime: 'python', framework: 'fastapi', module_support: true },
+        detection: {
+          key: 'fastapi',
+          runtime: 'python',
+          displayName: 'FastAPI',
+          confidence: 'high',
+          supportTier: 'first-class',
+          importStack: 'python',
+          source: 'project.json',
+        },
+        enableModules: false,
+      })
+    ).toBe(false);
+  });
+
+  it('does not enable module support for arbitrary first-class framework projects', () => {
     expect(
       resolveImportModuleSupport({
         existingProjectJson: null,
@@ -36,7 +54,7 @@ describe('resolveImportModuleSupport', () => {
         },
         enableModules: true,
       })
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('does not enable module support for extended runtimes even with --enable-modules', () => {

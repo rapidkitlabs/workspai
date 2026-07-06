@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-07-06
+
+### Added
+
+- Added optional Python engine creation for Python-aware workspaces via
+  `create workspace --skip-python-engine`, with explicit skipped-engine metadata
+  in workspace manifests, workspace markers, toolchain evidence, and local
+  launcher guidance.
+- Added shared workspace profile compatibility checks across `create project`,
+  `import`, `adopt`, and `bootstrap` compliance so runtime/profile drift is
+  reported consistently.
+- Added broader runtime detection for profile compatibility decisions, including
+  non-native scaffold ecosystems such as Rust, C, and C++.
+
+### Changed
+
+- Decoupled Workspace Intelligence foundation files from the workspace-local
+  Python engine. `minimal`, `java-only`, `node-only`, `go-only`, and
+  `dotnet-only` workspaces no longer create Python engine artifacts at the
+  workspace root.
+- Narrowed RapidKit module mutation to the RapidKit-owned module-enabled kits:
+  `fastapi.standard`, `fastapi.ddd`, and `nestjs.standard`.
+- Preserved adopt/import governance for arbitrary projects while disabling
+  module mutation unless project metadata identifies a supported RapidKit kit.
+- Updated command reference and CLI help guidance around skipped Python engines,
+  profile realignment, and module-enabled kit guarantees.
+
+### Fixed
+
+- Fixed Python-free and skipped-engine workspaces creating misleading
+  `pyproject.toml` / `poetry.toml` stubs in the workspace root.
+- Fixed skipped-engine launcher messaging so users are directed to npm-owned
+  workspace commands and the intentional engine-install path.
+
+### Verification
+
+- `npm exec -- vitest run src/__tests__/e2e.test.ts src/__tests__/create-internal.test.ts src/__tests__/workspace-python-engine-install-gate.test.ts`
+- `npm run typecheck -- --pretty false`
+- `npm run lint`
+- `npm run build`
+- `npm exec -- vitest run`
+
 ## [0.41.5] - 2026-07-04
 
 ### Changed
@@ -189,7 +231,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added **Phase 4 operational intelligence** CLI surfaces: `workspace explain`,
   `workspace why` (alias), `workspace trace --from <diff>`, `workspace feedback
-  record`, and read-mostly `workspace mcp serve` (stdio JSON-RPC over workspace
+record`, and read-mostly `workspace mcp serve` (stdio JSON-RPC over workspace
   evidence).
 - Added versioned contracts under `contracts/workspace-intelligence/`:
   `workspace-explain.v1`, `workspace-contract-verify.v1`,

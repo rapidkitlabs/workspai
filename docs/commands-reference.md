@@ -6,8 +6,8 @@ Complete CLI syntax for the RapidKit npm wrapper. For behavior and workflows, se
 
 ```bash
 npx rapidkit create # Prompts: workspace | project
-npx rapidkit create workspace <name> [--profile <profile>] [--author <name>] [--yes] [--here|--output <parent-dir>]
-npx rapidkit bootstrap [--profile <profile>] [--json] [--compliance-only]
+npx rapidkit create workspace <name> [--profile <profile>] [--author <name>] [--yes] [--here|--output <parent-dir>] [--skip-python-engine]
+npx rapidkit bootstrap [--profile <profile>] [--ci] [--json] [--compliance-only]
 npx rapidkit setup <python|node|go|java|dotnet> [--warm-deps]
 npx rapidkit pipeline [--json] [--strict] [--skip-verify] [--skip-analyze] [--skip-autopilot] [--autopilot-mode <audit|safe-fix|enforce>]
 npx rapidkit analyze [--workspace <path>] [--json] [--strict] [--output <file>]
@@ -22,7 +22,18 @@ npx rapidkit pipeline --json --strict
 npx rapidkit autopilot release --mode enforce --json --output .rapidkit/reports/autopilot-release.json
 ```
 
-`bootstrap --json --compliance-only` runs compliance checks only (skips init). Default `bootstrap --json` still runs init after compliance checks.
+`bootstrap --ci --json --compliance-only` runs deterministic compliance checks only (skips init). Default `bootstrap --ci --json` still runs init after compliance checks.
+
+`create workspace --skip-python-engine` keeps Python-aware profiles such as
+`python-only`, `polyglot`, and `enterprise` available for Workspace Intelligence
+while skipping the immediate `rapidkit-core` install. Use it when you want
+model/context/verify/adopt/import governance first. To add the workspace-local
+Python engine later for RapidKit module-enabled kits, create or register the
+RapidKit-owned project first and then run `npx rapidkit workspace run init` from
+the workspace root. Empty skipped workspaces and arbitrary adopted/imported
+Python projects keep the Python engine skipped; use `npx rapidkit bootstrap
+--profile <profile>` only when you need to change or realign the workspace
+profile.
 
 ```bash
 npx rapidkit workspace sync [--json]
@@ -70,6 +81,22 @@ npx rapidkit infra status [--workspace <path>] [--json] [--strict]
 ```
 
 See [workspace-run.md](./workspace-run.md) for fleet orchestration semantics.
+
+Workspace profile compatibility is enforced consistently across `create project`,
+`import`, `adopt`, and `bootstrap` compliance. In default `warn` policy mode,
+cross-runtime additions are allowed with a recommendation such as
+`npx rapidkit bootstrap --profile polyglot`; in `strict` mode, mismatches are
+blocked before the project is registered. Observed runtimes such as Rust, C,
+and C++ are counted in the workspace runtime mix even when RapidKit does not own
+a native scaffold for them.
+
+Core module/template commands are intentionally narrower than runtime detection.
+RapidKit modules are guaranteed only for RapidKit module-enabled kits:
+`fastapi.standard`, `fastapi.ddd`, and `nestjs.standard`. They are not enabled
+for every project that happens to use a first-class framework. For example, an
+arbitrary existing FastAPI application can be adopted and modeled as a
+Python/FastAPI project, but module mutation remains disabled unless its RapidKit
+project metadata identifies one of those module-enabled kits.
 
 ## Project lifecycle
 

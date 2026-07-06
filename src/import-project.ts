@@ -20,6 +20,15 @@ import {
   upsertImportedProjectsRegistry,
   type ImportedProjectRegistryEntry,
 } from './imported-projects-registry.js';
+import {
+  collectWorkspaceProfileRuntimes,
+  readWorkspaceManifestProfile,
+  readWorkspaceProfilePolicyMode,
+  resolveWorkspaceProfileCompatibility,
+  resolveWorkspaceProfileProjectCompatibility,
+  type WorkspaceProfileCompatibilityResult,
+  type WorkspaceProfilePolicyMode,
+} from './workspace-profile-compatibility.js';
 
 export type ImportSourceType = 'local-folder' | 'git-url';
 
@@ -29,6 +38,7 @@ export interface ImportProjectIntoWorkspaceOptions {
   name?: string;
   sourceType?: ImportSourceType;
   enableModules?: boolean;
+  profilePolicyMode?: WorkspaceProfilePolicyMode;
 }
 
 export interface ImportedProjectResult {
@@ -46,6 +56,7 @@ export interface ImportedProjectResult {
   projectJsonPath: string;
   importJsonPath: string;
   importReadinessPath: string;
+  profileCompatibility: WorkspaceProfileCompatibilityResult;
 }
 
 function normalizeProjectName(raw: string): string {
@@ -194,6 +205,7 @@ async function writeImportedProjectMetadata(input: {
   existingProjectJson: Record<string, unknown> | null;
   projectKind: WorkspaceProjectKind;
   enableModules?: boolean;
+  profileCompatibility: WorkspaceProfileCompatibilityResult;
 }): Promise<{
   projectJsonPath: string;
   importJsonPath: string;
@@ -315,6 +327,14 @@ async function writeImportedProjectMetadata(input: {
       copied_secrets: false,
       copied_dependency_caches: false,
       module_mutation_enabled: moduleSupport,
+      profile_compatibility: {
+        ok: input.profileCompatibility.ok,
+        profile: input.profileCompatibility.profile,
+        runtimes: input.profileCompatibility.runtimes,
+        message: input.profileCompatibility.message,
+        recommended_profile: input.profileCompatibility.recommendedProfile,
+        recommended_command: input.profileCompatibility.recommendedCommand,
+      },
     },
   };
   const readinessPayload = buildImportReadinessReport({
@@ -410,6 +430,31 @@ export async function importProjectIntoWorkspace(
     const existingProjectJson = await readExistingProjectJson(destinationPath);
     const detection = detectBackendFrameworkFromProject(destinationPath, existingProjectJson);
     const projectKind = await inferWorkspaceProjectKind(destinationPath, existingProjectJson);
+    const [workspaceProfile, profilePolicyMode] = await Promise.all([
+      readWorkspaceManifestProfile(workspacePath),
+      options.profilePolicyMode
+        ? Promise.resolve(options.profilePolicyMode)
+        : readWorkspaceProfilePolicyMode(workspacePath),
+    ]);
+    const projectProfileCompatibility = resolveWorkspaceProfileProjectCompatibility({
+      profile: workspaceProfile,
+      runtime: detection.runtime,
+      subjectLabel: path.basename(destinationPath),
+      mode: profilePolicyMode,
+    });
+    const workspaceProfileCompatibility = resolveWorkspaceProfileCompatibility({
+      profile: workspaceProfile,
+      runtimes: await collectWorkspaceProfileRuntimes(workspacePath, {
+        additionalRuntimes: [detection.runtime],
+      }),
+      mode: profilePolicyMode,
+    });
+    const profileCompatibility = projectProfileCompatibility.ok
+      ? workspaceProfileCompatibility
+      : projectProfileCompatibility;
+    if (!profileCompatibility.ok && profilePolicyMode === 'strict') {
+      throw new Error(profileCompatibility.message);
+    }
     const metadata = await writeImportedProjectMetadata({
       workspacePath,
       projectPath: destinationPath,
@@ -418,6 +463,7 @@ export async function importProjectIntoWorkspace(
       existingProjectJson,
       projectKind,
       enableModules: options.enableModules,
+      profileCompatibility,
     });
     const importedPaths = resolveWorkspaceProjectPaths({
       workspacePath,
@@ -439,6 +485,7 @@ export async function importProjectIntoWorkspace(
       projectJsonPath: metadata.projectJsonPath,
       importJsonPath: metadata.importJsonPath,
       importReadinessPath: metadata.importReadinessPath,
+      profileCompatibility,
     };
 
     await writeImportedProjectRegistryEntry(workspacePath, importedProject);

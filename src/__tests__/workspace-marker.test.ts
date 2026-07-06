@@ -335,6 +335,19 @@ describe('Workspace Marker', () => {
       expect(marker.metadata?.npm?.lastUsedAt).toBeDefined();
     });
 
+    it('should create marker with explicit Python core state metadata', () => {
+      const marker = createNpmWorkspaceMarker('my-workspace', '0.16.0', 'venv', {
+        coreStatus: 'skipped',
+        coreReason: 'user-opted-out',
+      });
+
+      expect(marker.metadata?.npm?.installMethod).toBe('venv');
+      expect(marker.metadata?.python).toEqual({
+        coreStatus: 'skipped',
+        coreReason: 'user-opted-out',
+      });
+    });
+
     it('should create marker without install method', () => {
       const marker = createNpmWorkspaceMarker('my-workspace', '0.16.0');
 

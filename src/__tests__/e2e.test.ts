@@ -155,7 +155,9 @@ describe('E2E Tests', () => {
     // Verify workspace structure
     await expect(fileExists(join(workspacePath, 'README.md'))).resolves.toBe(true);
     await expect(fileExists(join(workspacePath, '.rapidkit'))).resolves.toBe(true);
-    await expect(fileExists(join(workspacePath, 'pyproject.toml'))).resolves.toBe(true);
+    await expect(fileExists(join(workspacePath, '.rapidkit-workspace'))).resolves.toBe(true);
+    await expect(fileExists(join(workspacePath, 'pyproject.toml'))).resolves.toBe(false);
+    await expect(fileExists(join(workspacePath, 'poetry.toml'))).resolves.toBe(false);
   }, 30000);
 
   it('rejects invalid project names', async () => {

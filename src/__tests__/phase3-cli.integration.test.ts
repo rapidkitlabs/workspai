@@ -690,7 +690,9 @@ describe('Phase 3 commands - CLI process integration', () => {
       expect(run.status).toBe(1);
       const output = `${run.stdout || ''}\n${run.stderr || ''}`;
       expect(output).toContain('Strict policy violations prevent running this command');
-      expect(output).toContain('Workspace profile is "python-only" but this project is not Python');
+      expect(output).toContain(
+        'Project "java-app" is Java, but workspace profile is "python-only"'
+      );
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }

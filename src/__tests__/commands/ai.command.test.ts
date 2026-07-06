@@ -9,7 +9,7 @@ const isAIEnabledMock = vi.hoisted(() => vi.fn());
 const getOpenAIKeyMock = vi.hoisted(() => vi.fn());
 const generateModuleEmbeddingsMock = vi.hoisted(() => vi.fn());
 const updateEmbeddingsMock = vi.hoisted(() => vi.fn());
-const readRapidkitProjectJsonMock = vi.hoisted(() => vi.fn());
+const resolveProjectCommandCapabilitiesMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../cli-ui/prompts.js', () => ({
   prompt: promptMock,
@@ -39,8 +39,8 @@ vi.mock('../../core-bridge/pythonRapidkitExec.js', () => ({
   runCoreRapidkitStreamed: runCoreRapidkitStreamedMock,
 }));
 
-vi.mock('../../utils/runtime-detection.js', () => ({
-  readRapidkitProjectJson: readRapidkitProjectJsonMock,
+vi.mock('../../utils/project-command-capabilities.js', () => ({
+  resolveProjectCommandCapabilities: resolveProjectCommandCapabilitiesMock,
 }));
 
 describe('AI command install flow', () => {
@@ -69,7 +69,15 @@ describe('AI command install flow', () => {
     runCoreRapidkitStreamedMock.mockResolvedValue(0);
     generateModuleEmbeddingsMock.mockResolvedValue(true);
     updateEmbeddingsMock.mockResolvedValue(true);
-    readRapidkitProjectJsonMock.mockReturnValue({ runtime: 'python', module_support: true });
+    resolveProjectCommandCapabilitiesMock.mockReturnValue({
+      commandMap: {
+        add: {
+          command: 'add',
+          owner: 'core',
+          status: 'supported',
+        },
+      },
+    });
     promptMock.mockResolvedValue({ shouldInstall: false });
   });
 
@@ -107,7 +115,41 @@ describe('AI command install flow', () => {
     promptMock
       .mockResolvedValueOnce({ shouldInstall: true })
       .mockResolvedValueOnce({ selectedModules: ['auth_core'] });
-    readRapidkitProjectJsonMock.mockReturnValue({ runtime: 'java', module_support: false });
+    resolveProjectCommandCapabilitiesMock.mockReturnValue({
+      commandMap: {
+        add: {
+          command: 'add',
+          owner: 'none',
+          status: 'unsupported',
+          reason: 'Core module/template commands are not available for Spring Boot projects.',
+        },
+      },
+    });
+
+    const { registerAICommands } = await import('../../commands/ai.js');
+    const program = new Command();
+    registerAICommands(program);
+
+    await program.parseAsync(['node', 'rapidkit', 'ai', 'recommend', 'need auth']);
+
+    expect(runCoreRapidkitStreamedMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks install for custom projects without RapidKit module-enabled metadata', async () => {
+    promptMock
+      .mockResolvedValueOnce({ shouldInstall: true })
+      .mockResolvedValueOnce({ selectedModules: ['auth_core'] });
+    resolveProjectCommandCapabilitiesMock.mockReturnValue({
+      commandMap: {
+        add: {
+          command: 'add',
+          owner: 'none',
+          status: 'unsupported',
+          reason:
+            'Core module/template commands are not available for FastAPI projects without RapidKit kit metadata.',
+        },
+      },
+    });
 
     const { registerAICommands } = await import('../../commands/ai.js');
     const program = new Command();

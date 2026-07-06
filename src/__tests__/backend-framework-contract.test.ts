@@ -34,6 +34,8 @@ describe('backend-framework-contract', () => {
     expect(normalizeBackendFrameworkLabel('Spring Boot')).toBe('springboot');
     expect(normalizeBackendRuntimeFamily('nodejs')).toBe('node');
     expect(normalizeBackendRuntimeFamily('csharp')).toBe('dotnet');
+    expect(normalizeBackendRuntimeFamily('c++')).toBe('cpp');
+    expect(normalizeBackendRuntimeFamily('clang')).toBe('c');
 
     expect(detectBackendFrameworkFromHints({ kitName: 'gogin.standard' })).toMatchObject({
       key: 'gogin',
@@ -74,6 +76,14 @@ describe('backend-framework-contract', () => {
       confidence: 'medium',
       source: 'runtime',
     });
+
+    expect(detectBackendFrameworkFromHints({ runtime: 'rust' })).toMatchObject({
+      key: 'rust',
+      runtime: 'rust',
+      importStack: 'unknown',
+      confidence: 'medium',
+      source: 'runtime',
+    });
   });
 
   it('detects backend frameworks from project manifests and markers', async () => {
@@ -97,6 +107,12 @@ describe('backend-framework-contract', () => {
       path.join(dotnetProject, 'Api.csproj'),
       '<Project Sdk="Microsoft.NET.Sdk.Web"><ItemGroup><PackageReference Include="Microsoft.AspNetCore.OpenApi" /></ItemGroup></Project>'
     );
+    const rustProject = await createTempProject('rust');
+    await fs.writeFile(path.join(rustProject, 'Cargo.toml'), '[dependencies]\naxum = "0.7"\n');
+    const cppProject = await createTempProject('cpp');
+    await fs.ensureDir(path.join(cppProject, 'src'));
+    await fs.writeFile(path.join(cppProject, 'CMakeLists.txt'), 'project(native_api CXX)\n');
+    await fs.writeFile(path.join(cppProject, 'src', 'main.cpp'), 'int main() { return 0; }\n');
 
     expect(detectBackendFrameworkFromProject(gofiberProject)).toMatchObject({
       key: 'gofiber',
@@ -122,6 +138,18 @@ describe('backend-framework-contract', () => {
       importStack: 'dotnet',
       confidence: 'high',
     });
+    expect(detectBackendFrameworkFromProject(rustProject)).toMatchObject({
+      key: 'axum',
+      runtime: 'rust',
+      importStack: 'unknown',
+      confidence: 'high',
+    });
+    expect(detectBackendFrameworkFromProject(cppProject)).toMatchObject({
+      key: 'cpp',
+      runtime: 'cpp',
+      importStack: 'unknown',
+      confidence: 'medium',
+    });
   });
 
   it('keeps runtime candidate detection broad for polyglot backends', async () => {
@@ -132,7 +160,13 @@ describe('backend-framework-contract', () => {
     );
     await fs.writeFile(path.join(polyglotProject, 'go.mod'), 'module example\n');
     await fs.writeFile(path.join(polyglotProject, 'pom.xml'), '<project></project>');
+    await fs.writeFile(path.join(polyglotProject, 'Cargo.toml'), '[package]\nname = "core"\n');
 
-    expect(detectRuntimeCandidatesFromProject(polyglotProject)).toEqual(['go', 'java', 'node']);
+    expect(detectRuntimeCandidatesFromProject(polyglotProject)).toEqual([
+      'go',
+      'rust',
+      'java',
+      'node',
+    ]);
   });
 });

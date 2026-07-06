@@ -148,6 +148,86 @@ describe('adopt-project', () => {
     expect(await readImportedProjectsRegistry(workspacePath)).toEqual([]);
   });
 
+  it('records a profile compatibility warning when adopting a mismatched runtime', async () => {
+    const workspacePath = await makeWorkspace();
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+      profile: 'node-only',
+    });
+    const projectPath = await makeTempDir('rapidkit-adopt-fastapi-source-');
+    await fsExtra.writeFile(path.join(projectPath, 'requirements.txt'), 'fastapi\nuvicorn\n');
+
+    const adopted = await adoptProjectIntoWorkspace({
+      workspacePath,
+      source: projectPath,
+      name: 'studio-api',
+    });
+
+    expect(adopted.profileCompatibility).toMatchObject({
+      ok: false,
+      profile: 'node-only',
+      recommendedProfile: 'polyglot',
+      recommendedCommand: 'npx rapidkit bootstrap --profile polyglot',
+      message: 'Project "studio-api" is Python, but workspace profile is "node-only".',
+    });
+
+    const adoptJson = await fsExtra.readJson(adopted.adoptJsonPath);
+    expect(adoptJson.policy.profile_compatibility).toMatchObject({
+      ok: false,
+      profile: 'node-only',
+      recommended_profile: 'polyglot',
+      recommended_command: 'npx rapidkit bootstrap --profile polyglot',
+    });
+  });
+
+  it('blocks mismatched adoption in strict profile policy mode', async () => {
+    const workspacePath = await makeWorkspace();
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+      profile: 'node-only',
+    });
+    const projectPath = await makeTempDir('rapidkit-adopt-strict-fastapi-source-');
+    await fsExtra.writeFile(path.join(projectPath, 'requirements.txt'), 'fastapi\n');
+
+    await expect(
+      adoptProjectIntoWorkspace({
+        workspacePath,
+        source: projectPath,
+        name: 'studio-api',
+        profilePolicyMode: 'strict',
+      })
+    ).rejects.toThrow('Project "studio-api" is Python, but workspace profile is "node-only".');
+  });
+
+  it('warns when adoption makes a minimal workspace multi-runtime', async () => {
+    const workspacePath = await makeWorkspace();
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+      profile: 'minimal',
+    });
+    const existingNodeProject = path.join(workspacePath, 'portal-web');
+    await fsExtra.ensureDir(path.join(existingNodeProject, '.rapidkit'));
+    await fsExtra.writeJson(path.join(existingNodeProject, '.rapidkit', 'project.json'), {
+      name: 'portal-web',
+      runtime: 'node',
+    });
+    const projectPath = await makeTempDir('rapidkit-adopt-minimal-fastapi-source-');
+    await fsExtra.writeFile(path.join(projectPath, 'requirements.txt'), 'fastapi\n');
+
+    const adopted = await adoptProjectIntoWorkspace({
+      workspacePath,
+      source: projectPath,
+      name: 'studio-api',
+    });
+
+    expect(adopted.profileCompatibility).toMatchObject({
+      ok: false,
+      profile: 'minimal',
+      recommendedProfile: 'polyglot',
+      message: 'minimal profile mismatch: multiple runtimes detected [node, python].',
+    });
+  });
+
   it('makes adopted projects visible to workspace model and contract sync', async () => {
     const workspacePath = await makeWorkspace();
     const projectPath = await makeTempDir('rapidkit-adopt-contract-source-');

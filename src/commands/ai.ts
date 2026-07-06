@@ -10,7 +10,7 @@ import {
   updateEmbeddings,
 } from '../ai/embeddings-manager.js';
 import { runCoreRapidkitStreamed } from '../core-bridge/pythonRapidkitExec.js';
-import { readRapidkitProjectJson } from '../utils/runtime-detection.js';
+import { resolveProjectCommandCapabilities } from '../utils/project-command-capabilities.js';
 import { logger } from '../logger.js';
 
 function normalizeError(error: unknown): { message: string; code?: string } {
@@ -222,17 +222,16 @@ export function registerAICommands(program: Command): void {
             console.log(chalk.blue(`\n📦 Installing ${modules.length} modules...\n`));
             console.log(chalk.gray(`Command: rapidkit add module ${modules.join(' ')}`));
 
-            const projectJson = readRapidkitProjectJson(process.cwd());
-            if (projectJson?.module_support === false) {
-              const runtimeLabel = projectJson?.runtime === 'java' ? 'Spring Boot' : 'Go';
-              console.log(
-                chalk.red(
-                  `\n❌ RapidKit modules are not available for ${runtimeLabel} npm-level kits.`
-                )
-              );
+            const capabilities = resolveProjectCommandCapabilities(process.cwd());
+            const addCapability = capabilities.commandMap.add;
+            if (!addCapability || addCapability.status !== 'supported') {
+              console.log(chalk.red('\n❌ RapidKit modules are not available for this project.'));
               console.log(
                 chalk.gray(
-                  '   The module system requires Python and is currently only supported for FastAPI and NestJS projects.\n'
+                  `   ${
+                    addCapability?.reason ??
+                    'Module commands require RapidKit module-enabled project metadata.'
+                  }\n`
                 )
               );
               return;

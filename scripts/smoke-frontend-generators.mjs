@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -22,18 +22,18 @@ const generatorIds = [
   'sveltekit',
 ];
 
-const bundleTokens = {
-  nextjs: ['frontend.nextjs', 'create-next-app@latest'],
-  remix: ['frontend.remix', 'create-react-router@latest'],
-  'vite-react': ['frontend.vite-react', 'react-ts'],
-  'vite-vue': ['frontend.vite-vue', 'vue-ts'],
-  'vite-svelte': ['frontend.vite-svelte', 'svelte-ts'],
-  'vite-solid': ['frontend.vite-solid', 'solid-ts'],
-  'vite-vanilla': ['frontend.vite-vanilla', 'vanilla-ts'],
-  nuxt: ['frontend.nuxt', 'create-nuxt@latest'],
-  angular: ['frontend.angular', '@angular/cli@19'],
-  astro: ['frontend.astro', 'create astro@4'],
-  sveltekit: ['frontend.sveltekit', 'sv@latest'],
+const dryRunCommandTokens = {
+  nextjs: ['create-next-app@latest'],
+  remix: ['create-react-router@latest'],
+  'vite-react': ['react-ts'],
+  'vite-vue': ['vue-ts'],
+  'vite-svelte': ['svelte-ts'],
+  'vite-solid': ['solid-ts'],
+  'vite-vanilla': ['vanilla-ts'],
+  nuxt: ['create-nuxt@latest'],
+  angular: ['@angular/cli@19'],
+  astro: ['create astro@4'],
+  sveltekit: ['sv@latest'],
 };
 
 const args = process.argv.slice(2);
@@ -77,7 +77,18 @@ function resolveNodeBin() {
     process.execPath,
   ].filter(Boolean);
 
-  return candidates.find((candidate) => existsSync(candidate)) ?? process.execPath;
+  return (
+    candidates.find((candidate) => {
+      if (!existsSync(candidate)) {
+        return false;
+      }
+      const probe = spawnSync(candidate, ['--version'], {
+        encoding: 'utf8',
+        timeout: 5_000,
+      });
+      return probe.status === 0;
+    }) ?? process.execPath
+  );
 }
 
 if (!existsSync(cliPath)) {
@@ -87,21 +98,6 @@ if (!existsSync(cliPath)) {
 const unknown = targets.filter((target) => !generatorIds.includes(target));
 if (unknown.length > 0) {
   fail(`unknown generator(s): ${unknown.join(', ')}. Known: ${generatorIds.join(', ')}`);
-}
-
-if (!execute) {
-  const bundle = readFileSync(cliPath, 'utf8');
-  for (const generator of targets) {
-    for (const token of bundleTokens[generator] ?? []) {
-      if (!bundle.includes(token)) {
-        fail(`${generator} missing bundled token "${token}"`);
-      }
-    }
-  }
-  console.log(
-    `[frontend-generator-smoke] PASS dry-run contract for ${targets.length} generator(s)`
-  );
-  process.exit(0);
 }
 
 const workspaceDir = mkdtempSync(path.join(tmpdir(), 'rapidkit-frontend-smoke-'));
@@ -165,7 +161,7 @@ try {
       },
     });
 
-    if (result.error) {
+    if (result.error && result.status === null) {
       fail(`${generator} failed to launch: ${result.error.message}`);
     }
     if (result.status !== 0) {
@@ -175,13 +171,21 @@ try {
     }
 
     const output = `${result.stdout}\n${result.stderr}`;
-    if (!execute && !output.includes('Display command:')) {
+    if (!execute && !output.includes('Show:')) {
       console.error(output);
       fail(`${generator} dry-run did not print a display command`);
     }
-    if (!execute && !output.includes('Execution command:')) {
+    if (!execute && !output.includes('Run:')) {
       console.error(output);
       fail(`${generator} dry-run did not print an execution command`);
+    }
+    if (!execute) {
+      for (const token of dryRunCommandTokens[generator] ?? []) {
+        if (!output.includes(token)) {
+          console.error(output);
+          fail(`${generator} dry-run missing command token "${token}"`);
+        }
+      }
     }
   }
 

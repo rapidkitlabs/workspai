@@ -6,6 +6,7 @@ import {
   detectBackendFrameworkFromHints,
   type BackendFrameworkDetection,
 } from './backend-framework-contract.js';
+import { resolveKitDefinition } from './kit-registry.js';
 import { readRapidkitProjectJson, type RapidkitProjectJson } from './runtime-detection.js';
 
 export type RapidkitContextJson = Record<string, unknown> | null;
@@ -41,22 +42,30 @@ function readContextEngine(contextJson: RapidkitContextJson): ProjectMetadata['e
 
 function resolveModuleSupport(
   projectJson: RapidkitProjectJson,
-  contextJson: RapidkitContextJson,
-  detection: BackendFrameworkDetection
+  contextJson: RapidkitContextJson
 ): boolean {
   if (projectJson?.module_support === false || contextJson?.module_support === false) {
     return false;
-  }
-
-  if (projectJson?.module_support === true || contextJson?.module_support === true) {
-    return true;
   }
 
   if (!projectJson && contextJson) {
     return false;
   }
 
-  return detection.runtime === 'python' || detection.runtime === 'node';
+  const kitName =
+    typeof projectJson?.kit_name === 'string'
+      ? projectJson.kit_name
+      : typeof projectJson?.kit === 'string'
+        ? projectJson.kit
+        : typeof contextJson?.kit === 'string'
+          ? contextJson.kit
+          : undefined;
+  const kit = kitName ? resolveKitDefinition(kitName) : undefined;
+  if (kit?.owner === 'core' && kit.moduleSupport === true) {
+    return true;
+  }
+
+  return false;
 }
 
 function resolveDetection(
@@ -111,7 +120,7 @@ export function readProjectMetadata(projectRoot: string): ProjectMetadata | null
     projectJson,
     contextJson,
     detection,
-    moduleSupport: resolveModuleSupport(projectJson, contextJson, detection),
+    moduleSupport: resolveModuleSupport(projectJson, contextJson),
     engine: readContextEngine(contextJson),
   };
 }

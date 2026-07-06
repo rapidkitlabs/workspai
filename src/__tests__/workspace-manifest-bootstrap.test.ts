@@ -19,10 +19,44 @@ describe('workspace manifest bootstrap metadata', () => {
   it('omits bootstrap metadata for normal workspace creation', () => {
     const manifest = JSON.parse(
       buildWorkspaceManifest('normal-wsp', 'venv', '3.12', 'polyglot')
-    ) as Record<string, unknown>;
+    ) as {
+      profile?: string;
+      profile_requested?: string;
+      bootstrap_note?: string;
+      engine?: { python_core?: unknown };
+    };
 
     expect(manifest.profile).toBe('polyglot');
     expect(manifest.profile_requested).toBeUndefined();
     expect(manifest.bootstrap_note).toBeUndefined();
+    expect(manifest.engine?.python_core).toBeUndefined();
+  });
+
+  it('records intentionally skipped Python engine installs', () => {
+    const manifest = JSON.parse(
+      buildWorkspaceManifest('wi-only-wsp', 'venv', undefined, 'enterprise', {
+        bootstrapNote: 'python-engine-skipped',
+        pythonEngine: 'skipped',
+        pythonEngineReason: 'user-opted-out',
+      })
+    ) as {
+      profile?: string;
+      bootstrap_note?: string;
+      engine?: {
+        python_version?: string | null;
+        python_core?: {
+          status?: string;
+          reason?: string;
+        };
+      };
+    };
+
+    expect(manifest.profile).toBe('enterprise');
+    expect(manifest.bootstrap_note).toBe('python-engine-skipped');
+    expect(manifest.engine?.python_version).toBeNull();
+    expect(manifest.engine?.python_core).toEqual({
+      status: 'skipped',
+      reason: 'user-opted-out',
+    });
   });
 });

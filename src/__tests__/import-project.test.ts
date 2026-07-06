@@ -196,6 +196,126 @@ describe('import-project', () => {
     expect(await fsExtra.pathExists(path.join(imported.path, 'server.key'))).toBe(false);
   });
 
+  it('records a profile compatibility warning when importing a mismatched runtime', async () => {
+    const workspacePath = await makeTempDir('rapidkit-import-profile-workspace-');
+    const sourcePath = await makeTempDir('rapidkit-import-fastapi-source-');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+      profile: 'node-only',
+    });
+    await fsExtra.writeFile(path.join(workspacePath, '.rapidkit-workspace'), '{}');
+    await fsExtra.writeFile(path.join(sourcePath, 'requirements.txt'), 'fastapi\nuvicorn\n');
+
+    const imported = await importProjectIntoWorkspace({
+      workspacePath,
+      source: sourcePath,
+      name: 'studio-api',
+    });
+
+    expect(imported.profileCompatibility).toMatchObject({
+      ok: false,
+      profile: 'node-only',
+      recommendedProfile: 'polyglot',
+      recommendedCommand: 'npx rapidkit bootstrap --profile polyglot',
+      message: 'Project "studio-api" is Python, but workspace profile is "node-only".',
+    });
+
+    const importJson = await fsExtra.readJson(imported.importJsonPath);
+    expect(importJson.policy.profile_compatibility).toMatchObject({
+      ok: false,
+      profile: 'node-only',
+      recommended_profile: 'polyglot',
+      recommended_command: 'npx rapidkit bootstrap --profile polyglot',
+    });
+  });
+
+  it('detects observed Rust projects during import and routes them through profile compatibility', async () => {
+    const workspacePath = await makeTempDir('rapidkit-import-rust-profile-workspace-');
+    const sourcePath = await makeTempDir('rapidkit-import-rust-source-');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+      profile: 'node-only',
+    });
+    await fsExtra.writeFile(path.join(workspacePath, '.rapidkit-workspace'), '{}');
+    await fsExtra.writeFile(path.join(sourcePath, 'Cargo.toml'), '[dependencies]\naxum = "0.7"\n');
+
+    const imported = await importProjectIntoWorkspace({
+      workspacePath,
+      source: sourcePath,
+      name: 'native-worker',
+    });
+
+    expect(imported).toMatchObject({
+      runtime: 'rust',
+      framework: 'axum',
+      supportTier: 'extended',
+    });
+    expect(imported.profileCompatibility).toMatchObject({
+      ok: false,
+      recommendedProfile: 'polyglot',
+      message: 'Project "native-worker" is Rust, but workspace profile is "node-only".',
+    });
+  });
+
+  it('rolls back a mismatched import in strict profile policy mode', async () => {
+    const workspacePath = await makeTempDir('rapidkit-import-strict-workspace-');
+    const sourcePath = await makeTempDir('rapidkit-import-strict-fastapi-source-');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+      profile: 'node-only',
+    });
+    await fsExtra.writeFile(path.join(workspacePath, '.rapidkit-workspace'), '{}');
+    await fsExtra.writeFile(path.join(sourcePath, 'requirements.txt'), 'fastapi\n');
+
+    await expect(
+      importProjectIntoWorkspace({
+        workspacePath,
+        source: sourcePath,
+        name: 'studio-api',
+        profilePolicyMode: 'strict',
+      })
+    ).rejects.toThrow('Project "studio-api" is Python, but workspace profile is "node-only".');
+    expect(await fsExtra.pathExists(path.join(workspacePath, 'studio-api'))).toBe(false);
+  });
+
+  it('warns when import makes a minimal workspace multi-runtime', async () => {
+    const workspacePath = await makeTempDir('rapidkit-import-minimal-workspace-');
+    const sourcePath = await makeTempDir('rapidkit-import-minimal-fastapi-source-');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'demo-workspace',
+      profile: 'minimal',
+    });
+    await fsExtra.writeFile(path.join(workspacePath, '.rapidkit-workspace'), '{}');
+    const existingNodeProject = path.join(workspacePath, 'portal-web');
+    await fsExtra.ensureDir(path.join(existingNodeProject, '.rapidkit'));
+    await fsExtra.writeJson(path.join(existingNodeProject, '.rapidkit', 'project.json'), {
+      name: 'portal-web',
+      runtime: 'node',
+    });
+    await fsExtra.writeFile(path.join(sourcePath, 'requirements.txt'), 'fastapi\n');
+
+    const imported = await importProjectIntoWorkspace({
+      workspacePath,
+      source: sourcePath,
+      name: 'studio-api',
+    });
+
+    expect(imported.profileCompatibility).toMatchObject({
+      ok: false,
+      profile: 'minimal',
+      recommendedProfile: 'polyglot',
+      message: 'minimal profile mismatch: multiple runtimes detected [node, python].',
+    });
+  });
+
   it('imports ASP.NET Core projects as extended dotnet projects without module mutation', async () => {
     const workspacePath = await makeTempDir('rapidkit-import-workspace-');
     const sourcePath = await makeTempDir('rapidkit-import-dotnet-source-');

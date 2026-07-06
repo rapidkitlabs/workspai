@@ -97,6 +97,102 @@ describe('Create Module - Internal Functions', () => {
     vi.spyOn(fsPromises, 'writeFile').mockResolvedValue(undefined);
   });
 
+  describe('Optional Python engine install', () => {
+    it('creates Python-aware workspaces without installing rapidkit-core when skipped', async () => {
+      vi.mocked(execa).mockResolvedValue({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+      } as any);
+
+      await createProject('test-project', {
+        profile: 'polyglot',
+        skipPythonEngine: true,
+        skipGit: true,
+      });
+
+      const workspaceManifestCall = vi
+        .mocked(fsExtra.outputFile)
+        .mock.calls.find((call) => String(call[0]).endsWith('.rapidkit/workspace.json'));
+
+      expect(workspaceManifestCall).toBeDefined();
+      const manifest = JSON.parse(String(workspaceManifestCall?.[1]));
+      expect(manifest.profile).toBe('polyglot');
+      expect(manifest.bootstrap_note).toBe('python-engine-skipped');
+      expect(manifest.engine.python_version).toBeNull();
+      expect(manifest.engine.python_core).toEqual({
+        status: 'skipped',
+        reason: 'user-opted-out',
+      });
+
+      const markerCall = vi
+        .mocked(fsExtra.outputFile)
+        .mock.calls.find((call) => String(call[0]).endsWith('.rapidkit-workspace'));
+      const marker = JSON.parse(String(markerCall?.[1]));
+      expect(marker.metadata.python).toEqual({
+        coreStatus: 'skipped',
+        coreReason: 'user-opted-out',
+      });
+
+      const toolchainCall = vi
+        .mocked(fsExtra.outputFile)
+        .mock.calls.find((call) => String(call[0]).endsWith('.rapidkit/toolchain.lock'));
+      const toolchain = JSON.parse(String(toolchainCall?.[1]));
+      expect(toolchain.runtime.python.core).toEqual({
+        status: 'skipped',
+        reason: 'user-opted-out',
+      });
+
+      const launcherCall = vi
+        .mocked(fsExtra.outputFile)
+        .mock.calls.find((call) => String(call[0]).endsWith('/rapidkit'));
+      expect(String(launcherCall?.[1])).toContain(
+        'Python engine installation was intentionally skipped'
+      );
+      expect(String(launcherCall?.[1])).toContain('npx rapidkit <command>');
+      expect(String(launcherCall?.[1])).toContain('npx rapidkit workspace run init');
+      expect(
+        vi.mocked(fsExtra.outputFile).mock.calls.some((call) => {
+          const target = String(call[0]);
+          return target.endsWith('/pyproject.toml') || target.endsWith('/poetry.toml');
+        })
+      ).toBe(false);
+
+      expect(execa).not.toHaveBeenCalledWith('poetry', expect.any(Array), expect.any(Object));
+      expect(execa).not.toHaveBeenCalledWith(
+        expect.any(String),
+        expect.arrayContaining(['pip', 'install', expect.stringContaining('rapidkit')]),
+        expect.any(Object)
+      );
+      expect(execa).not.toHaveBeenCalledWith(
+        'poetry',
+        expect.arrayContaining(['add', 'rapidkit-core']),
+        expect.any(Object)
+      );
+    });
+
+    it('creates minimal workspaces without Python engine files', async () => {
+      vi.mocked(execa).mockResolvedValue({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+      } as any);
+
+      await createProject('test-project', {
+        profile: 'minimal',
+        skipGit: true,
+      });
+
+      const writtenFiles = vi.mocked(fsExtra.outputFile).mock.calls.map((call) => String(call[0]));
+      expect(writtenFiles.some((target) => target.endsWith('/pyproject.toml'))).toBe(false);
+      expect(writtenFiles.some((target) => target.endsWith('/poetry.toml'))).toBe(false);
+      expect(writtenFiles.some((target) => target.endsWith('/.rapidkit/workspace.json'))).toBe(
+        true
+      );
+      expect(writtenFiles.some((target) => target.endsWith('/.rapidkit-workspace'))).toBe(true);
+    });
+  });
+
   describe('Poetry Installation Flow', () => {
     it('should install RapidKit with Poetry successfully', async () => {
       vi.mocked(inquirer.prompt).mockResolvedValue({
@@ -231,6 +327,9 @@ describe('Create Module - Internal Functions', () => {
         if (names.includes('installPoetry')) {
           return { installPoetry: true } as any;
         }
+        if (names.includes('installPythonEngine')) {
+          return { installPythonEngine: true } as any;
+        }
         return {
           pythonVersion: '3.10',
           installMethod: 'poetry',
@@ -250,8 +349,9 @@ describe('Create Module - Internal Functions', () => {
 
       await createProject('test-project', { profile: 'python-only' });
 
-      // Prompt should only be for python/install method selection; no installPoetry/installPipx prompts.
-      expect(inquirer.prompt).toHaveBeenCalledTimes(1);
+      // Prompt should be for optional Python engine + python/install method selection;
+      // no installPoetry/installPipx prompts.
+      expect(inquirer.prompt).toHaveBeenCalledTimes(2);
       expect(poetryVersionChecks).toBeGreaterThan(0);
       expect(execa).not.toHaveBeenCalledWith('pipx', ['install', 'poetry']);
       expect(execa).toHaveBeenCalledWith(

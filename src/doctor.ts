@@ -1973,7 +1973,7 @@ async function checkRapidKitCore(): Promise<HealthCheckResult> {
 
       const workspaceVenvAdvisory =
         !hasWorkspaceVenvInstall && hasGlobalInstall
-          ? 'Workspace (.venv): not installed (optional). For best project-level performance and isolation, run npx rapidkit workspace run init inside this workspace.'
+          ? 'Workspace (.venv): not installed (optional). For RapidKit module-enabled projects, run npx rapidkit workspace run init inside this workspace to install the local Python engine.'
           : undefined;
 
       return {

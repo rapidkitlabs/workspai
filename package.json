@@ -1,6 +1,6 @@
 {
   "name": "rapidkit",
-  "version": "0.41.5",
+  "version": "0.42.0",
   "type": "module",
   "description": "Open-source workspace intelligence CLI for software systems: create, adopt, govern, verify, and align polyglot workspaces for humans, CI, IDEs, and AI agents.",
   "keywords": [
@@ -113,7 +113,7 @@
     "analyze": "npm run build && node scripts/analyze-dist.mjs",
     "size-check": "npm run build && size-limit",
     "bench": "npx tsx scripts/benchmarks.ts",
-    "quality": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run size-check",
+    "quality": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run size-check && npm run security && npm run validate:docs && npm run smoke:frontend-generators && npm run check:contracts && npm run check:shared-contracts && npm run check:parity-snapshot && npm run check:agent-customization-drift",
     "act-matrix": "act -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-22.04 -P macos-latest=ghcr.io/catthehacker/ubuntu:act-22.04 -P windows-latest=ghcr.io/catthehacker/ubuntu:act-22.04 --pull=false -j build-test-matrix",
     "release:dry": "bash scripts/release.sh --no-publish --yes --allow-dirty",
     "release:patch": "bash scripts/release.sh patch",

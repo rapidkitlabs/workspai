@@ -72,6 +72,12 @@ export interface PythonMetadata {
   /** RapidKit Core version installed */
   coreVersion?: string;
 
+  /** RapidKit Core installation state for workspace intelligence consumers */
+  coreStatus?: 'installed' | 'skipped';
+
+  /** Why RapidKit Core was not installed, when intentionally skipped */
+  coreReason?: string;
+
   /** Python version used */
   pythonVersion?: string;
 
@@ -162,7 +168,8 @@ export async function updateWorkspaceMetadata(
 export function createNpmWorkspaceMarker(
   name: string,
   version: string,
-  installMethod?: 'poetry' | 'venv' | 'pipx'
+  installMethod?: 'poetry' | 'venv' | 'pipx',
+  python?: PythonMetadata
 ): WorkspaceMarker {
   return {
     signature: 'RAPIDKIT_WORKSPACE',
@@ -176,6 +183,7 @@ export function createNpmWorkspaceMarker(
         installMethod,
         lastUsedAt: new Date().toISOString(),
       },
+      ...(python ? { python } : {}),
     },
   };
 }

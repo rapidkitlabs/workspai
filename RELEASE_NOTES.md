@@ -1,6 +1,68 @@
 # Release Notes
 
-## Latest Release: v0.41.5 (July 4, 2026)
+## Latest Release: v0.42.0 (July 6, 2026)
+
+### Optional Python Engine and Profile Compatibility
+
+This minor release separates Workspace Intelligence from the workspace-local
+Python engine. Teams can now create governed workspaces first, model/adopt/import
+projects, and install the local Python engine only when a RapidKit
+module-enabled kit actually needs it.
+
+**What's New:**
+
+- **Optional Python engine for Python-aware profiles**
+  - `create workspace --skip-python-engine` keeps `python-only`, `polyglot`, and
+    `enterprise` workspaces available for Workspace Intelligence without
+    installing `rapidkit-core` immediately.
+  - Skipped workspaces record explicit `python_core.status = skipped` metadata
+    in workspace manifests, markers, and toolchain evidence.
+  - Local launchers now explain the skip state and point users to npm-owned
+    workspace commands until the Python engine is intentionally installed.
+
+- **Python-free workspace integrity**
+  - `minimal`, `java-only`, `node-only`, `go-only`, and `dotnet-only` workspaces
+    no longer create root-level `pyproject.toml`, `poetry.toml`,
+    `.python-version`, or `.venv` artifacts.
+  - Empty skipped workspaces and arbitrary adopted/imported Python projects keep
+    the Python engine skipped unless a RapidKit module-enabled kit is present.
+
+- **Module-enabled kit gate**
+  - RapidKit module commands are guaranteed only for RapidKit-owned
+    module-enabled kits: `fastapi.standard`, `fastapi.ddd`, and
+    `nestjs.standard`.
+  - Adopted/imported projects can still be modeled, governed, verified, and
+    surfaced in Workspace Intelligence even when module mutation is disabled.
+
+- **Profile/runtime compatibility**
+  - `create project`, `import`, `adopt`, and `bootstrap` compliance now share a
+    consistent profile compatibility policy.
+  - Default mode warns and recommends profile realignment; strict mode blocks
+    mismatched runtime additions before registration.
+  - Broader language/runtime signals such as Rust, C, and C++ are counted in the
+    workspace runtime mix even when RapidKit does not own a native scaffold.
+
+**Breaking changes:** None.
+
+**Verification:**
+
+- `npm exec -- vitest run src/__tests__/e2e.test.ts src/__tests__/create-internal.test.ts src/__tests__/workspace-python-engine-install-gate.test.ts`
+- `npm run typecheck -- --pretty false`
+- `npm run lint`
+- `npm run build`
+- `npm exec -- vitest run`
+
+**Upgrade:**
+
+```bash
+npm install -g rapidkit@0.42.0
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.42.0.md)
+
+---
+
+## Previous Release: v0.41.5 (July 4, 2026)
 
 ### Workspace Creation Location and Governance Gate Fixes
 
