@@ -1,35 +1,8 @@
-node_modules/
-dist/
-*.log
-.DS_Store
-.env
-.env.local
-.vscode/
-.idea/
-*.tsbuildinfo
-.rapidkit-workspace
-.rapidkit-workspace/
-
-# Python bridge / local core development
 .venv/
 __pycache__/
 *.pyc
-
-# Test coverage
-coverage/
-.nyc_output/
-
-# Vitest
-.vitest/
-
-# Test workspaces (created during manual testing)
-test-workspace/
-rapidkit-full-workspace/
-*-workspace/
-
-# User config (should not be committed)
-.rapidkitrc.json
+.env
+.workspai-workspace
+.rapidkit-workspace
 .rapidkit/
 
-# Local package artifacts
-rapidkit-*.tgz
