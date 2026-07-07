@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/agent-action-outcome.v1.json",
+  "title": "RapidKit Agent Action Outcome",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "actionId", "scope", "summary", "outcome"],
+  "properties": {
+    "schemaVersion": { "const": "agent-action-outcome.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "actionId": { "type": "string", "minLength": 1 },
+    "scope": { "type": "string" },
+    "summary": { "type": "string" },
+    "outcome": { "enum": ["ok", "failed"] },
+    "affectedFiles": { "type": "array", "items": { "type": "string" } },
+    "commandsRun": { "type": "array", "items": { "type": "string" } },
+    "verifyBefore": { "type": "string" },
+    "verifyAfter": { "type": "string" },
+    "evidenceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "evidencePath": { "type": "string" },
+    "patchMetadata": {
+      "type": "object",
+      "required": ["appliedCount", "rejectedCount", "failedCount", "affectedFiles"],
+      "properties": {
+        "patchId": { "type": "string" },
+        "sourceAction": { "enum": ["auto-fix", "apply-patch"] },
+        "reviewRequired": { "type": "boolean" },
+        "branchCreated": { "type": "string" },
+        "appliedCount": { "type": "integer", "minimum": 0 },
+        "rejectedCount": { "type": "integer", "minimum": 0 },
+        "failedCount": { "type": "integer", "minimum": 0 },
+        "affectedFiles": { "type": "array", "items": { "type": "string" } },
+        "rollbackCommand": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

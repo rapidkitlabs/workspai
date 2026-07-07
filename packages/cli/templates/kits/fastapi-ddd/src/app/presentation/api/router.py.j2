@@ -1,0 +1,10 @@
+"""Factory for the root API router."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+
+def get_api_router() -> APIRouter:
+    """Return an API router ready for versioned sub-routers."""
+    return APIRouter()

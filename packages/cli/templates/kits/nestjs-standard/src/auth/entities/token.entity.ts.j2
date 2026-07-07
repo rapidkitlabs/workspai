@@ -1,0 +1,3 @@
+export class TokenEntity {
+  // <<<inject:auth-token-entity>>>
+}

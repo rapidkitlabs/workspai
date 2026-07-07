@@ -1,0 +1,17 @@
+"""Infrastructure repository providing health status data."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from src.app.domain.models import HealthStatus
+
+
+@dataclass(slots=True)
+class StaticHealthRepository:
+    """Simple repository returning a constant health status."""
+
+    status: str = "ok"
+
+    def get_status(self) -> HealthStatus:
+        return HealthStatus(status=self.status)

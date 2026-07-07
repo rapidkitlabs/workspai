@@ -1,0 +1,24 @@
+"""Application use-cases orchestrating the example notes feature."""
+
+from __future__ import annotations
+
+from src.app.application.interfaces import ServiceContext
+from src.app.domain.models import Note, NoteDraft
+
+
+def list_notes(context: ServiceContext) -> list[Note]:
+    """Return every note currently stored."""
+
+    return context.note_repository.list()
+
+
+def create_note(context: ServiceContext, draft: NoteDraft) -> Note:
+    """Create a new note."""
+
+    return context.note_repository.create(draft)
+
+
+def get_note(context: ServiceContext, note_id: int) -> Note | None:
+    """Retrieve a single note by identifier."""
+
+    return context.note_repository.get(note_id)

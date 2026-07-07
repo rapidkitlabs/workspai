@@ -1,0 +1,3 @@
+export class UserEntity {
+  // <<<inject:auth-user-entity>>>
+}

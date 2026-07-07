@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "declaration": true,
+    "sourceMap": false,
+    "removeComments": true,
+    "incremental": false
+  },
+  "exclude": ["node_modules", "test", "src/**/*.spec.ts", "src/**/*.e2e-spec.ts"],
+  "include": ["src/.workspai/**/*.ts", "src/.rapidkit/**/*.ts", "src/**/*.ts"]
+}

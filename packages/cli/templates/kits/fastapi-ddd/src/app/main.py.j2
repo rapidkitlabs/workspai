@@ -1,0 +1,61 @@
+"""Application factory wiring the FastAPI instance for DDD layers."""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator, Callable
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from src.routing import api_router as root_api_router
+
+try:
+    # canonical health package
+    from src.health import register_health_routes as _core_register_health_routes
+except ImportError:  # pragma: no cover - health package not generated yet
+
+    def _register_health_routes(_: FastAPI) -> None:
+        return None
+
+else:
+
+    def _register_health_routes(app: FastAPI) -> None:
+        try:
+            _core_register_health_routes(app)
+        except Exception:  # pragma: no cover - defensive best-effort registration
+            return None
+
+
+LifespanHandler = Callable[[FastAPI], AsyncIterator[None]]
+
+
+def create_app(
+    *,
+    title: str,
+    description: str,
+    version: str,
+    lifespan: LifespanHandler | None = None,
+) -> FastAPI:
+    """Build the FastAPI application configured with shared middlewares and routers."""
+
+    app = FastAPI(
+        title=title,
+        description=description,
+        version=version,
+        docs_url="/docs",
+        redoc_url="/redoc",
+        lifespan=lifespan,
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.include_router(root_api_router, prefix="/api")
+    _register_health_routes(app)
+
+    return app

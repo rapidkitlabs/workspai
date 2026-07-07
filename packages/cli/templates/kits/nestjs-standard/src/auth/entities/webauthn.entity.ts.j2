@@ -1,0 +1,3 @@
+export class WebAuthnEntity {
+  // <<<inject:auth-webauthn-entity>>>
+}

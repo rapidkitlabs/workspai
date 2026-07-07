@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-impact.v1.json",
+  "title": "Workspai Workspace Impact",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "fromRef",
+    "diffRef",
+    "workspace",
+    "summary",
+    "affectedProjects",
+    "transitiveImpact",
+    "criticalPathHotspots",
+    "workspaceImpact",
+    "verificationPlan",
+    "agentBrief",
+    "diff"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "workspace-impact.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "fromRef": { "type": "string" },
+    "diffRef": { "type": "string" },
+    "workspace": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "profile": { "type": "string" },
+        "type": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "changed",
+        "risk",
+        "affectedProjects",
+        "workspaceItems",
+        "recommendedCommands",
+        "blastRadius"
+      ],
+      "properties": {
+        "changed": { "type": "boolean" },
+        "risk": {
+          "enum": ["none", "low", "medium", "high", "critical"]
+        },
+        "affectedProjects": { "type": "integer", "minimum": 0 },
+        "workspaceItems": { "type": "integer", "minimum": 0 },
+        "recommendedCommands": { "type": "integer", "minimum": 0 },
+        "blastRadius": {
+          "type": "object",
+          "required": ["directlyAffected", "transitivelyAffected", "maxDistance", "graphEdges"],
+          "properties": {
+            "directlyAffected": { "type": "integer", "minimum": 0 },
+            "transitivelyAffected": { "type": "integer", "minimum": 0 },
+            "maxDistance": { "type": "integer", "minimum": 0 },
+            "graphEdges": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "affectedProjects": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "transitiveImpact": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "criticalPathHotspots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["project", "fanIn", "fanOut", "reach", "betweenness"],
+        "properties": {
+          "project": { "type": "string" },
+          "fanIn": { "type": "integer", "minimum": 0 },
+          "fanOut": { "type": "integer", "minimum": 0 },
+          "reach": { "type": "integer", "minimum": 0 },
+          "betweenness": { "type": "number", "minimum": 0 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "workspaceImpact": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "verificationPlan": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "agentBrief": {
+      "type": "object",
+      "required": ["headline", "bullets", "unsafeAssumptions"],
+      "properties": {
+        "headline": { "type": "string" },
+        "bullets": { "type": "array", "items": { "type": "string" } },
+        "unsafeAssumptions": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "diff": {
+      "type": "object",
+      "required": ["schemaVersion"],
+      "properties": {
+        "schemaVersion": {
+          "const": "workspace-model-diff.v1"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

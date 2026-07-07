@@ -1,0 +1,52 @@
+.DS_Store
+*.log
+*.tsbuildinfo
+
+# Dependencies and build output
+node_modules/
+dist/
+
+# Local editor and environment files
+.env
+.env.local
+.vscode/
+.idea/
+
+# Python bridge / local core development
+.venv/
+__pycache__/
+*.pyc
+
+# Workspai workspace runtime state
+.workspai-workspace
+.workspai-workspace/
+.workspai/
+
+# Legacy workspace runtime state
+.rapidkit-workspace
+.rapidkit-workspace/
+.rapidkit/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Vitest
+.vitest/
+test-cli-output/
+
+# Test workspaces created during manual testing
+test-workspace/
+rapidkit-full-workspace/
+*-workspace/
+
+# Local workspace smoke artifacts at repository root
+/pyproject.toml
+/poetry.toml
+
+# User config should not be committed
+.rapidkitrc.json
+
+# Local package artifacts
+rapidkit-*.tgz
+workspai-*.tgz

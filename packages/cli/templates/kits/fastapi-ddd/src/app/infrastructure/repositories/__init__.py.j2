@@ -1,0 +1,6 @@
+"""Repository implementations bridging the domain and infrastructure."""
+
+from .health import StaticHealthRepository
+from .notes import InMemoryNoteRepository
+
+__all__ = ["StaticHealthRepository", "InMemoryNoteRepository"]

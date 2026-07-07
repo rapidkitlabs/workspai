@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/studio-blocker-handoff.v1.json",
+  "title": "Workspai Studio Blocker Handoff",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "cardId",
+    "cardStatus",
+    "blockers",
+    "artifactPath",
+    "sourceCommand",
+    "scope"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "rapidkit-studio-blocker-handoff-v1"
+    },
+    "cardId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cardLabel": {
+      "type": "string"
+    },
+    "cardStatus": {
+      "enum": ["pass", "warn", "fail", "missing"]
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "artifactPath": {
+      "type": "string"
+    },
+    "sourceCommand": {
+      "type": "string"
+    },
+    "scope": {
+      "enum": ["workspace", "project"]
+    },
+    "stderrTail": {
+      "type": "string"
+    },
+    "exitCode": {
+      "type": ["integer", "null"]
+    },
+    "blockerSignature": {
+      "type": "string",
+      "minLength": 8
+    },
+    "commandRunCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "resolutionClass": {
+      "enum": [
+        "artifact-missing",
+        "command-failed-repeat",
+        "config-fixable",
+        "semantic-attention",
+        "unresolvable-without-human"
+      ]
+    },
+    "studioMode": {
+      "enum": ["FIX", "RUN_ONCE", "VERIFY_ONLY", "EXPLAIN"]
+    },
+    "incidentSummary": {
+      "type": "object",
+      "required": ["title", "phase", "primaryAction", "verifyRequired", "auditStatus"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "phase": {
+          "enum": ["detect", "diagnose", "fix", "verify", "audit"]
+        },
+        "primaryAction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verifyRequired": {
+          "type": "boolean"
+        },
+        "auditStatus": {
+          "enum": ["not-started", "pending", "saved", "failed", "unknown"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "resolutionHints": {
+      "type": "array",
+      "items": {
+        "$ref": "blocker-resolution.v1.json"
+      }
+    },
+    "verifyCommand": {
+      "type": "string"
+    },
+    "verifyArtifact": {
+      "type": "string"
+    },
+    "handoffSource": {
+      "enum": ["repair", "artifacts", "advisor", "tree", "dashboard"]
+    },
+    "workspacePath": {
+      "type": "string"
+    },
+    "projectPath": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,43 @@
+"""Contracts between the application layer and infrastructure adapters."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Protocol
+
+from src.app.domain.models import HealthStatus, Note, NoteDraft
+
+
+class HealthStatusProvider(Protocol):
+    """Protocol describing how to obtain the current health status."""
+
+    def get_status(self) -> HealthStatus:
+        """Return the latest domain health status snapshot."""
+        ...
+
+
+class NoteRepository(Protocol):
+    """Protocol for managing example notes."""
+
+    def create(self, draft: NoteDraft) -> Note:
+        """Persist a note draft and return the resulting entity."""
+        ...
+
+    def list(self) -> list[Note]:
+        """Return all available notes."""
+        ...
+
+    def get(self, note_id: int) -> Note | None:
+        """Return a single note or None if it does not exist."""
+        ...
+
+
+@dataclass(slots=True)
+class ServiceContext:
+    """Aggregates infrastructure adapters used by application use-cases."""
+
+    health_provider: HealthStatusProvider
+    note_repository: NoteRepository
+
+
+__all__ = ["HealthStatusProvider", "NoteRepository", "ServiceContext"]

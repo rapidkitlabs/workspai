@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/fact-freshness.v1.json",
+  "title": "RapidKit Fact Freshness Contract",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "category",
+    "generatedAt",
+    "ttlSeconds",
+    "status",
+    "verifyBeforeUse",
+    "reason"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "rapidkit-fact-freshness-v1"
+    },
+    "kind": {
+      "enum": ["durable", "derived", "evidence-backed", "live", "verify-before-use"]
+    },
+    "category": {
+      "enum": ["structure", "verification", "state"]
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ttlSeconds": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": ["fresh", "stale", "unknown"]
+    },
+    "verifyBeforeUse": {
+      "type": "boolean"
+    },
+    "sourceArtifact": {
+      "type": "string"
+    },
+    "sourcePath": {
+      "type": "string"
+    },
+    "inputsHash": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "rapidkit-doctor-fix-result-v1",
+  "title": "Doctor fix execution result",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "appliedFixes",
+    "remainingBlockers",
+    "verifyRecommended"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "rapidkit-doctor-fix-result-v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "appliedFixes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "action", "outcome"],
+        "properties": {
+          "path": { "type": "string" },
+          "action": { "type": "string" },
+          "outcome": {
+            "enum": ["applied", "failed", "skipped", "guidance"]
+          }
+        }
+      }
+    },
+    "remainingBlockers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "verifyRecommended": {
+      "type": "string"
+    }
+  }
+}

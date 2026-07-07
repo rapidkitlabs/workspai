@@ -1,0 +1,140 @@
+# {{ project_name | replace('_', ' ') | title }}
+
+A minimal FastAPI service generated with Workspai's **FastAPI Standard Kit**. Python-backed capabilities (configuration, logging, persistence, observability, authentication, etc.) are provided by RapidKit Core modules when you opt into the Python engine.
+
+## Quick start
+
+```bash
+# Bootstrap dependencies (creates .venv + installs Poetry-managed deps)
+npx workspai init  # use make init if you prefer a Make target
+
+# Copy env templates and install hooks/tooling
+./bootstrap.sh
+
+# Run linting, typing, testing, and supply-chain audits
+make lint
+make typecheck
+make test
+make audit
+
+# Start development server with hot reload
+make dev
+npx workspai dev  # same as make dev but auto-detects the project
+
+# Prefer project-local RapidKit Core helpers when you want it to resolve scripts automatically
+npx workspai lint
+npx workspai test
+npx workspai start
+```
+
+> Re-run `npx workspai init` (or `make init`) whenever dependencies change, or use `SKIP_INIT=1 make install` if you only need to refresh tooling/hooks without reinstalling packages.
+
+> Lockfiles are generated automatically during scaffolding. Set `RAPIDKIT_SKIP_LOCKS=1` (or `RAPIDKIT_GENERATE_LOCKS=0`) before running `workspai create` if you need to opt out.
+
+> Want the full project-local RapidKit Core catalog? Run `rapidkit --help` when RapidKit Core is installed, or use `npx workspai --help` for workspace-level commands.
+
+---
+
+## Local development
+
+- `npx workspai init` bootstraps dependencies via the project-aware CLI.
+- `make init` is an optional alias for `npx workspai init` when you prefer Make targets.
+- `make install` re-runs `npx workspai init` (unless you set `SKIP_INIT=1`) and refreshes developer tooling such as pre-commit hooks.
+- `./bootstrap.sh` copies `.env.example` to `.env` (if missing) and runs `SKIP_INIT=1 make install` for you.
+- `make dev` (or `npx workspai dev`) launches Uvicorn with the correct module path and reload settings.
+- `make lint`, `make typecheck`, and `make test` wrap Ruff, mypy, and pytest for consistent CI parity.
+- `make audit` shells out to `pip-audit` to surface vulnerable dependencies.
+- Prefer `npx workspai lint`, `npx workspai test`, and `npx workspai start` if you want the project-aware launcher to autodetect the virtualenv and command wiring.
+```
+
+## Available commands
+
+```bash
+npx workspai init   # 🔧 Bootstrap the project (create .venv + install deps)
+make init           # 🔧 Optional alias for npx workspai init
+./bootstrap.sh      # 🪄 Copy env template + install hooks/tooling (idempotent)
+npx workspai dev    # 🚀 Start development server with hot reload
+make dev            # 🚀 Alternative via Makefile helper
+npx workspai start  # ⚡ Start production server
+npx workspai lint   # 🔧 Run lint checks via project-aware CLI
+npx workspai test   # 🧪 Run pytest through the project-aware launcher
+make install        # 📦 Install Poetry deps + hooks
+make lint           # ✅ Lint via Ruff + Black
+make typecheck      # 🔍 Run mypy on src
+make test           # 🧪 Run tests
+make audit          # 🔐 Run pip-audit across dependencies
+make docker-up      # 🐳 Start docker compose stack (if enabled)
+```
+
+## Project layout
+
+- `src/main.py` – FastAPI application entrypoint
+- `src/routing/` – Core routers (health) and anchors for module routers
+- `src/modules/` – Module bootstrap anchors
+- `pyproject.toml` – Poetry configuration and dependencies
+- `Makefile` – Common developer workflows (format, lint, docker, etc.)
+- `Dockerfile` / `docker-compose.yml` – Optional container setup for local dev and deployment
+- `.github/workflows/ci.yml` – Optional GitHub Actions pipeline for linting and tests
+
+## Example feature
+
+The scaffold ships with a tiny in-memory **notes** API mounted under `/api/examples/notes`. Use it as a safe playground for wiring routers, schemas, and tests without touching your real domain logic:
+
+```bash
+# Create a note
+curl -s -X POST http://localhost:8000/api/examples/notes \
+	-H "Content-Type: application/json" \
+	-d '{"title":"first","body":"scaffolded by Workspai"}'
+
+# List notes
+curl -s http://localhost:8000/api/examples/notes | jq
+```
+
+The implementation intentionally stays in memory so you can replace it with a repository-backed service once you install RapidKit Core database modules.
+
+{% if selected_modules %}
+## Recommended RapidKit Core modules
+
+The following RapidKit Core modules are suggested during scaffolding; install them any time with `rapidkit add module <name>` after activating the project launcher:
+
+{% for module in selected_modules %}- {{ module.name | replace('_', ' ') | title }} (`{{ module.name }}`{% if not module.required %}, optional{% endif %}) – tier: {{ module.tier }}
+{% endfor %}
+{% endif %}
+
+## Adding features
+
+Use `rapidkit add module <module-name>` to install optional capabilities. Modules inject imports, routes, and services through the anchors defined in `src/main.py` and `src/routing/__init__.py`.
+
+During kit generation you can decide whether the RapidKit Core modules ship with the scaffold:
+
+```text
+Install the RapidKit Core settings module? [Y/n]
+Install the RapidKit Core logging module? [Y/n]
+Install deployment module assets (Docker/CI)? [Y/n]
+```
+
+### Scaffold toggles vs RapidKit Core modules
+
+- `enable_*` prompts (for Docker, CI, SQLite, etc.) control the starter assets generated by this kit.
+- `install_*` prompts control which RapidKit Core modules are installed up front.
+- You can always add modules later with `rapidkit add module <name>` if you skip them during scaffolding.
+
+When you need deployment artefacts in an existing project, install the optional `deployment` module:
+
+```bash
+rapidkit add module deployment
+rapidkit modules lock --overwrite
+```
+
+<!-- <<<inject:module-snippet>>> -->
+
+## 📄 License
+
+This project is licensed under the **{{ license }}** License - see the `LICENSE` file included at the project root for details.
+
+## 🔒 Security & secrets
+
+- Copy `.env.example` to `.env` and populate secrets (`SECRET_KEY`, DB credentials, etc.) before deploying.
+- **Do not** commit real secrets or `.env` to git; `.gitignore` already contains `.env` to protect accidental commits.
+- For production, tighten CORS and allowed hosts rather than using wildcard settings provided for convenience in dev.
+- Run `make audit` (pip-audit) before releases to catch dependency CVEs early.

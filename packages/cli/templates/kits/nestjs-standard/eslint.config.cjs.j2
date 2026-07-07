@@ -1,0 +1,9 @@
+const { FlatCompat } = require('@eslint/eslintrc');
+
+const compat = new FlatCompat({
+  baseDirectory: __dirname,
+});
+
+const legacyConfig = require('./.eslintrc.js');
+
+module.exports = compat.config(legacyConfig);

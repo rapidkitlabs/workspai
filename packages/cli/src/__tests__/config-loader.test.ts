@@ -1,0 +1,70 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import fsExtra from 'fs-extra';
+import os from 'os';
+import path from 'path';
+
+import { loadRapidKitConfig, loadWorkspaiConfig } from '../config.js';
+
+const tempDirs: string[] = [];
+
+async function makeTempDir(prefix: string): Promise<string> {
+  const dir = await fsExtra.mkdtemp(path.join(os.tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+}
+
+describe('loadWorkspaiConfig', () => {
+  afterEach(async () => {
+    while (tempDirs.length > 0) {
+      const dir = tempDirs.pop();
+      if (dir) {
+        await fsExtra.remove(dir);
+      }
+    }
+  });
+
+  it('loads explicit CommonJS .cjs config files', async () => {
+    const dir = await makeTempDir('workspai-config-cjs-');
+    await fsExtra.writeFile(
+      path.join(dir, 'workspai.config.cjs'),
+      "module.exports = { workspace: { defaultAuthor: 'CJS Team' } };\n"
+    );
+
+    await expect(loadWorkspaiConfig(dir)).resolves.toMatchObject({
+      workspace: { defaultAuthor: 'CJS Team' },
+    });
+  });
+
+  it('loads explicit ESM .mjs config files', async () => {
+    const dir = await makeTempDir('workspai-config-mjs-');
+    await fsExtra.writeFile(
+      path.join(dir, 'workspai.config.mjs'),
+      "export default { projects: { defaultKit: 'nestjs.standard' } };\n"
+    );
+
+    await expect(loadWorkspaiConfig(dir)).resolves.toMatchObject({
+      projects: { defaultKit: 'nestjs.standard' },
+    });
+  });
+
+  it('keeps legacy rapidkit config as a fallback alias', async () => {
+    const dir = await makeTempDir('workspai-config-legacy-');
+    await fsExtra.writeFile(
+      path.join(dir, 'rapidkit.config.cjs'),
+      "module.exports = { workspace: { installMethod: 'venv' } };\n"
+    );
+
+    await expect(loadRapidKitConfig(dir)).resolves.toMatchObject({
+      workspace: { installMethod: 'venv' },
+    });
+  });
+
+  it('fails loudly when an existing config file cannot be loaded', async () => {
+    const dir = await makeTempDir('workspai-config-invalid-');
+    await fsExtra.writeFile(path.join(dir, 'workspai.config.mjs'), 'export default {\n');
+
+    await expect(loadWorkspaiConfig(dir)).rejects.toThrow(
+      /Failed to load Workspai config.*workspai\.config\.mjs/
+    );
+  });
+});

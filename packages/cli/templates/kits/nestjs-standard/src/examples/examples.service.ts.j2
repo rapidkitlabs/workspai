@@ -1,0 +1,33 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+
+import { CreateNoteDto } from './dto/create-note.dto';
+
+export interface ExampleNote {
+  id: number;
+  title: string;
+  body: string;
+}
+
+@Injectable()
+export class ExamplesService {
+  private notes: ExampleNote[] = [];
+  private sequence = 1;
+
+  create(payload: CreateNoteDto): ExampleNote {
+    const note: ExampleNote = { id: this.sequence++, ...payload };
+    this.notes.push(note);
+    return note;
+  }
+
+  findAll(): ExampleNote[] {
+    return [...this.notes];
+  }
+
+  findOne(id: number): ExampleNote {
+    const note = this.notes.find((entry) => entry.id === id);
+    if (!note) {
+      throw new NotFoundException('Note not found');
+    }
+    return note;
+  }
+}

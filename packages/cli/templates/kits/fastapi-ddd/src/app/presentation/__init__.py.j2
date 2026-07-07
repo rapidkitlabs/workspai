@@ -1,0 +1,3 @@
+"""Presentation layer packages (HTTP, CLI, messaging, ...)."""
+
+__all__ = ["api"]

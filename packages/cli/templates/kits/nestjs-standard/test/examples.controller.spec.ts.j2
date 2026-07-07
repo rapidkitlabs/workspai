@@ -1,0 +1,28 @@
+import { Test, TestingModule } from '@nestjs/testing';
+
+import { ExamplesController } from '../src/examples/examples.controller';
+import { ExamplesService } from '../src/examples/examples.service';
+
+describe('ExamplesController', () => {
+  let controller: ExamplesController;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [ExamplesController],
+      providers: [ExamplesService],
+    }).compile();
+
+    controller = module.get<ExamplesController>(ExamplesController);
+  });
+
+  it('creates and retrieves notes', () => {
+    const created = controller.create({ title: 'spec', body: 'covered by tests' });
+    expect(created).toMatchObject({ id: 1, title: 'spec' });
+
+    const list = controller.findAll();
+    expect(list).toHaveLength(1);
+
+    const single = controller.findOne(created.id);
+    expect(single).toMatchObject({ id: created.id, title: 'spec' });
+  });
+});

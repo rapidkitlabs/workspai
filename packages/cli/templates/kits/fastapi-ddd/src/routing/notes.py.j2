@@ -1,0 +1,7 @@
+"""Re-export example note routes for compatibility with module injection."""
+
+from __future__ import annotations
+
+from src.app.presentation.api.routes.notes import router
+
+__all__ = ["router"]

@@ -1,0 +1,64 @@
+[tool.poetry]
+name = "{{ project_name }}"
+version = "{{ app_version }}"
+description = "{{ description }}"
+authors = ["{{ author }} <you@example.com>"]
+license = "{{ license }}"
+packages = [{ include = "src" }]
+
+[tool.poetry.scripts]
+dev = "src.cli:dev"
+start = "src.cli:start"
+build = "src.cli:build"
+test = "src.cli:test"
+lint = "src.cli:lint"
+format = "src.cli:format"
+help = "src.cli:help_cmd"
+
+[tool.poetry.dependencies]
+python = "^{{ python_version }}"
+fastapi = "^0.128.0"
+uvicorn = { extras = ["standard"], version = "^0.40.0" }
+pydantic = "^2.12.5"
+{% if has_settings -%}
+pydantic-settings = { version = "^2.12.0", extras = ["yaml"] }
+{% endif %}
+# <<<inject:poetry-dependencies>>>
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^9.0.2"
+pytest-asyncio = "^1.3.0"
+pytest-cov = "^7.0.0"
+httpx = "^0.28.1"
+ruff = "^0.14.10"
+black = "^25.12.0"
+isort = "^7.0.0"
+mypy = "^1.19.1"
+build = "^1.3.0"
+
+# <<<inject:poetry-dev-dependencies>>>
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+markers = [
+	"integration: mark tests as integration tests",
+	"template_integration: mark template integration tests",
+]
+
+[tool.ruff]
+line-length = 100
+exclude = [".workspai/vendor", ".rapidkit/vendor"]
+
+[tool.ruff.lint]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "{{ python_version }}"
+ignore_missing_imports = true
+warn_unused_configs = false
+show_error_codes = true
+# Ignore vendor snapshots and generated health shims from strict static checking
+exclude = "(^\\.workspai/vendor/|^\\.rapidkit/vendor/|src/health/|src/main.py$)"

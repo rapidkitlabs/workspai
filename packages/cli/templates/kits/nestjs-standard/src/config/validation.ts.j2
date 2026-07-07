@@ -1,0 +1,21 @@
+import * as Joi from 'joi';
+
+export const validationSchema = Joi.object({
+  APP_NAME: Joi.string().default("{{ project_name | replace('-', ' ') | title }}"),
+  NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
+  HOST: Joi.string().hostname().default('0.0.0.0'),
+  PORT: Joi.number().port().default(8000),
+  LOG_LEVEL: Joi.string()
+    .lowercase()
+    .valid('error', 'warn', 'log', 'debug', 'verbose', 'info', 'warning')
+    .default('log'),
+});
+
+export const loggingValidationSchema = Joi.object({
+  LOG_LEVEL: Joi.string().valid('debug', 'info', 'warning', 'error').default('info'),
+  LOG_FORMAT: Joi.string().valid('json', 'text', 'colored').default('json'),
+  LOG_SINKS: Joi.string().default('stderr'),
+  LOG_ASYNC_QUEUE: Joi.boolean().truthy('true').falsy('false').default(true),
+  LOG_FILE_PATH: Joi.string().default('logs/app.log'),
+  LOG_SAMPLING_RATE: Joi.number().min(0).max(1).default(1),
+});

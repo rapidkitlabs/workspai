@@ -1,0 +1,13 @@
+import { Module } from '@nestjs/common';
+
+// <<<inject:auth-imports>>>
+
+@Module({
+  imports: [
+    // <<<inject:auth-module>>>
+  ],
+  controllers: [],
+  providers: [],
+  exports: [],
+})
+export class AuthModule {}

@@ -1,0 +1,5 @@
+# This directory stores AI embeddings
+# Generated at runtime by: npx tsx src/ai/generate-embeddings.ts
+# 
+# Files (not committed):
+# - modules-embeddings.json (~1MB)

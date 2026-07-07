@@ -1,0 +1,71 @@
+"""Sample in-memory notes endpoints to demonstrate Workspai routing."""
+
+from __future__ import annotations
+
+from typing import Dict, List
+
+from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel, Field
+
+router = APIRouter(tags=["examples"])
+
+
+class NoteCreate(BaseModel):
+    """Payload for creating a note."""
+
+    title: str = Field(..., max_length=80)
+    body: str = Field(..., max_length=500)
+
+
+class Note(NoteCreate):
+    """Serialized note returned by the API."""
+
+    id: int
+
+
+_STORE: Dict[int, Note] = {}
+_NEXT_ID = 1
+
+
+@router.post(
+    "/notes",
+    response_model=Note,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a note",
+)
+def create_note(payload: NoteCreate) -> Note:
+    """Persist a note in memory and return it."""
+
+    global _NEXT_ID  # noqa: PLW0603 - intentional in-memory auto increment
+    note = Note(id=_NEXT_ID, **payload.model_dump())
+    _STORE[_NEXT_ID] = note
+    _NEXT_ID += 1
+    return note
+
+
+@router.get(
+    "/notes",
+    response_model=List[Note],
+    summary="List all notes",
+)
+def list_notes() -> List[Note]:
+    """Return all notes stored so far."""
+
+    return list(_STORE.values())
+
+
+@router.get(
+    "/notes/{note_id}",
+    response_model=Note,
+    summary="Retrieve a single note",
+)
+def get_note(note_id: int) -> Note:
+    """Retrieve a note by identifier or raise 404."""
+
+    note = _STORE.get(note_id)
+    if not note:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Note not found",
+        )
+    return note

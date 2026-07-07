@@ -1,0 +1,28 @@
+"""In-memory repository backing the example notes use-case."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Dict, List
+
+from src.app.domain.models import Note, NoteDraft
+
+
+@dataclass(slots=True)
+class InMemoryNoteRepository:
+    """Very small repository storing notes in process memory."""
+
+    _store: Dict[int, Note] = field(default_factory=dict)
+    _next_id: int = 1
+
+    def create(self, draft: NoteDraft) -> Note:
+        note = Note(id=self._next_id, title=draft.title, body=draft.body)
+        self._store[self._next_id] = note
+        self._next_id += 1
+        return note
+
+    def list(self) -> List[Note]:
+        return list(self._store.values())
+
+    def get(self, note_id: int) -> Note | None:
+        return self._store.get(note_id)

@@ -1,0 +1,28 @@
+"""Basic result type shared across layers."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Generic, Optional, TypeVar
+
+T = TypeVar("T")
+E = TypeVar("E")
+
+
+@dataclass(frozen=True, slots=True)
+class Result(Generic[T, E]):
+    """Simple functional-style result wrapper."""
+
+    value: Optional[T] = None
+    error: Optional[E] = None
+
+    @property
+    def is_ok(self) -> bool:
+        return self.error is None
+
+    @property
+    def is_err(self) -> bool:
+        return self.error is not None
+
+
+__all__ = ["Result"]

@@ -1,0 +1,24 @@
+import { Body, Controller, Get, Param, ParseIntPipe, Post } from '@nestjs/common';
+
+import { CreateNoteDto } from './dto/create-note.dto';
+import { ExamplesService } from './examples.service';
+
+@Controller('examples/notes')
+export class ExamplesController {
+  constructor(private readonly examplesService: ExamplesService) {}
+
+  @Post()
+  create(@Body() payload: CreateNoteDto) {
+    return this.examplesService.create(payload);
+  }
+
+  @Get()
+  findAll() {
+    return this.examplesService.findAll();
+  }
+
+  @Get(':id')
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.examplesService.findOne(id);
+  }
+}

@@ -1,0 +1,117 @@
+# {{ project_name }}
+
+Domain-driven FastAPI service generated with Workspai. Python-backed module commands use [RapidKit Core](https://github.com/rapidkitlabs/rapidkit-core).
+
+## Quick start
+
+```bash
+# Bootstrap dependencies (creates .venv + installs Poetry deps)
+npx workspai init  # use make init if you prefer a Make target
+
+# Copy env templates and install hooks/tooling
+./bootstrap.sh
+
+# Type-check, lint, and test
+make lint
+make typecheck
+make test
+
+# Run the service
+make dev
+
+# Use the project-local RapidKit Core helpers when you prefer auto-detected environments
+npx workspai dev
+npx workspai lint
+npx workspai test
+
+# Run supply-chain and dependency audits
+make audit
+```
+
+> Re-run `npx workspai init` (or `make init`) when dependencies change. If you only need to refresh tooling/hooks, run `SKIP_INIT=1 make install` or rely on `./bootstrap.sh`.
+
+> Lockfiles are generated automatically during scaffolding. Set `RAPIDKIT_SKIP_LOCKS=1` (or `RAPIDKIT_GENERATE_LOCKS=0`) before running `workspai create` if you want to skip the lockfile attempt.
+
+> Need to see every project-local RapidKit Core command? Run `rapidkit --help` when RapidKit Core is installed, or use `npx workspai --help` for workspace-level commands.
+
+## Project structure
+
+```
+src/
+  app/
+    application/   # Use cases and service contracts
+    domain/        # Aggregates, entities, and value objects
+    infrastructure/ # Adapters and repositories
+    presentation/  # API routers and dependencies
+    shared/        # Cross-cutting primitives (Result, types, etc.)
+  routing/         # Glue for module-provided routers
+  modules/         # RapidKit Core module bootstrapping
+```
+
+## Layer overview
+
+- **Domain** – Pure business rules (`src/app/domain`).
+- **Application** – Orchestrates use-cases and enforces boundaries (`src/app/application`).
+- **Infrastructure** – Implements gateways and repositories (`src/app/infrastructure`).
+- **Presentation** – Exposes the API using FastAPI (`src/app/presentation`).
+
+Modules added via `rapidkit add module ...` integrate automatically using the preserved
+injection anchors inside `src/main.py` and `src/routing/__init__.py`.
+
+## Example feature
+
+An in-memory notes module is included under `/api/examples/notes` to demonstrate how the domain, application, infrastructure, and presentation layers collaborate:
+
+```bash
+# Create a note
+curl -s -X POST http://localhost:8000/api/examples/notes \
+  -H "Content-Type: application/json" \
+  -d '{"title":"design","body":"Describe your bounded context here."}'
+
+# Retrieve the newly created note
+curl -s http://localhost:8000/api/examples/notes/1 | jq
+```
+
+Swap the in-memory repository with a RapidKit Core database module when you are ready for persistence.
+
+## Deployment
+
+- `Dockerfile` packages the service for container hosting with production-ready defaults.
+- `docker-compose.yml` provisions the FastAPI app plus dependencies (for example PostgreSQL) for local production parity.
+- Run `docker compose up --build` to start the stack; copy `.env.example` to `.env` to configure credentials before deploying.
+- CI/CD workflows under `.github/workflows/` demonstrate automated deployment pipelines.
+
+## Testing
+
+```bash
+npx workspai test
+```
+
+The scaffold ships with a smoke test (`tests/test_app_factory.py`) that validates the
+health endpoint and the application factory.
+
+---
+
+## Local development
+
+- `npx workspai init` bootstraps dependencies via the project-aware CLI.
+- `make init` is an optional alias for `npx workspai init` when you prefer Make targets.
+- `make install` re-runs `npx workspai init` unless `SKIP_INIT=1` is set and refreshes developer tooling such as pre-commit hooks.
+- `./bootstrap.sh` copies `.env.example` to `.env` (when missing) and runs `SKIP_INIT=1 make install` for you.
+- `make dev` or `npx workspai dev` starts the FastAPI server with hot-reload and ensures environment variables from `.env` are loaded.
+- `make lint`, `make typecheck`, and `make test` (or `npx workspai lint` / `npx workspai test`) are thin wrappers around Ruff, mypy, and pytest for consistent CI parity.
+- `make audit` runs `pip-audit` and `npm audit` to surface vulnerable dependencies early.
+
+Pre-commit is configured with Ruff, Black, mypy, and hygiene hooks; `./bootstrap.sh` installs them automatically (or run `SKIP_INIT=1 make install`). Use the project-local launcher variants when you need auto-discovery of the right virtual environment inside automation scripts.
+
+<!-- <<<inject:module-snippet>>> -->
+
+## 📄 License
+
+This project is licensed under the **{{ license }}** License - see the `LICENSE` file included at the project root for details.
+
+## 🔒 Security & secrets
+
+- Copy `.env.example` to `.env` and populate secrets (`SECRET_KEY`, DB credentials, etc.) before deploying.
+- **Do not** commit real secrets or `.env` to git; `.gitignore` already contains `.env` to protect accidental commits.
+- For production, tighten CORS and allowed hosts rather than using wildcard settings provided for convenience in dev.

@@ -1,0 +1,50 @@
+"""HTTP handlers for the example notes feature."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+
+from src.app.application.interfaces import ServiceContext
+from src.app.application.use_cases import create_note, get_note, list_notes
+from src.app.domain.models import NoteDraft
+from src.app.presentation.api.dependencies import get_service_context
+
+router = APIRouter(tags=["examples"])
+
+
+class NotePayload(BaseModel):
+    title: str = Field(..., max_length=80)
+    body: str = Field(..., max_length=500)
+
+
+class NoteResponse(NotePayload):
+    id: int
+
+
+@router.post("/notes", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
+async def create_example_note(
+    payload: NotePayload,
+    context: ServiceContext = Depends(get_service_context),
+) -> NoteResponse:
+    note = create_note(context, NoteDraft(title=payload.title, body=payload.body))
+    return NoteResponse(**note.to_dict())
+
+
+@router.get("/notes", response_model=list[NoteResponse])
+async def list_example_notes(
+    context: ServiceContext = Depends(get_service_context),
+) -> list[NoteResponse]:
+    notes = list_notes(context)
+    return [NoteResponse(**note.to_dict()) for note in notes]
+
+
+@router.get("/notes/{note_id}", response_model=NoteResponse)
+async def get_example_note(
+    note_id: int,
+    context: ServiceContext = Depends(get_service_context),
+) -> NoteResponse:
+    note = get_note(context, note_id)
+    if not note:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+    return NoteResponse(**note.to_dict())

@@ -1,0 +1,61 @@
+#!/usr/bin/env sh
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+run_without_git_hook_env() {
+	env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX "$@"
+}
+
+# Type checking
+echo "🔍 Running type check..."
+corepack npm --workspace workspai run typecheck || exit 1
+
+# Linting
+echo "🧹 Running linter..."
+corepack npm --workspace workspai exec lint-staged || exit 1
+
+# Format check
+echo "💅 Checking code formatting..."
+corepack npm --workspace workspai run format:check || exit 1
+
+# Contracts sync check (only when Core schema is available)
+CORE_SCHEMA_PATH=""
+for candidate in \
+	"${RAPIDKIT_CORE_SCHEMA_PATH:-}" \
+	"$REPO_ROOT/../../core/docs/contracts/rapidkit-cli-contracts.json" \
+	"$REPO_ROOT/../core/docs/contracts/rapidkit-cli-contracts.json" \
+	"$REPO_ROOT/core/docs/contracts/rapidkit-cli-contracts.json"; do
+	if [ -n "$candidate" ] && [ -f "$candidate" ]; then
+		CORE_SCHEMA_PATH="$candidate"
+		break
+	fi
+done
+
+if [ -n "$CORE_SCHEMA_PATH" ]; then
+	echo "🔗 Checking Core ↔ NPM contracts (monorepo)..."
+	RAPIDKIT_CORE_SCHEMA_PATH="$CORE_SCHEMA_PATH" corepack npm --workspace workspai run check:contracts || exit 1
+else
+	echo "ℹ️ Skipping contracts check (core schema not found)"
+fi
+
+# Shared contracts (canonical: packages/cli/contracts/)
+echo "📋 Syncing shared contracts..."
+corepack npm --workspace workspai run sync:shared-contracts -- --stage-git || {
+	echo "❌ Contract sync failed."
+	echo "   Run: corepack npm --workspace workspai run sync:shared-contracts"
+	exit 1
+}
+
+echo "📋 Validating shared contracts..."
+run_without_git_hook_env corepack npm --workspace workspai run validate:contracts || {
+	echo "❌ Contract validation failed."
+	echo "   1. Change code or run: corepack npm --workspace workspai run sync:shared-contracts"
+	echo "   2. Commit packages/cli/contracts/ in workspai and contracts/ in rapidkit-vscode"
+	exit 1
+}
+
+# Tests
+echo "🧪 Running tests..."
+run_without_git_hook_env corepack npm test || exit 1
+
+echo "✅ All checks passed!"

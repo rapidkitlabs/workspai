@@ -1,0 +1,60 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+
+import { AppModule } from '../src/app.module';
+
+describe('AppController (e2e)', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('/health (GET)', () => {
+    return request(app.getHttpServer())
+      .get('/health')
+      .expect(200)
+      .expect((res) => {
+        expect(res.body).toEqual(
+          expect.objectContaining({
+            status: 'ok',
+            timestamp: expect.any(String),
+            version: expect.any(String),
+            uptime: expect.any(Number),
+            module: expect.any(String),
+          }),
+        );
+      });
+  });
+
+  it('/examples/notes (POST + GET)', async () => {
+    const server = app.getHttpServer();
+    const createResponse = await request(server)
+      .post('/examples/notes')
+      .send({ title: 'ddd', body: 'documented via e2e' })
+      .expect(201);
+
+    const noteId = createResponse.body.id;
+
+    await request(server)
+      .get('/examples/notes')
+      .expect(200)
+      .expect((res) => {
+        expect(res.body).toEqual(
+          expect.arrayContaining([expect.objectContaining({ id: noteId, title: 'ddd' })]),
+        );
+      });
+  });
+
+  // <<<inject:e2e-tests>>>
+});

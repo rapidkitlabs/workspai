@@ -1,0 +1,215 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+describe('npm publish contract', () => {
+  const monorepoRoot = path.resolve(process.cwd(), '../..');
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')
+  ) as {
+    name?: string;
+    version?: string;
+    bin?: Record<string, string>;
+    description?: string;
+    files?: string[];
+    keywords?: string[];
+    repository?: {
+      url?: string;
+    };
+    scripts?: Record<string, string>;
+  };
+
+  function isPublishedByFiles(assetPath: string): boolean {
+    return (packageJson.files ?? []).some((entry) => {
+      if (entry === assetPath) {
+        return true;
+      }
+      return assetPath.startsWith(`${entry.replace(/\/$/, '')}/`);
+    });
+  }
+
+  const enterpriseSmokeScript = 'scripts/enterprise-package-smoke.mjs';
+  const enterprisePrepackScript = 'scripts/prepack-enterprise.mjs';
+
+  it('keeps the short wspai npm alias package aligned with workspai', () => {
+    const aliasPackage = JSON.parse(
+      fs.readFileSync(path.join(monorepoRoot, 'packages/wspai/package.json'), 'utf8')
+    ) as {
+      name?: string;
+      version?: string;
+      bin?: Record<string, string>;
+      dependencies?: Record<string, string>;
+      private?: boolean;
+    };
+
+    expect(aliasPackage.private).toBeUndefined();
+    expect(aliasPackage.name).toBe('wspai');
+    expect(aliasPackage.version).toBe(packageJson.version);
+    expect(aliasPackage.dependencies?.workspai).toBe(packageJson.version);
+    expect(aliasPackage.bin?.wspai).toBe('bin/wspai.js');
+  });
+
+  it('publishes Workspai CLI as the unscoped npm package', () => {
+    const rootPackage = JSON.parse(
+      fs.readFileSync(path.join(monorepoRoot, 'package.json'), 'utf8')
+    ) as {
+      private?: boolean;
+      workspaces?: string[];
+    };
+
+    expect(rootPackage.private).toBe(true);
+    expect(rootPackage.workspaces).toContain('packages/*');
+    expect(packageJson.name).toBe('workspai');
+    expect(packageJson.bin?.workspai).toBe('dist/index.js');
+    expect(packageJson.bin?.rapidkit).toBeUndefined();
+    expect(packageJson.bin?.['rapidkit-npm']).toBeUndefined();
+  });
+
+  it('keeps CLI presentation dynamic for workspai and rapidkit invocations', () => {
+    const indexSource = fs.readFileSync(path.join(process.cwd(), 'src/index.ts'), 'utf8');
+    const brandSource = fs.readFileSync(path.join(process.cwd(), 'src/cli-ui/brand.ts'), 'utf8');
+
+    expect(indexSource).toContain('resolveInvokedCliName');
+    expect(indexSource).toContain("const primaryCliName = 'workspai'");
+    expect(indexSource).toContain('primaryNpxCommand');
+    expect(indexSource).toContain(
+      'text.replace(/\\bnpx (?:rapidkit|workspai)\\b/g, primaryNpxCommand)'
+    );
+    expect(brandSource).toContain("rk.white('Workspai')");
+    expect(brandSource).not.toContain('RapidKit');
+  });
+
+  it('keeps rapidkit compatibility outside the Workspai monorepo package', () => {
+    expect(fs.existsSync(path.join(monorepoRoot, 'legacy/rapidkit/package.json'))).toBe(false);
+    expect(packageJson.files).not.toContain('scripts/sync-legacy-rapidkit-package.mjs');
+    expect(packageJson.scripts?.['sync:legacy-rapidkit']).toBeUndefined();
+  });
+
+  it('keeps npm package metadata aligned with Workspace Intelligence positioning', () => {
+    expect(packageJson.description).toBe(
+      'Open-source workspace intelligence CLI for software systems: create, adopt, govern, verify, and align polyglot workspaces for humans, CI, IDEs, and AI agents.'
+    );
+    expect(packageJson.description?.length).toBeLessThanOrEqual(160);
+    expect(packageJson.keywords).toEqual(
+      expect.arrayContaining(['workspace-intelligence', 'governance', 'workspai'])
+    );
+  });
+
+  it('builds and verifies dist before npm pack or publish', () => {
+    expect(packageJson.scripts?.prepack).toBe(`node ${enterprisePrepackScript}`);
+    expect(packageJson.scripts?.['smoke:enterprise-package']).toBe(`node ${enterpriseSmokeScript}`);
+
+    const prepack = fs.readFileSync(path.join(process.cwd(), enterprisePrepackScript), 'utf8');
+    expect(prepack).toContain("'..', '..', 'node_modules', 'tsup', 'dist', 'cli-default.js'");
+    expect(prepack).toContain('scripts/prepare-mock-embeddings.mjs');
+    expect(prepack).not.toContain('sync-legacy-rapidkit-package');
+    expect(prepack).toContain('scripts/verify-package-cli.mjs');
+    expect(prepack).toContain(enterpriseSmokeScript);
+
+    const smoke = fs.readFileSync(path.join(process.cwd(), enterpriseSmokeScript), 'utf8');
+    expect(smoke).toContain('REQUIRED_PACKAGE_FILES');
+    expect(smoke).toContain('assertPackageFilesPolicy(missingRequired)');
+    expect(smoke).toContain('ignored generated asset');
+  });
+
+  it('ships and runs a Windows CLI resolution guard on install', () => {
+    expect(packageJson.files).toContain('scripts/check-cli-resolution.cjs');
+    expect(packageJson.scripts?.postinstall).toBe('node scripts/check-cli-resolution.cjs');
+  });
+
+  it('publishes enterprise-critical runtime assets used by create and AI surfaces', () => {
+    for (const assetPath of [
+      'templates/kits/fastapi-standard/README.md.j2',
+      'templates/kits/fastapi-standard/env.example.j2',
+      'templates/kits/fastapi-ddd/README.md.j2',
+      'templates/kits/fastapi-ddd/env.example.j2',
+      'templates/kits/nestjs-standard/package.json.j2',
+      'templates/kits/nestjs-standard/env.example.j2',
+      'data/modules-embeddings.json',
+      'workspai.config.example.cjs',
+      'rapidkit.config.example.cjs',
+      enterpriseSmokeScript,
+      enterprisePrepackScript,
+    ]) {
+      expect(fs.existsSync(path.join(process.cwd(), assetPath)), assetPath).toBe(true);
+      expect(isPublishedByFiles(assetPath), assetPath).toBe(true);
+    }
+  });
+
+  it('runs enterprise package smoke in CI and release gates', () => {
+    const ciWorkflow = fs.readFileSync(path.join(monorepoRoot, '.github/workflows/ci.yml'), 'utf8');
+    const releaseWorkflow = fs.readFileSync(
+      path.join(monorepoRoot, '.github/workflows/release-npm-manual.yml'),
+      'utf8'
+    );
+    const securityWorkflow = fs.readFileSync(
+      path.join(monorepoRoot, '.github/workflows/security.yml'),
+      'utf8'
+    );
+
+    expect(ciWorkflow).toContain('npm --workspace workspai run smoke:enterprise-package');
+    expect(releaseWorkflow).not.toContain('publish_legacy_rapidkit');
+    expect(releaseWorkflow).not.toContain('sync:legacy-rapidkit');
+    expect(releaseWorkflow).toContain('working-directory: packages/cli');
+    expect(releaseWorkflow).toContain('npm publish workspai');
+    expect(releaseWorkflow).toContain('is available for publish');
+    expect(releaseWorkflow).toContain('npm --workspace workspai run smoke:enterprise-package');
+    expect(releaseWorkflow).toContain('npm --workspace workspai run test:prepare-embeddings');
+    expect(securityWorkflow).toContain('npm audit --audit-level=high');
+  });
+
+  it('publishes README image assets referenced from npm-safe raw GitHub URLs', () => {
+    const readme = fs.readFileSync(path.join(process.cwd(), 'README.md'), 'utf8');
+    const rawImageUrls = [
+      ...readme.matchAll(/!\[[^\]]+\]\((https:\/\/raw\.githubusercontent\.com\/[^)]+)\)/g),
+    ].map((match) => match[1]);
+
+    expect(rawImageUrls).toContain(
+      'https://raw.githubusercontent.com/rapidkitlabs/workspai/main/packages/cli/docs/From%20Code%20to%20Shared%20Understanding.png'
+    );
+    expect(packageJson.repository?.url).toBe('git+https://github.com/rapidkitlabs/workspai.git');
+
+    for (const imageUrl of rawImageUrls) {
+      const pathname = new URL(imageUrl).pathname;
+      const match = pathname.match(/^\/rapidkitlabs\/workspai\/main\/packages\/cli\/(.+)$/);
+      expect(match, imageUrl).not.toBeNull();
+
+      const encodedAssetPath = match?.[1] ?? '';
+      expect(encodedAssetPath, imageUrl).toContain('%20');
+      const assetPath = decodeURIComponent(encodedAssetPath);
+
+      expect(fs.existsSync(path.join(process.cwd(), assetPath)), assetPath).toBe(true);
+      expect(isPublishedByFiles(assetPath), assetPath).toBe(true);
+    }
+  });
+
+  it('publishes local documentation linked from the npm README', () => {
+    const readme = fs.readFileSync(path.join(process.cwd(), 'README.md'), 'utf8');
+    const localDocLinks = [...readme.matchAll(/\[[^\]]+\]\((docs\/[^)#]+)(?:#[^)]+)?\)/g)].map(
+      (match) => match[1]
+    );
+
+    expect(localDocLinks.length).toBeGreaterThan(5);
+
+    for (const link of localDocLinks) {
+      expect(fs.existsSync(path.join(process.cwd(), link)), link).toBe(true);
+      expect(isPublishedByFiles(link), link).toBe(true);
+    }
+  });
+
+  it('ships config examples with module syntax that matches their extension', () => {
+    for (const examplePath of ['workspai.config.example.cjs', 'rapidkit.config.example.cjs']) {
+      const source = fs.readFileSync(path.join(process.cwd(), examplePath), 'utf8');
+      expect(source).toContain('module.exports = {');
+      expect(source).not.toMatch(/^\s*export\s+default\b/m);
+    }
+
+    for (const legacyExamplePath of ['workspai.config.example.js', 'rapidkit.config.example.js']) {
+      expect(fs.existsSync(path.join(process.cwd(), legacyExamplePath)), legacyExamplePath).toBe(
+        false
+      );
+      expect(packageJson.files).not.toContain(legacyExamplePath);
+    }
+  });
+});

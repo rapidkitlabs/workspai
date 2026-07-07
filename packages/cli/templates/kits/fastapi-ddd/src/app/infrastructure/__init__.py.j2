@@ -1,0 +1,5 @@
+"""Infrastructure adapters for the application layer."""
+
+from .repositories import StaticHealthRepository
+
+__all__ = ["StaticHealthRepository"]

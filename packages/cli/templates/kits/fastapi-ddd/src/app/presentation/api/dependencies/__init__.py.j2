@@ -1,0 +1,19 @@
+"""FastAPI dependencies that wire infrastructure to application use-cases."""
+
+from __future__ import annotations
+
+from functools import lru_cache
+
+from src.app.application.interfaces import ServiceContext
+from src.app.infrastructure.repositories import InMemoryNoteRepository, StaticHealthRepository
+
+
+@lru_cache(maxsize=1)
+def get_service_context() -> ServiceContext:
+    """Return a cached service context for request handlers."""
+    health_repository = StaticHealthRepository()
+    note_repository = InMemoryNoteRepository()
+    return ServiceContext(health_provider=health_repository, note_repository=note_repository)
+
+
+__all__ = ["get_service_context"]

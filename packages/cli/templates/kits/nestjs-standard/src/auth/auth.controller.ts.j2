@@ -1,0 +1,20 @@
+import { Controller } from '@nestjs/common';
+
+@Controller('auth')
+export class AuthController {
+  // <<<inject:auth-login>>>
+  // <<<inject:auth-signup>>>
+  // <<<inject:auth-refresh>>>
+  // <<<inject:auth-logout>>>
+  // <<<inject:auth-logout-all>>>
+  // <<<inject:auth-me>>>
+  // <<<inject:auth-protected>>>
+  // <<<inject:auth-oauth-google>>>
+  // <<<inject:auth-mfa-totp>>>
+  // <<<inject:auth-email-verification>>>
+  // <<<inject:auth-captcha>>>
+  // <<<inject:auth-biometric>>>
+  // <<<inject:auth-passwordless>>>
+  // <<<inject:auth-federated>>>
+  // <<<inject:auth-zero-trust>>>
+}

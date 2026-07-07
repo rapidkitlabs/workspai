@@ -1,0 +1,266 @@
+import path from 'path';
+import fsExtra from 'fs-extra';
+
+import {
+  getWorkspaceRegistryDirectory,
+  getWorkspaceRegistryFileCandidates,
+} from './platform-capabilities.js';
+import { normalizeRegistryPath } from './registry-path.js';
+import {
+  readWorkspaceContract,
+  WORKSPACE_CONTRACT_PATH,
+  type WorkspaceContractProject,
+} from './workspace-contract.js';
+import {
+  firstExistingWorkspaceArtifactPath,
+  writeWorkspaceArtifactJson,
+} from './artifact-path-compat.js';
+import { workspaceMetadataCandidates } from './workspace-paths.js';
+
+export const WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH = '.workspai/workspace-registry.v1.json';
+export const WORKSPACE_REGISTRY_SUMMARY_SCHEMA_VERSION = 'workspace-registry.v1';
+
+export type WorkspaceRegistryAuthority =
+  'workspace.contract.json' | 'global-registry' | 'legacy-workspace.json' | 'none';
+
+export interface WorkspaceRegistrySummaryProject {
+  slug: string;
+  relativePath: string;
+  framework?: string;
+  kit?: string;
+  source?: string;
+}
+
+export interface WorkspaceRegistrySourceSnapshot {
+  exists: boolean;
+  projectCount: number;
+  path?: string;
+}
+
+export interface WorkspaceRegistrySummary {
+  schemaVersion: typeof WORKSPACE_REGISTRY_SUMMARY_SCHEMA_VERSION;
+  kind: 'rapidkit.workspace.registry';
+  generatedAt: string;
+  workspacePath: string;
+  workspaceName: string;
+  profile?: string;
+  projectCount: number;
+  authority: WorkspaceRegistryAuthority;
+  contractPath: string;
+  registrySummaryPath: string;
+  projects: WorkspaceRegistrySummaryProject[];
+  sources: {
+    contract: WorkspaceRegistrySourceSnapshot;
+    globalRegistry: WorkspaceRegistrySourceSnapshot;
+    legacyWorkspaceJson: WorkspaceRegistrySourceSnapshot;
+  };
+}
+
+interface WorkspaceRegistryEntry {
+  name: string;
+  path: string;
+  projects?: Array<{ name: string; path: string }>;
+}
+
+interface GlobalWorkspaceRegistry {
+  workspaces: WorkspaceRegistryEntry[];
+}
+
+function mapContractProject(project: WorkspaceContractProject): WorkspaceRegistrySummaryProject {
+  return {
+    slug: project.slug,
+    relativePath: project.relativePath,
+    framework: project.framework,
+    kit: project.kit,
+    source: project.source,
+  };
+}
+
+async function readWorkspaceManifest(workspacePath: string): Promise<{
+  exists: boolean;
+  manifestPath?: string;
+  workspaceName?: string;
+  profile?: string;
+  legacyProjectCount: number;
+}> {
+  const manifestPath = workspaceMetadataCandidates(workspacePath, 'workspace.json').find(
+    (candidate) => fsExtra.pathExistsSync(candidate)
+  );
+  if (!manifestPath) {
+    return { exists: false, legacyProjectCount: 0 };
+  }
+  try {
+    const payload = (await fsExtra.readJson(manifestPath)) as Record<string, unknown>;
+    const legacyProjects = Array.isArray(payload.projects) ? payload.projects.length : 0;
+    const workspaceName =
+      (typeof payload.workspace_name === 'string' && payload.workspace_name.trim()) ||
+      (typeof payload.name === 'string' && payload.name.trim()) ||
+      path.basename(workspacePath);
+    return {
+      exists: true,
+      manifestPath,
+      workspaceName,
+      profile: typeof payload.profile === 'string' ? payload.profile : undefined,
+      legacyProjectCount: legacyProjects,
+    };
+  } catch {
+    return {
+      exists: true,
+      manifestPath,
+      legacyProjectCount: 0,
+      workspaceName: path.basename(workspacePath),
+    };
+  }
+}
+
+async function readGlobalRegistryProjectCount(workspacePath: string): Promise<number> {
+  const normalizedWorkspacePath = normalizeRegistryPath(workspacePath);
+  for (const registryFile of getWorkspaceRegistryFileCandidates()) {
+    if (!(await fsExtra.pathExists(registryFile))) {
+      continue;
+    }
+    try {
+      const parsed = (await fsExtra.readJson(registryFile)) as GlobalWorkspaceRegistry;
+      const entry = (parsed.workspaces || []).find(
+        (workspace) => normalizeRegistryPath(workspace.path) === normalizedWorkspacePath
+      );
+      if (entry) {
+        return Array.isArray(entry.projects) ? entry.projects.length : 0;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return 0;
+}
+
+export async function resolveWorkspaceRegisteredProjects(workspacePath: string): Promise<{
+  summary: Omit<WorkspaceRegistrySummary, 'generatedAt' | 'registrySummaryPath'>;
+  contractExists: boolean;
+}> {
+  const resolvedWorkspacePath = path.resolve(workspacePath);
+  const contractPath = await firstExistingWorkspaceArtifactPath(
+    resolvedWorkspacePath,
+    WORKSPACE_CONTRACT_PATH
+  );
+  const manifest = await readWorkspaceManifest(resolvedWorkspacePath);
+  const globalRegistryProjectCount = await readGlobalRegistryProjectCount(resolvedWorkspacePath);
+
+  const contractExists = Boolean(contractPath);
+  let contractProjects: WorkspaceContractProject[] = [];
+  if (contractExists) {
+    try {
+      const { contract } = await readWorkspaceContract({ workspacePath: resolvedWorkspacePath });
+      contractProjects = contract.projects || [];
+    } catch {
+      contractProjects = [];
+    }
+  }
+
+  const sources = {
+    contract: {
+      exists: contractExists,
+      projectCount: contractProjects.length,
+      path: WORKSPACE_CONTRACT_PATH,
+    },
+    globalRegistry: {
+      exists: globalRegistryProjectCount > 0,
+      projectCount: globalRegistryProjectCount,
+      path: path.join(getWorkspaceRegistryDirectory(), 'workspaces.json'),
+    },
+    legacyWorkspaceJson: {
+      exists: manifest.exists,
+      projectCount: manifest.legacyProjectCount,
+      path: manifest.manifestPath
+        ? path.relative(resolvedWorkspacePath, manifest.manifestPath)
+        : undefined,
+    },
+  };
+
+  let authority: WorkspaceRegistryAuthority = 'none';
+  let projects: WorkspaceRegistrySummaryProject[] = [];
+  let projectCount = 0;
+
+  if (contractExists) {
+    authority = 'workspace.contract.json';
+    projects = contractProjects.map(mapContractProject);
+    projectCount = projects.length;
+  } else if (globalRegistryProjectCount > 0) {
+    authority = 'global-registry';
+    projectCount = globalRegistryProjectCount;
+  } else if (manifest.legacyProjectCount > 0) {
+    authority = 'legacy-workspace.json';
+    projectCount = manifest.legacyProjectCount;
+  }
+
+  return {
+    contractExists,
+    summary: {
+      schemaVersion: WORKSPACE_REGISTRY_SUMMARY_SCHEMA_VERSION,
+      kind: 'rapidkit.workspace.registry',
+      workspacePath: resolvedWorkspacePath,
+      workspaceName: manifest.workspaceName || path.basename(resolvedWorkspacePath),
+      profile: manifest.profile,
+      projectCount,
+      authority,
+      contractPath: WORKSPACE_CONTRACT_PATH,
+      projects,
+      sources,
+    },
+  };
+}
+
+export async function readWorkspaceRegistrySummary(
+  workspacePath: string
+): Promise<WorkspaceRegistrySummary | null> {
+  const summaryPath = await firstExistingWorkspaceArtifactPath(
+    workspacePath,
+    WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH
+  );
+  if (!summaryPath) {
+    return null;
+  }
+  try {
+    const payload = (await fsExtra.readJson(summaryPath)) as WorkspaceRegistrySummary;
+    if (payload?.schemaVersion !== WORKSPACE_REGISTRY_SUMMARY_SCHEMA_VERSION) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+export async function publishWorkspaceRegistrySummary(
+  workspacePath: string,
+  options?: { now?: Date }
+): Promise<WorkspaceRegistrySummary> {
+  const resolved = await resolveWorkspaceRegisteredProjects(workspacePath);
+  const summary: WorkspaceRegistrySummary = {
+    ...resolved.summary,
+    generatedAt: (options?.now ?? new Date()).toISOString(),
+    registrySummaryPath: WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH,
+  };
+  await writeWorkspaceArtifactJson(
+    workspacePath,
+    WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH,
+    summary
+  );
+  return summary;
+}
+
+export function formatWorkspaceRegistrySyncSummary(
+  summary: WorkspaceRegistrySummary,
+  profileSuffix = ''
+): string {
+  if (summary.projectCount > 0) {
+    if (summary.authority === 'workspace.contract.json') {
+      return `${summary.projectCount} project(s) registered in workspace contract${profileSuffix}.`;
+    }
+    if (summary.authority === 'global-registry') {
+      return `${summary.projectCount} project(s) registered in global workspace registry${profileSuffix}.`;
+    }
+    return `${summary.projectCount} project(s) registered in legacy workspace manifest${profileSuffix}.`;
+  }
+  return `Workspace state exists, but no projects are registered yet${profileSuffix}.`;
+}

@@ -1,0 +1,16 @@
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class AppService {
+  getHealth() {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      version: process.env.APP_VERSION ?? process.env.npm_package_version ?? '0.0.1',
+      uptime: process.uptime(),
+      module: process.env.APP_MODULE ?? process.env.APP_NAME ?? process.env.npm_package_name ?? 'app',
+    };
+  }
+
+  // <<<inject:service-methods>>>
+}

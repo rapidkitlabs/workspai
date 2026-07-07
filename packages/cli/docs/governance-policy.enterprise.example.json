@@ -1,0 +1,40 @@
+{
+    "policies": {
+        "dev": {
+            "allowedIdentities": [
+                "release@your-org.example"
+            ],
+            "allowedIssuers": [
+                "https://token.actions.githubusercontent.com"
+            ],
+            "allowedRekorUrls": [
+                "https://rekor.sigstore.dev"
+            ],
+            "requireTransparencyLog": false
+        },
+        "stage": {
+            "allowedIdentities": [
+                "release@your-org.example"
+            ],
+            "allowedIssuers": [
+                "https://token.actions.githubusercontent.com"
+            ],
+            "allowedRekorUrls": [
+                "https://rekor.sigstore.dev"
+            ],
+            "requireTransparencyLog": true
+        },
+        "prod": {
+            "allowedIdentities": [
+                "release@your-org.example"
+            ],
+            "allowedIssuers": [
+                "https://token.actions.githubusercontent.com"
+            ],
+            "allowedRekorUrls": [
+                "https://rekor.sigstore.dev"
+            ],
+            "requireTransparencyLog": true
+        }
+    }
+}

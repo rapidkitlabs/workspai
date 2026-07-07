@@ -1,0 +1,27 @@
+"""Health endpoints bridging the DDD layers."""
+
+from __future__ import annotations
+
+from time import monotonic
+
+from fastapi import APIRouter, Depends
+
+from src.app.application.interfaces import ServiceContext
+from src.app.application.use_cases import get_service_health
+from src.app.presentation.api.dependencies import get_service_context
+
+router = APIRouter(tags=["health"])
+
+_START_TIME = monotonic()
+
+
+@router.get("/", summary="Health check")
+async def heartbeat(
+    context: ServiceContext = Depends(get_service_context),
+) -> dict[str, object]:
+    """Return the current service health decal."""
+    payload: dict[str, object] = dict(get_service_health(context))
+    payload.setdefault("version", "{{ app_version }}")
+    payload.setdefault("uptime", monotonic() - _START_TIME)
+    payload.setdefault("module", "service")
+    return payload

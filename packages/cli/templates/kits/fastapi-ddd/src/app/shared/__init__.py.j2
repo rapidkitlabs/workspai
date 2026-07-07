@@ -1,0 +1,5 @@
+"""Shared utilities across layers."""
+
+from .result import Result
+
+__all__ = ["Result"]

@@ -1,0 +1,315 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/doctor-workspace-evidence.v1.json",
+  "title": "RapidKit Doctor Workspace Evidence",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "evidenceType",
+    "generatedAt",
+    "workspacePath",
+    "summary",
+    "projects"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "doctor-workspace-evidence-v1"
+    },
+    "evidenceType": {
+      "const": "workspace"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workspacePath": { "type": "string", "minLength": 1 },
+    "workspaceName": { "type": "string" },
+    "projectScanCached": { "type": "boolean" },
+    "projectScanSignature": { "type": "string" },
+    "cachePath": { "type": ["string", "null"] },
+    "healthScore": { "type": "object", "additionalProperties": true },
+    "evidenceFreshness": { "$ref": "#/$defs/evidenceFreshness" },
+    "system": { "type": "object", "additionalProperties": true },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "probes": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/probe" }
+          },
+          "repairCapabilities": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/repairCapability" }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["totalProjects", "totalIssues", "hasSystemErrors"],
+      "properties": {
+        "totalProjects": { "type": "integer", "minimum": 0 },
+        "totalIssues": { "type": "integer", "minimum": 0 },
+        "projectAdvisoryWarningProjects": { "type": "integer", "minimum": 0 },
+        "projectAdvisoryWarnings": { "type": "integer", "minimum": 0 },
+        "hasSystemErrors": { "type": "boolean" },
+        "scopeProvenance": { "type": "object", "additionalProperties": true }
+      },
+      "additionalProperties": true
+    },
+    "driftDelta": { "type": "object", "additionalProperties": true },
+    "scoreBreakdown": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "contract": { "type": "object", "additionalProperties": true },
+    "policyProfile": { "$ref": "#/$defs/policyProfile" }
+  },
+  "$defs": {
+    "freshness": {
+      "type": "object",
+      "required": [
+        "category",
+        "generatedAt",
+        "ttlSeconds",
+        "status",
+        "verifyBeforeUse",
+        "reason"
+      ],
+      "properties": {
+        "category": { "enum": ["structure", "verification", "state"] },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "ttlSeconds": { "type": ["integer", "null"], "minimum": 0 },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "status": { "enum": ["fresh", "stale", "unknown"] },
+        "verifyBeforeUse": { "type": "boolean" },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "evidenceFreshness": {
+      "type": "object",
+      "required": [
+        "generatedAt",
+        "status",
+        "staleProbeCount",
+        "unknownProbeCount",
+        "liveStateProbeCount",
+        "verifyBeforeUseProbeCount"
+      ],
+      "properties": {
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "status": { "enum": ["fresh", "stale", "unknown"] },
+        "staleProbeCount": { "type": "integer", "minimum": 0 },
+        "unknownProbeCount": { "type": "integer", "minimum": 0 },
+        "liveStateProbeCount": { "type": "integer", "minimum": 0 },
+        "verifyBeforeUseProbeCount": { "type": "integer", "minimum": 0 },
+        "oldestProbeGeneratedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "repairIntent": {
+      "type": "object",
+      "required": [
+        "mode",
+        "confidence",
+        "primaryActionLabel",
+        "requiresApproval",
+        "requiresFreshEvidence",
+        "reason",
+        "relatedCommands"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "none",
+            "run-command",
+            "edit-file",
+            "review-required",
+            "verify-before-fix",
+            "refresh-evidence",
+            "manual-guidance"
+          ]
+        },
+        "confidence": { "enum": ["high", "medium", "low"] },
+        "primaryActionLabel": { "type": "string" },
+        "requiresApproval": { "type": "boolean" },
+        "requiresFreshEvidence": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "relatedCommands": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "policyProfile": {
+      "type": "object",
+      "required": [
+        "name",
+        "exitOnErrors",
+        "exitOnWarnings",
+        "warningExitCode",
+        "advisoryWarningsBlockRelease",
+        "description"
+      ],
+      "properties": {
+        "name": { "enum": ["local", "ci", "release", "enterprise-strict"] },
+        "exitOnErrors": { "const": true },
+        "exitOnWarnings": { "type": "boolean" },
+        "warningExitCode": { "enum": [0, 1, 2] },
+        "advisoryWarningsBlockRelease": { "type": "boolean" },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "probe": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["pass", "warn", "fail"] },
+        "severity": { "enum": ["info", "warn", "error"] },
+        "scope": { "type": "string" },
+        "reason": { "type": "string" },
+        "recommendation": { "type": "string" },
+        "freshness": { "$ref": "#/$defs/freshness" },
+        "issueClass": {
+          "enum": [
+            "dependency",
+            "environment",
+            "security",
+            "test",
+            "quality",
+            "container",
+            "deployment",
+            "runtime",
+            "workspace-contract",
+            "source-tree",
+            "framework",
+            "configuration",
+            "custom",
+            "unknown"
+          ]
+        },
+        "operationalImpact": {
+          "enum": [
+            "none",
+            "developer-friction",
+            "ci-risk",
+            "release-risk",
+            "security-risk",
+            "runtime-risk",
+            "customer-risk"
+          ]
+        },
+        "repairIntent": { "$ref": "#/$defs/repairIntent" },
+        "repairCapability": { "$ref": "#/$defs/repairCapability" }
+      },
+      "additionalProperties": true
+    },
+    "repairCapability": {
+      "type": "object",
+      "required": [
+        "id",
+        "issueId",
+        "title",
+        "status",
+        "fixKind",
+        "risk",
+        "canAutoFix",
+        "canEditFiles",
+        "requiresApproval",
+        "requiresReview",
+        "files",
+        "refreshCommands",
+        "reason"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "issueId": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["available", "manual", "blocked"] },
+        "fixKind": {
+          "enum": [
+            "package-json-script",
+            "file-create",
+            "file-append",
+            "file-copy",
+            "dependency-sync",
+            "command",
+            "manual"
+          ]
+        },
+        "risk": { "enum": ["safe", "guarded", "invasive"] },
+        "canAutoFix": { "type": "boolean" },
+        "canEditFiles": { "type": "boolean" },
+        "requiresApproval": { "type": "boolean" },
+        "requiresReview": { "type": "boolean" },
+        "files": { "type": "array", "items": { "type": "string" } },
+        "command": { "type": "string" },
+        "operation": { "$ref": "#/$defs/repairOperation" },
+        "verifyCommand": { "type": "string" },
+        "refreshCommands": { "type": "array", "items": { "type": "string" } },
+        "reason": { "type": "string" },
+        "limitations": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "repairOperation": {
+      "type": "object",
+      "required": ["type", "path"],
+      "properties": {
+        "type": {
+          "enum": [
+            "file-create",
+            "file-append",
+            "file-copy",
+            "package-json-script",
+            "json-edit",
+            "env-key-add",
+            "makefile-target"
+          ]
+        },
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "content": { "type": "string" },
+        "overwrite": { "type": "boolean" },
+        "lines": { "type": "array", "items": { "type": "string" } },
+        "ensureNewline": { "type": "boolean" },
+        "scriptName": { "type": "string" },
+        "scriptValue": { "type": "string" },
+        "edits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pointer", "value"],
+            "properties": {
+              "pointer": { "type": "string" },
+              "value": { "type": ["string", "number", "boolean", "null"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "value"],
+            "properties": {
+              "name": { "type": "string" },
+              "value": { "type": "string" },
+              "comment": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "target": { "type": "string" },
+        "command": { "type": "string" },
+        "phony": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

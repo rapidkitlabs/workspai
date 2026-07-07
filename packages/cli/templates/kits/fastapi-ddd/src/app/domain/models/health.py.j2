@@ -1,0 +1,16 @@
+"""Domain entity representing system health."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class HealthStatus:
+    """Immutable representation of the service health state."""
+
+    status: str = "ok"
+
+    def to_dict(self) -> dict[str, str]:
+        """Serialize the status for transport layers."""
+        return {"status": self.status}

@@ -1,0 +1,85 @@
+import path from 'node:path';
+import { registerAs } from '@nestjs/config';
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+
+// Dynamic vendor loader - resolves .workspai/vendor in project root or uses
+// RAPIDKIT_VENDOR_ROOT if set. This avoids hard-coded relative imports into
+// src/.workspai and makes generated projects robust and portable.
+const VENDOR_ROOT_ENV = 'RAPIDKIT_VENDOR_ROOT';
+const VENDOR_MODULE = '{{ rapidkit_vendor_module }}';
+const VENDOR_VERSION = '{{ rapidkit_vendor_version }}';
+const VENDOR_CONFIGURATION_RELATIVE = 'src/config/configuration';
+
+function resolveVendorRoot(): string {
+  const override = process.env[VENDOR_ROOT_ENV];
+  if (override && override.trim().length > 0) {
+    return path.resolve(override);
+  }
+  return path.resolve(process.cwd(), '.workspai', 'vendor');
+}
+
+function resolveVendorModule() {
+  const vendorPath = path.join(
+    resolveVendorRoot(),
+    VENDOR_MODULE,
+    VENDOR_VERSION,
+    VENDOR_CONFIGURATION_RELATIVE,
+  );
+  // Attempt to dynamically load a vendor-provided configuration. If the
+  // vendor snapshot is not present in .workspai/vendor (common when the
+  // 'settings' module wasn't installed), fail gracefully instead of
+  // allowing require() to throw and crash the application.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    return require(vendorPath);
+  } catch (err: unknown) {
+    const e = err as { code?: string } | undefined;
+    // Only suppress MODULE_NOT_FOUND / ENOENT for the vendor path so other
+    // unexpected errors still surface to the user.
+    if (e && (e.code === 'MODULE_NOT_FOUND' || e.code === 'ENOENT')) {
+      // eslint-disable-next-line no-console
+      console.warn(`WARN: vendor settings not found at ${vendorPath} - continuing without vendor settings`);
+      return null;
+    }
+    throw err;
+  }
+}
+
+const _vendor = resolveVendorModule();
+
+export default registerAs('app', () => ({
+  name: process.env.APP_NAME ?? "{{ project_name | replace('-', ' ') | title }}",
+  env: process.env.NODE_ENV ?? 'development',
+  host: process.env.HOST ?? '0.0.0.0',
+  port: parseInt(process.env.PORT ?? '8000', 10),
+  logLevel: (() => {
+    const raw = (process.env.LOG_LEVEL ?? 'log').toLowerCase();
+    if (raw === 'info') return 'log';
+    if (raw === 'warning') return 'warn';
+    return raw;
+  })(),
+  // <<<inject:configuration>>>
+}));
+
+// Provide a safe default settingsConfiguration if no vendor snapshot is present
+// so generated projects still boot even when the optional settings module
+// hasn't been installed.
+const defaultSettings = () => ({
+  ENV: process.env.NODE_ENV ?? 'development',
+  DEBUG: process.env.DEBUG === '1' || process.env.DEBUG?.toLowerCase() === 'true',
+  PROJECT_NAME: process.env.APP_NAME ?? '{{ project_name | replace('-', ' ') | title }}',
+  SECRET_KEY: process.env.SECRET_KEY ?? '{{ '' | generate_secret(48) }}',
+  VERSION: process.env.APP_VERSION ?? '0.0.1',
+  ALLOWED_HOSTS: (process.env.ALLOWED_HOSTS ?? '*').split(',').map((s) => s.trim()).filter(Boolean),
+  CONFIG_FILES: [],
+  CONFIG_REFRESH_INTERVAL: Number.parseInt(process.env.CONFIG_REFRESH_INTERVAL ?? '60', 10),
+  VAULT_URL: null,
+  AWS_REGION: null,
+  HOT_RELOAD_ENABLED:
+    process.env.HOT_RELOAD_ENABLED === '1' || process.env.HOT_RELOAD_ENABLED?.toLowerCase() === 'true',
+  HOT_RELOAD_ENV_ALLOWLIST: (process.env.HOT_RELOAD_ENV_ALLOWLIST ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+});
+
+export const settingsConfiguration =
+  _vendor?.settingsConfiguration ?? _vendor?.default?.settingsConfiguration ?? (() => defaultSettings());

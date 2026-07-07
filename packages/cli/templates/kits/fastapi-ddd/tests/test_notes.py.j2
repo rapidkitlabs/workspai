@@ -1,0 +1,27 @@
+"""Example feature tests exercising the DDD notes handlers."""
+
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+
+from src.main import app
+
+client = TestClient(app)
+
+
+def test_create_and_fetch_note() -> None:
+    payload = {"title": "architecture note", "body": "Documented via FastAPI DDD kit."}
+    create_response = client.post("/api/examples/notes", json=payload)
+    assert create_response.status_code == 201
+    body = create_response.json()
+    note_id = body["id"]
+    assert body["title"] == payload["title"]
+
+    get_response = client.get(f"/api/examples/notes/{note_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["id"] == note_id
+
+
+def test_missing_note_returns_404() -> None:
+    response = client.get("/api/examples/notes/999")
+    assert response.status_code == 404

@@ -1,0 +1,134 @@
+# {{ project_name | replace('-', ' ') | title }}
+
+A production-ready NestJS 11 application generated with Workspai's **NestJS Standard Kit**.
+
+## Getting Started
+> Recommended Node version: `{{ node_version }}` (`.nvmrc` and `.node-version` are included for your toolchain)
+
+```bash
+# Bootstrap dependencies using the local CLI
+npx workspai init  # use make init if you prefer a Make target
+
+# Copy env templates + install hooks/tooling
+./bootstrap.sh
+
+# Run the dev server with hot reload
+make dev
+
+# Or rely on the project-local RapidKit Core helpers:
+npx workspai dev
+
+# Run linting, type-checking, tests, and supply-chain audits
+make lint
+make typecheck
+make test
+make audit
+npx workspai lint
+npx workspai test
+```
+
+> Use `npx workspai init` (or `make init`) whenever dependencies change. Pass `SKIP_INIT=1` (for example `SKIP_INIT=1 make install`) if you only need to refresh tooling/hooks.
+
+> Lockfiles are generated automatically during scaffolding. Set `RAPIDKIT_SKIP_LOCKS=1` (or `RAPIDKIT_GENERATE_LOCKS=0`) before running `workspai create` if you need to skip this step.
+
+> Need the project-local RapidKit Core command list? Run `rapidkit --help` when RapidKit Core is installed, or use `npx workspai --help` for workspace-level commands.
+
+---
+
+## Quick start (developer)
+
+1. `npx workspai init` bootstraps dependencies through the project-aware launcher and enforces lockfile flags for your chosen package manager.
+2. `make init` remains available as an alias to `npx workspai init` when you prefer Make targets.
+3. `./bootstrap.sh` copies `.env.example` to `.env` (when missing) and runs `SKIP_INIT=1 make install` so git hooks and tooling stay current without reinstalling packages.
+4. `make dev` wraps `{{ package_manager if package_manager != 'pnpm' else 'pnpm' }} run start:dev` and centralizes env loading; use it for day-to-day development.
+5. `make lint`, `make typecheck`, and `make test` proxy to the underlying package scripts or `tsc` so local changes match CI expectations.
+6. `make audit` executes `{{ package_manager }}`'s security audit (falling back to dev dependencies if needed) to surface vulnerable packages early.
+
+`make install` is still available; it re-runs `npx workspai init` unless you set `SKIP_INIT=1`, so prefer `SKIP_INIT=1 make install` when you only need to refresh tooling.
+
+Prefer `npx workspai dev`, `npx workspai test`, or `npx workspai lint` when you want the project-aware launcher to auto-detect the right runtime; they call into the same project scripts wrapped by the Make targets.
+
+Prefer the Make targets for consistency, but you can always fall back to native commands if needed:
+
+```bash
+{{ package_manager if package_manager != 'pnpm' else 'pnpm' }} install
+{{ package_manager if package_manager != 'pnpm' else 'pnpm' }} run start:dev
+{{ package_manager if package_manager != 'pnpm' else 'pnpm' }} test
+{{ package_manager if package_manager != 'pnpm' else 'pnpm' }} run lint
+```
+
+If you see engine compatibility errors during `{{ package_manager }} install`, update your Node runtime (nvm/asdf) or use the provided Dockerfile which targets `NODE_VERSION={{ node_version }}`.
+
+## Features
+
+- Modular architecture with configuration hooks
+- {{ 'JWT/OAuth2 authentication scaffolding' if auth_type != 'none' else 'Authentication ready' }}
+- Optional integrations:
+  - Database: {{ database_type | default('postgresql') | upper }}
+  - Redis caching
+  - Structured logging and telemetry
+  - Monitoring endpoints
+
+## Project Structure
+
+- `src/main.ts` – Bootstraps the NestJS application
+- `src/app.module.ts` – Core application module with injection anchors
+- `src/modules/` – Container for RapidKit Core modules (`// <<<inject:module-init>>>`)
+- `src/config/` – Centralized configuration module and validation
+- `test/` – Unit and e2e testing with Jest
+
+## RapidKit Core Modules
+
+Install additional modules as needed:
+
+```bash
+rapidkit add module settings
+rapidkit add module logging
+rapidkit add module auth
+```
+
+<!-- <<<inject:module-snippet>>> -->
+
+## Example feature
+
+The scaffold ships with an `ExamplesModule` exposing a tiny in-memory notes API under `/examples/notes`. Use it to validate request/response flows or to demo module structure before wiring real adapters:
+
+```bash
+# Create a note
+curl -s -X POST http://localhost:3000/examples/notes \
+  -H "Content-Type: application/json" \
+  -d '{"title":"hello","body":"documented via Workspai"}'
+
+# List all notes
+curl -s http://localhost:3000/examples/notes | jq
+```
+
+Replace the in-memory service with a proper repository once you add RapidKit Core database modules.
+
+## Docker
+
+```bash
+docker-compose up -d
+docker-compose down
+```
+
+## Scripts
+
+| Command | Description |
+| --- | --- |
+| `{{ package_manager if package_manager != 'pnpm' else 'pnpm' }} start:dev` | Start development server |
+| `{{ package_manager if package_manager != 'pnpm' else 'pnpm' }} build` | Build production artifacts |
+| `{{ package_manager if package_manager != 'pnpm' else 'pnpm' }} test` | Run tests |
+
+---
+Generated by Workspai.
+
+## 📄 License
+
+This project is licensed under the **{{ license }}** License - see the `LICENSE` file included at the project root for details.
+
+## 🔒 Security & secrets
+
+- Copy `.env.example` to `.env` and populate secrets (`SECRET_KEY`, DB credentials, etc.) before deploying.
+- **Do not** commit real secrets or `.env` to git; `.gitignore` already contains `.env` to protect accidental commits.
+- For production, tighten CORS and allowed hosts rather than using wildcard settings provided for convenience in dev.

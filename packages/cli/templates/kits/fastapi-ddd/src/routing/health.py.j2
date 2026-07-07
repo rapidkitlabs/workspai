@@ -1,0 +1,7 @@
+"""Health endpoints re-export for module compatibility."""
+
+from __future__ import annotations
+
+from src.app.presentation.api.routes.health import router
+
+__all__ = ["router"]

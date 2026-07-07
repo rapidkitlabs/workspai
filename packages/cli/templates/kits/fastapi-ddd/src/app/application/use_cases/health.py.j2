@@ -1,0 +1,14 @@
+"""Example use-case exposing service health information."""
+
+from __future__ import annotations
+
+from src.app.application.interfaces import ServiceContext
+from src.app.domain.models import HealthStatus
+
+
+def get_service_health(context: ServiceContext) -> dict[str, str]:
+    """Retrieve an immutable health snapshot for presentation layers."""
+    status = context.health_provider.get_status()
+    if isinstance(status, HealthStatus):
+        return status.to_dict()
+    return {"status": str(status)}

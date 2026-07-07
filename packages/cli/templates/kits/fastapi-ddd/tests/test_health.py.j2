@@ -1,0 +1,17 @@
+"""Health-check regression tests for FastAPI DDD projects."""
+
+from fastapi.testclient import TestClient
+
+from src.main import app
+
+client = TestClient(app)
+
+
+def test_health_endpoint() -> None:
+    response = client.get("/api/health/")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert "version" in payload
+    assert "uptime" in payload
+    assert "module" in payload

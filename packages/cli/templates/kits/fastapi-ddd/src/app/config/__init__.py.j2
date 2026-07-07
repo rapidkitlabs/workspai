@@ -1,0 +1,16 @@
+"""Configuration primitives for the application layer."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(slots=True)
+class AppConfig:
+    """Application-level configuration aggregated from RapidKit Core settings."""
+
+    environment: str = "development"
+    service_name: str = "{{ project_name }}"
+
+
+__all__ = ["AppConfig"]

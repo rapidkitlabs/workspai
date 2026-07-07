@@ -1,0 +1,239 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://getrapidkit.com/schemas/rapidkit-cli-contracts.json",
+    "title": "RapidKit Core CLI Contracts",
+    "type": "object",
+    "definitions": {
+        "VersionResponse": {
+            "type": "object",
+            "required": [
+                "schema_version",
+                "version"
+            ],
+            "properties": {
+                "schema_version": {
+                    "const": 1
+                },
+                "version": {
+                    "type": "string",
+                    "minLength": 1
+                }
+            },
+            "additionalProperties": true
+        },
+        "CommandsResponse": {
+            "type": "object",
+            "required": [
+                "schema_version",
+                "commands"
+            ],
+            "properties": {
+                "schema_version": {
+                    "const": 1
+                },
+                "commands": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "minItems": 1
+                },
+                "descriptions": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": true
+        },
+        "ProjectDetectResponse": {
+            "type": "object",
+            "required": [
+                "schema_version",
+                "input",
+                "confidence",
+                "isRapidkitProject",
+                "projectRoot",
+                "engine",
+                "markers"
+            ],
+            "properties": {
+                "schema_version": {
+                    "const": 1
+                },
+                "input": {
+                    "type": "string"
+                },
+                "confidence": {
+                    "enum": [
+                        "strong",
+                        "weak",
+                        "none"
+                    ]
+                },
+                "isRapidkitProject": {
+                    "type": "boolean"
+                },
+                "projectRoot": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "engine": {
+                    "type": "string"
+                },
+                "markers": {
+                    "type": "object"
+                }
+            },
+            "additionalProperties": true
+        },
+        "ModulesListResponseV1": {
+            "type": "object",
+            "required": [
+                "schema_version",
+                "generated_at",
+                "filters",
+                "stats",
+                "modules"
+            ],
+            "properties": {
+                "schema_version": {
+                    "const": 1
+                },
+                "generated_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "etag": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "filters": {
+                    "type": "object",
+                    "properties": {
+                        "category": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "tag": {
+                            "type": [
+                                "string",
+                                "null"
+                            ]
+                        },
+                        "detailed": {
+                            "type": "boolean"
+                        }
+                    },
+                    "additionalProperties": true
+                },
+                "stats": {
+                    "type": "object",
+                    "required": [
+                        "total",
+                        "returned",
+                        "invalid"
+                    ],
+                    "properties": {
+                        "total": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "returned": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "invalid": {
+                            "type": "integer",
+                            "minimum": 0
+                        }
+                    },
+                    "additionalProperties": true
+                },
+                "modules": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "name",
+                            "version",
+                            "category",
+                            "status",
+                            "slug"
+                        ],
+                        "properties": {
+                            "name": {
+                                "type": "string"
+                            },
+                            "display_name": {
+                                "type": "string"
+                            },
+                            "version": {
+                                "type": "string"
+                            },
+                            "category": {
+                                "type": "string"
+                            },
+                            "status": {
+                                "type": "string"
+                            },
+                            "description": {
+                                "type": "string"
+                            },
+                            "tags": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "slug": {
+                                "type": "string"
+                            }
+                        },
+                        "additionalProperties": true
+                    }
+                },
+                "invalid_modules": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "slug"
+                        ],
+                        "properties": {
+                            "slug": {
+                                "type": "string"
+                            },
+                            "messages": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "additionalProperties": true
+                    }
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": true
+        }
+    }
+}

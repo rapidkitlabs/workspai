@@ -1,0 +1,41 @@
+{
+  "name": "wspai",
+  "version": "0.43.0",
+  "type": "module",
+  "description": "Short npm alias for the Workspai CLI.",
+  "keywords": [
+    "wspai",
+    "workspai",
+    "workspace-ai",
+    "workspace-intelligence",
+    "ai",
+    "cli"
+  ],
+  "author": "RapidKit Labs",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rapidkitlabs/workspai.git",
+    "directory": "packages/wspai"
+  },
+  "bin": {
+    "wspai": "bin/wspai.js"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "dependencies": {
+    "workspai": "0.43.0"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "scripts": {
+    "smoke": "node bin/wspai.js --version",
+    "check": "corepack npm run smoke",
+    "fix": "corepack npm run check",
+    "validate": "corepack npm run check"
+  }
+}

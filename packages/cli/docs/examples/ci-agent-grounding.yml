@@ -1,0 +1,65 @@
+# Example: Workspai agent grounding gate for consumer workspaces
+#
+# Copy to your repo as `.github/workflows/workspai-agent-grounding.yml`
+# and adjust `working-directory` to your Workspai workspace root.
+#
+# Requires: Node.js 20+, `workspai` available via npx in CI.
+
+name: Workspai Agent Grounding
+
+on:
+  pull_request:
+    paths:
+      - '.rapidkit/**'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - '.github/copilot-instructions.md'
+      - '.cursor/rules/**'
+  workflow_dispatch:
+
+jobs:
+  agent-grounding:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: . # set to your workspace root if nested
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Workspai CLI
+        run: npm install --no-save workspai
+
+      - name: Run governance pipeline
+        run: npx workspai pipeline --json --strict
+        continue-on-error: true
+        id: pipeline
+
+      - name: Sync and verify agent grounding
+        run: |
+          npx workspai workspace agent-sync --write --refresh-context --strict --json --preset enterprise
+          node ./node_modules/workspai/scripts/check-agent-customization-drift.mjs --workspace .
+        env:
+          RAPIDKIT_NO_AGENT_SYNC: '0'
+
+      - name: Upload agent grounding artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspai-agent-grounding
+          path: |
+            .workspai/reports/INDEX.json
+            .workspai/reports/workspace-context-agent.json
+            .workspai/reports/agent-customization-pack.json
+            .workspai/reports/workspai-mcp-design.json
+            .workspai/reports/pipeline-last-run.json
+            AGENTS.md
+          if-no-files-found: ignore
+
+      - name: Fail if pipeline blocked
+        if: steps.pipeline.outcome == 'failure'
+        run: exit 1

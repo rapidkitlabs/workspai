@@ -1,0 +1,27 @@
+"""Domain entity and value object for example notes."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(slots=True)
+class NoteDraft:
+    """Value object describing the data needed to create a note."""
+
+    title: str
+    body: str
+
+
+@dataclass(slots=True)
+class Note:
+    """Domain entity representing an immutable note."""
+
+    id: int
+    title: str
+    body: str
+
+    def to_dict(self) -> dict[str, str | int]:
+        """Serialize the note for presentation layers."""
+
+        return {"id": self.id, "title": self.title, "body": self.body}

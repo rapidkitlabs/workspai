@@ -1,1 +1,36 @@
-{"name":"git-orders-api","dependencies":{"express":"^4.19.2"}}
+{
+  "name": "workspai-monorepo",
+  "private": true,
+  "version": "0.43.0",
+  "description": "Workspai monorepo for Workspace Intelligence packages.",
+  "license": "MIT",
+  "packageManager": "npm@10.8.2",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "workspaces:list": "corepack npm query .workspace",
+    "check": "corepack npm --workspaces --if-present run check",
+    "fix": "corepack npm --workspaces --if-present run fix",
+    "validate": "corepack npm --workspaces --if-present run validate",
+    "ci": "corepack npm --workspaces --if-present run ci",
+    "build": "corepack npm --workspace workspai run build",
+    "dev": "corepack npm --workspace workspai run dev",
+    "test": "corepack npm --workspace workspai run test",
+    "lint": "corepack npm --workspace workspai run lint",
+    "typecheck": "corepack npm --workspace workspai run typecheck",
+    "format": "corepack npm --workspace workspai run format",
+    "format:check": "corepack npm --workspace workspai run format:check",
+    "smoke": "corepack npm --workspaces --if-present run smoke",
+    "security": "corepack npm --workspace workspai run security",
+    "security:fix": "corepack npm --workspace workspai run security:fix",
+    "cli": "node packages/cli/dist/index.js",
+    "install:local": "corepack npm install --ignore-scripts && corepack npm run build && corepack npm --workspace workspai link",
+    "uninstall:local": "corepack npm unlink -g workspai || true",
+    "reinstall:local": "corepack npm run uninstall:local && corepack npm run install:local",
+    "release:dry": "corepack npm --workspace workspai run release:dry",
+    "release:patch": "corepack npm --workspace workspai run release:patch",
+    "release:minor": "corepack npm --workspace workspai run release:minor",
+    "release:major": "corepack npm --workspace workspai run release:major"
+  }
+}

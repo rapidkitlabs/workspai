@@ -1,0 +1,22 @@
+"""Smoke tests for the generated FastAPI DDD scaffold."""
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from src.app.main import create_app
+from src.main import app
+
+
+def test_create_app_returns_fastapi_instance() -> None:
+    instance = create_app(title="Test", description="Sample", version="1.0.0")
+    assert isinstance(instance, FastAPI)
+    assert instance.title == "Test"
+
+
+def test_health_route_returns_ok() -> None:
+    client = TestClient(app)
+    response = client.get("/api/health/")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"

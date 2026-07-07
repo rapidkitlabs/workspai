@@ -1,0 +1,25 @@
+/* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports, global-require */
+
+import type { DynamicModule, Type } from '@nestjs/common';
+
+// Central export for dynamically injected RapidKit Core modules
+
+type ModuleRef = DynamicModule | Type<unknown>;
+
+const registerOptionalModule = (loader: () => ModuleRef | null | undefined): ModuleRef | null => {
+	try {
+		const resolved = loader();
+		return resolved ?? null;
+	} catch {
+		return null;
+	}
+};
+
+const optionalModules: Array<ModuleRef | null> = [
+	registerOptionalModule(() => require('../config/logging.module').LoggingModule as ModuleRef),
+	registerOptionalModule(() => require('../config/settings.module').SettingsModule as ModuleRef),
+	registerOptionalModule(() => require('../deployment/deployment.module').DeploymentModule as ModuleRef),
+	// <<<inject:module-exports>>>
+];
+
+export const rapidkitModules: ModuleRef[] = optionalModules.filter(Boolean) as ModuleRef[];
