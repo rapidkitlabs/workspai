@@ -1,4 +1,4 @@
-# ws-list-check
+# ws-sync-nested
 
 Workspai **Minimal** workspace.
 

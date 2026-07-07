@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0",
-  "workspace_name": "ws-list-check",
+  "workspace_name": "ws-sync-nested",
   "workspai_version": "0.43.0",
   "rapidkit_version": "0.43.0",
-  "created_at": "2026-07-07T22:41:36.765Z",
+  "created_at": "2026-07-07T22:41:39.257Z",
   "created_by": "workspai",
   "profile": "minimal",
   "engine": {
