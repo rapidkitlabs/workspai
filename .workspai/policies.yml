@@ -1,9 +1,0 @@
-version: "1.0"
-mode: warn # "warn" or "strict"
-dependency_sharing_mode: isolated # "isolated" or "shared-runtime-caches" or "shared-node-deps"
-# change profile (recommended): npx workspai bootstrap --profile polyglot
-# change mode/dependency manually: edit this file and rerun npx workspai init
-rules:
-  enforce_workspace_marker: true
-  enforce_toolchain_lock: false
-  disallow_untrusted_tool_sources: false
