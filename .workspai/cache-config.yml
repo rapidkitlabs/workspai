@@ -1,6 +1,0 @@
-version: "1.0"
-cache:
-  strategy: shared # "shared" or "on-demand"
-  prune_on_bootstrap: false
-  self_heal: true
-  verify_integrity: false
