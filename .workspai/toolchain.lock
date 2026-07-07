@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "generated_by": "workspai",
+  "generated_at": "2026-07-07T22:47:27.662Z",
+  "runtime": {
+    "python": {
+      "version": null,
+      "install_method": "venv"
+    },
+    "node": {
+      "version": "v20.20.0"
+    },
+    "go": {
+      "version": "1.26.2"
+    },
+    "java": {
+      "version": null,
+      "build_tool": null,
+      "build_tool_version": null
+    },
+    "dotnet": {
+      "version": "10.0.301",
+      "sdk": "10.0.301"
+    }
+  }
+}

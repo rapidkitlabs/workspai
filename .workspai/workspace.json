@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "workspace_name": "ws-list-check",
+  "workspai_version": "0.43.0",
+  "rapidkit_version": "0.43.0",
+  "created_at": "2026-07-07T22:47:27.662Z",
+  "created_by": "workspai",
+  "profile": "minimal",
+  "engine": {
+    "install_method": "venv",
+    "python_version": null
+  }
+}
