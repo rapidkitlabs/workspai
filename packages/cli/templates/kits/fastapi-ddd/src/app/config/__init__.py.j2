@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(slots=True)
 class AppConfig:
-    """Application-level configuration aggregated from RapidKit Core settings."""
+    """Application-level configuration aggregated from RapidKit settings."""
 
     environment: str = "development"
     service_name: str = "{{ project_name }}"

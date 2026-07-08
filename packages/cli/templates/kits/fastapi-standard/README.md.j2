@@ -1,12 +1,15 @@
 # {{ project_name | replace('_', ' ') | title }}
 
-A minimal FastAPI service generated with Workspai's **FastAPI Standard Kit**. Python-backed capabilities (configuration, logging, persistence, observability, authentication, etc.) are provided by RapidKit Core modules when you opt into the Python engine.
+A minimal FastAPI service generated with **RapidKit Core** using the FastAPI Standard Kit. It can be adopted into Workspai workspace intelligence when you want workspace-level context, evidence, and release governance.
 
 ## Quick start
 
 ```bash
+# Load the project-local RapidKit Core launcher (adds .rapidkit/rapidkit to PATH)
+source .rapidkit/activate
+
 # Bootstrap dependencies (creates .venv + installs Poetry-managed deps)
-npx workspai init  # use make init if you prefer a Make target
+rapidkit init  # use make init if you prefer a Make target
 
 # Copy env templates and install hooks/tooling
 ./bootstrap.sh
@@ -19,45 +22,47 @@ make audit
 
 # Start development server with hot reload
 make dev
-npx workspai dev  # same as make dev but auto-detects the project
+rapidkit dev  # same as make dev but auto-detects the project
 
-# Prefer project-local RapidKit Core helpers when you want it to resolve scripts automatically
-npx workspai lint
-npx workspai test
-npx workspai start
+# Prefer RapidKit Core helpers when you want it to resolve scripts automatically
+rapidkit lint
+rapidkit test
+rapidkit start
 ```
 
-> Re-run `npx workspai init` (or `make init`) whenever dependencies change, or use `SKIP_INIT=1 make install` if you only need to refresh tooling/hooks without reinstalling packages.
+> Always run `source .rapidkit/activate` after opening a new shell so the project-local `rapidkit` launcher and helper scripts stay on your PATH.
 
-> Lockfiles are generated automatically during scaffolding. Set `RAPIDKIT_SKIP_LOCKS=1` (or `RAPIDKIT_GENERATE_LOCKS=0`) before running `workspai create` if you need to opt out.
+> Re-run `rapidkit init` (or `make init`) whenever dependencies change, or use `SKIP_INIT=1 make install` if you only need to refresh tooling/hooks without reinstalling packages.
 
-> Want the full project-local RapidKit Core catalog? Run `rapidkit --help` when RapidKit Core is installed, or use `npx workspai --help` for workspace-level commands.
+> Lockfiles are generated automatically during scaffolding. Set `RAPIDKIT_SKIP_LOCKS=1` (or `RAPIDKIT_GENERATE_LOCKS=0`) before running `rapidkit create` if you need to opt out.
+
+> Want the project-local RapidKit Core catalog? Run `rapidkit --help`. If this project is part of a Workspai workspace, run `npx workspai --help` from the workspace root for workspace intelligence commands.
 
 ---
 
 ## Local development
 
-- `npx workspai init` bootstraps dependencies via the project-aware CLI.
-- `make init` is an optional alias for `npx workspai init` when you prefer Make targets.
-- `make install` re-runs `npx workspai init` (unless you set `SKIP_INIT=1`) and refreshes developer tooling such as pre-commit hooks.
+- `rapidkit init` bootstraps dependencies via the project-local RapidKit Core launcher (run it after sourcing `.rapidkit/activate`).
+- `make init` is an optional alias for `rapidkit init` when you prefer Make targets.
+- `make install` re-runs `rapidkit init` (unless you set `SKIP_INIT=1`) and refreshes developer tooling such as pre-commit hooks.
 - `./bootstrap.sh` copies `.env.example` to `.env` (if missing) and runs `SKIP_INIT=1 make install` for you.
-- `make dev` (or `npx workspai dev`) launches Uvicorn with the correct module path and reload settings.
+- `make dev` (or `rapidkit dev`) launches Uvicorn with the correct module path and reload settings.
 - `make lint`, `make typecheck`, and `make test` wrap Ruff, mypy, and pytest for consistent CI parity.
 - `make audit` shells out to `pip-audit` to surface vulnerable dependencies.
-- Prefer `npx workspai lint`, `npx workspai test`, and `npx workspai start` if you want the project-aware launcher to autodetect the virtualenv and command wiring.
+- Prefer `rapidkit lint`, `rapidkit test`, and `rapidkit start` if you want RapidKit Core to autodetect the virtualenv and command wiring.
 ```
 
 ## Available commands
 
 ```bash
-npx workspai init   # 🔧 Bootstrap the project (create .venv + install deps)
-make init           # 🔧 Optional alias for npx workspai init
+rapidkit init       # 🔧 Bootstrap the project (create .venv + install deps)
+make init           # 🔧 Optional alias for rapidkit init (wraps the local Core launcher)
 ./bootstrap.sh      # 🪄 Copy env template + install hooks/tooling (idempotent)
-npx workspai dev    # 🚀 Start development server with hot reload
+rapidkit dev        # 🚀 Start development server with hot reload
 make dev            # 🚀 Alternative via Makefile helper
-npx workspai start  # ⚡ Start production server
-npx workspai lint   # 🔧 Run lint checks via project-aware CLI
-npx workspai test   # 🧪 Run pytest through the project-aware launcher
+rapidkit start      # ⚡ Start production server
+rapidkit lint       # 🔧 Run lint checks via RapidKit Core
+rapidkit test       # 🧪 Run pytest through RapidKit Core
 make install        # 📦 Install Poetry deps + hooks
 make lint           # ✅ Lint via Ruff + Black
 make typecheck      # 🔍 Run mypy on src
@@ -84,18 +89,18 @@ The scaffold ships with a tiny in-memory **notes** API mounted under `/api/examp
 # Create a note
 curl -s -X POST http://localhost:8000/api/examples/notes \
 	-H "Content-Type: application/json" \
-	-d '{"title":"first","body":"scaffolded by Workspai"}'
+	-d '{"title":"first","body":"scaffolded by RapidKit"}'
 
 # List notes
 curl -s http://localhost:8000/api/examples/notes | jq
 ```
 
-The implementation intentionally stays in memory so you can replace it with a repository-backed service once you install RapidKit Core database modules.
+The implementation intentionally stays in memory so you can replace it with a repository-backed service once you install RapidKit database modules.
 
 {% if selected_modules %}
-## Recommended RapidKit Core modules
+## Recommended RapidKit modules
 
-The following RapidKit Core modules are suggested during scaffolding; install them any time with `rapidkit add module <name>` after activating the project launcher:
+The following RapidKit modules are suggested during scaffolding; install them any time with `rapidkit add module <name>`:
 
 {% for module in selected_modules %}- {{ module.name | replace('_', ' ') | title }} (`{{ module.name }}`{% if not module.required %}, optional{% endif %}) – tier: {{ module.tier }}
 {% endfor %}
@@ -105,18 +110,18 @@ The following RapidKit Core modules are suggested during scaffolding; install th
 
 Use `rapidkit add module <module-name>` to install optional capabilities. Modules inject imports, routes, and services through the anchors defined in `src/main.py` and `src/routing/__init__.py`.
 
-During kit generation you can decide whether the RapidKit Core modules ship with the scaffold:
+During kit generation you can decide whether the core RapidKit modules ship with the scaffold:
 
 ```text
-Install the RapidKit Core settings module? [Y/n]
-Install the RapidKit Core logging module? [Y/n]
+Install the RapidKit settings module? [Y/n]
+Install the RapidKit logging module? [Y/n]
 Install deployment module assets (Docker/CI)? [Y/n]
 ```
 
-### Scaffold toggles vs RapidKit Core modules
+### Scaffold toggles vs RapidKit modules
 
 - `enable_*` prompts (for Docker, CI, SQLite, etc.) control the starter assets generated by this kit.
-- `install_*` prompts control which RapidKit Core modules are installed up front.
+- `install_*` prompts control which RapidKit modules are installed up front.
 - You can always add modules later with `rapidkit add module <name>` if you skip them during scaffolding.
 
 When you need deployment artefacts in an existing project, install the optional `deployment` module:

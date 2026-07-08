@@ -5,13 +5,7 @@ const config: Config = {
   rootDir: '.',
   testEnvironment: 'node',
   testRegex: '.*\\.spec.ts$',
-  testPathIgnorePatterns: [
-    '/node_modules/',
-    '/.workspai/vendor/',
-    '/.workspai/snapshots/',
-    '/.rapidkit/vendor/',
-    '/.rapidkit/snapshots/',
-  ],
+  testPathIgnorePatterns: ['/node_modules/', '/.rapidkit/vendor/', '/.rapidkit/snapshots/'],
   transform: {
     '^.+\\.ts$': 'ts-jest',
   },

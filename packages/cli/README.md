@@ -1,4 +1,4 @@
-# Workspai
+# Workspai CLI
 
 ## Open-Source Workspace Intelligence for Software Systems
 
@@ -598,7 +598,7 @@ The extension invokes this npm CLI. For the latest `adopt` and frontend generato
 
 ```bash
 npm ci && npm run build && npm run test
-npm run install:local   # link CLI globally for manual testing
+npm run install:local   # link workspai and wspai globally for manual testing
 ```
 
 Contributors: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), [docs/ci-workflows.md](docs/ci-workflows.md).

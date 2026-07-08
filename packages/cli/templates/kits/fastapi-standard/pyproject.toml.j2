@@ -17,21 +17,21 @@ help = "src.cli:help_cmd"
 
 [tool.poetry.dependencies]
 python = "^{{ python_version }}"
-fastapi = "^0.128.0"
-uvicorn = { extras = ["standard"], version = "^0.40.0" }
+fastapi = "^0.139.0"
+uvicorn = { extras = ["standard"], version = "^0.50.2" }
 pydantic = "^2.12.5"
 {% if has_settings -%}
-pydantic-settings = { version = "^2.12.0", extras = ["yaml"] }
+pydantic-settings = { version = "^2.14.2", extras = ["yaml"] }
 {% endif %}
 # <<<inject:poetry-dependencies>>>
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^9.0.2"
+pytest = "^9.0.3"
 pytest-asyncio = "^1.3.0"
 pytest-cov = "^7.0.0"
 httpx = "^0.28.1"
 ruff = "^0.14.10"
-black = "^25.12.0"
+black = "^26.3.1"
 isort = "^7.0.0"
 mypy = "^1.19.1"
 build = "^1.3.0"
@@ -50,7 +50,7 @@ markers = [
 
 [tool.ruff]
 line-length = 100
-exclude = [".workspai/vendor", ".rapidkit/vendor"]
+exclude = [".rapidkit/vendor"]
 
 [tool.ruff.lint]
 ignore = ["E501"]
@@ -61,4 +61,4 @@ ignore_missing_imports = true
 warn_unused_configs = false
 show_error_codes = true
 # Ignore vendor snapshots and generated health shims from strict static checking
-exclude = "(^\\.workspai/vendor/|^\\.rapidkit/vendor/|src/health/|src/main.py$)"
+exclude = "(^\\.rapidkit/vendor/|src/health/|src/main.py$)"

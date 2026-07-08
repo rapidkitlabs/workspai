@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/pipeline-last-run.v1.json",
+  "title": "RapidKit Governance Pipeline Last Run",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "workspacePath",
+    "summary",
+    "stages",
+    "blockingReasons",
+    "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "rapidkit-pipeline-v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workspacePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "object",
+      "required": ["verdict", "exitCode", "stagesPassed", "stagesWarn", "stagesFailed"],
+      "properties": {
+        "verdict": {
+          "enum": ["ready", "needs-attention", "blocked"]
+        },
+        "exitCode": {
+          "enum": [0, 1, 2, 3]
+        },
+        "stagesPassed": { "type": "integer", "minimum": 0 },
+        "stagesWarn": { "type": "integer", "minimum": 0 },
+        "stagesFailed": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "durationMs", "summary"],
+        "properties": {
+          "name": {
+            "enum": ["sync", "doctor", "analyze", "readiness", "autopilot"]
+          },
+          "status": {
+            "enum": ["pass", "warn", "fail", "skipped"]
+          },
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "summary": { "type": "string" },
+          "exitCode": { "type": "integer" },
+          "evidencePath": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "blockingReasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["reportPath"],
+      "properties": {
+        "reportPath": { "type": "string" },
+        "analyzeEvidencePath": { "type": "string" },
+        "readinessEvidencePath": { "type": "string" },
+        "autopilotEvidencePath": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

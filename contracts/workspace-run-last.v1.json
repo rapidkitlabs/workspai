@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-run-last.v1.json",
+  "title": "Workspai Workspace Run Evidence",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "workspacePath",
+    "latestStage",
+    "stages",
+    "enterpriseControls"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "workspace-run-v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workspacePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "latestStage": {
+      "enum": ["init", "test", "build", "start"]
+    },
+    "stages": {
+      "type": "object",
+      "propertyNames": {
+        "enum": ["init", "test", "build", "start"]
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/workspaceRunStageReport"
+      }
+    },
+    "enterpriseControls": {
+      "type": "object",
+      "required": ["jsonReady", "evidencePath"],
+      "properties": {
+        "jsonReady": { "type": "boolean" },
+        "evidencePath": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "workspaceRunStageReport": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "workspacePath",
+        "stage",
+        "generatedAt",
+        "durationMs",
+        "options",
+        "selection",
+        "gates",
+        "summary",
+        "projects"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "enum": ["1.0", "workspace-run-stage-v1"]
+        },
+        "workspacePath": { "type": "string", "minLength": 1 },
+        "stage": {
+          "enum": ["init", "test", "build", "start"]
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "options": { "type": "object", "additionalProperties": true },
+        "selection": { "type": "object", "additionalProperties": true },
+        "gates": { "type": "object", "additionalProperties": true },
+        "summary": {
+          "type": "object",
+          "required": [
+            "projectCount",
+            "selectedCount",
+            "passed",
+            "failed",
+            "skipped",
+            "exitCode"
+          ],
+          "properties": {
+            "projectCount": { "type": "integer", "minimum": 0 },
+            "selectedCount": { "type": "integer", "minimum": 0 },
+            "passed": { "type": "integer", "minimum": 0 },
+            "failed": { "type": "integer", "minimum": 0 },
+            "skipped": { "type": "integer", "minimum": 0 },
+            "exitCode": { "type": "integer" }
+          },
+          "additionalProperties": true
+        },
+        "projects": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "enterpriseControls": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

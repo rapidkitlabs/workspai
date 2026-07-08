@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "rapidkit-module-support-v1",
+  "moduleCapableProjectTypes": ["fastapi", "nestjs"],
+  "moduleCapableKitIds": ["fastapi.standard", "fastapi.ddd", "nestjs.standard"],
+  "moduleUnsupportedBackendProjectTypes": ["go", "springboot", "dotnet"],
+  "moduleUnsupportedFrontendProjectTypes": [
+    "nextjs",
+    "remix",
+    "vite-react",
+    "vite-vue",
+    "vite-svelte",
+    "vite-solid",
+    "vite-vanilla",
+    "nuxt",
+    "angular",
+    "astro",
+    "sveltekit"
+  ],
+  "policyNote": "RapidKit Core modules are Core-backed templates for FastAPI and NestJS backends only. Frontend scaffolds and extended backend kits use native package ecosystems."
+}

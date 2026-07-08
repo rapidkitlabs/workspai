@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-verify.v1.json",
+  "title": "Workspai Workspace Verify Last Run",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "workspacePath",
+    "mode",
+    "impact",
+    "summary",
+    "steps",
+    "missingEvidence",
+    "blockingReasons",
+    "verificationPlan",
+    "affectedSubgraph",
+    "graphIntegrity",
+    "freshness",
+    "policyMode",
+    "policyViolations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "workspace-verify.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workspacePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "const": "evidence"
+    },
+    "fromImpactRef": { "type": "string" },
+    "scope": { "type": "string" },
+    "impact": {
+      "type": "object",
+      "required": ["changed", "risk", "affectedProjects", "recommendedCommands"],
+      "properties": {
+        "changed": { "type": "boolean" },
+        "risk": {
+          "enum": ["none", "low", "medium", "high", "critical"]
+        },
+        "affectedProjects": { "type": "integer", "minimum": 0 },
+        "recommendedCommands": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "verdict",
+        "exitCode",
+        "stepsPassed",
+        "stepsWarn",
+        "stepsFailed",
+        "stepsMissing",
+        "stepsSkipped"
+      ],
+      "properties": {
+        "verdict": {
+          "enum": ["ready", "needs-attention", "blocked"]
+        },
+        "exitCode": {
+          "enum": [0, 1, 2]
+        },
+        "stepsPassed": { "type": "integer", "minimum": 0 },
+        "stepsWarn": { "type": "integer", "minimum": 0 },
+        "stepsFailed": { "type": "integer", "minimum": 0 },
+        "stepsMissing": { "type": "integer", "minimum": 0 },
+        "stepsSkipped": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "scope", "command", "status", "required", "message"],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "scope": {
+            "enum": ["workspace", "project"]
+          },
+          "project": { "type": "string" },
+          "status": {
+            "enum": ["pass", "warn", "fail", "missing", "skipped"]
+          },
+          "required": { "type": "boolean" },
+          "evidencePath": { "type": "string" },
+          "message": { "type": "string" },
+          "command": { "type": "object", "additionalProperties": true }
+        },
+        "additionalProperties": true
+      }
+    },
+    "missingEvidence": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "blockingReasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "verificationPlan": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "affectedSubgraph": {
+      "type": "object",
+      "required": [
+        "totalProjects",
+        "directlyChanged",
+        "transitiveDependents",
+        "covered",
+        "uncovered",
+        "unverifiable"
+      ],
+      "properties": {
+        "totalProjects": { "type": "integer", "minimum": 0 },
+        "directlyChanged": { "type": "array", "items": { "type": "string" } },
+        "transitiveDependents": { "type": "array", "items": { "type": "string" } },
+        "covered": { "type": "array", "items": { "type": "string" } },
+        "uncovered": { "type": "array", "items": { "type": "string" } },
+        "unverifiable": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "graphIntegrity": {
+      "type": "object",
+      "required": ["ok", "cycles", "danglingEdges", "orphans", "stats"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "cycles": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } }
+        },
+        "danglingEdges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to", "kind", "missing"],
+            "properties": {
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "kind": { "type": "string" },
+              "missing": { "enum": ["from", "to", "both"] }
+            },
+            "additionalProperties": true
+          }
+        },
+        "orphans": { "type": "array", "items": { "type": "string" } },
+        "stats": {
+          "type": "object",
+          "required": [
+            "nodeCount",
+            "edgeCount",
+            "cycleCount",
+            "danglingCount",
+            "orphanCount"
+          ],
+          "properties": {
+            "nodeCount": { "type": "integer", "minimum": 0 },
+            "edgeCount": { "type": "integer", "minimum": 0 },
+            "cycleCount": { "type": "integer", "minimum": 0 },
+            "danglingCount": { "type": "integer", "minimum": 0 },
+            "orphanCount": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "freshness": {
+      "type": "object",
+      "required": ["verdict", "baseline", "changed", "added", "removed", "projectHashes"],
+      "properties": {
+        "verdict": { "enum": ["fresh", "stale", "unknown"] },
+        "baseline": { "enum": ["none", "recorded"] },
+        "changed": { "type": "array", "items": { "type": "string" } },
+        "added": { "type": "array", "items": { "type": "string" } },
+        "removed": { "type": "array", "items": { "type": "string" } },
+        "projectHashes": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "policyMode": { "type": "string" },
+    "policyViolations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "severity", "code", "message"],
+        "properties": {
+          "source": { "enum": ["model", "contract"] },
+          "severity": { "enum": ["error", "warning"] },
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "target": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,496 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rapidkit.dev/contracts/doctor-remediation-plan.v1.json",
+  "title": "RapidKit Doctor Remediation Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "policyProfile",
+    "fixableProjects",
+    "totalSteps",
+    "executableSteps",
+    "risk",
+    "steps"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "doctor-remediation-plan-v2"
+    },
+    "generatedAt": {
+      "type": "string"
+    },
+    "policyProfile": {
+      "enum": ["local", "ci", "release", "enterprise-strict"]
+    },
+    "fixableProjects": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "totalSteps": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "executableSteps": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "risk": {
+      "$ref": "#/$defs/riskSummary"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    }
+  },
+  "$defs": {
+    "riskSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["safe", "guarded", "invasive"],
+      "properties": {
+        "safe": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "guarded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invasive": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "summary", "changes"],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "strategy"],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "strategy": {
+          "enum": ["snapshot", "idempotent", "manual", "none"]
+        }
+      }
+    },
+    "diffPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "format", "summary", "hunks"],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "format": {
+          "enum": ["unified", "summary", "none"]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "hunks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "studioStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "reason"],
+      "properties": {
+        "state": {
+          "enum": ["ready", "blocked", "review-required", "guidance-only"]
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "repairIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "primaryAction", "requiresApproval"],
+      "properties": {
+        "mode": {
+          "enum": [
+            "none",
+            "run-command",
+            "edit-file",
+            "review-required",
+            "verify-before-fix",
+            "refresh-evidence",
+            "manual-guidance"
+          ]
+        },
+        "primaryAction": {
+          "type": "string"
+        },
+        "requiresApproval": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "enum": ["high", "medium", "low"]
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "repairOperation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path", "content", "overwrite"],
+          "properties": {
+            "type": {
+              "const": "file-create"
+            },
+            "path": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "overwrite": {
+              "const": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path", "lines", "ensureNewline"],
+          "properties": {
+            "type": {
+              "const": "file-append"
+            },
+            "path": {
+              "type": "string"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "ensureNewline": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "sourcePath", "path", "overwrite"],
+          "properties": {
+            "type": {
+              "const": "file-copy"
+            },
+            "sourcePath": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "overwrite": {
+              "const": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path", "scriptName", "scriptValue"],
+          "properties": {
+            "type": {
+              "const": "package-json-script"
+            },
+            "path": {
+              "type": "string"
+            },
+            "scriptName": {
+              "type": "string"
+            },
+            "scriptValue": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path", "edits"],
+          "properties": {
+            "type": {
+              "const": "json-edit"
+            },
+            "path": {
+              "type": "string"
+            },
+            "edits": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["pointer", "value"],
+                "properties": {
+                  "pointer": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": ["string", "number", "boolean", "null"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path", "keys"],
+          "properties": {
+            "type": {
+              "const": "env-key-add"
+            },
+            "path": {
+              "type": "string"
+            },
+            "keys": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "value"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path", "target", "command", "phony"],
+          "properties": {
+            "type": {
+              "const": "makefile-target"
+            },
+            "path": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "command": {
+              "type": "string"
+            },
+            "phony": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "phase",
+        "order",
+        "dependsOn",
+        "projectName",
+        "projectPath",
+        "originalCommand",
+        "kind",
+        "risk",
+        "executable",
+        "files",
+        "preview",
+        "diffPreview",
+        "refreshCommands",
+        "rollback",
+        "studioStatus",
+        "executableInCurrentEnvironment"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "dependency-baseline",
+            "local-environment",
+            "source-hygiene",
+            "command-contract",
+            "runtime-governance",
+            "manual-review",
+            "generic-execution"
+          ]
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dependsOn": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "projectName": {
+          "type": "string"
+        },
+        "projectPath": {
+          "type": "string"
+        },
+        "originalCommand": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "env-copy",
+            "package-json-script",
+            "file-create",
+            "file-append",
+            "json-edit",
+            "env-key-add",
+            "makefile-target",
+            "rapidkit-init",
+            "go-mod-tidy",
+            "dependency-sync",
+            "manual-url",
+            "shell"
+          ]
+        },
+        "risk": {
+          "enum": ["safe", "guarded", "invasive"]
+        },
+        "executable": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "issueClass": {
+          "enum": [
+            "dependency",
+            "environment",
+            "security",
+            "test",
+            "quality",
+            "container",
+            "deployment",
+            "runtime",
+            "workspace-contract",
+            "source-tree",
+            "framework",
+            "configuration",
+            "custom",
+            "unknown"
+          ]
+        },
+        "operationalImpact": {
+          "enum": [
+            "none",
+            "developer-friction",
+            "ci-risk",
+            "release-risk",
+            "security-risk",
+            "runtime-risk",
+            "customer-risk"
+          ]
+        },
+        "repairIntent": {
+          "$ref": "#/$defs/repairIntent"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "operation": {
+          "$ref": "#/$defs/repairOperation"
+        },
+        "preview": {
+          "$ref": "#/$defs/preview"
+        },
+        "diffPreview": {
+          "$ref": "#/$defs/diffPreview"
+        },
+        "verifyCommand": {
+          "type": "string"
+        },
+        "refreshCommands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rollback": {
+          "$ref": "#/$defs/rollback"
+        },
+        "studioStatus": {
+          "$ref": "#/$defs/studioStatus"
+        },
+        "executableInCurrentEnvironment": {
+          "type": "boolean"
+        },
+        "blockedReason": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -10,7 +10,7 @@ client = TestClient(app)
 
 
 def test_create_and_list_notes() -> None:
-    payload = {"title": "First note", "body": "Documented via Workspai."}
+    payload = {"title": "First note", "body": "Documented via RapidKit."}
     create_response = client.post("/api/examples/notes", json=payload)
     assert create_response.status_code == 201
     data = create_response.json()

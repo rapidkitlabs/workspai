@@ -1,13 +1,16 @@
 # {{ project_name | replace('-', ' ') | title }}
 
-A production-ready NestJS 11 application generated with Workspai's **NestJS Standard Kit**.
+A production-ready NestJS 11 application generated with **RapidKit Core** using the NestJS Standard Kit. It can be adopted into Workspai workspace intelligence when you want workspace-level context, evidence, and release governance.
 
 ## Getting Started
 > Recommended Node version: `{{ node_version }}` (`.nvmrc` and `.node-version` are included for your toolchain)
 
 ```bash
-# Bootstrap dependencies using the local CLI
-npx workspai init  # use make init if you prefer a Make target
+# Load the project-local RapidKit Core launcher (adds .rapidkit/rapidkit to PATH)
+source .rapidkit/activate
+
+# Bootstrap dependencies using RapidKit Core
+rapidkit init  # use make init if you prefer a Make target
 
 # Copy env templates + install hooks/tooling
 ./bootstrap.sh
@@ -16,37 +19,39 @@ npx workspai init  # use make init if you prefer a Make target
 make dev
 
 # Or rely on the project-local RapidKit Core helpers:
-npx workspai dev
+rapidkit dev
 
 # Run linting, type-checking, tests, and supply-chain audits
 make lint
 make typecheck
 make test
 make audit
-npx workspai lint
-npx workspai test
+rapidkit lint
+rapidkit test
 ```
 
-> Use `npx workspai init` (or `make init`) whenever dependencies change. Pass `SKIP_INIT=1` (for example `SKIP_INIT=1 make install`) if you only need to refresh tooling/hooks.
+> Open a new shell? Run `source .rapidkit/activate` again so the project-local `rapidkit` launcher stays on your PATH.
 
-> Lockfiles are generated automatically during scaffolding. Set `RAPIDKIT_SKIP_LOCKS=1` (or `RAPIDKIT_GENERATE_LOCKS=0`) before running `workspai create` if you need to skip this step.
+> Use `rapidkit init` (or `make init`) whenever dependencies change. Pass `SKIP_INIT=1` (for example `SKIP_INIT=1 make install`) if you only need to refresh tooling/hooks.
 
-> Need the project-local RapidKit Core command list? Run `rapidkit --help` when RapidKit Core is installed, or use `npx workspai --help` for workspace-level commands.
+> Lockfiles are generated automatically during scaffolding. Set `RAPIDKIT_SKIP_LOCKS=1` (or `RAPIDKIT_GENERATE_LOCKS=0`) before running `rapidkit create` if you need to skip this step.
+
+> Need the project-local RapidKit Core command list? Run `rapidkit --help`. If this project is part of a Workspai workspace, run `npx workspai --help` from the workspace root for workspace intelligence commands.
 
 ---
 
 ## Quick start (developer)
 
-1. `npx workspai init` bootstraps dependencies through the project-aware launcher and enforces lockfile flags for your chosen package manager.
-2. `make init` remains available as an alias to `npx workspai init` when you prefer Make targets.
+1. `rapidkit init` (after `source .rapidkit/activate`) bootstraps dependencies through the project-local RapidKit Core launcher and enforces lockfile flags for your chosen package manager.
+2. `make init` remains available as an alias to `rapidkit init` when you prefer Make targets.
 3. `./bootstrap.sh` copies `.env.example` to `.env` (when missing) and runs `SKIP_INIT=1 make install` so git hooks and tooling stay current without reinstalling packages.
 4. `make dev` wraps `{{ package_manager if package_manager != 'pnpm' else 'pnpm' }} run start:dev` and centralizes env loading; use it for day-to-day development.
 5. `make lint`, `make typecheck`, and `make test` proxy to the underlying package scripts or `tsc` so local changes match CI expectations.
 6. `make audit` executes `{{ package_manager }}`'s security audit (falling back to dev dependencies if needed) to surface vulnerable packages early.
 
-`make install` is still available; it re-runs `npx workspai init` unless you set `SKIP_INIT=1`, so prefer `SKIP_INIT=1 make install` when you only need to refresh tooling.
+`make install` is still available; it re-runs `rapidkit init` unless you set `SKIP_INIT=1`, so prefer `SKIP_INIT=1 make install` when you only need to refresh tooling.
 
-Prefer `npx workspai dev`, `npx workspai test`, or `npx workspai lint` when you want the project-aware launcher to auto-detect the right runtime; they call into the same project scripts wrapped by the Make targets.
+Prefer `rapidkit dev`, `rapidkit test`, or `rapidkit lint` when you want RapidKit Core to auto-detect the right runtime; they call into the same project scripts wrapped by the Make targets.
 
 Prefer the Make targets for consistency, but you can always fall back to native commands if needed:
 
@@ -73,11 +78,11 @@ If you see engine compatibility errors during `{{ package_manager }} install`, u
 
 - `src/main.ts` – Bootstraps the NestJS application
 - `src/app.module.ts` – Core application module with injection anchors
-- `src/modules/` – Container for RapidKit Core modules (`// <<<inject:module-init>>>`)
+- `src/modules/` – Container for RapidKit modules (`// <<<inject:module-init>>>`)
 - `src/config/` – Centralized configuration module and validation
 - `test/` – Unit and e2e testing with Jest
 
-## RapidKit Core Modules
+## RapidKit Modules
 
 Install additional modules as needed:
 
@@ -97,13 +102,13 @@ The scaffold ships with an `ExamplesModule` exposing a tiny in-memory notes API 
 # Create a note
 curl -s -X POST http://localhost:3000/examples/notes \
   -H "Content-Type: application/json" \
-  -d '{"title":"hello","body":"documented via Workspai"}'
+  -d '{"title":"hello","body":"documented via RapidKit"}'
 
 # List all notes
 curl -s http://localhost:3000/examples/notes | jq
 ```
 
-Replace the in-memory service with a proper repository once you add RapidKit Core database modules.
+Replace the in-memory service with a proper repository once you add RapidKit database modules.
 
 ## Docker
 
@@ -121,7 +126,7 @@ docker-compose down
 | `{{ package_manager if package_manager != 'pnpm' else 'pnpm' }} test` | Run tests |
 
 ---
-Generated by Workspai.
+Generated with RapidKit Core. Compatible with Workspai workspace intelligence.
 
 ## 📄 License
 

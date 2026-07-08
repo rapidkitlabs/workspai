@@ -32,7 +32,7 @@ from .routing import api_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Coordinate startup/shutdown hooks contributed by RapidKit Core modules."""
+    """Coordinate startup/shutdown hooks contributed by RapidKit modules."""
 
     _ = app  # ensure the app reference stays available for injected hooks
     # <<<inject:startup>>>

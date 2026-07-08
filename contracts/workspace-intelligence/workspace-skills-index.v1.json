@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-skills-index.v1.json",
+  "title": "Workspai Workspace Skills Index",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "inputsHash", "skills"],
+  "properties": {
+    "schemaVersion": { "const": "workspace-skills-index.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "inputsHash": { "type": "string", "minLength": 8 },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["skillId", "path", "schemaVersion", "title"],
+        "properties": {
+          "skillId": { "type": "string" },
+          "path": { "type": "string" },
+          "schemaVersion": { "type": "string" },
+          "title": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

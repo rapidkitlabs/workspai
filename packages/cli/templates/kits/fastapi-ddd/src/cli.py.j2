@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Project CLI wrapper for {{ project_name }} (DDD edition).
 
-Prefer a per-project CLI in `.workspai/cli.py` when present. Otherwise
+Prefer a per-project RapidKit Core wrapper in `.rapidkit/cli.py` when present. Otherwise
 provide helpful guidance to the developer rather than guessing environment
 details.
 """
@@ -14,19 +14,16 @@ from typing import Optional
 
 
 def _missing_cli(name: str) -> None:
-    print(f"❌ Missing project-local CLI (.workspai/cli.py) - can't run '{name}'")
-    print("💡 If you're a new user run: workspai init  # create venv + install deps")
+    print(f"❌ Missing project-local RapidKit Core wrapper (.rapidkit/cli.py) - can't run '{name}'")
+    print("💡 If you're a new user run: rapidkit init  # create venv + install deps")
     sys.exit(127)
 
 
 def _load_project_cli_module() -> Optional[object]:
     project_root = Path(__file__).resolve().parents[1]
-    cli_file = project_root / ".workspai" / "cli.py"
+    cli_file = project_root / ".rapidkit" / "cli.py"
     if not cli_file.exists():
-        legacy_cli_file = project_root / ".rapidkit" / "cli.py"
-        if not legacy_cli_file.exists():
-            return None
-        cli_file = legacy_cli_file
+        return None
     spec = importlib.util.spec_from_file_location("project_cli", str(cli_file))
     if spec is None or spec.loader is None:
         return None
@@ -38,7 +35,7 @@ def _load_project_cli_module() -> Optional[object]:
 _mod = _load_project_cli_module()
 
 
-# Default placeholders -- call `_missing_cli` if the project-local CLI isn't
+# Default placeholders -- call `_missing_cli` if the project-local RapidKit Core wrapper isn't
 # available. These are real functions so linters don't complain.
 def init() -> None:
     _missing_cli("init")

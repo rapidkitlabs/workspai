@@ -30,7 +30,7 @@ async function bootstrap() {
   const enableDocs = process.env.RAPIDKIT_ENABLE_SWAGGER === '1' || process.env.NODE_ENV !== 'production';
   if (enableDocs) {
     const config = new DocumentBuilder()
-      .setTitle('{{ project_name | default("Workspai App") }} API')
+      .setTitle('{{ project_name | default("RapidKit App") }} API')
       .setDescription('Auto-generated API docs')
       .setVersion('{{ app_version | default("1.0.0") }}')
       .addBearerAuth()

@@ -3,9 +3,9 @@ import { registerAs } from '@nestjs/config';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 
-// Dynamic vendor loader - resolves .workspai/vendor in project root or uses
+// Dynamic vendor loader - resolves .rapidkit/vendor in project root or uses
 // RAPIDKIT_VENDOR_ROOT if set. This avoids hard-coded relative imports into
-// src/.workspai and makes generated projects robust and portable.
+// src/.rapidkit and makes generated projects robust and portable.
 const VENDOR_ROOT_ENV = 'RAPIDKIT_VENDOR_ROOT';
 const VENDOR_MODULE = '{{ rapidkit_vendor_module }}';
 const VENDOR_VERSION = '{{ rapidkit_vendor_version }}';
@@ -16,7 +16,7 @@ function resolveVendorRoot(): string {
   if (override && override.trim().length > 0) {
     return path.resolve(override);
   }
-  return path.resolve(process.cwd(), '.workspai', 'vendor');
+  return path.resolve(process.cwd(), '.rapidkit', 'vendor');
 }
 
 function resolveVendorModule() {
@@ -27,7 +27,7 @@ function resolveVendorModule() {
     VENDOR_CONFIGURATION_RELATIVE,
   );
   // Attempt to dynamically load a vendor-provided configuration. If the
-  // vendor snapshot is not present in .workspai/vendor (common when the
+  // vendor snapshot is not present in .rapidkit/vendor (common when the
   // 'settings' module wasn't installed), fail gracefully instead of
   // allowing require() to throw and crash the application.
   try {

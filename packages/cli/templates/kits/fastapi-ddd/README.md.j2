@@ -1,12 +1,15 @@
 # {{ project_name }}
 
-Domain-driven FastAPI service generated with Workspai. Python-backed module commands use [RapidKit Core](https://github.com/rapidkitlabs/rapidkit-core).
+Domain-driven FastAPI service generated with [RapidKit Core](https://github.com/rapidkitlabs/rapidkit-core). It can be adopted into Workspai workspace intelligence when you want workspace-level context, evidence, and release governance.
 
 ## Quick start
 
 ```bash
+# Load the project-local RapidKit Core launcher (adds .rapidkit/rapidkit to PATH)
+source .rapidkit/activate
+
 # Bootstrap dependencies (creates .venv + installs Poetry deps)
-npx workspai init  # use make init if you prefer a Make target
+rapidkit init  # use make init if you prefer a Make target
 
 # Copy env templates and install hooks/tooling
 ./bootstrap.sh
@@ -19,20 +22,22 @@ make test
 # Run the service
 make dev
 
-# Use the project-local RapidKit Core helpers when you prefer auto-detected environments
-npx workspai dev
-npx workspai lint
-npx workspai test
+# Use RapidKit Core helpers when you prefer auto-detected environments
+rapidkit dev
+rapidkit lint
+rapidkit test
 
 # Run supply-chain and dependency audits
 make audit
 ```
 
-> Re-run `npx workspai init` (or `make init`) when dependencies change. If you only need to refresh tooling/hooks, run `SKIP_INIT=1 make install` or rely on `./bootstrap.sh`.
+> Re-source `.rapidkit/activate` whenever you open a new shell so the project-local `rapidkit` launcher is always on your PATH.
 
-> Lockfiles are generated automatically during scaffolding. Set `RAPIDKIT_SKIP_LOCKS=1` (or `RAPIDKIT_GENERATE_LOCKS=0`) before running `workspai create` if you want to skip the lockfile attempt.
+> Re-run `rapidkit init` (or `make init`) when dependencies change. If you only need to refresh tooling/hooks, run `SKIP_INIT=1 make install` or rely on `./bootstrap.sh`.
 
-> Need to see every project-local RapidKit Core command? Run `rapidkit --help` when RapidKit Core is installed, or use `npx workspai --help` for workspace-level commands.
+> Lockfiles are generated automatically during scaffolding. Set `RAPIDKIT_SKIP_LOCKS=1` (or `RAPIDKIT_GENERATE_LOCKS=0`) before running `rapidkit create` if you want to skip the lockfile attempt.
+
+> Need to see every project-local RapidKit Core command? Run `rapidkit --help`. If this project is part of a Workspai workspace, run `npx workspai --help` from the workspace root for workspace intelligence commands.
 
 ## Project structure
 
@@ -45,7 +50,7 @@ src/
     presentation/  # API routers and dependencies
     shared/        # Cross-cutting primitives (Result, types, etc.)
   routing/         # Glue for module-provided routers
-  modules/         # RapidKit Core module bootstrapping
+  modules/         # RapidKit module bootstrapping
 ```
 
 ## Layer overview
@@ -72,7 +77,7 @@ curl -s -X POST http://localhost:8000/api/examples/notes \
 curl -s http://localhost:8000/api/examples/notes/1 | jq
 ```
 
-Swap the in-memory repository with a RapidKit Core database module when you are ready for persistence.
+Swap the in-memory repository with a RapidKit database module when you are ready for persistence.
 
 ## Deployment
 
@@ -84,7 +89,7 @@ Swap the in-memory repository with a RapidKit Core database module when you are 
 ## Testing
 
 ```bash
-npx workspai test
+rapidkit test
 ```
 
 The scaffold ships with a smoke test (`tests/test_app_factory.py`) that validates the
@@ -94,15 +99,15 @@ health endpoint and the application factory.
 
 ## Local development
 
-- `npx workspai init` bootstraps dependencies via the project-aware CLI.
-- `make init` is an optional alias for `npx workspai init` when you prefer Make targets.
-- `make install` re-runs `npx workspai init` unless `SKIP_INIT=1` is set and refreshes developer tooling such as pre-commit hooks.
+- `rapidkit init` bootstraps dependencies via the project-local RapidKit Core launcher (run it after sourcing `.rapidkit/activate`).
+- `make init` is an optional alias for `rapidkit init` when you prefer Make targets.
+- `make install` re-runs `rapidkit init` unless `SKIP_INIT=1` is set and refreshes developer tooling such as pre-commit hooks.
 - `./bootstrap.sh` copies `.env.example` to `.env` (when missing) and runs `SKIP_INIT=1 make install` for you.
-- `make dev` or `npx workspai dev` starts the FastAPI server with hot-reload and ensures environment variables from `.env` are loaded.
-- `make lint`, `make typecheck`, and `make test` (or `npx workspai lint` / `npx workspai test`) are thin wrappers around Ruff, mypy, and pytest for consistent CI parity.
+- `make dev` or `rapidkit dev` starts the FastAPI server with hot-reload and ensures environment variables from `.env` are loaded.
+- `make lint`, `make typecheck`, and `make test` (or `rapidkit lint` / `rapidkit test`) are thin wrappers around Ruff, mypy, and pytest for consistent CI parity.
 - `make audit` runs `pip-audit` and `npm audit` to surface vulnerable dependencies early.
 
-Pre-commit is configured with Ruff, Black, mypy, and hygiene hooks; `./bootstrap.sh` installs them automatically (or run `SKIP_INIT=1 make install`). Use the project-local launcher variants when you need auto-discovery of the right virtual environment inside automation scripts.
+Pre-commit is configured with Ruff, Black, mypy, and hygiene hooks; `./bootstrap.sh` installs them automatically (or run `SKIP_INIT=1 make install`). Use the RapidKit Core variants when you need them to auto-discover the right virtual environment inside automation scripts.
 
 <!-- <<<inject:module-snippet>>> -->
 

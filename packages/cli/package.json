@@ -59,6 +59,7 @@
     "preinstall": "node scripts/enforce-package-manager.cjs",
     "postinstall": "node scripts/check-cli-resolution.cjs",
     "sync-kits": "bash scripts/sync-kits.sh",
+    "sync:kits": "corepack npm run sync-kits",
     "build": "tsup",
     "build:watch": "tsup --watch",
     "dev": "tsup --watch",
@@ -128,7 +129,7 @@
     "contracts:validate": "corepack npm run contracts:check && corepack npm run validate:contracts",
     "docs:validate": "corepack npm run validate:docs",
     "smoke": "corepack npm run smoke:enterprise-package && corepack npm run smoke:readme && corepack npm run smoke:frontend-generators",
-    "fix": "corepack npm run lint:fix && corepack npm run format && corepack npm run sync:contracts && corepack npm run sync:shared-contracts"
+    "fix": "corepack npm run lint:fix && corepack npm run format && corepack npm run sync:contracts && corepack npm run sync:shared-contracts && corepack npm run sync-kits"
   },
   "dependencies": {
     "@clack/prompts": "^0.9.1",
