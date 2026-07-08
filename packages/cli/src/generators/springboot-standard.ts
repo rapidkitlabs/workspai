@@ -10,6 +10,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { execa } from 'execa';
 import { getVersion } from '../update-checker.js';
+import { isInsideExistingGitWorktree } from '../utils/git-worktree.js';
 import { toPascalCase, writeGeneratorFile } from './go-kit-common.js';
 
 export const DEFAULT_JAVA_VERSION = '21';
@@ -1124,15 +1125,21 @@ export async function generateSpringBootKit(
 
     if (!v.skipGit) {
       try {
-        await execa('git', ['init'], { cwd: projectPath });
-        await execa('git', ['add', '-A'], { cwd: projectPath });
-        await execa(
-          'git',
-          ['commit', '-m', 'chore: initial scaffold (rapidkit springboot.standard)'],
-          {
-            cwd: projectPath,
-          }
-        );
+        if (await isInsideExistingGitWorktree(projectPath)) {
+          console.log(
+            chalk.gray('⚠  git init skipped (target is inside an existing git worktree)')
+          );
+        } else {
+          await execa('git', ['init'], { cwd: projectPath });
+          await execa('git', ['add', '-A'], { cwd: projectPath });
+          await execa(
+            'git',
+            ['commit', '-m', 'chore: initial scaffold (rapidkit springboot.standard)'],
+            {
+              cwd: projectPath,
+            }
+          );
+        }
       } catch {
         console.log(
           chalk.yellow('⚠  Git initialization failed - continuing without initial commit')

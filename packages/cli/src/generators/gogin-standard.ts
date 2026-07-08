@@ -19,6 +19,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { execa } from 'execa';
 import { getVersion } from '../update-checker.js';
+import { isInsideExistingGitWorktree } from '../utils/git-worktree.js';
 import {
   buildGoLauncherCmdTemplate,
   buildGoLauncherShellTemplate,
@@ -1787,12 +1788,22 @@ export async function generateGoGinKit(
     // git init
     if (!v.skipGit) {
       try {
-        await execa('git', ['init'], { cwd: projectPath });
-        await execa('git', ['add', '-A'], { cwd: projectPath });
-        await execa('git', ['commit', '-m', 'chore: initial scaffold (rapidkit gogin.standard)'], {
-          cwd: projectPath,
-        });
-        console.log(chalk.gray('✓ git repository initialized'));
+        if (await isInsideExistingGitWorktree(projectPath)) {
+          console.log(
+            chalk.gray('⚠  git init skipped (target is inside an existing git worktree)')
+          );
+        } else {
+          await execa('git', ['init'], { cwd: projectPath });
+          await execa('git', ['add', '-A'], { cwd: projectPath });
+          await execa(
+            'git',
+            ['commit', '-m', 'chore: initial scaffold (rapidkit gogin.standard)'],
+            {
+              cwd: projectPath,
+            }
+          );
+          console.log(chalk.gray('✓ git repository initialized'));
+        }
       } catch {
         console.log(chalk.gray('⚠  git init skipped (git not found or error)'));
       }

@@ -71,11 +71,11 @@ async function execa(
 }
 
 const CLI_PATH = ensureDistBuilt('CLI entry point tests');
-const TEST_DIR = path.join(process.cwd(), 'test-cli-output');
+let TEST_DIR: string;
 
 describe('CLI Entry Point', () => {
   beforeEach(async () => {
-    await fs.ensureDir(TEST_DIR);
+    TEST_DIR = await fs.mkdtemp(path.join(os.tmpdir(), 'workspai-cli-index-test-'));
   });
 
   afterEach(async () => {

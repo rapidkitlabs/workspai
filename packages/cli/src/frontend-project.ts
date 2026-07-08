@@ -12,6 +12,7 @@ import {
 } from './utils/platform-capabilities.js';
 import type { ImportedProjectRegistryEntry } from './imported-projects-registry.js';
 import type { BackendImportStack } from './utils/backend-framework-contract.js';
+import { isInsideExistingGitWorktree } from './utils/git-worktree.js';
 import { projectMetadataPath } from './utils/workspace-paths.js';
 
 export type FrontendGeneratorId =
@@ -604,6 +605,12 @@ async function hasFrontendScaffoldArtifacts(projectPath: string): Promise<boolea
 async function maybeInitProjectGit(projectPath: string): Promise<void> {
   const gitDir = path.join(projectPath, '.git');
   if (await fsExtra.pathExists(gitDir)) {
+    return;
+  }
+  if (await isInsideExistingGitWorktree(projectPath)) {
+    console.log(
+      chalk.gray('   Git initialization skipped; target is inside an existing git worktree.')
+    );
     return;
   }
 
