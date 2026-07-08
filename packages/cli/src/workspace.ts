@@ -35,6 +35,47 @@ interface WorkspaceOptions {
   skipGit?: boolean;
 }
 
+type GitInitSpinner = {
+  start(text?: string): GitInitSpinner;
+  succeed(text?: string): GitInitSpinner;
+  warn(text?: string): GitInitSpinner;
+};
+
+async function findContainingGitRoot(targetPath: string): Promise<string | null> {
+  try {
+    const result = await execa('git', ['rev-parse', '--show-toplevel'], {
+      cwd: targetPath,
+    });
+    return result.stdout.trim() ? path.resolve(targetPath, result.stdout.trim()) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function initializeStandaloneGitRepository(
+  targetPath: string,
+  spinner: GitInitSpinner,
+  commitMessage: string
+): Promise<void> {
+  const existingGitRoot = await findContainingGitRoot(targetPath);
+  if (existingGitRoot) {
+    spinner.warn('Git initialization skipped because target is already inside a git worktree');
+    return;
+  }
+
+  spinner.start('Initializing git repository...');
+  try {
+    await execa('git', ['init'], { cwd: targetPath });
+    await execa('git', ['add', '.'], { cwd: targetPath });
+    await execa('git', ['commit', '-m', commitMessage], {
+      cwd: targetPath,
+    });
+    spinner.succeed('Git repository initialized');
+  } catch {
+    spinner.warn('Could not initialize git repository');
+  }
+}
+
 function normalizeWorkspaceEntry(entry: WorkspaceEntry): WorkspaceEntry {
   const normalizedPath = normalizeRegistryPath(entry.path);
   const projectsArray = Array.isArray(entry.projects) ? entry.projects : [];
@@ -445,17 +486,11 @@ Thumbs.db
 
     // Git initialization
     if (!options.skipGit) {
-      const gitSpinner = ora('Initializing git repository...').start();
-      try {
-        await execa('git', ['init'], { cwd: workspacePath });
-        await execa('git', ['add', '.'], { cwd: workspacePath });
-        await execa('git', ['commit', '-m', 'Initial commit: Workspai workspace'], {
-          cwd: workspacePath,
-        });
-        gitSpinner.succeed('Git repository initialized');
-      } catch {
-        gitSpinner.warn('Could not initialize git repository');
-      }
+      await initializeStandaloneGitRepository(
+        workspacePath,
+        ora(),
+        'Initial commit: Workspai workspace'
+      );
     }
 
     // Register workspace in shared registry for Extension compatibility
@@ -1118,21 +1153,11 @@ coverage/
 
     // Git initialization
     if (!options.skipGit) {
-      const gitSpinner = ora('Initializing git repository...').start();
-      try {
-        await execa('git', ['init'], { cwd: projectPath });
-        await execa('git', ['add', '.'], { cwd: projectPath });
-        await execa(
-          'git',
-          ['commit', '-m', `Initial commit: ${templateName} project via Workspai`],
-          {
-            cwd: projectPath,
-          }
-        );
-        gitSpinner.succeed('Git repository initialized');
-      } catch {
-        gitSpinner.warn('Could not initialize git repository');
-      }
+      await initializeStandaloneGitRepository(
+        projectPath,
+        ora(),
+        `Initial commit: ${templateName} project via Workspai`
+      );
     }
 
     // Install dependencies

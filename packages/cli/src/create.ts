@@ -80,6 +80,43 @@ async function writeWorkspaceGitignore(workspacePath: string): Promise<void> {
   );
 }
 
+type GitInitSpinner = Pick<CliSpinnerHandle, 'start' | 'succeed' | 'warn'>;
+
+async function findContainingGitRoot(targetPath: string): Promise<string | null> {
+  try {
+    const result = await execa('git', ['rev-parse', '--show-toplevel'], {
+      cwd: targetPath,
+    });
+    return result.stdout.trim() ? path.resolve(targetPath, result.stdout.trim()) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function initializeStandaloneGitRepository(
+  targetPath: string,
+  spinner: GitInitSpinner,
+  commitMessage: string
+): Promise<void> {
+  const existingGitRoot = await findContainingGitRoot(targetPath);
+  if (existingGitRoot) {
+    spinner.warn('Git initialization skipped because target is already inside a git worktree');
+    return;
+  }
+
+  spinner.start('Initializing git repository');
+  try {
+    await execa('git', ['init'], { cwd: targetPath });
+    await execa('git', ['add', '.'], { cwd: targetPath });
+    await execa('git', ['commit', '-m', commitMessage], {
+      cwd: targetPath,
+    });
+    spinner.succeed('Git repository initialized');
+  } catch {
+    spinner.warn('Could not initialize git repository');
+  }
+}
+
 /**
  * Write minimal pyproject.toml + poetry.toml stubs for workspaces created with
  * Python-free profiles (go-only, node-only, minimal).  These stubs carry no
@@ -1265,17 +1302,11 @@ export async function createProject(
 
       // Git init
       if (!skipGit) {
-        spinner2.start('Initializing git repository');
-        try {
-          await execa('git', ['init'], { cwd: projectPath });
-          await execa('git', ['add', '.'], { cwd: projectPath });
-          await execa('git', ['commit', '-m', 'Initial commit: Workspai workspace'], {
-            cwd: projectPath,
-          });
-          spinner2.succeed('Git repository initialized');
-        } catch {
-          spinner2.warn('Could not initialize git repository');
-        }
+        await initializeStandaloneGitRepository(
+          projectPath,
+          spinner2,
+          'Initial commit: Workspai workspace'
+        );
       }
 
       await finalizeWorkspaceOnboarding(projectPath, {
@@ -1428,21 +1459,11 @@ export async function createProject(
       );
 
       if (!skipGit) {
-        spinner2.start('Initializing git repository');
-        try {
-          await execa('git', ['init'], { cwd: projectPath });
-          await execa('git', ['add', '.'], { cwd: projectPath });
-          await execa(
-            'git',
-            ['commit', '-m', `Initial commit: Workspai workspace (${resolvedProfile})`],
-            {
-              cwd: projectPath,
-            }
-          );
-          spinner2.succeed('Git repository initialized');
-        } catch {
-          spinner2.warn('Could not initialize git repository');
-        }
+        await initializeStandaloneGitRepository(
+          projectPath,
+          spinner2,
+          `Initial commit: Workspai workspace (${resolvedProfile})`
+        );
       }
 
       await finalizeWorkspaceOnboarding(projectPath, {
@@ -1608,21 +1629,11 @@ export async function createProject(
               );
 
               if (!skipGit) {
-                spinner2.start('Initializing git repository');
-                try {
-                  await execa('git', ['init'], { cwd: projectPath });
-                  await execa('git', ['add', '.'], { cwd: projectPath });
-                  await execa(
-                    'git',
-                    ['commit', '-m', `Initial commit: Workspai workspace (${fallback} profile)`],
-                    {
-                      cwd: projectPath,
-                    }
-                  );
-                  spinner2.succeed('Git repository initialized');
-                } catch {
-                  spinner2.warn('Could not initialize git repository');
-                }
+                await initializeStandaloneGitRepository(
+                  projectPath,
+                  spinner2,
+                  `Initial commit: Workspai workspace (${fallback} profile)`
+                );
               }
 
               await finalizeWorkspaceOnboarding(projectPath, {
@@ -1678,21 +1689,11 @@ export async function createProject(
             await writeWorkspaceGitignore(projectPath);
 
             if (!skipGit) {
-              spinner2.start('Initializing git repository');
-              try {
-                await execa('git', ['init'], { cwd: projectPath });
-                await execa('git', ['add', '.'], { cwd: projectPath });
-                await execa(
-                  'git',
-                  ['commit', '-m', `Initial commit: Workspai workspace (${fallback})`],
-                  {
-                    cwd: projectPath,
-                  }
-                );
-                spinner2.succeed('Git repository initialized');
-              } catch {
-                spinner2.warn('Could not initialize git repository');
-              }
+              await initializeStandaloneGitRepository(
+                projectPath,
+                spinner2,
+                `Initial commit: Workspai workspace (${fallback})`
+              );
             }
 
             await finalizeWorkspaceOnboarding(projectPath, {
@@ -1868,17 +1869,11 @@ export async function createProject(
 
     // Git initialization
     if (!options.skipGit) {
-      spinner.start('Initializing git repository');
-      try {
-        await execa('git', ['init'], { cwd: projectPath });
-        await execa('git', ['add', '.'], { cwd: projectPath });
-        await execa('git', ['commit', '-m', 'Initial commit: Workspai environment'], {
-          cwd: projectPath,
-        });
-        spinner.succeed('Git repository initialized');
-      } catch (_error) {
-        spinner.warn('Could not initialize git repository');
-      }
+      await initializeStandaloneGitRepository(
+        projectPath,
+        spinner,
+        'Initial commit: Workspai environment'
+      );
     }
 
     await finalizeWorkspaceOnboarding(projectPath, {
@@ -2744,17 +2739,11 @@ export async function registerWorkspaceAtPath(
     });
 
     if (!skipGit) {
-      spinner.start('Initializing git repository');
-      try {
-        await execa('git', ['init'], { cwd: workspacePath });
-        await execa('git', ['add', '.'], { cwd: workspacePath });
-        await execa('git', ['commit', '-m', 'Initial commit: Workspai workspace'], {
-          cwd: workspacePath,
-        });
-        spinner.succeed('Git repository initialized');
-      } catch (_error) {
-        spinner.warn('Could not initialize git repository');
-      }
+      await initializeStandaloneGitRepository(
+        workspacePath,
+        spinner,
+        'Initial commit: Workspai workspace'
+      );
     }
   } catch (e) {
     spinner.fail('Failed to register workspace');
@@ -3433,21 +3422,26 @@ ${name}/
 
     // Git initialization
     if (!skipGit) {
-      spinner.start('Initializing git repository');
-      try {
-        await execa('git', ['init'], { cwd: projectPath });
-        await fsExtra.outputFile(
-          path.join(projectPath, '.gitignore'),
-          '# Dependencies\nnode_modules/\n\n# Generated projects\n*/\n!generate-demo.js\n!README.md\n\n# Python\n__pycache__/\n*.pyc\n.venv/\n.env\n',
-          'utf-8'
-        );
-        await execa('git', ['add', '.'], { cwd: projectPath });
-        await execa('git', ['commit', '-m', 'Initial commit: Demo workspace'], {
-          cwd: projectPath,
-        });
-        spinner.succeed('Git repository initialized');
-      } catch (_error) {
-        spinner.warn('Could not initialize git repository');
+      const existingGitRoot = await findContainingGitRoot(projectPath);
+      if (existingGitRoot) {
+        spinner.warn('Git initialization skipped because target is already inside a git worktree');
+      } else {
+        spinner.start('Initializing git repository');
+        try {
+          await execa('git', ['init'], { cwd: projectPath });
+          await fsExtra.outputFile(
+            path.join(projectPath, '.gitignore'),
+            '# Dependencies\nnode_modules/\n\n# Generated projects\n*/\n!generate-demo.js\n!README.md\n\n# Python\n__pycache__/\n*.pyc\n.venv/\n.env\n',
+            'utf-8'
+          );
+          await execa('git', ['add', '.'], { cwd: projectPath });
+          await execa('git', ['commit', '-m', 'Initial commit: Demo workspace'], {
+            cwd: projectPath,
+          });
+          spinner.succeed('Git repository initialized');
+        } catch (_error) {
+          spinner.warn('Could not initialize git repository');
+        }
       }
     }
 

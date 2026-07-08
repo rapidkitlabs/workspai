@@ -237,6 +237,47 @@ describe('registerWorkspaceAtPath', () => {
     expect(spinnerMock.warn).not.toHaveBeenCalledWith('Could not initialize git repository');
   });
 
+  it('should skip git init when target is already inside a git worktree', async () => {
+    vi.mocked(execa).mockImplementation((cmd: any, args: any, opts?: any) => {
+      if (cmd === 'git' && Array.isArray(args) && args[0] === 'rev-parse') {
+        return Promise.resolve({
+          stdout: '/tmp/existing-parent-repo',
+          stderr: '',
+          exitCode: 0,
+        }) as any;
+      }
+      if (cmd === 'poetry' && Array.isArray(args) && args[0] === '--version') {
+        return Promise.resolve({ stdout: 'Poetry 1.8.0', stderr: '', exitCode: 0 }) as any;
+      }
+      return Promise.resolve({ stdout: '', stderr: '', exitCode: 0, opts }) as any;
+    });
+
+    const { createUiSpinner } = await import('../cli-ui/spinner.js');
+    const spinnerMock = {
+      start: vi.fn().mockReturnThis(),
+      succeed: vi.fn().mockReturnThis(),
+      fail: vi.fn().mockReturnThis(),
+      warn: vi.fn().mockReturnThis(),
+      text: '',
+    };
+    vi.mocked(createUiSpinner).mockReturnValue(spinnerMock as any);
+
+    await registerWorkspaceAtPath('/tmp/existing-parent-repo/workspai', {
+      skipGit: false,
+      installMethod: 'poetry',
+    });
+
+    const gitCalls = vi
+      .mocked(execa)
+      .mock.calls.filter((call) => call[0] === 'git')
+      .map((call) => call[1]);
+
+    expect(gitCalls).toEqual([['rev-parse', '--show-toplevel']]);
+    expect(spinnerMock.warn).toHaveBeenCalledWith(
+      'Git initialization skipped because target is already inside a git worktree'
+    );
+  });
+
   // ─── Error path: shared registry import fails silently ───────────────────
   it('should continue silently when workspace registry import rejects', async () => {
     mockExecaSuccess();

@@ -51,7 +51,15 @@ async function execa(
     };
 
     if ((child.error || result.exitCode !== 0) && options.reject !== false) {
-      throw Object.assign(child.error ?? new Error(`Command failed: ${command}`), result);
+      const message = [
+        `Command failed: ${command}`,
+        `exitCode: ${result.exitCode}`,
+        result.stdout ? `stdout:\n${result.stdout}` : '',
+        result.stderr ? `stderr:\n${result.stderr}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+      throw Object.assign(child.error ?? new Error(message), result);
     }
 
     return result;
@@ -740,17 +748,26 @@ describe('CLI Entry Point', () => {
       });
 
       try {
-        const { stdout, exitCode } = await execa('node', [
-          CLI_PATH,
-          'import',
-          gitSource,
-          '--git',
-          '--workspace',
-          workspaceRoot,
-          '--name',
-          'git-orders-api',
-          '--json',
-        ]);
+        const { stdout, exitCode } = await execa(
+          'node',
+          [
+            CLI_PATH,
+            'import',
+            gitSource,
+            '--git',
+            '--workspace',
+            workspaceRoot,
+            '--name',
+            'git-orders-api',
+            '--json',
+          ],
+          {
+            env: {
+              ...process.env,
+              WORKSPAI_DEBUG_ARGS: '1',
+            },
+          }
+        );
 
         expect(exitCode).toBe(0);
 
