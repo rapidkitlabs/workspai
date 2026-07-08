@@ -19,10 +19,22 @@ npx wspai --help
 | --- | --- | --- |
 | `packages/cli` | Active | `workspai`, the Workspai command-line interface |
 | `packages/wspai` | Active | `wspai`, the short npm alias package for `npx wspai ...` |
-s| `packages/mcp` | Planned | MCP server package boundary |
+| `packages/mcp` | Planned | MCP server package boundary |
 | `packages/sdk` | Planned | Public SDK package boundary |
 
 Only `workspai` and its short alias package `wspai` are published from this repository today.
+
+## Publishing Model
+
+`workspai` is the canonical user-facing CLI package and command:
+
+```bash
+npx workspai ...
+```
+
+`wspai` is a tiny alias package for short `npx` workflows. Future scoped packages such as
+`@workspai/sdk`, `@workspai/mcp`, or `@workspai/graph` should be specialized package boundaries,
+while the primary command surface remains `npx workspai ...`.
 
 ## Development
 

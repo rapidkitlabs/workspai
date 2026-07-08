@@ -107,6 +107,38 @@ describe('workspace-registry-summary', () => {
     expect(resolved.summary.sources.legacyWorkspaceJson.projectCount).toBe(0);
   });
 
+  it('reports a global registry entry as existing even before projects are registered', async () => {
+    const workspacePath = await createWorkspaceRoot();
+    const originalHome = process.env.HOME;
+    const fakeHome = await fsExtra.mkdtemp(path.join(process.cwd(), 'registry-summary-home-'));
+    tempRoots.push(fakeHome);
+    process.env.HOME = fakeHome;
+
+    try {
+      await fsExtra.outputJson(path.join(fakeHome, '.workspai', 'workspaces.json'), {
+        workspaces: [
+          {
+            name: 'empty-global',
+            path: workspacePath,
+            mode: 'full',
+            projects: [],
+          },
+        ],
+      });
+
+      const resolved = await resolveWorkspaceRegisteredProjects(workspacePath);
+      expect(resolved.summary.sources.globalRegistry.exists).toBe(true);
+      expect(resolved.summary.sources.globalRegistry.projectCount).toBe(0);
+      expect(resolved.summary.authority).toBe('none');
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
+  });
+
   it('reads published summary artifact', async () => {
     const workspacePath = await createWorkspaceRoot();
     await publishWorkspaceRegistrySummary(workspacePath);

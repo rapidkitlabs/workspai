@@ -56,10 +56,15 @@ describe('npm publish contract', () => {
     ) as {
       private?: boolean;
       workspaces?: string[];
+      scripts?: Record<string, string>;
     };
 
     expect(rootPackage.private).toBe(true);
     expect(rootPackage.workspaces).toContain('packages/*');
+    expect(rootPackage.scripts?.['install:local']).toContain('--workspace workspai link');
+    expect(rootPackage.scripts?.['install:local']).toContain('--workspace wspai link');
+    expect(rootPackage.scripts?.['uninstall:local']).toContain('unlink -g workspai');
+    expect(rootPackage.scripts?.['uninstall:local']).toContain('unlink -g wspai');
     expect(packageJson.name).toBe('workspai');
     expect(packageJson.bin?.workspai).toBe('dist/index.js');
     expect(packageJson.bin?.rapidkit).toBeUndefined();
@@ -153,10 +158,26 @@ describe('npm publish contract', () => {
     expect(releaseWorkflow).not.toContain('sync:legacy-rapidkit');
     expect(releaseWorkflow).toContain('working-directory: packages/cli');
     expect(releaseWorkflow).toContain('npm publish workspai');
+    expect(releaseWorkflow).toContain('npm publish wspai');
     expect(releaseWorkflow).toContain('is available for publish');
     expect(releaseWorkflow).toContain('npm --workspace workspai run smoke:enterprise-package');
+    expect(releaseWorkflow).toContain('npm --workspace wspai run smoke');
     expect(releaseWorkflow).toContain('npm --workspace workspai run test:prepare-embeddings');
     expect(securityWorkflow).toContain('npm audit --audit-level=high');
+  });
+
+  it('keeps the local release script signed and alias-aware', () => {
+    const releaseScript = fs.readFileSync(path.join(process.cwd(), 'scripts/release.sh'), 'utf8');
+
+    expect(releaseScript).toContain('git commit -S -m "chore(release): $TAG"');
+    expect(releaseScript).toContain('git tag -s "$TAG" -m "Release $TAG"');
+    expect(releaseScript).toContain('--workspace workspai version "$VERSION"');
+    expect(releaseScript).toContain('--workspace wspai version "$VERSION"');
+    expect(releaseScript).toContain('pkg.dependencies.workspai=process.argv[1]');
+    expect(releaseScript).toContain('publish --dry-run --access public --workspace workspai');
+    expect(releaseScript).toContain('publish --dry-run --access public --workspace wspai');
+    expect(releaseScript).toContain('publish --access public --workspace workspai');
+    expect(releaseScript).toContain('publish --access public --workspace wspai');
   });
 
   it('publishes README image assets referenced from npm-safe raw GitHub URLs', () => {

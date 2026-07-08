@@ -177,6 +177,9 @@ describe('Doctor Command', () => {
   });
 
   it('should handle doctor with fix option', async () => {
+    const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'workspai-doctor-fix-'));
+    const originalCwd = process.cwd();
+
     mockedExeca.mockImplementation(async (cmd: string) => {
       if (cmd === 'python3' || cmd === 'python') {
         return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
@@ -184,8 +187,14 @@ describe('Doctor Command', () => {
       return { stdout: '', stderr: '', exitCode: 0 } as any;
     });
 
-    const { runDoctor } = await import('../doctor.js');
-    await expect(runDoctor({ json: false, fix: true })).resolves.not.toThrow();
+    try {
+      process.chdir(tempRoot);
+      const { runDoctor } = await import('../doctor.js');
+      await expect(runDoctor({ json: false, fix: true })).resolves.not.toThrow();
+    } finally {
+      process.chdir(originalCwd);
+      await fsExtra.remove(tempRoot);
+    }
   });
 
   it('should handle different python versions', async () => {
@@ -2397,6 +2406,188 @@ describe('Doctor Command', () => {
     }
   });
 
+  it('should accept RapidKit FastAPI src/main.py as Python boot entrypoint', async () => {
+    const tempRoot = await fsExtra.mkdtemp(
+      path.join(os.tmpdir(), 'rapidkit-doctor-fastapi-entrypoint-')
+    );
+    const workspacePath = path.join(tempRoot, 'workspace');
+    const projectPath = path.join(workspacePath, 'orbit-api');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.workspai'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.workspai-workspace'), {
+      name: 'workspace',
+      version: '1.0',
+    });
+
+    await fsExtra.ensureDir(path.join(projectPath, '.workspai'));
+    await fsExtra.writeJSON(path.join(projectPath, '.workspai', 'project.json'), {
+      name: 'orbit-api',
+      kit_name: 'fastapi.standard',
+      runtime: 'python',
+    });
+    await fsExtra.writeFile(
+      path.join(projectPath, 'pyproject.toml'),
+      [
+        '[tool.poetry]',
+        'name = "orbit-api"',
+        'version = "0.1.0"',
+        '',
+        '[tool.poetry.dependencies]',
+        'python = "^3.10"',
+        'fastapi = "^0.139.0"',
+        '',
+      ].join('\n')
+    );
+    await fsExtra.ensureDir(path.join(projectPath, 'src'));
+    await fsExtra.writeFile(
+      path.join(projectPath, 'src', 'main.py'),
+      ['from fastapi import FastAPI', '', 'app = FastAPI(title="orbit-api")', ''].join('\n')
+    );
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if ((cmd === 'python3' || cmd === 'python') && args?.[0] === '--version') {
+        return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx' && args?.[0] === '--version') {
+        return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.5.5', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(projectPath);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ project: true, json: true });
+
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string | undefined;
+
+      expect(jsonLine).toBeDefined();
+      const payload = JSON.parse(jsonLine as string);
+      const bootProbe = payload.project.probes.find(
+        (probe: { id?: string }) => probe.id === 'adapter-python-boot-entrypoint'
+      );
+      expect(bootProbe).toBeDefined();
+      expect(bootProbe.status).toBe('pass');
+      expect(bootProbe.reason).toBe('Python application entrypoint markers detected.');
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it.each([
+    {
+      name: 'go-fiber',
+      kitName: 'go.fiber.standard',
+      runtime: 'go',
+      files: {
+        'go.mod': 'module example.com/go-fiber\n\ngo 1.22\n',
+        'go.sum': '',
+        'cmd/server/main.go': 'package main\n\nfunc main() {}\n',
+      },
+      probeId: 'adapter-go-boot-entrypoint',
+      passReason: 'Go application entrypoint markers detected.',
+    },
+    {
+      name: 'orders-service',
+      kitName: 'springboot.standard',
+      runtime: 'java',
+      files: {
+        'pom.xml': '<project></project>\n',
+        mvnw: '#!/usr/bin/env sh\n',
+        'src/main/java/com/workspai/apps/orders/service/OrdersServiceApplication.java':
+          'package com.workspai.apps.orders.service;\n\nclass OrdersServiceApplication {}\n',
+      },
+      probeId: 'adapter-java-boot-entrypoint',
+      passReason: 'Java application entrypoint markers detected.',
+    },
+  ])('should accept canonical $runtime boot entrypoint markers', async (canary) => {
+    const tempRoot = await fsExtra.mkdtemp(
+      path.join(os.tmpdir(), `rapidkit-doctor-${canary.runtime}-entrypoint-`)
+    );
+    const workspacePath = path.join(tempRoot, 'workspace');
+    const projectPath = path.join(workspacePath, canary.name);
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.workspai'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.workspai-workspace'), {
+      name: 'workspace',
+      version: '1.0',
+    });
+
+    await fsExtra.ensureDir(path.join(projectPath, '.workspai'));
+    await fsExtra.writeJSON(path.join(projectPath, '.workspai', 'project.json'), {
+      name: canary.name,
+      kit_name: canary.kitName,
+      runtime: canary.runtime,
+    });
+    for (const [relativePath, content] of Object.entries(canary.files)) {
+      await fsExtra.outputFile(path.join(projectPath, relativePath), content);
+    }
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if ((cmd === 'python3' || cmd === 'python') && args?.[0] === '--version') {
+        return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx' && args?.[0] === '--version') {
+        return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.5.5', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'java' && args?.[0] === '-version') {
+        return { stdout: '', stderr: 'openjdk version "21.0.1"', exitCode: 0 } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(projectPath);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ project: true, json: true });
+
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string | undefined;
+
+      expect(jsonLine).toBeDefined();
+      const payload = JSON.parse(jsonLine as string);
+      const bootProbe = payload.project.probes.find(
+        (probe: { id?: string }) => probe.id === canary.probeId
+      );
+      expect(bootProbe).toBeDefined();
+      expect(bootProbe.status).toBe('pass');
+      expect(bootProbe.reason).toBe(canary.passReason);
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
   it('should report command capabilities for nested ASP.NET Core project files', async () => {
     const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rapidkit-doctor-dotnet-'));
     const workspacePath = path.join(tempRoot, 'workspace');
@@ -2422,6 +2613,10 @@ describe('Doctor Command', () => {
     await fsExtra.outputFile(
       path.join(projectPath, 'src', 'orders-api.csproj'),
       '<Project Sdk="Microsoft.NET.Sdk.Web"></Project>'
+    );
+    await fsExtra.outputFile(
+      path.join(projectPath, 'src', 'Program.cs'),
+      'Console.WriteLine("ok");\n'
     );
     await fsExtra.ensureDir(path.join(projectPath, 'src', 'obj'));
     await fsExtra.outputFile(path.join(projectPath, 'tests', 'orders-api.Tests.csproj'), '');
@@ -2473,6 +2668,11 @@ describe('Doctor Command', () => {
         status: 'unsupported',
         owner: 'none',
       });
+      const bootProbe = payload.project.probes.find(
+        (probe: { id?: string }) => probe.id === 'adapter-dotnet-boot-entrypoint'
+      );
+      expect(bootProbe).toBeDefined();
+      expect(bootProbe.status).toBe('pass');
     } finally {
       process.chdir(originalCwd);
       logSpy.mockRestore();
@@ -2745,6 +2945,65 @@ describe('Doctor Command', () => {
     await fsExtra.writeJSON(path.join(tempRoot, '.rapidkit-workspace'), {
       name: 'invalid-workspace',
       version: '1.0',
+    });
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'python3' || cmd === 'python') {
+        if (args?.[0] === '--version') {
+          return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+        }
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx' && args?.[0] === '--version') {
+        return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(tempRoot);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ workspace: true, json: true });
+
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string | undefined;
+
+      expect(jsonLine).toBeDefined();
+      const payload = JSON.parse(jsonLine as string);
+      expect(fsExtra.realpathSync(payload.workspace.path)).toBe(fsExtra.realpathSync(tempRoot));
+      expect(payload.summary.totalProjects).toBe(0);
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('should accept workspace mode when only Workspai workspace markers exist', async () => {
+    const tempRoot = await fsExtra.mkdtemp(
+      path.join(os.tmpdir(), 'workspai-doctor-workspace-guard-')
+    );
+
+    await fsExtra.writeJSON(path.join(tempRoot, '.workspai-workspace'), {
+      name: 'workspai-workspace',
+      version: '1.0',
+    });
+    await fsExtra.ensureDir(path.join(tempRoot, '.workspai'));
+    await fsExtra.writeJSON(path.join(tempRoot, '.workspai', 'workspace.json'), {
+      name: 'workspai-workspace',
+      profile: 'node-only',
     });
 
     mockedExeca.mockImplementation(async (cmd: string, args?: any) => {

@@ -228,6 +228,33 @@ async function findUserLocalRapidkitRunner(
   return null;
 }
 
+async function findPathRapidkitRunner(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<RapidkitRunner | null> {
+  const executableName = isWindowsPlatform(platform) ? 'rapidkit.exe' : 'rapidkit';
+  const pathEnv = (env.PATH ?? '').split(path.delimiter).filter(Boolean);
+
+  for (const dir of pathEnv) {
+    const candidate = path.join(dir, executableName);
+    try {
+      if (!(await fsExtra.pathExists(candidate))) continue;
+      const res = await execa(candidate, ['--version', '--json'], {
+        reject: false,
+        stdio: 'pipe',
+        timeout: 4000,
+      });
+      if (res.exitCode === 0 && (await isCoreJsonVersion(res.stdout, { requireSchema: true }))) {
+        return { cmd: candidate, baseArgs: [] };
+      }
+    } catch {
+      // Ignore broken PATH candidates and continue scanning.
+    }
+  }
+
+  return null;
+}
+
 function isPinnedSpec(spec: string): boolean {
   return /[<>=!~]=|@|\.whl$|\.tar\.gz$|\.zip$|git\+|https?:\/\//.test(spec);
 }
@@ -372,11 +399,13 @@ async function tryRapidkit(cmd: PythonCommand): Promise<boolean> {
             const out = (res.stdout ?? '').toString().trim();
             try {
               const parsed = JSON.parse(out) as unknown;
+              const record = parsed as Record<string, unknown>;
               if (
                 !!parsed &&
                 typeof parsed === 'object' &&
                 parsed !== null &&
-                'version' in (parsed as Record<string, unknown>)
+                'version' in record &&
+                record.schema_version === 1
               ) {
                 return true;
               }
@@ -405,17 +434,25 @@ type RapidkitRunner = {
   workspaceDir?: string;
 };
 
-async function isCoreJsonVersion(stdout: unknown): Promise<boolean> {
+async function isCoreJsonVersion(
+  stdout: unknown,
+  options?: { requireSchema?: boolean }
+): Promise<boolean> {
   const out = (stdout ?? '').toString().trim();
   if (!out) return false;
   try {
     const parsed = JSON.parse(out) as unknown;
-    return (
-      !!parsed &&
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      'version' in (parsed as Record<string, unknown>)
-    );
+    if (!parsed || typeof parsed !== 'object' || parsed === null) {
+      return false;
+    }
+    const record = parsed as Record<string, unknown>;
+    if (!('version' in record)) {
+      return false;
+    }
+    if (options?.requireSchema) {
+      return record.schema_version === 1 || record.schemaVersion === 'rapidkit-core-version-v1';
+    }
+    return true;
   } catch {
     return false;
   }
@@ -609,6 +646,8 @@ async function resolveRapidkitRunner(cwd?: string): Promise<RapidkitRunner> {
   // unsafe because it can be the npm wrapper itself.
   const userLocalRunner = await findUserLocalRapidkitRunner();
   if (userLocalRunner) return userLocalRunner;
+  const pathRunner = await findPathRapidkitRunner();
+  if (pathRunner) return pathRunner;
 
   // If no user-local/pipx console script is available, bootstrap the bridge venv.
   const venvDir = bridgeVenvDir();
@@ -1812,6 +1851,7 @@ export const __test__ = {
   parseCoreCommandsFromHelp,
   tryRapidkit,
   findUserLocalRapidkitRunner,
+  findPathRapidkitRunner,
   findWorkspaceRunner,
   checkRapidkitCoreAvailable,
   checkRapidkitCoreVersionCompatible,

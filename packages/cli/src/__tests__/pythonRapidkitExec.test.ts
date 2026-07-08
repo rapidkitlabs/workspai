@@ -445,6 +445,39 @@ describe('resolveRapidkitRunner', () => {
       expect(runner).toEqual({ cmd: expected, baseArgs: [] });
     }
   );
+
+  it('uses only schema-tagged RapidKit Core executables from PATH fallback', async () => {
+    const pathA = '/tmp/npm-bin';
+    const pathB = '/tmp/core-bin';
+    const npmWrapper = path.join(pathA, 'rapidkit');
+    const coreRunner = path.join(pathB, 'rapidkit');
+
+    mockFs.pathExists.mockImplementation(
+      async (candidate: string) => candidate === npmWrapper || candidate === coreRunner
+    );
+    mockExeca.mockImplementation(async (cmd: string, args?: string[]) => {
+      if (args?.join(' ') !== '--version --json') {
+        return { exitCode: 1, stdout: '', stderr: '' };
+      }
+      if (cmd === npmWrapper) {
+        return {
+          exitCode: 0,
+          stdout: '{"schemaVersion":"rapidkit-version-v1","cli":"workspai","version":"0.43.0"}',
+          stderr: '',
+        };
+      }
+      if (cmd === coreRunner) {
+        return { exitCode: 0, stdout: '{"schema_version":1,"version":"0.5.4"}', stderr: '' };
+      }
+      return { exitCode: 1, stdout: '', stderr: '' };
+    });
+
+    const runner = await bridge.__test__.findPathRapidkitRunner('linux', {
+      PATH: [pathA, pathB].join(path.delimiter),
+    } as NodeJS.ProcessEnv);
+
+    expect(runner).toEqual({ cmd: coreRunner, baseArgs: [] });
+  });
 });
 
 describe('getCachedCoreTopLevelCommands', () => {

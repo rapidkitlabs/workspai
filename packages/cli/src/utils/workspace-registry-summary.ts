@@ -113,7 +113,11 @@ async function readWorkspaceManifest(workspacePath: string): Promise<{
   }
 }
 
-async function readGlobalRegistryProjectCount(workspacePath: string): Promise<number> {
+async function readGlobalRegistrySnapshot(workspacePath: string): Promise<{
+  exists: boolean;
+  projectCount: number;
+  registryPath?: string;
+}> {
   const normalizedWorkspacePath = normalizeRegistryPath(workspacePath);
   for (const registryFile of getWorkspaceRegistryFileCandidates()) {
     if (!(await fsExtra.pathExists(registryFile))) {
@@ -125,13 +129,21 @@ async function readGlobalRegistryProjectCount(workspacePath: string): Promise<nu
         (workspace) => normalizeRegistryPath(workspace.path) === normalizedWorkspacePath
       );
       if (entry) {
-        return Array.isArray(entry.projects) ? entry.projects.length : 0;
+        return {
+          exists: true,
+          projectCount: Array.isArray(entry.projects) ? entry.projects.length : 0,
+          registryPath: registryFile,
+        };
       }
     } catch {
       continue;
     }
   }
-  return 0;
+  return {
+    exists: false,
+    projectCount: 0,
+    registryPath: path.join(getWorkspaceRegistryDirectory(), 'workspaces.json'),
+  };
 }
 
 export async function resolveWorkspaceRegisteredProjects(workspacePath: string): Promise<{
@@ -144,7 +156,7 @@ export async function resolveWorkspaceRegisteredProjects(workspacePath: string):
     WORKSPACE_CONTRACT_PATH
   );
   const manifest = await readWorkspaceManifest(resolvedWorkspacePath);
-  const globalRegistryProjectCount = await readGlobalRegistryProjectCount(resolvedWorkspacePath);
+  const globalRegistry = await readGlobalRegistrySnapshot(resolvedWorkspacePath);
 
   const contractExists = Boolean(contractPath);
   let contractProjects: WorkspaceContractProject[] = [];
@@ -164,9 +176,9 @@ export async function resolveWorkspaceRegisteredProjects(workspacePath: string):
       path: WORKSPACE_CONTRACT_PATH,
     },
     globalRegistry: {
-      exists: globalRegistryProjectCount > 0,
-      projectCount: globalRegistryProjectCount,
-      path: path.join(getWorkspaceRegistryDirectory(), 'workspaces.json'),
+      exists: globalRegistry.exists,
+      projectCount: globalRegistry.projectCount,
+      path: globalRegistry.registryPath,
     },
     legacyWorkspaceJson: {
       exists: manifest.exists,
@@ -185,9 +197,9 @@ export async function resolveWorkspaceRegisteredProjects(workspacePath: string):
     authority = 'workspace.contract.json';
     projects = contractProjects.map(mapContractProject);
     projectCount = projects.length;
-  } else if (globalRegistryProjectCount > 0) {
+  } else if (globalRegistry.projectCount > 0) {
     authority = 'global-registry';
-    projectCount = globalRegistryProjectCount;
+    projectCount = globalRegistry.projectCount;
   } else if (manifest.legacyProjectCount > 0) {
     authority = 'legacy-workspace.json';
     projectCount = manifest.legacyProjectCount;

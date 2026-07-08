@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import { createHash } from 'crypto';
 import { execa } from 'execa';
 import fsExtra from 'fs-extra';
+import type { Dirent } from 'fs';
 import path from 'path';
 import { logger } from './logger.js';
 import { prompt } from './cli-ui/prompts.js';
@@ -48,7 +49,10 @@ import {
   firstExistingWorkspaceArtifactPath,
   writeWorkspaceArtifactJson,
 } from './utils/artifact-path-compat.js';
-import { projectMetadataCandidates } from './utils/workspace-paths.js';
+import {
+  hasWorkspaceRootMarkers as hasKnownWorkspaceRootMarkers,
+  projectMetadataCandidates,
+} from './utils/workspace-paths.js';
 import { getProbeTimeoutMs } from './utils/command-timeouts.js';
 import {
   buildDoctorFixExecutionResult,
@@ -2280,6 +2284,48 @@ function pushProjectProbe(health: ProjectHealth, probe: ProjectProbeResult): voi
   }
 }
 
+async function anyRelativePathExists(rootPath: string, relativePaths: string[]): Promise<boolean> {
+  return (
+    await Promise.all(
+      relativePaths.map((relativePath) => fsExtra.pathExists(path.join(rootPath, relativePath)))
+    )
+  ).some(Boolean);
+}
+
+async function findFileByName(
+  rootPath: string,
+  options: { name?: string; suffix?: string; under?: string[]; ignoreDirs?: string[] }
+): Promise<boolean> {
+  const ignoreDirs = new Set(options.ignoreDirs ?? ['node_modules', '.git', 'bin', 'obj', 'dist']);
+  const roots = options.under && options.under.length > 0 ? options.under : ['.'];
+  const queue = roots.map((relativeRoot) => path.join(rootPath, relativeRoot));
+
+  while (queue.length > 0) {
+    const current = queue.shift() as string;
+    let entries: Dirent[];
+    try {
+      entries = await fsExtra.readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (
+        entry.isFile() &&
+        ((options.name && entry.name === options.name) ||
+          (options.suffix && entry.name.endsWith(options.suffix)))
+      ) {
+        return true;
+      }
+      if (entry.isDirectory() && !ignoreDirs.has(entry.name)) {
+        queue.push(path.join(current, entry.name));
+      }
+    }
+  }
+
+  return false;
+}
+
 async function appendRuntimeAdapterProbes(
   projectPath: string,
   health: ProjectHealth
@@ -2309,11 +2355,16 @@ async function appendRuntimeAdapterProbes(
         : 'Commit a lockfile for deterministic installs and CI parity.',
     });
 
-    const bootEntryExists =
-      (await fsExtra.pathExists(path.join(projectPath, 'src/main.ts'))) ||
-      (await fsExtra.pathExists(path.join(projectPath, 'src/main.js'))) ||
-      (await fsExtra.pathExists(path.join(projectPath, 'src/server.ts'))) ||
-      (await fsExtra.pathExists(path.join(projectPath, 'src/server.js')));
+    const bootEntryExists = await anyRelativePathExists(projectPath, [
+      'src/main.ts',
+      'src/main.js',
+      'src/server.ts',
+      'src/server.js',
+      'server.ts',
+      'server.js',
+      'index.ts',
+      'index.js',
+    ]);
     pushProjectProbe(health, {
       id: 'adapter-node-boot-entrypoint',
       label: 'Node adapter boot entrypoint',
@@ -2349,10 +2400,16 @@ async function appendRuntimeAdapterProbes(
         : 'Pin dependency contract for deterministic setup and reproducible CI.',
     });
 
-    const bootEntryExists =
-      (await fsExtra.pathExists(path.join(projectPath, 'app/main.py'))) ||
-      (await fsExtra.pathExists(path.join(projectPath, 'main.py'))) ||
-      (await fsExtra.pathExists(path.join(projectPath, 'manage.py')));
+    const pythonBootEntrypointMarkers = [
+      'src/main.py',
+      'src/app/main.py',
+      'app/main.py',
+      'main.py',
+      'manage.py',
+      'asgi.py',
+      'wsgi.py',
+    ];
+    const bootEntryExists = await anyRelativePathExists(projectPath, pythonBootEntrypointMarkers);
     pushProjectProbe(health, {
       id: 'adapter-python-boot-entrypoint',
       label: 'Python adapter boot entrypoint',
@@ -2386,6 +2443,33 @@ async function appendRuntimeAdapterProbes(
         ? undefined
         : 'Commit mvnw or gradlew for reproducible enterprise pipelines.',
     });
+
+    const bootEntryExists =
+      (await anyRelativePathExists(projectPath, [
+        'src/main/java/Application.java',
+        'src/main/kotlin/Application.kt',
+      ])) ||
+      (await findFileByName(projectPath, {
+        suffix: 'Application.java',
+        under: ['src/main/java'],
+      })) ||
+      (await findFileByName(projectPath, {
+        suffix: 'Application.kt',
+        under: ['src/main/kotlin'],
+      }));
+    pushProjectProbe(health, {
+      id: 'adapter-java-boot-entrypoint',
+      label: 'Java adapter boot entrypoint',
+      status: bootEntryExists ? 'pass' : 'warn',
+      severity: 'warn',
+      scope: 'project-scoped',
+      reason: bootEntryExists
+        ? 'Java application entrypoint markers detected.'
+        : 'No Java application entrypoint markers detected.',
+      recommendation: bootEntryExists
+        ? undefined
+        : 'Expose a Spring Boot Application class under src/main/java or src/main/kotlin.',
+    });
     return;
   }
 
@@ -2403,6 +2487,44 @@ async function appendRuntimeAdapterProbes(
       recommendation: goSumExists
         ? undefined
         : 'Generate and commit go.sum in the repository baseline.',
+    });
+    const bootEntryExists = await anyRelativePathExists(projectPath, [
+      'cmd/server/main.go',
+      'cmd/api/main.go',
+      'main.go',
+    ]);
+    pushProjectProbe(health, {
+      id: 'adapter-go-boot-entrypoint',
+      label: 'Go adapter boot entrypoint',
+      status: bootEntryExists ? 'pass' : 'warn',
+      severity: 'warn',
+      scope: 'project-scoped',
+      reason: bootEntryExists
+        ? 'Go application entrypoint markers detected.'
+        : 'No Go application entrypoint markers detected.',
+      recommendation: bootEntryExists
+        ? undefined
+        : 'Expose a Go main package entrypoint such as cmd/server/main.go.',
+    });
+    return;
+  }
+
+  if (runtime === 'dotnet') {
+    const bootEntryExists =
+      (await anyRelativePathExists(projectPath, ['Program.cs', 'src/Program.cs'])) ||
+      (await findFileByName(projectPath, { name: 'Program.cs' }));
+    pushProjectProbe(health, {
+      id: 'adapter-dotnet-boot-entrypoint',
+      label: '.NET adapter boot entrypoint',
+      status: bootEntryExists ? 'pass' : 'warn',
+      severity: 'warn',
+      scope: 'project-scoped',
+      reason: bootEntryExists
+        ? '.NET application entrypoint markers detected.'
+        : 'No .NET application entrypoint markers detected.',
+      recommendation: bootEntryExists
+        ? undefined
+        : 'Expose Program.cs at the project root or under src for deterministic boot probes.',
     });
   }
 }
@@ -3824,8 +3946,11 @@ async function hasBackendProjectMarkers(projectPath: string): Promise<boolean> {
 }
 
 async function hasWorkspaceRootMarkers(candidatePath: string): Promise<boolean> {
+  if (hasKnownWorkspaceRootMarkers(candidatePath)) {
+    return true;
+  }
+
   const markerFiles = [
-    path.join(candidatePath, '.rapidkit-workspace'),
     path.join(candidatePath, '.rapidkit', 'workspace-marker.json'),
     path.join(candidatePath, '.rapidkit', 'config.json'),
   ];

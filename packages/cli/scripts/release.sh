@@ -149,8 +149,8 @@ fi
 
 if [[ -n "$BUMP" ]]; then
     git add package.json package-lock.json packages/cli/package.json packages/wspai/package.json
-    git commit -m "chore(release): $TAG"
-    git tag "$TAG"
+    git commit -S -m "chore(release): $TAG"
+    git tag -s "$TAG" -m "Release $TAG"
 fi
 
 echo "👀 Dry-run publish for $TAG"

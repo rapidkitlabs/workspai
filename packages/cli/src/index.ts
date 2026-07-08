@@ -805,6 +805,51 @@ Notes:
   Workspai CLI owns the command UX, workspace registration, and artifacts.`);
 }
 
+function printCreateWorkspaceHelp(): void {
+  console.log(`Usage: npx workspai create workspace [name] [options]
+
+Create a Workspai workspace and initialize Workspace Intelligence files.
+
+Examples:
+  npx workspai create workspace my-workspace
+  npx workspai create workspace my-workspace --output ./workspaces --yes
+  npx workspai my-workspace --here
+
+Options:
+  --output <dir>             Parent directory for the workspace
+  --here                     Create in the current directory
+  -y, --yes                  Accept defaults in non-interactive mode
+  --profile <profile>        minimal | python-only | node-only | go-only | java-only | dotnet-only | polyglot | enterprise
+  --install-method <method>  poetry | venv | pipx
+  --skip-python-engine       Skip RapidKit Core installation for now
+  --skip-git                 Do not initialize git
+  --dry-run                  Show the planned workspace without writing files
+
+Mental model:
+  Repository
+      ↓
+  Workspace Intelligence
+      ↓
+  Developers · CI · IDEs · AI Agents`);
+}
+
+function printCreateHelp(): void {
+  console.log(`Usage: npx workspai create <workspace|project> [options]
+
+Create a workspace or scaffold a project into Workspace Intelligence.
+
+Commands:
+  create workspace [name]    Create a Workspai workspace
+  create project <kit> <name> Scaffold a project and register it
+
+Shortcuts:
+  npx workspai my-workspace  Create a workspace
+
+Run:
+  npx workspai create workspace --help
+  npx workspai create project --help`);
+}
+
 function printBridgeBackedCreateDryRun(args: string[]): void {
   const kit = args[2] ?? '<kit>';
   const name = args[3] ?? '<name>';
@@ -820,6 +865,20 @@ function printBridgeBackedCreateDryRun(args: string[]): void {
 }
 
 export async function handleCreateOrFallback(args: string[]): Promise<number> {
+  if (args[0] === 'create') {
+    const asksForHelp = args.includes('--help') || args.includes('-h') || args.includes('help');
+    if (asksForHelp) {
+      if (args[1] === 'project') {
+        printCreateProjectHelp();
+      } else if (args[1] === 'workspace') {
+        printCreateWorkspaceHelp();
+      } else {
+        printCreateHelp();
+      }
+      return 0;
+    }
+  }
+
   const wasFrontendCreate = args[0] === 'create' && args[1] === 'frontend';
   const normalizedFrontendArgs = normalizeCreateFrontendArgs(args);
   if (normalizedFrontendArgs) {
@@ -7973,20 +8032,9 @@ program
         console.log(chalk.gray('   npx workspai workspace registry status [--refresh] [--json]'));
         process.exit(1);
       }
-      const {
-        publishWorkspaceRegistrySummary,
-        readWorkspaceRegistrySummary,
-        resolveWorkspaceRegisteredProjects,
-      } = await import('./utils/workspace-registry-summary.js');
-      const refresh =
-        actionOptions.refresh === true ||
-        hasRawFlag('--refresh') ||
-        actionOptions.force === true ||
-        hasRawFlag('--force');
-      const summary = refresh
-        ? await publishWorkspaceRegistrySummary(workspacePath)
-        : (await readWorkspaceRegistrySummary(workspacePath)) ||
-          (await publishWorkspaceRegistrySummary(workspacePath));
+      const { publishWorkspaceRegistrySummary, resolveWorkspaceRegisteredProjects } =
+        await import('./utils/workspace-registry-summary.js');
+      const summary = await publishWorkspaceRegistrySummary(workspacePath);
       if (actionOptions.json) {
         console.log(JSON.stringify(summary, null, 2));
         return;
@@ -8762,7 +8810,10 @@ function printHelp() {
     : `${primaryNpxCommand} init && ${primaryNpxCommand} dev`;
 
   console.log(chalk.white('Usage:\n'));
-  console.log(chalk.cyan(`  ${primaryNpxCommand} <workspace-name> [options]`));
+  console.log(chalk.cyan(`  ${primaryNpxCommand} <command> [options]`));
+  console.log(
+    chalk.gray(`  ${primaryNpxCommand} <workspace-name> [options]  # shortcut: create workspace`)
+  );
   if (invokedCliName === 'rapidkit') {
     console.log(
       chalk.gray(`  You are using the legacy rapidkit alias. New docs use ${primaryNpxCommand}.\n`)
@@ -8865,8 +8916,6 @@ function printHelp() {
 
   printHelpSectionDivider('Mental Model');
   console.log(chalk.gray('\n  Repository'));
-  console.log(chalk.gray('      ↓'));
-  console.log(chalk.gray('  Workspace'));
   console.log(chalk.gray('      ↓'));
   console.log(chalk.gray('  Workspace Intelligence'));
   console.log(chalk.gray('      ↓'));
