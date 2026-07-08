@@ -1,6 +1,6 @@
 {
   "name": "wspai",
-  "version": "0.43.0",
+  "version": "0.43.1",
   "type": "module",
   "description": "Short npm alias for the Workspai CLI.",
   "keywords": [
@@ -23,17 +23,18 @@
   },
   "files": [
     "bin",
-    "README.md"
+    "README.md",
+    "scripts"
   ],
   "dependencies": {
-    "workspai": "0.43.0"
+    "workspai": "0.43.1"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
     "access": "public"
   },
   "scripts": {
-    "smoke": "node bin/wspai.js --version",
+    "smoke": "node scripts/smoke.mjs",
     "check": "corepack npm run smoke",
     "fix": "corepack npm run check",
     "validate": "corepack npm run check"

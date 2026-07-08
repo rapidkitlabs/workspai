@@ -1,6 +1,49 @@
 # Release Notes
 
-## Latest Release: v0.43.0 (July 7, 2026)
+## Latest Release: v0.43.1 (July 8, 2026)
+
+### Workspai Debug Alias and Release Alignment
+
+This patch release tightens the Workspai monorepo package surface after the
+initial `workspai`/`wspai` publish.
+
+**What's New:**
+
+- **Workspai-native debug environment**
+  - Added `WORKSPAI_DEBUG_ARGS=1` for CLI argument and bridge diagnostics.
+  - Preserved the legacy `RAPIDKIT_NPM_DEBUG_ARGS=1` fallback for existing local
+    debugging workflows.
+
+- **Release consistency**
+  - Keeps the private monorepo version, `workspai` package version, and `wspai`
+    alias package version aligned on `0.43.1`.
+  - Keeps the `wspai` package dependency pinned to the matching `workspai`
+    version.
+
+**Breaking changes:** None.
+
+**Verification:**
+
+- `corepack npm --workspace workspai run typecheck`
+- `corepack npm --workspace workspai run lint`
+- `corepack npm --workspace workspai run format:check`
+- `corepack npm --workspace workspai run build`
+- `corepack npm --workspace workspai run smoke:enterprise-package`
+- `corepack npm --workspace wspai run smoke`
+- `corepack npm --workspace workspai run test -- src/__tests__/index.test.ts src/__tests__/package-publish-contract.test.ts`
+
+**Upgrade:**
+
+```bash
+npm install -g workspai@0.43.1
+npx wspai --help
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.43.1.md)
+
+---
+
+## Previous Release: v0.43.0 (July 7, 2026)
 
 ### Workspai Monorepo and Short Alias Package
 

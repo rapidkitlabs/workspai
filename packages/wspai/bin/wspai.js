@@ -1,12 +1,25 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function resolveMonorepoEntrypoint() {
+  const candidate = path.resolve(__dirname, '..', '..', 'cli', 'dist', 'index.js');
+  return existsSync(candidate) ? candidate : null;
+}
 
 function resolveWorkspaiEntrypoint() {
+  const monorepoEntrypoint = resolveMonorepoEntrypoint();
+  if (monorepoEntrypoint) {
+    return monorepoEntrypoint;
+  }
+
   const packageJsonPath = require.resolve('workspai/package.json');
   return path.join(path.dirname(packageJsonPath), 'dist', 'index.js');
 }

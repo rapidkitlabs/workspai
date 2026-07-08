@@ -1,11 +1,37 @@
 # Changelog
 
-All notable changes to RapidKit will be documented in this file.
+All notable changes to Workspai CLI will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.43.1] - 2026-07-08
+
+### Added
+
+- Added `WORKSPAI_DEBUG_ARGS=1` as the Workspai-native debug environment flag
+  for CLI argument and bridge diagnostics.
+
+### Changed
+
+- Kept `RAPIDKIT_NPM_DEBUG_ARGS=1` as a legacy fallback so existing local
+  debugging workflows continue to work.
+- Aligned the private monorepo, `workspai`, and `wspai` package versions on
+  `0.43.1`.
+- Updated the `wspai` alias package dependency to require the matching
+  `workspai@0.43.1` version.
+
+### Verification
+
+- `corepack npm --workspace workspai run typecheck`
+- `corepack npm --workspace workspai run lint`
+- `corepack npm --workspace workspai run format:check`
+- `corepack npm --workspace workspai run build`
+- `corepack npm --workspace workspai run smoke:enterprise-package`
+- `corepack npm --workspace wspai run smoke`
+- `corepack npm --workspace workspai run test -- src/__tests__/index.test.ts src/__tests__/package-publish-contract.test.ts`
 
 ## [0.43.0] - 2026-07-07
 

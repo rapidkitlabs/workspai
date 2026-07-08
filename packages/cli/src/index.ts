@@ -185,6 +185,10 @@ function resolveInvokedCliName(argv = process.argv): 'workspai' | 'rapidkit' {
   return entry === 'rapidkit' || entry === 'rapidkit-npm' ? 'rapidkit' : 'workspai';
 }
 
+function shouldDebugWorkspaiArgs(): boolean {
+  return process.env.WORKSPAI_DEBUG_ARGS === '1' || process.env.RAPIDKIT_NPM_DEBUG_ARGS === '1';
+}
+
 function normalizeFallbackTemplate(kit: string): 'fastapi' | 'nestjs' | null {
   const k = kit.trim().toLowerCase();
   if (!k) return null;
@@ -2057,7 +2061,7 @@ async function runCommandInCwd(
     : [...invocation.prefixArgs, ...commandArgs];
   const spawnEnv = buildPackageRunnerSubprocessEnv();
   if (nodeEvalScript) {
-    if (process.env.RAPIDKIT_NPM_DEBUG_ARGS === '1') {
+    if (shouldDebugWorkspaiArgs()) {
       process.stderr.write(
         `[workspai-cli] runCommandInCwd.nodeEval=${JSON.stringify({
           cwd,
@@ -2151,7 +2155,7 @@ async function runCommandInCwd(
         // Best-effort cleanup after timeout.
       }
     };
-    if (process.env.RAPIDKIT_NPM_DEBUG_ARGS === '1') {
+    if (shouldDebugWorkspaiArgs()) {
       process.stderr.write(
         `[workspai-cli] runCommandInCwd=${JSON.stringify({
           executable,
@@ -2222,7 +2226,7 @@ async function runCommandInCwd(
         code && code !== 0 && stdout.length === 0 && stderr.length === 0 && command === 'npm'
           ? readNpmFailureLogExcerpt()
           : '';
-      if (process.env.RAPIDKIT_NPM_DEBUG_ARGS === '1') {
+      if (shouldDebugWorkspaiArgs()) {
         process.stderr.write(
           `[workspai-cli] runCommandInCwd.close=${JSON.stringify({ code, stdoutBytes: stdout.length, stderrBytes: stderr.length, npmFailureExcerptBytes: npmFailureExcerpt.length })}\n`
         );
@@ -9446,7 +9450,7 @@ if (shouldBootstrapCli) {
       if (!delegated) {
         const args = process.argv.slice(2);
 
-        if (process.env.RAPIDKIT_NPM_DEBUG_ARGS === '1') {
+        if (shouldDebugWorkspaiArgs()) {
           // Intentionally write to stderr to avoid corrupting JSON stdout from core.
           process.stderr.write(`[workspai-cli] argv=${JSON.stringify(args)}\n`);
         }
@@ -9789,7 +9793,7 @@ if (shouldBootstrapCli) {
         }
 
         const shouldForward = await shouldForwardToCore(args);
-        if (process.env.RAPIDKIT_NPM_DEBUG_ARGS === '1') {
+        if (shouldDebugWorkspaiArgs()) {
           process.stderr.write(`[workspai-cli] shouldForwardToCore=${shouldForward}\n`);
         }
 
