@@ -35,6 +35,8 @@ Intelligence chain before the first stable Workspai CLI release.
     workspaces: sync, contract verify, model, context, agent sync, graph, diff,
     impact, verify, trace, explain, run, share, export, and feedback history.
   - Confirmed `wspai` delegates to the canonical `workspai` CLI command surface.
+  - Updated workspace E2E workflows to locate managed workspaces under
+    `~/.workspai/workspaces` while retaining legacy RapidKit fallbacks.
   - Improved Workspace Run diagnostics so Python wrapper failures such as
     `No module named pytest` are classified as setup failures instead of
     `unknown`.

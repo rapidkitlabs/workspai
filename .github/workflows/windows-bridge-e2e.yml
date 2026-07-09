@@ -63,7 +63,7 @@ jobs:
           $env:RAPIDKIT_BRIDGE_PIP_TIMEOUT_MS = '180000'
           $env:PIP_DISABLE_PIP_VERSION_CHECK = '1'
 
-          $testRoot = Join-Path $env:RUNNER_TEMP 'rapidkit-win-bridge-e2e'
+          $testRoot = Join-Path $env:RUNNER_TEMP 'workspai-win-bridge-e2e'
           if (Test-Path $testRoot) {
             Remove-Item -Recurse -Force $testRoot
           }
@@ -101,10 +101,14 @@ jobs:
             throw 'create workspace failed'
           }
 
-          # Locate the created workspace. Rapidkit may place it in the current
-          # test root or under the user profile rapidkit/workspaces folder.
+          # Locate the created workspace. Workspai places managed workspaces
+          # under the user profile .workspai/workspaces folder by default.
+          # Legacy RapidKit workspace locations remain accepted as fallback.
           if (Test-Path (Join-Path $testRoot 'ws-win')) {
             $wsDir = Join-Path $testRoot 'ws-win'
+          }
+          elseif (Test-Path (Join-Path $env:USERPROFILE '.workspai\workspaces\ws-win')) {
+            $wsDir = Join-Path $env:USERPROFILE '.workspai\workspaces\ws-win'
           }
           elseif (Test-Path (Join-Path $env:USERPROFILE 'rapidkit\workspaces\ws-win')) {
             $wsDir = Join-Path $env:USERPROFILE 'rapidkit\workspaces\ws-win'
@@ -115,7 +119,10 @@ jobs:
               $wsDir = $found.FullName
             }
             else {
-              $found2 = Get-ChildItem -Path (Join-Path $env:USERPROFILE 'rapidkit\workspaces') -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'ws-win' } | Select-Object -First 1
+              $found2 = @(
+                Get-ChildItem -Path (Join-Path $env:USERPROFILE '.workspai\workspaces') -Directory -Recurse -ErrorAction SilentlyContinue
+                Get-ChildItem -Path (Join-Path $env:USERPROFILE 'rapidkit\workspaces') -Directory -Recurse -ErrorAction SilentlyContinue
+              ) | Where-Object { $_.Name -eq 'ws-win' } | Select-Object -First 1
               if ($found2) {
                 $wsDir = $found2.FullName
               }
@@ -123,7 +130,9 @@ jobs:
                 Write-Error 'Workspace ws-win not found after create. Debug listing:'
                 Write-Host "TEST_ROOT: $testRoot"
                 Get-ChildItem -Path $testRoot -Force -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
-                Write-Host 'User rapidkit workspaces:'
+                Write-Host 'User Workspai workspaces:'
+                Get-ChildItem -Path (Join-Path $env:USERPROFILE '.workspai\workspaces') -Force -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+                Write-Host 'User legacy RapidKit workspaces:'
                 Get-ChildItem -Path (Join-Path $env:USERPROFILE 'rapidkit\workspaces') -Force -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
                 Write-Error 'create-ws.log (head):'
                 Get-Content $createLog -TotalCount 200 | ForEach-Object { Write-Host $_ }

@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   polyglot test workspaces, including sync, contract verify, model, context,
   agent sync, graph, diff, impact, verify, trace, explain, run, share, export,
   and feedback history.
+- Added E2E workflow coverage for the managed Workspai workspace home at
+  `~/.workspai/workspaces`, with legacy RapidKit workspace fallbacks retained.
 
 ### Changed
 

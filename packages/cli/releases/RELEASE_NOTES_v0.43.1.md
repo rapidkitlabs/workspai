@@ -92,6 +92,10 @@ through the main Workspace Intelligence chain:
 The `wspai` alias was also verified against the same canonical Workspai CLI
 surface.
 
+Workspace E2E workflows now locate managed workspaces under
+`~/.workspai/workspaces` while keeping legacy RapidKit workspace fallbacks for
+upgrade coverage.
+
 ### Workspace Run diagnostics
 
 Python wrapper failures such as:

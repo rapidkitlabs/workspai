@@ -72,7 +72,7 @@ jobs:
       - name: Workspace lifecycle smoke (cross-OS)
         run: |
           set -euo pipefail
-          TEST_ROOT="$RUNNER_TEMP/rapidkit-ws-matrix"
+          TEST_ROOT="$RUNNER_TEMP/workspai-ws-matrix"
           rm -rf "$TEST_ROOT"
           mkdir -p "$TEST_ROOT"
           cd "$TEST_ROOT"
@@ -87,11 +87,13 @@ jobs:
             # continue and attempt to locate created workspace below
           fi
 
-          # Determine where the workspace was created. Rapidkit may create global
-          # workspaces under $HOME/rapidkit/workspaces or create it in the current
-          # directory; prefer local dir but fall back to global location.
+          # Determine where the workspace was created. Workspai creates managed
+          # workspaces under $HOME/.workspai/workspaces by default. Legacy
+          # RapidKit workspace locations remain accepted as fallback.
           if [ -d "ws-matrix" ]; then
             WS_DIR="$PWD/ws-matrix"
+          elif [ -d "$HOME/.workspai/workspaces/ws-matrix" ]; then
+            WS_DIR="$HOME/.workspai/workspaces/ws-matrix"
           elif [ -d "$HOME/rapidkit/workspaces/ws-matrix" ]; then
             WS_DIR="$HOME/rapidkit/workspaces/ws-matrix"
           else
@@ -100,15 +102,17 @@ jobs:
             if [ -n "$FOUND" ]; then
               WS_DIR="$FOUND"
             else
-              FOUND2=$(find "$HOME/rapidkit/workspaces" -maxdepth 3 -type d -name ws-matrix -print -quit || true)
+              FOUND2=$(find "$HOME/.workspai/workspaces" "$HOME/rapidkit/workspaces" -maxdepth 3 -type d -name ws-matrix -print -quit 2>/dev/null || true)
               if [ -n "$FOUND2" ]; then
                 WS_DIR="$FOUND2"
               else
                 echo "Workspace ws-matrix not found after create. Debug listing:" >&2
                 echo "PWD: $PWD" >&2
                 ls -la "$PWD" || true
-                echo "Home rapidkit workspaces:" >&2
-                ls -la "$HOME/rapidkit/workspaces" || true
+                echo "Home Workspai workspaces:" >&2
+                ls -la "$HOME/.workspai/workspaces" 2>/dev/null || true
+                echo "Home legacy RapidKit workspaces:" >&2
+                ls -la "$HOME/rapidkit/workspaces" 2>/dev/null || true
                 echo "create-ws.log (if any):" >&2
                 sed -n '1,200p' create-ws.log || true
                 exit 1
@@ -187,7 +191,7 @@ jobs:
       - name: Chaos smoke (non-fatal warm-deps under network failure)
         run: |
           set -euo pipefail
-          TEST_ROOT="$RUNNER_TEMP/rapidkit-ws-chaos"
+          TEST_ROOT="$RUNNER_TEMP/workspai-ws-chaos"
           rm -rf "$TEST_ROOT"
           mkdir -p "$TEST_ROOT"
           cd "$TEST_ROOT"
@@ -202,6 +206,8 @@ jobs:
 
           if [ -d "ws-chaos" ]; then
             WS_DIR="$PWD/ws-chaos"
+          elif [ -d "$HOME/.workspai/workspaces/ws-chaos" ]; then
+            WS_DIR="$HOME/.workspai/workspaces/ws-chaos"
           elif [ -d "$HOME/rapidkit/workspaces/ws-chaos" ]; then
             WS_DIR="$HOME/rapidkit/workspaces/ws-chaos"
           else
@@ -209,15 +215,17 @@ jobs:
             if [ -n "$FOUND" ]; then
               WS_DIR="$FOUND"
             else
-              FOUND2=$(find "$HOME/rapidkit/workspaces" -maxdepth 3 -type d -name ws-chaos -print -quit || true)
+              FOUND2=$(find "$HOME/.workspai/workspaces" "$HOME/rapidkit/workspaces" -maxdepth 3 -type d -name ws-chaos -print -quit 2>/dev/null || true)
               if [ -n "$FOUND2" ]; then
                 WS_DIR="$FOUND2"
               else
                 echo "Workspace ws-chaos not found after create. Debug listing:" >&2
                 echo "PWD: $PWD" >&2
                 ls -la "$PWD" || true
-                echo "Home rapidkit workspaces:" >&2
-                ls -la "$HOME/rapidkit/workspaces" || true
+                echo "Home Workspai workspaces:" >&2
+                ls -la "$HOME/.workspai/workspaces" 2>/dev/null || true
+                echo "Home legacy RapidKit workspaces:" >&2
+                ls -la "$HOME/rapidkit/workspaces" 2>/dev/null || true
                 sed -n '1,200p' create-ws.log || true
                 exit 1
               fi
