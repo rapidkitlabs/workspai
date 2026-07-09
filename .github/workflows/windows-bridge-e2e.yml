@@ -174,8 +174,30 @@ jobs:
             throw 'create project fastapi.standard failed'
           }
 
-          if (-not (Test-Path 'win-api/.workspai/project.json')) {
-            throw 'created project is missing .workspai/project.json'
+          $canonicalProjectJson = 'win-api/.workspai/project.json'
+          $legacyProjectJson = 'win-api/.rapidkit/project.json'
+          if (Test-Path $canonicalProjectJson) {
+            Write-Host 'Project marker: .workspai/project.json'
+          }
+          elseif (Test-Path $legacyProjectJson) {
+            Write-Host 'Project marker: .rapidkit/project.json (Python engine bridge fallback)'
+          }
+          else {
+            Write-Error 'Created project is missing both Workspai and legacy project markers. Debug listing:'
+            Get-ChildItem -Path 'win-api' -Force -Recurse -Depth 2 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.FullName }
+            throw 'created project is missing project metadata'
+          }
+
+          $workspaceContractPath = '.workspai/workspace.contract.json'
+          if (-not (Test-Path $workspaceContractPath)) {
+            throw 'workspace contract was not synced after project create'
+          }
+          $workspaceContract = Get-Content $workspaceContractPath -Raw | ConvertFrom-Json
+          $registeredProject = @($workspaceContract.projects) | Where-Object {
+            $_.relativePath -eq 'win-api' -or $_.slug -eq 'win-api' -or $_.name -eq 'win-api'
+          } | Select-Object -First 1
+          if (-not $registeredProject) {
+            throw 'workspace contract does not include win-api'
           }
 
           Write-Host '✅ Windows bridge + workspace E2E passed'
