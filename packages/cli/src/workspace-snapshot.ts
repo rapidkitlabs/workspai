@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
+import { existsSync } from 'fs';
 
 import fsExtra from 'fs-extra';
 
@@ -237,7 +238,7 @@ function parsePolicyBoolean(raw: string | undefined, fallback: boolean): boolean
 async function readLifecyclePolicy(workspacePath: string): Promise<LifecyclePolicy> {
   const policyPath =
     workspaceMetadataCandidates(workspacePath, 'policies.yml').find((candidate) =>
-      fsExtra.pathExistsSync(candidate)
+      existsSync(candidate)
     ) ?? workspaceMetadataPath(workspacePath, 'policies.yml');
   if (!(await fsExtra.pathExists(policyPath))) {
     return { ...DEFAULT_LIFECYCLE_POLICY };
@@ -346,7 +347,7 @@ function requireWorkspaceRoot(workspacePath?: string): string {
 async function getWorkspaceName(workspacePath: string): Promise<string> {
   const workspaceJson = await safeReadJson(
     workspaceMetadataCandidates(workspacePath, 'workspace.json').find((candidate) =>
-      fsExtra.pathExistsSync(candidate)
+      existsSync(candidate)
     ) ?? workspaceMetadataPath(workspacePath, 'workspace.json')
   );
   const rawName = workspaceJson?.workspace_name ?? workspaceJson?.name;

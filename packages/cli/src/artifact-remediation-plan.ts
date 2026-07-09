@@ -1,4 +1,5 @@
 import path from 'path';
+import { existsSync } from 'fs';
 import fsExtra from 'fs-extra';
 
 import { ARTIFACT_REMEDIATION_PLAN_SCHEMA_VERSION } from './contracts/artifact-remediation-plan-contract.js';
@@ -459,7 +460,7 @@ async function readCandidateReports(workspacePath: string): Promise<CandidateRep
     for (const fileName of candidate.fileNames) {
       const absolutePath = (
         await Promise.all(reportsDirs.map((reportsDir) => path.join(reportsDir, fileName)))
-      ).find((reportPath) => fsExtra.pathExistsSync(reportPath));
+      ).find((reportPath) => existsSync(reportPath));
       if (!absolutePath || seen.has(`${candidate.artifactKind}:${fileName}`)) {
         continue;
       }

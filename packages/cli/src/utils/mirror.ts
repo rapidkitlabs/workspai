@@ -1,5 +1,5 @@
 import path from 'path';
-import { createWriteStream, promises as fs } from 'fs';
+import { createWriteStream, existsSync, promises as fs } from 'fs';
 import * as fsExtra from 'fs-extra';
 import { createHash, createHmac, createVerify } from 'crypto';
 import http from 'http';
@@ -187,7 +187,7 @@ function getTargetRelativePath(artifact: MirrorArtifact, fallbackId: string): st
 
 async function loadTrustedHosts(workspacePath: string): Promise<Set<string>> {
   const trustFilePath = workspaceMetadataCandidates(workspacePath, 'trusted-sources.lock').find(
-    (candidate) => fsExtra.pathExistsSync(candidate)
+    (candidate) => existsSync(candidate)
   );
   const trustedHosts = new Set<string>(['localhost', '127.0.0.1']);
 
@@ -624,7 +624,7 @@ export async function runMirrorLifecycle(
 
   const mirrorConfigPath =
     workspaceMetadataCandidates(workspacePath, 'mirror-config.json').find((candidate) =>
-      fsExtra.pathExistsSync(candidate)
+      existsSync(candidate)
     ) ?? workspaceMetadataPath(workspacePath, 'mirror-config.json');
   const mirrorLockPath = workspaceMetadataPath(workspacePath, 'mirror.lock');
   const mirrorArtifactsDir = workspaceMetadataPath(workspacePath, 'mirror', 'artifacts');

@@ -1,4 +1,5 @@
 import path from 'path';
+import { existsSync } from 'fs';
 import fsExtra from 'fs-extra';
 
 import { discoverProjectJsonFiles } from './workspace-contract.js';
@@ -68,7 +69,7 @@ async function readEnvExampleVars(projectRoot: string): Promise<string[]> {
 
 async function readInfraOverrides(workspacePath: string): Promise<string[]> {
   const overridePath = workspaceMetadataCandidates(workspacePath, 'infra', 'overrides.json').find(
-    (candidate) => fsExtra.pathExistsSync(candidate)
+    (candidate) => existsSync(candidate)
   );
   if (!overridePath) {
     return [];

@@ -1,5 +1,6 @@
 import fsExtra from 'fs-extra';
 import path from 'path';
+import { existsSync } from 'fs';
 
 import type { BackendFrameworkDetection } from './backend-framework-contract.js';
 import {
@@ -305,9 +306,7 @@ export async function buildFrontendDoctorProbes(input: {
 
   const frameworkConfigExists =
     contract.fileHints.length > 0 &&
-    contract.fileHints.some((candidate) =>
-      fsExtra.pathExistsSync(path.join(projectPath, candidate))
-    );
+    contract.fileHints.some((candidate) => existsSync(path.join(projectPath, candidate)));
   probes.push({
     id: 'frontend-framework-config',
     label: `${contract.displayName} config surface`,

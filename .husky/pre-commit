@@ -40,7 +40,7 @@ fi
 
 # Shared contracts (canonical: packages/cli/contracts/)
 echo "📋 Syncing shared contracts..."
-corepack npm --workspace workspai run sync:shared-contracts -- --stage-git || {
+run_without_git_hook_env corepack npm --workspace workspai run sync:shared-contracts -- --stage-git || {
 	echo "❌ Contract sync failed."
 	echo "   Run: corepack npm --workspace workspai run sync:shared-contracts"
 	exit 1

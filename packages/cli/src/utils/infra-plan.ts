@@ -1,4 +1,5 @@
 import path from 'path';
+import { existsSync } from 'fs';
 import fsExtra from 'fs-extra';
 
 import { discoverWorkspaceInfraNeeds } from './infra-discovery.js';
@@ -53,7 +54,7 @@ function detectPortConflicts(services: InfraPlannedService[]): string[] {
 
 async function readWorkspaceName(workspacePath: string): Promise<string | undefined> {
   const workspaceJsonPath = workspaceMetadataCandidates(workspacePath, 'workspace.json').find(
-    (candidate) => fsExtra.pathExistsSync(candidate)
+    (candidate) => existsSync(candidate)
   );
   if (!workspaceJsonPath) {
     return undefined;

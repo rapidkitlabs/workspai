@@ -1,4 +1,5 @@
 import path from 'path';
+import { existsSync } from 'fs';
 import fsExtra from 'fs-extra';
 
 import {
@@ -84,7 +85,7 @@ async function readWorkspaceManifest(workspacePath: string): Promise<{
   legacyProjectCount: number;
 }> {
   const manifestPath = workspaceMetadataCandidates(workspacePath, 'workspace.json').find(
-    (candidate) => fsExtra.pathExistsSync(candidate)
+    (candidate) => existsSync(candidate)
   );
   if (!manifestPath) {
     return { exists: false, legacyProjectCount: 0 };
