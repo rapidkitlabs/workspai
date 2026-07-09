@@ -232,13 +232,7 @@ jobs:
       - name: Run Phase 4 adapter/contract regression suites
         env:
           RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1'
-        run: |
-          npm --workspace workspai run test -- \
-            src/__tests__/phase3-commands.test.ts \
-            src/__tests__/phase3-commands.integration.test.ts \
-            src/__tests__/phase3-cli.integration.test.ts \
-            src/__tests__/init-scenarios.integration.test.ts \
-            src/__tests__/runtime-adapters.test.ts
+        run: npm --workspace workspai run test -- src/__tests__/phase3-commands.test.ts src/__tests__/phase3-commands.integration.test.ts src/__tests__/phase3-cli.integration.test.ts src/__tests__/init-scenarios.integration.test.ts src/__tests__/runtime-adapters.test.ts
 
       - name: Run type check
         run: npm --workspace workspai run typecheck

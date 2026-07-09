@@ -261,6 +261,10 @@ function checksumPayload(payload: unknown): string {
   return `sha256:${crypto.createHash('sha256').update(stableJson(payload)).digest('hex')}`;
 }
 
+function toManifestPath(value: string): string {
+  return value.replace(/\\/g, '/');
+}
+
 export async function buildPrivateProductManifest(params: {
   backlogPath: string;
   slug: string;
@@ -293,7 +297,7 @@ export async function buildPrivateProductManifest(params: {
     workspace: {
       name: product.slug,
       profile: 'enterprise' as const,
-      outputHint: path.join(outputRoot, product.slug),
+      outputHint: toManifestPath(path.join(outputRoot, product.slug)),
     },
     projects: [
       {

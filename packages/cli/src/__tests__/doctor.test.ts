@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { execa } from 'execa';
+import fs from 'fs';
 import fsExtra from 'fs-extra';
 import os from 'os';
 import path from 'path';
@@ -13,6 +14,10 @@ vi.mock('inquirer', () => ({
   },
 }));
 const mockedExeca = vi.mocked(execa as any);
+
+function realpathForAssertion(value: string): string {
+  return fs.realpathSync.native(value);
+}
 
 describe('Doctor Command', () => {
   beforeEach(() => {
@@ -1612,11 +1617,15 @@ describe('Doctor Command', () => {
           }),
         ])
       );
-      expect(payload.remediationPlanPath).toBe(
-        path.join(projectPath, '.workspai', 'reports', 'doctor-remediation-plan-last-run.json')
+      expect(realpathForAssertion(payload.remediationPlanPath)).toBe(
+        realpathForAssertion(
+          path.join(projectPath, '.workspai', 'reports', 'doctor-remediation-plan-last-run.json')
+        )
       );
-      expect(payload.fixResultPath).toBe(
-        path.join(projectPath, '.workspai', 'reports', 'doctor-fix-result-last-run.json')
+      expect(realpathForAssertion(payload.fixResultPath)).toBe(
+        realpathForAssertion(
+          path.join(projectPath, '.workspai', 'reports', 'doctor-fix-result-last-run.json')
+        )
       );
       await expect(
         fsExtra.pathExists(

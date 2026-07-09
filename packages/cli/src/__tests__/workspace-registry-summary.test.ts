@@ -110,12 +110,19 @@ describe('workspace-registry-summary', () => {
   it('reports a global registry entry as existing even before projects are registered', async () => {
     const workspacePath = await createWorkspaceRoot();
     const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    const originalAppData = process.env.APPDATA;
+    const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
     const fakeHome = await fsExtra.mkdtemp(path.join(process.cwd(), 'registry-summary-home-'));
+    const fakeConfigHome = path.join(fakeHome, '.config');
     tempRoots.push(fakeHome);
     process.env.HOME = fakeHome;
+    process.env.USERPROFILE = fakeHome;
+    process.env.APPDATA = fakeConfigHome;
+    process.env.XDG_CONFIG_HOME = fakeConfigHome;
 
     try {
-      await fsExtra.outputJson(path.join(fakeHome, '.workspai', 'workspaces.json'), {
+      const registryPayload = {
         workspaces: [
           {
             name: 'empty-global',
@@ -124,7 +131,15 @@ describe('workspace-registry-summary', () => {
             projects: [],
           },
         ],
-      });
+      };
+      await fsExtra.outputJson(
+        path.join(fakeHome, '.workspai', 'workspaces.json'),
+        registryPayload
+      );
+      await fsExtra.outputJson(
+        path.join(fakeConfigHome, 'workspai', 'workspaces.json'),
+        registryPayload
+      );
 
       const resolved = await resolveWorkspaceRegisteredProjects(workspacePath);
       expect(resolved.summary.sources.globalRegistry.exists).toBe(true);
@@ -135,6 +150,21 @@ describe('workspace-registry-summary', () => {
         delete process.env.HOME;
       } else {
         process.env.HOME = originalHome;
+      }
+      if (originalUserProfile === undefined) {
+        delete process.env.USERPROFILE;
+      } else {
+        process.env.USERPROFILE = originalUserProfile;
+      }
+      if (originalAppData === undefined) {
+        delete process.env.APPDATA;
+      } else {
+        process.env.APPDATA = originalAppData;
+      }
+      if (originalXdgConfigHome === undefined) {
+        delete process.env.XDG_CONFIG_HOME;
+      } else {
+        process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
       }
     }
   });
