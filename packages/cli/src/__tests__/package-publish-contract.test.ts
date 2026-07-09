@@ -160,6 +160,9 @@ describe('npm publish contract', () => {
     expect(releaseWorkflow).toContain('npm publish workspai');
     expect(releaseWorkflow).toContain('npm publish wspai');
     expect(releaseWorkflow).toContain('is available for publish');
+    expect(releaseWorkflow).toContain('is already published on npm; skipping publish');
+    expect(releaseWorkflow).toContain('package_already_published');
+    expect(releaseWorkflow).toContain('alias_already_published');
     expect(releaseWorkflow).toContain('npm --workspace workspai run smoke:enterprise-package');
     expect(releaseWorkflow).toContain('npm --workspace wspai run smoke');
     expect(releaseWorkflow).toContain('npm --workspace workspai run test:prepare-embeddings');

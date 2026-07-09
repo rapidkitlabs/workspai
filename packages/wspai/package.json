@@ -8,8 +8,16 @@
     "workspai",
     "workspace-ai",
     "workspace-intelligence",
+    "rapidkit",
     "ai",
-    "cli"
+    "cli",
+    "workspace-ai",
+    "skills",
+    "model",
+    "graph",
+    "knowledge",
+    "governance",
+    "AI-agents"
   ],
   "author": "RapidKit Labs",
   "license": "MIT",
