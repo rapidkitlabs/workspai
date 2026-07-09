@@ -790,6 +790,29 @@ describe('CLI Entry Point', () => {
       }
     }, 20000);
 
+    it('should honor --output for workspace export archives', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-export-'));
+      const archivePath = path.join(TEST_DIR, 'custom-workspace-export.zip');
+
+      await fs.ensureDir(path.join(workspaceRoot, '.workspai'));
+      await fs.writeJson(path.join(workspaceRoot, '.workspai', 'workspace.json'), {
+        workspace_name: 'export-workspace',
+      });
+      await fs.writeFile(path.join(workspaceRoot, '.workspai-workspace'), '{}');
+      await fs.writeFile(path.join(workspaceRoot, 'README.md'), '# export workspace\n');
+
+      const { stdout, exitCode } = await execa(
+        'node',
+        [CLI_PATH, 'workspace', 'export', '--output', archivePath, '--json'],
+        { cwd: workspaceRoot }
+      );
+
+      expect(exitCode).toBe(0);
+      const payload = JSON.parse(stdout) as { archivePath: string };
+      expect(payload.archivePath).toBe(archivePath);
+      expect(await fs.pathExists(archivePath)).toBe(true);
+    }, 20000);
+
     it('should auto-create or reuse the default workspace when import runs outside any workspace', async () => {
       const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), 'rapidkit-home-import-default-'));
       const cwdOutsideWorkspace = await fs.mkdtemp(

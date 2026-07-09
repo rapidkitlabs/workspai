@@ -7047,7 +7047,7 @@ program
       '  workspace mcp serve     \u2014 read-mostly stdio MCP bridge over workspace evidence'
   )
   .option('--workspace <path>', 'Workspace root path (defaults to nearest Workspai workspace)')
-  .option('--output <file>', 'Output file path for workspace share bundle')
+  .option('--output <file>', 'Output file path for workspace share/export artifacts')
   .option('--from <file>', 'Input workspace model snapshot/report for workspace diff')
   .option(
     '--from-impact <file>',
@@ -7180,6 +7180,9 @@ program
       return workspacePath;
     };
     const hasRawFlag = (flag: string): boolean => process.argv.includes(flag);
+    const rawFlagValue = (flag: string): string | undefined => readFlagValue(process.argv, flag);
+    const workspaceOutputPath = (): string | undefined =>
+      actionOptions.output || rawFlagValue('--output');
     const workspaceModelScanDepth = (): number | undefined => {
       if (!actionOptions.scanDepth) {
         return undefined;
@@ -8222,7 +8225,7 @@ program
     } else if (action === 'share') {
       const workspacePath = requireWorkspaceRootForAction('share');
 
-      const outputPath = actionOptions.output || subaction;
+      const outputPath = workspaceOutputPath() || subaction;
       const { createWorkspaceShareBundle } = await import('./workspace.js');
       const bundlePath = await createWorkspaceShareBundle(workspacePath, {
         outputPath,
@@ -8262,7 +8265,7 @@ program
       const { exportWorkspaceArchive } = await import('./utils/workspace-archive.js');
       const result = await exportWorkspaceArchive({
         workspacePath,
-        outputPath: actionOptions.output || subaction,
+        outputPath: workspaceOutputPath() || subaction,
         includeEnv: actionOptions.includeEnv === true || hasRawFlag('--include-env'),
       });
 

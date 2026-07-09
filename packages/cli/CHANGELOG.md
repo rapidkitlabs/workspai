@@ -7,12 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.43.1] - 2026-07-08
+## [0.43.1] - 2026-07-09
 
 ### Added
 
 - Added `WORKSPAI_DEBUG_ARGS=1` as the Workspai-native debug environment flag
   for CLI argument and bridge diagnostics.
+- Added Workspace Intelligence chain validation coverage across minimal and
+  polyglot test workspaces, including sync, contract verify, model, context,
+  agent sync, graph, diff, impact, verify, trace, explain, run, share, export,
+  and feedback history.
 
 ### Changed
 
@@ -22,6 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `0.43.1`.
 - Updated the `wspai` alias package dependency to require the matching
   `workspai@0.43.1` version.
+- Guarded Python dependency sync repair by default so Doctor emits deterministic
+  guidance unless explicit dependency-install opt-in is provided.
+
+### Fixed
+
+- Fixed project-scope Doctor fix evidence so project repairs write to the
+  project `.workspai/reports` directory instead of overwriting workspace-level
+  Doctor fix artifacts.
+- Fixed Doctor fix/apply exit-code behavior so unresolved repairs fail
+  deterministically, including local-profile flows.
+- Fixed Workspace Run diagnostics so Python wrapper failures such as
+  `No module named pytest` are classified as setup failures instead of
+  `unknown`.
 
 ### Verification
 
@@ -32,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `corepack npm --workspace workspai run smoke:enterprise-package`
 - `corepack npm --workspace wspai run smoke`
 - `corepack npm --workspace workspai run test -- src/__tests__/index.test.ts src/__tests__/package-publish-contract.test.ts`
+- `corepack npm --workspace workspai run test`
+- `corepack npm --workspace workspai run test -- src/__tests__/doctor.test.ts`
+- `corepack npm --workspace workspai run test -- src/__tests__/doctor-canary-matrix.test.ts`
+- `corepack npm --workspace workspai run test -- src/__tests__/workspace-run.test.ts`
 
 ## [0.43.0] - 2026-07-07
 

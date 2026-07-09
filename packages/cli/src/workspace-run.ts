@@ -1265,10 +1265,14 @@ export async function runWorkspaceStage(options: WorkspaceRunOptions): Promise<W
 
       const stageSupport = isWorkspaceStageSupported(projectPath, options.stage);
       if (!stageSupport.supported) {
-        row.status = 'skipped';
+        row.status = stageSupport.shouldFail === false ? 'skipped' : 'failed';
         row.reason = stageSupport.reason ?? `stage "${options.stage}" unsupported for project`;
         row.durationMs = Date.now() - started;
-        row.exitCode = null;
+        row.exitCode = row.status === 'failed' ? 127 : null;
+        if (row.status === 'failed') {
+          row.errorCategory = 'setup';
+          row.errorMessage = row.reason;
+        }
         completedTargets += 1;
         return;
       }

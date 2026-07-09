@@ -474,15 +474,14 @@ describe('doctor remediation canary matrix', () => {
     const packageJson = await fsExtra.readJSON(path.join(projectPath, 'package.json'));
     expect(packageJson.scripts.test).toBe('npm run lint');
 
-    const workspacePath = path.dirname(projectPath);
     const planArtifact = await fsExtra.readJSON(
-      path.join(workspacePath, '.workspai', 'reports', 'doctor-remediation-plan-last-run.json')
+      path.join(projectPath, '.workspai', 'reports', 'doctor-remediation-plan-last-run.json')
     );
     const fixArtifact = await fsExtra.readJSON(
-      path.join(workspacePath, '.workspai', 'reports', 'doctor-fix-result-last-run.json')
+      path.join(projectPath, '.workspai', 'reports', 'doctor-fix-result-last-run.json')
     );
     const history = await fsExtra.readJSON(
-      path.join(workspacePath, '.workspai', 'reports', 'workspace-intelligence-history.json')
+      path.join(projectPath, '.workspai', 'reports', 'workspace-intelligence-history.json')
     );
 
     expect(planArtifact.schemaVersion).toBe('doctor-remediation-plan-v2');

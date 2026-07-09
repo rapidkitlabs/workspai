@@ -30,6 +30,32 @@ describe('Doctor Command', () => {
     expect(typeof runDoctor).toBe('function');
   });
 
+  it('should fail doctor apply exit code when a fix execution fails', async () => {
+    const { computeDoctorFixAwareExitCode } = await import('../doctor.js');
+
+    expect(
+      computeDoctorFixAwareExitCode(
+        { errors: 0, warnings: 0 },
+        { profile: 'local' },
+        {
+          schemaVersion: 'rapidkit-doctor-fix-result-v1',
+          generatedAt: new Date().toISOString(),
+          appliedFixes: [
+            {
+              path: '/workspace/api',
+              action: 'dependency-sync',
+              outcome: 'failed',
+              projectName: 'api',
+              command: 'poetry install --no-root',
+            },
+          ],
+          remainingBlockers: ['api: Dependencies not installed'],
+          verifyRecommended: 'npx workspai workspace verify --json',
+        }
+      )
+    ).toBe(1);
+  });
+
   it('should handle doctor command with mocked successful checks', async () => {
     // Mock successful command executions
     mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
@@ -1476,6 +1502,28 @@ describe('Doctor Command', () => {
     );
     await fsExtra.writeFile(path.join(projectPath, 'eslint.config.mjs'), 'export default []');
 
+    const workspaceFixResultPath = path.join(
+      workspacePath,
+      '.workspai',
+      'reports',
+      'doctor-fix-result-last-run.json'
+    );
+    await fsExtra.outputJSON(workspaceFixResultPath, {
+      schemaVersion: 'rapidkit-doctor-fix-result-v1',
+      generatedAt: '2026-01-01T00:00:00.000Z',
+      appliedFixes: [
+        {
+          path: workspacePath,
+          action: 'workspace-sentinel',
+          outcome: 'guidance',
+          projectName: 'workspace',
+          command: 'workspai doctor workspace --apply --json',
+        },
+      ],
+      remainingBlockers: ['workspace: sentinel blocker'],
+      verifyRecommended: 'npx workspai workspace verify --json',
+    });
+
     mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'python3' || cmd === 'python') {
         if (args?.[0] === '--version') {
@@ -1565,10 +1613,10 @@ describe('Doctor Command', () => {
         ])
       );
       expect(payload.remediationPlanPath).toBe(
-        path.join(workspacePath, '.workspai', 'reports', 'doctor-remediation-plan-last-run.json')
+        path.join(projectPath, '.workspai', 'reports', 'doctor-remediation-plan-last-run.json')
       );
       expect(payload.fixResultPath).toBe(
-        path.join(workspacePath, '.workspai', 'reports', 'doctor-fix-result-last-run.json')
+        path.join(projectPath, '.workspai', 'reports', 'doctor-fix-result-last-run.json')
       );
       await expect(
         fsExtra.pathExists(
@@ -1585,6 +1633,11 @@ describe('Doctor Command', () => {
           path.join(projectPath, '.workspai', 'reports', 'doctor-fix-result-last-run.json')
         )
       ).resolves.toBe(true);
+      await expect(fsExtra.readJSON(workspaceFixResultPath)).resolves.toEqual(
+        expect.objectContaining({
+          remainingBlockers: ['workspace: sentinel blocker'],
+        })
+      );
       expect(payload.project.repairCapabilities).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -3612,8 +3665,10 @@ describe('Doctor Command', () => {
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const originalCwd = process.cwd();
+    const originalAllowGuarded = process.env.RAPIDKIT_DOCTOR_FIX_ALLOW_GUARDED_COMMANDS;
 
     try {
+      process.env.RAPIDKIT_DOCTOR_FIX_ALLOW_GUARDED_COMMANDS = '1';
       process.chdir(projectPath);
       const { runDoctor } = await import('../doctor.js');
       await runDoctor({ json: true, apply: true });
@@ -3635,6 +3690,117 @@ describe('Doctor Command', () => {
       );
     } finally {
       process.chdir(originalCwd);
+      if (originalAllowGuarded === undefined) {
+        delete process.env.RAPIDKIT_DOCTOR_FIX_ALLOW_GUARDED_COMMANDS;
+      } else {
+        process.env.RAPIDKIT_DOCTOR_FIX_ALLOW_GUARDED_COMMANDS = originalAllowGuarded;
+      }
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('should record Python dependency remediation as guidance without guarded opt-in', async () => {
+    const tempRoot = await fsExtra.mkdtemp(
+      path.join(os.tmpdir(), 'rapidkit-doctor-python-guidance-')
+    );
+    const workspacePath = path.join(tempRoot, 'workspace');
+    const projectPath = path.join(workspacePath, 'harbor-api');
+
+    await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit-workspace'), {
+      name: 'workspace',
+      version: '1.0',
+    });
+    await fsExtra.ensureDir(path.join(projectPath, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(projectPath, '.rapidkit', 'project.json'), {
+      name: 'harbor-api',
+      kit_name: 'fastapi.standard',
+      runtime: 'python',
+      framework: 'fastapi',
+    });
+    await fsExtra.writeFile(
+      path.join(projectPath, 'pyproject.toml'),
+      [
+        '[tool.poetry]',
+        'name = "harbor-api"',
+        'version = "0.1.0"',
+        'packages = [{ include = "src" }]',
+        '',
+        '[tool.poetry.dependencies]',
+        'python = "^3.10"',
+        'fastapi = "^0.128.0"',
+        '',
+        '[build-system]',
+        'requires = ["poetry-core"]',
+        'build-backend = "poetry.core.masonry.api"',
+        '',
+      ].join('\n'),
+      'utf8'
+    );
+    await fsExtra.ensureDir(path.join(projectPath, 'src'));
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if ((cmd === 'python3' || cmd === 'python') && args?.[0] === '--version') {
+        return { stdout: 'Python 3.11.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'poetry') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'pipx' && args?.[0] === '--version') {
+        return { stdout: '1.8.0', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        return { stdout: 'go version go1.22.0 linux/amd64', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'rapidkit') {
+        return { stdout: 'RapidKit Version: 0.3.9', stderr: '', exitCode: 0 } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 0 } as any;
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+    const originalAllowGuarded = process.env.RAPIDKIT_DOCTOR_FIX_ALLOW_GUARDED_COMMANDS;
+    const originalAllowDependencySync = process.env.RAPIDKIT_DOCTOR_FIX_ALLOW_DEPENDENCY_SYNC;
+
+    try {
+      delete process.env.RAPIDKIT_DOCTOR_FIX_ALLOW_GUARDED_COMMANDS;
+      delete process.env.RAPIDKIT_DOCTOR_FIX_ALLOW_DEPENDENCY_SYNC;
+      process.chdir(projectPath);
+      const { runDoctor } = await import('../doctor.js');
+      const exitCode = await runDoctor({ json: true, apply: true });
+
+      expect(exitCode).toBe(0);
+      const poetryCalls = mockedExeca.mock.calls.filter(([cmd]) => cmd === 'poetry');
+      expect(poetryCalls.map(([, args]) => args)).not.toContainEqual(['install', '--no-root']);
+
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string | undefined;
+      expect(jsonLine).toBeDefined();
+      const payload = JSON.parse(jsonLine as string);
+      expect(payload.fixResult.appliedFixes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            action: 'dependency-sync',
+            outcome: 'guidance',
+            projectName: 'harbor-api',
+          }),
+        ])
+      );
+    } finally {
+      process.chdir(originalCwd);
+      if (originalAllowGuarded === undefined) {
+        delete process.env.RAPIDKIT_DOCTOR_FIX_ALLOW_GUARDED_COMMANDS;
+      } else {
+        process.env.RAPIDKIT_DOCTOR_FIX_ALLOW_GUARDED_COMMANDS = originalAllowGuarded;
+      }
+      if (originalAllowDependencySync === undefined) {
+        delete process.env.RAPIDKIT_DOCTOR_FIX_ALLOW_DEPENDENCY_SYNC;
+      } else {
+        process.env.RAPIDKIT_DOCTOR_FIX_ALLOW_DEPENDENCY_SYNC = originalAllowDependencySync;
+      }
       logSpy.mockRestore();
       await fsExtra.remove(tempRoot);
     }

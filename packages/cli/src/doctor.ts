@@ -6673,7 +6673,16 @@ async function executeFixCommands(
 
       const dependencySync = parseDependencySyncFix(cmd);
       if (dependencySync) {
-        const guardedPackageInstallCommands = new Set(['npm', 'pnpm', 'yarn', 'bun']);
+        const guardedPackageInstallCommands = new Set([
+          'npm',
+          'pnpm',
+          'yarn',
+          'bun',
+          'poetry',
+          'pip',
+          'pip3',
+          'pipenv',
+        ]);
         if (
           !allowGuardedCommandFixes &&
           guardedPackageInstallCommands.has(dependencySync.command)
@@ -6897,6 +6906,16 @@ export function computeDoctorGateExitCode(
   return 0;
 }
 
+export function computeDoctorFixAwareExitCode(
+  healthScore: { errors?: number; warnings?: number } | null | undefined,
+  options: { strict?: boolean; ci?: boolean; profile?: string },
+  fixResult: DoctorFixExecutionResult | undefined
+): number {
+  const gateExitCode = computeDoctorGateExitCode(healthScore, options);
+  const failedFix = fixResult?.appliedFixes.some((fix) => fix.outcome === 'failed') ?? false;
+  return failedFix ? Math.max(gateExitCode, 1) : gateExitCode;
+}
+
 export async function runDoctor(
   options: {
     workspace?: boolean | string;
@@ -7054,7 +7073,11 @@ export async function runDoctor(
       if (!options.quiet) {
         console.log(JSON.stringify(output, null, 2));
       }
-      return computeDoctorGateExitCode(health.healthScore, { profile: policyProfile.name });
+      return computeDoctorFixAwareExitCode(
+        health.healthScore,
+        { profile: policyProfile.name },
+        fixResult
+      );
     }
 
     // Render health score
@@ -7259,11 +7282,8 @@ export async function runDoctor(
         options.plan || options.fix || options.apply
           ? await buildRemediationPlan([envelope.project], policyProfile.name)
           : undefined;
-      const projectArtifactRoot = reportedWorkspacePath ?? projectPath;
-      const projectArtifactMirrors =
-        reportedWorkspacePath && path.resolve(reportedWorkspacePath) !== path.resolve(projectPath)
-          ? [projectPath]
-          : [];
+      const projectArtifactRoot = projectPath;
+      const projectArtifactMirrors: string[] = [];
       const remediationPlanPath = remediationPlan
         ? await writeDoctorRemediationPlanArtifact(
             projectArtifactRoot,
@@ -7351,7 +7371,11 @@ export async function runDoctor(
       if (!options.quiet) {
         console.log(JSON.stringify(output, null, 2));
       }
-      return computeDoctorGateExitCode(envelope.healthScore, { profile: policyProfile.name });
+      return computeDoctorFixAwareExitCode(
+        envelope.healthScore,
+        { profile: policyProfile.name },
+        fixResult
+      );
     }
 
     console.log(chalk.bold(`Project: ${chalk.cyan(path.basename(projectPath))}`));

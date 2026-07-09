@@ -694,7 +694,7 @@ export function categorizeError(
 
   if (!errorPatterns) {
     errorPatterns = {
-      setup: ['ModuleNotFoundError', 'npm ERR!', 'error:', 'not found'],
+      setup: ['ModuleNotFoundError', 'No module named', 'npm ERR!', 'error:', 'not found'],
       'test-failure': ['FAILED', 'FAIL', 'failed'],
       dependency: ['cannot find module', 'import.*error'],
       runtime: ['Exception', 'Error:', 'panic', 'TypeError'],

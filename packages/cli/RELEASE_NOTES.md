@@ -1,11 +1,12 @@
 # Release Notes
 
-## Latest Release: v0.43.1 (July 8, 2026)
+## Latest Release: v0.43.1 (July 9, 2026)
 
-### Workspai Debug Alias and Release Alignment
+### Workspai Debug Alias, Doctor Repair, and Workspace Intelligence Chain Alignment
 
 This patch release tightens the Workspai monorepo package surface after the
-initial `workspai`/`wspai` publish.
+initial `workspai`/`wspai` publish, and hardens the Doctor and Workspace
+Intelligence chain before the first stable Workspai CLI release.
 
 **What's New:**
 
@@ -20,6 +21,24 @@ initial `workspai`/`wspai` publish.
   - Keeps the `wspai` package dependency pinned to the matching `workspai`
     version.
 
+- **Doctor and repair artifact integrity**
+  - `doctor project --fix` now writes project-scope fix evidence under the
+    project `.workspai/reports` directory instead of overwriting workspace-level
+    Doctor fix evidence.
+  - Doctor fix/apply flows now return failing exit codes when a fix attempt
+    remains blocked or unresolved, including local-profile runs.
+  - Python dependency sync repair is guarded by default and emits deterministic
+    guidance unless explicit dependency-install opt-in is provided.
+
+- **Workspace Intelligence chain validation**
+  - Verified the full workspace chain across minimal and polyglot test
+    workspaces: sync, contract verify, model, context, agent sync, graph, diff,
+    impact, verify, trace, explain, run, share, export, and feedback history.
+  - Confirmed `wspai` delegates to the canonical `workspai` CLI command surface.
+  - Improved Workspace Run diagnostics so Python wrapper failures such as
+    `No module named pytest` are classified as setup failures instead of
+    `unknown`.
+
 **Breaking changes:** None.
 
 **Verification:**
@@ -31,6 +50,10 @@ initial `workspai`/`wspai` publish.
 - `corepack npm --workspace workspai run smoke:enterprise-package`
 - `corepack npm --workspace wspai run smoke`
 - `corepack npm --workspace workspai run test -- src/__tests__/index.test.ts src/__tests__/package-publish-contract.test.ts`
+- `corepack npm --workspace workspai run test`
+- `corepack npm --workspace workspai run test -- src/__tests__/doctor.test.ts`
+- `corepack npm --workspace workspai run test -- src/__tests__/doctor-canary-matrix.test.ts`
+- `corepack npm --workspace workspai run test -- src/__tests__/workspace-run.test.ts`
 
 **Upgrade:**
 

@@ -43,7 +43,7 @@ export function isWorkspaceStageSupported(
   projectPath: string,
   stage: string,
   capabilities: ProjectCommandCapabilities = resolveProjectCommandCapabilities(projectPath)
-): { supported: boolean; reason?: string } {
+): { supported: boolean; reason?: string; shouldFail?: boolean } {
   const capabilityCommand = resolveWorkspaceStageCapabilityCommand(stage);
   if (!capabilityCommand) {
     const customOverride = readCustomStageOverride(projectPath, stage);
@@ -65,11 +65,15 @@ export function isWorkspaceStageSupported(
 
   const capability = capabilities.commandMap[capabilityCommand];
   if (!capability || capability.status !== 'supported') {
+    const observedOnly =
+      capabilities.runtimeSupportTier === 'observed' ||
+      capabilities.frameworkSupportTier === 'observed';
     return {
       supported: false,
       reason:
         capability?.reason ??
         `Command "${capabilityCommand}" is not supported for this project runtime/framework.`,
+      shouldFail: !observedOnly,
     };
   }
 

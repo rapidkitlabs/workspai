@@ -152,6 +152,43 @@ describe('workspace-run', () => {
     await fsExtra.remove(workspacePath);
   });
 
+  it('fails selected projects when the requested workspace stage is unsupported', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
+    const projectPath = path.join(workspacePath, 'web');
+    await fsExtra.ensureDir(path.join(projectPath, '.workspai'));
+    await fsExtra.writeJSON(path.join(projectPath, '.workspai', 'project.json'), {
+      name: 'web',
+      runtime: 'node',
+      framework: 'nextjs',
+    });
+    await fsExtra.writeJSON(path.join(projectPath, 'package.json'), {
+      scripts: {
+        build: 'next build',
+      },
+      dependencies: {
+        next: '^16.0.0',
+      },
+    });
+
+    const report = await runWorkspaceStage({
+      workspacePath,
+      stage: 'test',
+      scope: 'project:web',
+      enforceGates: false,
+      json: true,
+    });
+
+    const projectReport = report.projects.find((item) => item.relativePath === 'web');
+    expect(projectReport?.selected).toBe(true);
+    expect(projectReport?.status).toBe('failed');
+    expect(projectReport?.exitCode).toBe(127);
+    expect(projectReport?.reason).toContain('No test script was found');
+    expect(report.summary.failed).toBe(1);
+    expect(report.summary.exitCode).toBe(1);
+
+    await fsExtra.remove(workspacePath);
+  });
+
   it('blocks project execution when readiness gate fails', async () => {
     const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
     await createProject(workspacePath, 'services/api-a');
@@ -928,6 +965,54 @@ describe('workspace-run', () => {
         json: true,
       })
     ).rejects.toThrow('Unsupported workspace run stage: dev');
+
+    await fsExtra.remove(workspacePath);
+  });
+
+  it('classifies missing python test dependency from wrapper output as setup', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-'));
+    const projectPath = path.join(workspacePath, 'ledger-api');
+    await fsExtra.ensureDir(path.join(projectPath, '.rapidkit'));
+    await fsExtra.writeFile(
+      path.join(projectPath, '.rapidkit', 'cli.py'),
+      '#!/usr/bin/env python3\n'
+    );
+    await fsExtra.writeJSON(path.join(projectPath, '.rapidkit', 'context.json'), {
+      name: 'ledger-api',
+      runtime: 'python',
+      framework: 'fastapi',
+    });
+    await fsExtra.writeFile(
+      path.join(projectPath, 'pyproject.toml'),
+      '[project]\nname = "ledger-api"\n'
+    );
+
+    const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
+    execaMock.mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args.includes('test')) {
+        return {
+          exitCode: 1,
+          stdout:
+            '⚠️  Release readiness is warn. Command continues in warn mode.\n' +
+            '/workspace/ledger-api/.venv/bin/python: No module named pytest',
+          stderr: '',
+        };
+      }
+      return { exitCode: 0, stdout: '{}', stderr: '' };
+    });
+
+    const report = await runWorkspaceStage({
+      workspacePath,
+      stage: 'test',
+      enforceGates: false,
+      json: true,
+    });
+
+    const projectReport = report.projects[0];
+    expect(projectReport?.status).toBe('failed');
+    expect(projectReport?.errorCategory).toBe('setup');
+    expect(projectReport?.failureDiagnostic?.category).toBe('setup');
+    expect(projectReport?.failureDiagnostic?.outputExcerpt).toContain('No module named pytest');
 
     await fsExtra.remove(workspacePath);
   });
