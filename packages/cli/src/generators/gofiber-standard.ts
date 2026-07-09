@@ -19,7 +19,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { execa } from 'execa';
 import { getVersion } from '../update-checker.js';
-import { isInsideExistingGitWorktree } from '../utils/git-worktree.js';
+import { buildCleanGitEnv, isInsideExistingGitWorktree } from '../utils/git-worktree.js';
 import {
   buildGoLauncherCmdTemplate,
   buildGoLauncherShellTemplate,
@@ -1729,13 +1729,14 @@ export async function generateGoFiberKit(
             chalk.gray('⚠  git init skipped (target is inside an existing git worktree)')
           );
         } else {
-          await execa('git', ['init'], { cwd: projectPath });
-          await execa('git', ['add', '-A'], { cwd: projectPath });
+          await execa('git', ['init'], { cwd: projectPath, env: buildCleanGitEnv() });
+          await execa('git', ['add', '-A'], { cwd: projectPath, env: buildCleanGitEnv() });
           await execa(
             'git',
             ['commit', '-m', 'chore: initial scaffold (rapidkit gofiber.standard)'],
             {
               cwd: projectPath,
+              env: buildCleanGitEnv(),
             }
           );
           console.log(chalk.gray('✓ git repository initialized'));

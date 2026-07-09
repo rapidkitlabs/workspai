@@ -11,6 +11,7 @@ import {
 import { normalizeRegistryPath } from './utils/registry-path.js';
 import { isDoctorEvidencePayloadCompatible } from './utils/doctor-evidence-contract.js';
 import { discoverWorkspaceProjects as discoverWorkspaceProjectsShared } from './utils/workspace-discovery.js';
+import { buildCleanGitEnv } from './utils/git-worktree.js';
 import { projectMetadataCandidates, workspaceMetadataCandidates } from './utils/workspace-paths.js';
 
 interface WorkspaceProject {
@@ -45,6 +46,7 @@ async function findContainingGitRoot(targetPath: string): Promise<string | null>
   try {
     const result = await execa('git', ['rev-parse', '--show-toplevel'], {
       cwd: targetPath,
+      env: buildCleanGitEnv(),
     });
     return result.stdout.trim() ? path.resolve(targetPath, result.stdout.trim()) : null;
   } catch {
@@ -65,10 +67,11 @@ async function initializeStandaloneGitRepository(
 
   spinner.start('Initializing git repository...');
   try {
-    await execa('git', ['init'], { cwd: targetPath });
-    await execa('git', ['add', '.'], { cwd: targetPath });
+    await execa('git', ['init'], { cwd: targetPath, env: buildCleanGitEnv() });
+    await execa('git', ['add', '.'], { cwd: targetPath, env: buildCleanGitEnv() });
     await execa('git', ['commit', '-m', commitMessage], {
       cwd: targetPath,
+      env: buildCleanGitEnv(),
     });
     spinner.succeed('Git repository initialized');
   } catch {

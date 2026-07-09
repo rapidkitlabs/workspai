@@ -10,7 +10,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { execa } from 'execa';
 import { getVersion } from '../update-checker.js';
-import { isInsideExistingGitWorktree } from '../utils/git-worktree.js';
+import { buildCleanGitEnv, isInsideExistingGitWorktree } from '../utils/git-worktree.js';
 import { toPascalCase, writeGeneratorFile } from './go-kit-common.js';
 
 export const DEFAULT_DOTNET_TARGET_FRAMEWORK = 'net8.0';
@@ -605,7 +605,11 @@ async function maybeInitGit(projectPath: string, skipGit?: boolean): Promise<voi
       console.log(chalk.gray('⚠  git init skipped (target is inside an existing git worktree)'));
       return;
     }
-    await execa('git', ['init'], { cwd: projectPath, stdio: 'ignore' });
+    await execa('git', ['init'], {
+      cwd: projectPath,
+      stdio: 'ignore',
+      env: buildCleanGitEnv(),
+    });
   } catch {
     console.log(chalk.gray('⚠  git init skipped (git not found or error)'));
   }

@@ -33,6 +33,7 @@ import {
   readWorkspaceMarker,
   writeWorkspaceMarker as writeWorkspaceMarkerToFile,
 } from './workspace-marker.js';
+import { buildCleanGitEnv } from './utils/git-worktree.js';
 import {
   LEGACY_RAPIDKIT_METADATA_DIR,
   LEGACY_RAPIDKIT_WORKSPACE_MARKER,
@@ -86,6 +87,7 @@ async function findContainingGitRoot(targetPath: string): Promise<string | null>
   try {
     const result = await execa('git', ['rev-parse', '--show-toplevel'], {
       cwd: targetPath,
+      env: buildCleanGitEnv(),
     });
     return result.stdout.trim() ? path.resolve(targetPath, result.stdout.trim()) : null;
   } catch {
@@ -106,10 +108,11 @@ async function initializeStandaloneGitRepository(
 
   spinner.start('Initializing git repository');
   try {
-    await execa('git', ['init'], { cwd: targetPath });
-    await execa('git', ['add', '.'], { cwd: targetPath });
+    await execa('git', ['init'], { cwd: targetPath, env: buildCleanGitEnv() });
+    await execa('git', ['add', '.'], { cwd: targetPath, env: buildCleanGitEnv() });
     await execa('git', ['commit', '-m', commitMessage], {
       cwd: targetPath,
+      env: buildCleanGitEnv(),
     });
     spinner.succeed('Git repository initialized');
   } catch {
@@ -3428,15 +3431,16 @@ ${name}/
       } else {
         spinner.start('Initializing git repository');
         try {
-          await execa('git', ['init'], { cwd: projectPath });
+          await execa('git', ['init'], { cwd: projectPath, env: buildCleanGitEnv() });
           await fsExtra.outputFile(
             path.join(projectPath, '.gitignore'),
             '# Dependencies\nnode_modules/\n\n# Generated projects\n*/\n!generate-demo.js\n!README.md\n\n# Python\n__pycache__/\n*.pyc\n.venv/\n.env\n',
             'utf-8'
           );
-          await execa('git', ['add', '.'], { cwd: projectPath });
+          await execa('git', ['add', '.'], { cwd: projectPath, env: buildCleanGitEnv() });
           await execa('git', ['commit', '-m', 'Initial commit: Demo workspace'], {
             cwd: projectPath,
+            env: buildCleanGitEnv(),
           });
           spinner.succeed('Git repository initialized');
         } catch (_error) {

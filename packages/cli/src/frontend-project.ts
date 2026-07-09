@@ -12,7 +12,7 @@ import {
 } from './utils/platform-capabilities.js';
 import type { ImportedProjectRegistryEntry } from './imported-projects-registry.js';
 import type { BackendImportStack } from './utils/backend-framework-contract.js';
-import { isInsideExistingGitWorktree } from './utils/git-worktree.js';
+import { buildCleanGitEnv, isInsideExistingGitWorktree } from './utils/git-worktree.js';
 import { projectMetadataPath } from './utils/workspace-paths.js';
 
 export type FrontendGeneratorId =
@@ -634,7 +634,10 @@ async function runCommand(command: string, args: string[], cwd: string): Promise
       cwd,
       stdio: 'inherit',
       shell: shouldUseShellExecution(),
-      env: buildPackageRunnerSubprocessEnv(),
+      env:
+        command === 'git'
+          ? buildCleanGitEnv(buildPackageRunnerSubprocessEnv())
+          : buildPackageRunnerSubprocessEnv(),
     });
     child.on('close', (code) => resolve(code ?? 1));
     child.on('error', () => resolve(1));

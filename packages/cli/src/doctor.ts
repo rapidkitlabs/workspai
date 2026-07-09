@@ -7,6 +7,7 @@ import path from 'path';
 import { logger } from './logger.js';
 import { prompt } from './cli-ui/prompts.js';
 import { readImportedProjectsRegistry } from './imported-projects-registry.js';
+import { buildCleanGitEnv } from './utils/git-worktree.js';
 import {
   getPythonCommandCandidates,
   getRapidkitLocalScriptCandidates,
@@ -2943,6 +2944,7 @@ async function checkProject(
       const { stdout } = await execa('git', ['log', '-1', '--format=%cr'], {
         cwd: projectPath,
         reject: false,
+        env: buildCleanGitEnv(),
       });
       if (stdout) {
         health.lastModified = stdout.trim();

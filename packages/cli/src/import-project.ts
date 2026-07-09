@@ -15,6 +15,7 @@ import {
 import { resolveImportModuleSupport } from './utils/import-module-support.js';
 import { inferWorkspaceProjectKind, type WorkspaceProjectKind } from './utils/project-kind.js';
 import { resolveWorkspaceProjectPaths } from './utils/workspace-project-paths.js';
+import { buildCleanGitEnv } from './utils/git-worktree.js';
 import {
   removeImportedProjectsRegistryEntries,
   upsertImportedProjectsRegistry,
@@ -433,6 +434,7 @@ export async function importProjectIntoWorkspace(
       destinationPrepared = true;
       await execa('git', ['clone', '--depth', '1', source, destinationPath], {
         timeout: 120000,
+        env: buildCleanGitEnv(),
       });
     }
 

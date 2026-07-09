@@ -6,7 +6,7 @@ import ora from 'ora';
 import { fileURLToPath } from 'url';
 import { execa } from 'execa';
 import { getVersion } from './update-checker.js';
-import { isInsideExistingGitWorktree } from './utils/git-worktree.js';
+import { buildCleanGitEnv, isInsideExistingGitWorktree } from './utils/git-worktree.js';
 import crypto from 'crypto';
 
 // Get the directory of the current module
@@ -365,13 +365,14 @@ coverage/
             'Git initialization skipped because target is already inside a git worktree'
           );
         } else {
-          await execa('git', ['init'], { cwd: projectPath });
-          await execa('git', ['add', '.'], { cwd: projectPath });
+          await execa('git', ['init'], { cwd: projectPath, env: buildCleanGitEnv() });
+          await execa('git', ['add', '.'], { cwd: projectPath, env: buildCleanGitEnv() });
           await execa(
             'git',
             ['commit', '-m', `Initial commit: ${templateName} project via Workspai`],
             {
               cwd: projectPath,
+              env: buildCleanGitEnv(),
             }
           );
           gitSpinner.succeed('Git repository initialized');

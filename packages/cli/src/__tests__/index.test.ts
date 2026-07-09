@@ -12,6 +12,7 @@ import { spawnSync } from 'child_process';
 import { handleAdoptCommand, handleImportCommand } from '../index';
 import { ensureDistBuilt } from './helpers/dist';
 import { WORKSPACE_SUBCOMMANDS } from '../utils/workspace-command-surface';
+import { buildCleanGitEnv } from '../utils/git-worktree';
 
 interface CliExecOptions {
   cwd?: string;
@@ -39,7 +40,7 @@ async function execa(
   try {
     const child = spawnSync(command, args, {
       cwd: options.cwd,
-      env: options.env,
+      env: buildCleanGitEnv(options.env ?? process.env),
       stdio: ['ignore', stdoutFd, stderrFd],
       windowsHide: true,
     });

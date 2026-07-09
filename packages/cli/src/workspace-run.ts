@@ -22,6 +22,7 @@ import {
   normalizeBackendRuntimeFamily,
   type BackendPlatformKey,
 } from './utils/backend-framework-contract.js';
+import { buildCleanGitEnv } from './utils/git-worktree.js';
 import {
   buildPackageRunnerSubprocessEnv,
   resolvePackageRunnerInvocation,
@@ -330,6 +331,7 @@ async function computeAffectedProjects(
   const changedFiles = await execa('git', ['diff', '--name-only', `${since}...HEAD`], {
     cwd: workspacePath,
     reject: false,
+    env: buildCleanGitEnv(),
   });
 
   if (changedFiles.exitCode !== 0) {
