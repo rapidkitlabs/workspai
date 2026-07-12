@@ -1,0 +1,127 @@
+import { describe, expect, it } from 'vitest';
+
+import { buildWorkspaceIntelligenceArchitectureContract } from '../../contracts/workspace-intelligence-architecture-contract';
+
+describe('workspace intelligence architecture contract', () => {
+  it('defines the canonical inputs, architecture core, consumers, and claim boundaries', () => {
+    const contract = buildWorkspaceIntelligenceArchitectureContract();
+
+    expect(contract.schemaVersion).toBe('workspai-workspace-intelligence-architecture-v1');
+    expect(contract.canonicalPositioning.tagline).toBe(
+      'Open-Source Workspace Intelligence for Software Systems'
+    );
+    expect(contract.canonicalPositioning.mentalModel).toEqual([
+      'Repositories · Projects · Dependencies · Changes',
+      'Workspace Intelligence',
+      'Evidence-backed outputs',
+      'Developers · CI · IDEs · AI agents',
+    ]);
+
+    expect(contract.architectureCore.loop.map((stage) => stage.id)).toEqual([
+      'model',
+      'snapshot',
+      'diff',
+      'impact',
+      'doctor-evidence',
+      'contract-evidence',
+      'readiness-evidence',
+      'verify',
+      'context',
+      'agent-sync',
+      'explain',
+    ]);
+
+    expect(contract.workspaceLifecycle.ingestionRoutes.map((route) => route.id)).toEqual([
+      'create',
+      'adopt',
+      'import',
+    ]);
+    expect(contract.observedInputs.map((input) => input.id)).toEqual([
+      'projects-repositories',
+      'runtime-dependencies',
+      'workspace-rules',
+      'changes',
+      'existing-evidence',
+    ]);
+    expect(contract.outputFamilies.map((output) => output.id)).toEqual([
+      'understanding',
+      'governance-evidence',
+      'agent-grounding',
+      'explanations',
+    ]);
+    expect(contract.auxiliaryCapabilities.map((capability) => capability.id)).toEqual([
+      'graph',
+      'watch',
+      'mcp',
+    ]);
+
+    expect(contract.consumers.map((consumer) => consumer.id)).toEqual([
+      'developers',
+      'ci',
+      'ides-and-extensions',
+      'ai-agents',
+      'docs-and-marketing',
+    ]);
+
+    expect(contract.claimBoundaries.allowed).toEqual(
+      expect.arrayContaining([
+        'One shared model of structure, context, impact, and verification.',
+        'Workspai can create projects only for native kits and available official generator paths listed in the create planner contract.',
+        'Any readable project can enter Workspace Intelligence through adopt/import when it can be registered.',
+        'Existing projects can enter Workspace Intelligence through adopt/import when they are readable and can be registered, even when native scaffold is unavailable.',
+        'Existing runtime signals in the create planner are examples for detection, not a closed allowlist of adopt/import support.',
+      ])
+    );
+    expect(contract.claimBoundaries.forbiddenUnlessImplemented).toEqual(
+      expect.arrayContaining([
+        'Do not claim native scaffolding for every language or framework.',
+        'Do not describe documentation as the source of truth; documentation must be described as generated from evidence.',
+      ])
+    );
+  });
+
+  it('keeps create planner reality sourced from the runtime surface contract', () => {
+    const contract = buildWorkspaceIntelligenceArchitectureContract();
+
+    expect(contract.createPlannerReality.nativeCreateKits).toEqual(
+      expect.arrayContaining([
+        'fastapi.standard',
+        'fastapi.ddd',
+        'nestjs.standard',
+        'springboot.standard',
+        'gofiber.standard',
+        'gogin.standard',
+        'dotnet.webapi.clean',
+      ])
+    );
+    expect(contract.createPlannerReality.officialCreate).toEqual(
+      expect.arrayContaining([
+        'frontend.nextjs',
+        'frontend.vite-react',
+        'wordpress-site',
+        'wordpress-block',
+        'laravel',
+        'symfony',
+        'rails',
+      ])
+    );
+    expect(contract.createPlannerReality.existingRuntimeSignals).toEqual(
+      expect.arrayContaining(['php', 'ruby', 'rust', 'elixir', 'clojure', 'scala', 'kotlin'])
+    );
+    expect(contract.projectEntryCapability.plainLanguageRule).toContain(
+      'Any readable project can enter Workspace Intelligence'
+    );
+  });
+
+  it('keeps unimplemented atlas, wiki, and package-split surfaces out of the public architecture contract', () => {
+    const contract = buildWorkspaceIntelligenceArchitectureContract();
+    const futureExtensionIds = contract.futureExtensions.map((extension) => extension.id);
+    const forbiddenClaims = contract.claimBoundaries.forbiddenUnlessImplemented.join('\n');
+
+    expect(contract.futureExtensions).toEqual([]);
+    expect(futureExtensionIds).not.toContain('workspace-atlas');
+    expect(futureExtensionIds).not.toContain('workspace-wiki');
+    expect(futureExtensionIds).not.toContain('specialized-packages');
+    expect(forbiddenClaims).not.toMatch(/atlas|wiki/i);
+  });
+});

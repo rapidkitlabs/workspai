@@ -15,6 +15,7 @@ import {
   resolveWorkspaceArtifactPath,
   writeWorkspaceArtifactJson,
 } from './utils/artifact-path-compat.js';
+import { WORKSPACE_INTELLIGENCE_ARTIFACTS } from './contracts/workspace-intelligence-runtime-registry.js';
 
 export type PipelineStageStatus = 'pass' | 'warn' | 'fail' | 'skipped';
 
@@ -168,8 +169,8 @@ export async function runPipeline(options: PipelineOptions = {}): Promise<Pipeli
     const doctorEvidence =
       (await firstExistingWorkspaceArtifactPath(
         workspacePath,
-        '.workspai/reports/doctor-last-run.json'
-      )) ?? resolveWorkspaceArtifactPath(workspacePath, '.workspai/reports/doctor-last-run.json');
+        WORKSPACE_INTELLIGENCE_ARTIFACTS.doctor
+      )) ?? resolveWorkspaceArtifactPath(workspacePath, WORKSPACE_INTELLIGENCE_ARTIFACTS.doctor);
     stages.push({
       name: 'doctor',
       status: doctorStatus,

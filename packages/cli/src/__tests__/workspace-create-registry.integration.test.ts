@@ -6,13 +6,18 @@ import fsExtra from 'fs-extra';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createProject } from '../create.js';
-import { getWorkspaceRegistryDirectory } from '../utils/platform-capabilities.js';
+import {
+  getLegacyWorkspaceRegistryDirectory,
+  getWorkspaceRegistryDirectory,
+} from '../utils/platform-capabilities.js';
 import { normalizeRegistryPath } from '../utils/registry-path.js';
 import { WORKSPACE_CONTRACT_PATH } from '../utils/workspace-contract.js';
 import { WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH } from '../utils/workspace-registry-summary.js';
 
 const createdPaths: string[] = [];
 const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
+const originalAppData = process.env.APPDATA;
 
 async function makeTempDir(prefix: string): Promise<string> {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -38,6 +43,10 @@ afterEach(async () => {
   } else {
     process.env.HOME = originalHome;
   }
+  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = originalUserProfile;
+  if (originalAppData === undefined) delete process.env.APPDATA;
+  else process.env.APPDATA = originalAppData;
 
   while (createdPaths.length > 0) {
     const target = createdPaths.pop();
@@ -65,7 +74,9 @@ describe('workspace create registry integration', () => {
 
     const workspacePath = path.join(parentDir, workspaceName);
     const registryFile = path.join(getWorkspaceRegistryDirectory(), 'workspaces.json');
+    const legacyRegistryFile = path.join(getLegacyWorkspaceRegistryDirectory(), 'workspaces.json');
     const registry = await fsExtra.readJson(registryFile);
+    const legacyRegistry = await fsExtra.readJson(legacyRegistryFile);
     const normalizedPath = normalizeRegistryPath(workspacePath);
 
     expect(registry.workspaces).toEqual(
@@ -76,10 +87,15 @@ describe('workspace create registry integration', () => {
         }),
       ])
     );
+    expect(legacyRegistry).toEqual(registry);
     expect(await fsExtra.pathExists(path.join(workspacePath, WORKSPACE_CONTRACT_PATH))).toBe(true);
-    expect(
-      await fsExtra.pathExists(path.join(workspacePath, WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH))
-    ).toBe(true);
+    const summary = await fsExtra.readJson(
+      path.join(workspacePath, WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH)
+    );
+    expect(summary.sources.globalRegistry).toMatchObject({
+      exists: true,
+      path: registryFile,
+    });
   });
 
   it('registers nested workspace even when parent directory is already in the registry', async () => {

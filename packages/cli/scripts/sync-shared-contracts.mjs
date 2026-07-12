@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
  * Canonical contracts live in packages/cli/contracts/.
  * This script:
  * - regenerates generated canonical contracts from Workspai CLI source code
+ * - mirrors every canonical JSON contract to workspai/contracts/
  * - mirrors every canonical JSON contract to rapidkit-vscode/contracts/
  * - mirrors runtime-consumed extension JSON contracts to rapidkit-vscode/src/contracts/
  */
@@ -22,6 +23,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const cliRoot = path.resolve(scriptDir, '..');
 const monorepoRoot = path.resolve(cliRoot, '..', '..');
 const contractsDir = path.resolve(cliRoot, 'contracts');
+const rootContractsDir = path.resolve(monorepoRoot, 'contracts');
 const vscodeRoot = process.env.RAPIDKIT_VSCODE_REPO_PATH
   ? path.resolve(process.env.RAPIDKIT_VSCODE_REPO_PATH)
   : path.resolve(monorepoRoot, '..', 'rapidkit-vscode');
@@ -32,8 +34,11 @@ const GENERATED_FILES = [
   'agent-customization-pack.v1.json',
   'backend-import-stack-parity.snapshot.json',
   'module-layout.v1.json',
+  'project-entry-capability.v1.json',
   'infra-stack.v1.json',
   'extension-cli-compatibility.v1.json',
+  'workspace-intelligence-architecture.v1.json',
+  'workspace-intelligence-chain.v1.json',
 ];
 
 const VSCODE_SRC_CONTRACT_FILES = [
@@ -59,15 +64,11 @@ function runGenerator() {
   );
   const hasLocalTsx = fs.existsSync(localTsx);
   const runner = hasLocalTsx ? localTsx : fs.existsSync(workspaceTsx) ? workspaceTsx : 'npx';
-  const result = spawnSync(
-    runner,
-    runner === 'npx' ? ['tsx', scriptPath] : [scriptPath],
-    {
-      cwd: cliRoot,
-      stdio: 'inherit',
-      shell: process.platform === 'win32',
-    }
-  );
+  const result = spawnSync(runner, runner === 'npx' ? ['tsx', scriptPath] : [scriptPath], {
+    cwd: cliRoot,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  });
 
   if (result.error) {
     console.error('Could not run shared contract generator.');
@@ -230,8 +231,7 @@ function stageSyncedContracts(canonicalRelativePaths) {
         encoding: 'utf-8',
       }
     );
-    const needsStage =
-      Boolean(unstaged.stdout.trim()) || Boolean(untracked.stdout.trim());
+    const needsStage = Boolean(unstaged.stdout.trim()) || Boolean(untracked.stdout.trim());
     if (!needsStage) {
       return;
     }
@@ -251,6 +251,7 @@ function stageSyncedContracts(canonicalRelativePaths) {
 
   for (const relativePath of canonicalRelativePaths) {
     stageInRepo(npmGitRoot, path.resolve(contractsDir, relativePath));
+    stageInRepo(npmGitRoot, path.resolve(rootContractsDir, relativePath));
   }
 
   if (!npmOnly && fs.existsSync(vscodeRoot)) {
@@ -258,10 +259,7 @@ function stageSyncedContracts(canonicalRelativePaths) {
     for (const relativePath of canonicalRelativePaths) {
       stageInRepo(vscodeGitRoot, path.resolve(vscodeRoot, 'contracts', relativePath));
       if (VSCODE_SRC_CONTRACT_FILES.includes(relativePath)) {
-        stageInRepo(
-          vscodeGitRoot,
-          path.resolve(vscodeRoot, 'src', 'contracts', relativePath)
-        );
+        stageInRepo(vscodeGitRoot, path.resolve(vscodeRoot, 'src', 'contracts', relativePath));
       }
     }
   }
@@ -293,6 +291,8 @@ for (const relativePath of canonicalFiles) {
   if (!checkOnly) {
     console.log(`Contract synced from ${canonicalPath}`);
   }
+
+  syncContract(relativePath, rootContractsDir, 'workspai/contracts', content);
 
   if (!npmOnly && fs.existsSync(vscodeRoot)) {
     syncContract(

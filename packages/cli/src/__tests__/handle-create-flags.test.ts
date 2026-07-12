@@ -233,7 +233,7 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
     }
   });
 
-  it('blocks planned external create/adopt ecosystems before core delegation', async () => {
+  it('blocks planned official handoff ecosystems before core delegation', async () => {
     const resolveSpy = vi.spyOn(coreExec, 'resolveRapidkitPython').mockResolvedValue();
     const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
@@ -249,14 +249,14 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
     expect(resolveSpy).not.toHaveBeenCalled();
     expect(runSpy).not.toHaveBeenCalled();
     expect(stderrSpy.mock.calls.map((call) => String(call[0])).join('')).toContain(
-      'external-create-adopt'
+      'official'
     );
     expect(stderrSpy.mock.calls.map((call) => String(call[0])).join('')).toContain(
       'npx workspai adopt <project-path>'
     );
   });
 
-  it('routes generic non-native runtimes to adopt-only instead of guessing a native kit', async () => {
+  it('routes generic non-native runtimes to existing instead of guessing a native kit', async () => {
     const resolveSpy = vi.spyOn(coreExec, 'resolveRapidkitPython').mockResolvedValue();
     const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
@@ -266,7 +266,7 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
     expect(code).toBe(1);
     expect(resolveSpy).not.toHaveBeenCalled();
     expect(runSpy).not.toHaveBeenCalled();
-    expect(stderrSpy.mock.calls.map((call) => String(call[0])).join('')).toContain('adopt-only');
+    expect(stderrSpy.mock.calls.map((call) => String(call[0])).join('')).toContain('existing');
   });
 
   it('prompts for target on `create` and supports choosing workspace', async () => {

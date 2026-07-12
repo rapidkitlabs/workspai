@@ -7,7 +7,10 @@ import { buildCreatePlannerCapabilitiesContract } from '../src/contracts/create-
 import { buildExtensionCliCompatibilityContract } from '../src/contracts/extension-cli-compatibility-contract.js';
 import { buildInfraStackContract } from '../src/contracts/infra-stack-contract.js';
 import { buildModuleLayoutContract } from '../src/contracts/module-layout-contract.js';
+import { buildProjectEntryCapabilityContract } from '../src/contracts/project-entry-capability-contract.js';
 import { buildRuntimeCommandSurfaceContract } from '../src/contracts/runtime-command-surface-contract.js';
+import { buildWorkspaceIntelligenceArchitectureContract } from '../src/contracts/workspace-intelligence-architecture-contract.js';
+import { buildWorkspaceIntelligenceChainContract } from '../src/contracts/workspace-intelligence-chain-contract.js';
 
 const contractsDir = path.resolve(process.cwd(), 'contracts');
 
@@ -23,5 +26,11 @@ writeJson('create-planner-capabilities.v1.json', buildCreatePlannerCapabilitiesC
 writeJson('agent-customization-pack.v1.json', buildAgentCustomizationPackContract());
 writeJson('backend-import-stack-parity.snapshot.json', buildImportStackParitySnapshot());
 writeJson('module-layout.v1.json', buildModuleLayoutContract());
+writeJson('project-entry-capability.v1.json', buildProjectEntryCapabilityContract());
 writeJson('infra-stack.v1.json', buildInfraStackContract());
 writeJson('extension-cli-compatibility.v1.json', buildExtensionCliCompatibilityContract());
+writeJson(
+  'workspace-intelligence-architecture.v1.json',
+  buildWorkspaceIntelligenceArchitectureContract()
+);
+writeJson('workspace-intelligence-chain.v1.json', buildWorkspaceIntelligenceChainContract());

@@ -77,6 +77,9 @@ describe('rapidkit commands --json stability contract (1.1)', () => {
     expect(capabilities.contracts.runtimeCommandSurface).toBe(
       'rapidkit-runtime-command-surface-v1'
     );
+    expect(capabilities.contracts.workspaceIntelligenceArchitecture).toBe(
+      'workspai-workspace-intelligence-architecture-v1'
+    );
   });
 
   it('keeps the workspace capability surface aligned with runtime-command-surface.v1', () => {
@@ -148,6 +151,9 @@ describe('rapidkit --version --json contract (1.2)', () => {
     const capabilities = getGlobalCommandCapabilities();
 
     expect(versionContract.contracts).toEqual(getPublishedContractVersions());
+    expect(versionContract.contracts.workspaceIntelligenceArchitecture).toBe(
+      'workspai-workspace-intelligence-architecture-v1'
+    );
     // Both top-level machine-readable surfaces must publish identical contract
     // versions so a consumer can trust either entry point.
     expect(versionContract.contracts).toEqual(capabilities.contracts);

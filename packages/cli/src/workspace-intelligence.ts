@@ -19,15 +19,20 @@ import { attachRunCorrelation } from './observability/run-correlation.js';
 import { transitiveDependents } from './workspace-graph-traversal.js';
 import { computeGraphCentrality } from './workspace-graph-centrality.js';
 import type { WorkspaceGraphEdgeKind } from './contracts/workspace-dependency-graph-contract.js';
+import {
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+} from './contracts/workspace-intelligence-runtime-registry.js';
+import { writeWorkspaceArtifactJson } from './utils/artifact-path-compat.js';
+import { assertJsonSchemaContract } from './utils/json-schema-contract.js';
 
-export const WORKSPACE_MODEL_SNAPSHOT_SCHEMA_VERSION = 'workspace-model-snapshot.v1';
-export const WORKSPACE_MODEL_DIFF_SCHEMA_VERSION = 'workspace-model-diff.v1';
-export const WORKSPACE_MODEL_SNAPSHOT_REPORT_PATH =
-  '.workspai/reports/workspace-model-snapshot.json';
-export const WORKSPACE_MODEL_DIFF_REPORT_PATH =
-  '.workspai/reports/workspace-model-diff-last-run.json';
-export const WORKSPACE_IMPACT_SCHEMA_VERSION = 'workspace-impact.v1';
-export const WORKSPACE_IMPACT_REPORT_PATH = '.workspai/reports/workspace-impact-last-run.json';
+export const WORKSPACE_MODEL_SNAPSHOT_SCHEMA_VERSION =
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.snapshot;
+export const WORKSPACE_MODEL_DIFF_SCHEMA_VERSION = WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.diff;
+export const WORKSPACE_MODEL_SNAPSHOT_REPORT_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.snapshot;
+export const WORKSPACE_MODEL_DIFF_REPORT_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.diff;
+export const WORKSPACE_IMPACT_SCHEMA_VERSION = WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.impact;
+export const WORKSPACE_IMPACT_REPORT_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.impact;
 
 export type WorkspaceModelSnapshot = {
   schemaVersion: typeof WORKSPACE_MODEL_SNAPSHOT_SCHEMA_VERSION;
@@ -235,47 +240,31 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(stableSort(value));
 }
 
-function normalizeModelFactsForHash(model: WorkspaceModel): unknown[] | undefined {
-  return model.facts?.map((fact) => ({
-    ...fact,
-    freshness: {
-      schemaVersion: fact.freshness.schemaVersion,
-      kind: fact.freshness.kind,
-      category: fact.freshness.category,
-      ttlSeconds: fact.freshness.ttlSeconds,
-      verifyBeforeUse: fact.freshness.verifyBeforeUse,
-      sourceArtifact: fact.freshness.sourceArtifact,
-      sourcePath: fact.freshness.sourcePath,
-      inputsHash: fact.freshness.inputsHash,
-      reason: fact.freshness.reason,
-    },
-  }));
-}
-
 function hashModel(model: WorkspaceModel): string {
   // `runId` is a write-time log-correlation field that may be present on a loaded
   // baseline model; strip it (like generatedAt) so the hash stays deterministic.
-  const { runId: _ignoredRunId, ...modelWithoutRunId } = model as WorkspaceModel & {
+  const {
+    runId: _ignoredRunId,
+    evidence: _ignoredEvidence,
+    facts: _ignoredFacts,
+    factFreshness: _ignoredFactFreshness,
+    projects,
+    ...modelWithoutLiveState
+  } = model as WorkspaceModel & {
     runId?: string;
   };
+  const structuralProjects = projects.map((project) => {
+    const { evidence: _ignoredProjectEvidence, ...structuralProject } = project;
+    return structuralProject;
+  });
   const normalized = {
-    ...modelWithoutRunId,
+    ...modelWithoutLiveState,
     generatedAt: '<ignored>',
+    projects: structuralProjects,
     // The embedded dependency graph (workspace-dependency-graph.v1) carries its own
     // write-time `generatedAt`; normalize it like the model's so the structural graph
     // content participates in the hash but the timestamp never causes false drift.
     graph: model.graph ? { ...model.graph, generatedAt: '<ignored>' } : undefined,
-    facts: normalizeModelFactsForHash(model),
-    factFreshness: model.factFreshness
-      ? {
-          schemaVersion: model.factFreshness.schemaVersion,
-          totalFacts: model.factFreshness.totalFacts,
-          liveFacts: model.factFreshness.liveFacts,
-          verifyBeforeUseFacts: model.factFreshness.verifyBeforeUseFacts,
-          byKind: model.factFreshness.byKind,
-          byCategory: model.factFreshness.byCategory,
-        }
-      : undefined,
     validation: model.validation
       ? {
           ...model.validation,
@@ -292,6 +281,10 @@ function hashModel(model: WorkspaceModel): string {
   return crypto.createHash('sha256').update(stableStringify(normalized)).digest('hex');
 }
 
+export function hashWorkspaceModel(model: WorkspaceModel): string {
+  return hashModel(model);
+}
+
 function resolveWorkspaceRelativePath(workspacePath: string, filePath: string): string {
   return path.isAbsolute(filePath) ? filePath : path.join(workspacePath, filePath);
 }
@@ -306,14 +299,28 @@ async function readModelFromPath(
 
   const record = payload as Record<string, unknown>;
   if (record.schemaVersion === WORKSPACE_MODEL_SNAPSHOT_SCHEMA_VERSION) {
+    assertJsonSchemaContract(
+      payload,
+      'contracts/workspace-intelligence/workspace-model-snapshot.v1.json',
+      `Workspace model snapshot ${filePath}`
+    );
     const snapshot = record as WorkspaceModelSnapshot;
     if (!snapshot.model || snapshot.model.schemaVersion !== WORKSPACE_MODEL_SCHEMA_VERSION) {
       throw new Error(`Invalid workspace model snapshot: ${filePath}`);
     }
-    return { model: snapshot.model, hash: snapshot.modelHash || hashModel(snapshot.model) };
+    const computedHash = hashModel(snapshot.model);
+    if (snapshot.modelHash !== computedHash) {
+      throw new Error(`Workspace model snapshot hash mismatch: ${filePath}`);
+    }
+    return { model: snapshot.model, hash: snapshot.modelHash };
   }
 
   if (record.schemaVersion === WORKSPACE_MODEL_SCHEMA_VERSION) {
+    assertJsonSchemaContract(
+      payload,
+      'contracts/workspace-intelligence/workspace-model.v1.json',
+      `Workspace model ${filePath}`
+    );
     const model = record as WorkspaceModel;
     return { model, hash: hashModel(model) };
   }
@@ -338,6 +345,12 @@ async function readDiffFromPath(filePath: string): Promise<WorkspaceModelDiff | 
     return null;
   }
 
+  assertJsonSchemaContract(
+    payload,
+    'contracts/workspace-intelligence/workspace-model-diff.v1.json',
+    `Workspace model diff ${filePath}`
+  );
+
   const diff = record as WorkspaceModelDiff;
   if (
     !diff.currentModel ||
@@ -346,6 +359,9 @@ async function readDiffFromPath(filePath: string): Promise<WorkspaceModelDiff | 
     !Array.isArray(diff.changes)
   ) {
     throw new Error(`Invalid workspace model diff report: ${filePath}`);
+  }
+  if (diff.toHash !== hashModel(diff.currentModel)) {
+    throw new Error(`Workspace model diff current-model hash mismatch: ${filePath}`);
   }
   return diff;
 }
@@ -376,10 +392,11 @@ export async function writeWorkspaceModelSnapshot(
   snapshot: WorkspaceModelSnapshot,
   workspacePath: string
 ): Promise<string> {
-  const outputPath = path.join(workspacePath, WORKSPACE_MODEL_SNAPSHOT_REPORT_PATH);
-  await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJson(outputPath, attachRunCorrelation(snapshot), { spaces: 2 });
-  return outputPath;
+  return writeWorkspaceArtifactJson(
+    workspacePath,
+    WORKSPACE_MODEL_SNAPSHOT_REPORT_PATH,
+    attachRunCorrelation(snapshot)
+  );
 }
 
 function projectSignature(project: WorkspaceModelProject): Record<string, unknown> {
@@ -642,10 +659,11 @@ export async function writeWorkspaceModelDiff(
   diff: WorkspaceModelDiff,
   workspacePath: string
 ): Promise<string> {
-  const outputPath = path.join(workspacePath, WORKSPACE_MODEL_DIFF_REPORT_PATH);
-  await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJson(outputPath, attachRunCorrelation(diff), { spaces: 2 });
-  return outputPath;
+  return writeWorkspaceArtifactJson(
+    workspacePath,
+    WORKSPACE_MODEL_DIFF_REPORT_PATH,
+    attachRunCorrelation(diff)
+  );
 }
 
 function riskRank(risk: WorkspaceImpactRisk): number {
@@ -1255,8 +1273,9 @@ export async function writeWorkspaceImpact(
   impact: WorkspaceImpact,
   workspacePath: string
 ): Promise<string> {
-  const outputPath = path.join(workspacePath, WORKSPACE_IMPACT_REPORT_PATH);
-  await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJson(outputPath, attachRunCorrelation(impact), { spaces: 2 });
-  return outputPath;
+  return writeWorkspaceArtifactJson(
+    workspacePath,
+    WORKSPACE_IMPACT_REPORT_PATH,
+    attachRunCorrelation(impact)
+  );
 }

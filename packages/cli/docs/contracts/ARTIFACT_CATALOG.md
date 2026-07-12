@@ -9,12 +9,16 @@ Canonical map of **on-disk artifacts** produced by Workspai CLI commands. Dashbo
 | Workspace manifest | `.workspai/workspace.json`             | `create workspace`, `foundation ensure`, `bootstrap` (profile) | Profile, engine, bootstrap metadata — **not** project list |
 | Workspace contract | `.workspai/workspace.contract.json`    | `workspace sync`, `workspace contract *`, import/adopt         | Operational project registry (ports, contracts)            |
 | Registry summary   | `.workspai/workspace-registry.v1.json` | `workspace sync`, contract sync, `registry status --refresh`   | **Canonical** project count + authority for UI/CI          |
-| Workspace marker   | `.workspai-workspace`                  | `create workspace`, `foundation ensure`                        | Root detection                                             |
+| Workspace marker   | `.workspai-workspace`                  | `create workspace`, `foundation ensure`                        | Portable root detection; commit with the workspace         |
 
 Legacy `.rapidkit-workspace` and `.rapidkit/*` paths are read as fallback for
 older workspaces. New Workspai CLI writes target `.workspai-workspace` and
 `.workspai/*`. Workspace archive hydrate also normalizes legacy archive entries
 to canonical Workspai paths on restore.
+
+The canonical `.workspai-workspace` marker must remain trackable. Generated
+workspace `.gitignore` files exclude legacy/local engine state but do not
+exclude the canonical marker.
 
 ## Naming conventions
 
@@ -258,7 +262,8 @@ Canonical source: `src/observability/run-correlation.ts` (`attachRunCorrelation`
 | Contract                                        | Schema version                            | Consumer purpose                                                                                 |
 | ----------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `contracts/runtime-command-surface.v1.json`     | `rapidkit-runtime-command-surface-v1`     | Runtime commands, scaffold kits, and create planner summary                                      |
-| `contracts/create-planner-capabilities.v1.json` | `rapidkit-create-planner-capabilities-v1` | Native create, external-create-adopt, and adopt-only lanes for CLI, CI, VS Code, and AI planners |
+| `contracts/project-entry-capability.v1.json`    | `workspai-project-entry-capability-v1`    | Open-ended adopt/import capability boundaries for readable projects                              |
+| `contracts/create-planner-capabilities.v1.json` | `rapidkit-create-planner-capabilities-v1` | Native create, official, and existing lanes for CLI, CI, VS Code, and AI planners |
 
 ## Observability stream (not on-disk)
 
@@ -279,6 +284,11 @@ events go to stderr (`--log-format json`). The two never mix.
 | ------------------------------------------------ | -------------------------------------------------------------------------------- |
 | `workspace sync [--json]`                        | Updates contract + `workspace-registry.v1.json`; JSON includes `registrySummary` |
 | `workspace registry status [--refresh] [--json]` | Reads or publishes registry summary                                              |
+
+`workspace-registry.v1.json`, adoption records, and verification reports can
+contain machine-local absolute paths. Regenerate them after cloning; do not use
+them as portable repository contracts. The portable source is
+`.workspai/workspace.contract.json` plus canonical workspace/project metadata.
 
 ## Project-scoped reports
 

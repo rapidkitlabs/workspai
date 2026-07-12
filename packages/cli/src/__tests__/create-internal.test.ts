@@ -903,7 +903,7 @@ describe('Create Module - Internal Functions', () => {
       );
     });
 
-    it('should ignore workspace marker files without treating them as directories', async () => {
+    it('should keep the canonical workspace marker trackable while ignoring legacy state', async () => {
       vi.mocked(inquirer.prompt).mockResolvedValue({
         pythonVersion: '3.10',
         installMethod: 'poetry',
@@ -920,10 +920,9 @@ describe('Create Module - Internal Functions', () => {
       const content = String(gitignoreCall?.[1] ?? '');
 
       expect(gitignoreCall).toBeDefined();
-      expect(content).toContain('.workspai-workspace\n');
+      expect(content).not.toContain('.workspai-workspace\n');
       expect(content).toContain('.rapidkit-workspace\n');
       expect(content).toContain('.rapidkit/\n');
-      expect(content).not.toContain('.workspai-workspace/\n');
       expect(content).not.toContain('.rapidkit-workspace/\n');
     });
   });

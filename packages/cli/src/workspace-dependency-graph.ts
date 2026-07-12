@@ -35,7 +35,7 @@ import {
  * `workspace run`. Every edge is auditable (carries `evidence`) and provenance-
  * ranked: `manual` overrides `contract` overrides `inferred` for the same
  * `(from, to, kind)` triple. Ordering and hashing are stable so the graph can be
- * embedded in `workspace-model.v1` without breaking deterministic hashing (1.8).
+ * embedded in the versioned workspace model without breaking deterministic hashing (1.8).
  */
 
 /** Optional manual-override file: authoritative edges that win over inference. */

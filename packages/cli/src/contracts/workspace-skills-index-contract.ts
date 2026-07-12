@@ -2,7 +2,10 @@ import { computeInputsHash } from './freshness-metadata-contract.js';
 import { WORKSPACE_SKILLS_INDEX_PATH } from './workspace-artifact-paths.js';
 import type { WorkspaceOperationalSkillRecord } from './workspace-operational-skill-contract.js';
 
-export const WORKSPACE_SKILLS_INDEX_SCHEMA_VERSION = 'workspace-skills-index.v1' as const;
+import { WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS } from './workspace-intelligence-runtime-registry.js';
+
+export const WORKSPACE_SKILLS_INDEX_SCHEMA_VERSION =
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.skillsIndex;
 
 export type WorkspaceSkillsIndexEntry = {
   skillId: string;

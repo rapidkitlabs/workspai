@@ -1,11 +1,12 @@
 import type { BlockerResolution } from './blocker-resolution-contract.js';
+import { WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS } from './workspace-intelligence-runtime-registry.js';
 import {
   WORKSPACE_EXPLAIN_REPORT_PATH,
   WORKSPACE_TRACE_REPORT_PATH,
   WORKSPACE_WHY_REPORT_PATH,
 } from './workspace-artifact-paths.js';
 
-export const WORKSPACE_EXPLAIN_SCHEMA_VERSION = 'workspace-explain.v1' as const;
+export const WORKSPACE_EXPLAIN_SCHEMA_VERSION = WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.explain;
 
 export const WORKSPACE_EXPLAIN_TARGETS = [
   'project',

@@ -1,6 +1,5 @@
-import { listFrontendGenerators } from '../frontend-project.js';
 import {
-  EXTERNAL_CREATE_ADOPT_CANDIDATES,
+  OFFICIAL_CREATE_CANDIDATES,
   resolveCreatePlannerCapability,
   type CreatePlannerLane,
   type CreatePlannerStatus,
@@ -26,15 +25,16 @@ export type CreatePlannerCapabilitiesContract = {
     stability: string;
     moduleSupport: boolean;
   }>;
-  externalCreateAdopt: Array<{
+  officialCreate: Array<{
     id: string;
     aliases: string[];
     ecosystem: string;
-    status: 'planned';
+    status: CreatePlannerStatus;
+    canExecuteCreate: boolean;
     officialCommands: string[];
     adoptAfterCreate: true;
   }>;
-  adoptOnlyRuntimes: string[];
+  existingRuntimeSignals: string[];
   productRules: string[];
 };
 
@@ -47,45 +47,38 @@ export function buildCreatePlannerCapabilitiesContract(): CreatePlannerCapabilit
     stability: kit.stability,
     moduleSupport: kit.moduleSupport,
   }));
-  const frontendNative = listFrontendGenerators().map((definition) => ({
-    id: definition.kitId,
-    runtime: 'node',
-    framework: definition.framework,
-    owner: 'npm',
-    stability: 'stable',
-    moduleSupport: false,
-  }));
-  const adoptOnlyRuntimes = ['php', 'ruby', 'rust', 'elixir', 'clojure', 'scala', 'kotlin'];
+  const existingRuntimeSignals = ['php', 'ruby', 'rust', 'elixir', 'clojure', 'scala', 'kotlin'];
 
   return {
     schemaVersion: CREATE_PLANNER_CAPABILITIES_SCHEMA_VERSION,
     lanes: {
-      'native-create': {
+      'native': {
         status: 'available',
         meaning:
           'Workspai owns the scaffold contract, marker, registry, doctor, bootstrap, and workspace model path.',
       },
-      'external-create-adopt': {
-        status: 'planned',
+      'official': {
+        status: 'available',
         meaning:
-          'A stable ecosystem generator exists, but Workspai does not yet own the post-create contract.',
+          'A stable ecosystem generator exists. Available entries run the official generator and then register the project; planned entries fall back to adopt/import.',
       },
-      'adopt-only': {
+      'existing': {
         status: 'available',
         meaning:
           'The project enters Workspace Intelligence through import/adopt, not native create.',
       },
     },
-    nativeCreate: [...backendNative, ...frontendNative],
-    externalCreateAdopt: EXTERNAL_CREATE_ADOPT_CANDIDATES.map((candidate) => ({
+    nativeCreate: [...backendNative],
+    officialCreate: OFFICIAL_CREATE_CANDIDATES.map((candidate) => ({
       ...candidate,
       officialCommands: [...candidate.officialCommands],
       aliases: [...candidate.aliases],
     })),
-    adoptOnlyRuntimes,
+    existingRuntimeSignals,
     productRules: [
       'Do not translate unsupported stack requests into unrelated native kits.',
       'If native create is unavailable, explain the lane and guide to adopt/import.',
+      'The existing lane is open-ended for readable projects; existingRuntimeSignals are examples for planner detection, not an allowlist.',
       'Use the same capability contract in CLI, CI, VS Code, and AI planning surfaces.',
     ],
   };

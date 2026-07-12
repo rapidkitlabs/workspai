@@ -118,6 +118,12 @@ describe('npm publish contract', () => {
     expect(smoke).toContain('ignored generated asset');
   });
 
+  it('keeps package security gates runnable in Corepack-only environments', () => {
+    expect(packageJson.scripts?.security).toBe('corepack npm audit --audit-level=moderate');
+    expect(packageJson.scripts?.['security:fix']).toBe('corepack npm audit fix');
+    expect(packageJson.scripts?.quality).toContain('corepack npm run security');
+  });
+
   it('ships and runs a Windows CLI resolution guard on install', () => {
     expect(packageJson.files).toContain('scripts/check-cli-resolution.cjs');
     expect(packageJson.scripts?.postinstall).toBe('node scripts/check-cli-resolution.cjs');

@@ -9,6 +9,7 @@
     "agent",
     "workspaceSummary",
     "modelRef",
+    "intelligenceChain",
     "workspace",
     "scope",
     "projects",
@@ -28,6 +29,17 @@
     },
     "workspaceSummary": { "type": "string" },
     "modelRef": { "type": "string" },
+    "intelligenceChain": {
+      "type": "object",
+      "required": ["schemaVersion", "contractPath", "currentStep", "canonicalReadOrder"],
+      "properties": {
+        "schemaVersion": { "const": "workspai-workspace-intelligence-chain-v1" },
+        "contractPath": { "const": "contracts/workspace-intelligence-chain.v1.json" },
+        "currentStep": { "const": "context" },
+        "canonicalReadOrder": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
     "workspace": {
       "type": "object",
       "required": ["name", "root", "type"],

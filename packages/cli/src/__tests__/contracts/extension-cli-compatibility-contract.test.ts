@@ -19,6 +19,9 @@ describe('extension-cli-compatibility contract', () => {
     expect(contract.publishedContractSchemas.runtimeCommandSurface).toContain(
       'runtime-command-surface'
     );
+    expect(contract.publishedContractSchemas.workspaceIntelligenceArchitecture).toBe(
+      'workspai-workspace-intelligence-architecture-v1'
+    );
     expect(contract.publishedContractSchemas.doctorRemediationPlan).toBe(
       'doctor-remediation-plan-v2'
     );

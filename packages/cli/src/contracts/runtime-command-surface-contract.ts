@@ -34,8 +34,8 @@ export type RuntimeCommandSurfaceContract = {
   createPlanner: {
     lanes: CreatePlannerCapabilitiesContract['lanes'];
     nativeCreateKits: string[];
-    externalCreateAdopt: string[];
-    adoptOnlyRuntimes: string[];
+    officialCreate: string[];
+    existingRuntimeSignals: string[];
   };
   runtimeMatrix: Record<
     string,
@@ -145,8 +145,8 @@ export function buildRuntimeCommandSurfaceContract(): RuntimeCommandSurfaceContr
     createPlanner: {
       lanes: createPlanner.lanes,
       nativeCreateKits: createPlanner.nativeCreate.map((entry) => entry.id),
-      externalCreateAdopt: createPlanner.externalCreateAdopt.map((entry) => entry.id),
-      adoptOnlyRuntimes: [...createPlanner.adoptOnlyRuntimes],
+      officialCreate: createPlanner.officialCreate.map((entry) => entry.id),
+      existingRuntimeSignals: [...createPlanner.existingRuntimeSignals],
     },
     runtimeMatrix: buildRuntimeMatrix(),
   };

@@ -9,7 +9,7 @@ import { parseWorkspaceExplainTarget } from '../contracts/workspace-explain-cont
 import { WORKSPACE_MCP_READ_TOOLS } from '../workspace-mcp-serve.js';
 import { WORKSPACE_CONTRACT_VERIFY_REPORT_PATH } from '../utils/workspace-contract.js';
 import { WORKSPACE_EXPLAIN_REPORT_PATH } from '../contracts/workspace-explain-contract.js';
-import { WORKSPACE_VERIFY_REPORT_PATH } from '../workspace-verify.js';
+import { buildWorkspaceVerify, WORKSPACE_VERIFY_REPORT_PATH } from '../workspace-verify.js';
 
 let workspacePath: string;
 
@@ -47,12 +47,18 @@ describe('workspace mcp serve (4.19)', () => {
 describe('workspace mcp blockers aggregation', () => {
   it('merges verify, explain, and contract-verify blockers without duplicates', async () => {
     await fsExtra.ensureDir(path.join(workspacePath, '.workspai', 'reports'));
+    await fsExtra.writeJson(path.join(workspacePath, '.workspai', 'workspace.json'), {
+      workspace_name: 'mcp-test',
+    });
+    const verify = await buildWorkspaceVerify({ workspacePath });
     await fsExtra.writeJson(path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH), {
+      ...verify,
       blockingReasons: ['verify blocker', 'shared blocker'],
     });
     await fsExtra.writeJson(path.join(workspacePath, WORKSPACE_EXPLAIN_REPORT_PATH), {
       schemaVersion: 'workspace-explain.v1',
       generatedAt: new Date().toISOString(),
+      workspacePath,
       target: { kind: 'release-blocked' },
       summary: 'blocked',
       sections: [],

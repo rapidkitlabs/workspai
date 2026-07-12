@@ -1,6 +1,8 @@
 export type DoctorEvidenceType = 'workspace' | 'project';
 
-export const DOCTOR_WORKSPACE_EVIDENCE_SCHEMA = 'doctor-workspace-evidence-v1';
+import { WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS } from '../contracts/workspace-intelligence-runtime-registry.js';
+
+export const DOCTOR_WORKSPACE_EVIDENCE_SCHEMA = WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.doctor;
 export const DOCTOR_PROJECT_EVIDENCE_SCHEMA = 'doctor-project-evidence-v1';
 
 function toObjectRecord(value: unknown): Record<string, unknown> | null {

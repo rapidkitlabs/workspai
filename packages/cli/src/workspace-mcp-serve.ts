@@ -18,8 +18,25 @@ import { WORKSPACE_MODEL_REPORT_PATH } from './workspace-model.js';
 import { WORKSPACE_VERIFY_REPORT_PATH } from './workspace-verify.js';
 import { WORKSPACE_CONTRACT_VERIFY_REPORT_PATH } from './utils/workspace-contract.js';
 import { firstExistingWorkspaceArtifactPath } from './utils/artifact-path-compat.js';
+import {
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS,
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+  type WorkspaceIntelligenceArtifactId,
+} from './contracts/workspace-intelligence-runtime-registry.js';
+import { assertJsonSchemaContract } from './utils/json-schema-contract.js';
+import { toWorkspaiArtifactPath } from './utils/workspace-paths.js';
 
-const AGENT_REPORTS_INDEX_PATH = '.workspai/reports/INDEX.json';
+const AGENT_REPORTS_INDEX_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex;
+const ARTIFACT_SCHEMA_CONTRACT_BY_PATH = new Map<string, string>(
+  (Object.keys(WORKSPACE_INTELLIGENCE_ARTIFACTS) as WorkspaceIntelligenceArtifactId[]).flatMap(
+    (artifactId) => {
+      const schemaContract = WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS[artifactId];
+      return schemaContract
+        ? [[WORKSPACE_INTELLIGENCE_ARTIFACTS[artifactId], schemaContract] as [string, string]]
+        : [];
+    }
+  )
+);
 
 function explainTargetsMatch(
   cached: WorkspaceExplainTarget,
@@ -141,7 +158,13 @@ async function readJsonArtifact(
   if (!(await fsExtra.pathExists(absolutePath))) {
     return null;
   }
-  return fsExtra.readJson(absolutePath);
+  const payload = await fsExtra.readJson(absolutePath);
+  const canonicalRelativePath = toWorkspaiArtifactPath(relativePath);
+  const schemaContract = ARTIFACT_SCHEMA_CONTRACT_BY_PATH.get(canonicalRelativePath);
+  if (schemaContract) {
+    assertJsonSchemaContract(payload, schemaContract, `MCP artifact ${canonicalRelativePath}`);
+  }
+  return payload;
 }
 
 async function collectBlockers(workspacePath: string): Promise<{

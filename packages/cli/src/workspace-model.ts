@@ -33,6 +33,10 @@ import {
   readWorkspaceModelCache,
   writeWorkspaceModelCache,
 } from './workspace-model-cache.js';
+import {
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+} from './contracts/workspace-intelligence-runtime-registry.js';
 import { readWorkspaceContract, type WorkspaceContract } from './utils/workspace-contract.js';
 import { readRapidkitProjectJson } from './utils/runtime-detection.js';
 import { getRuntimeSupport } from './utils/support-matrix.js';
@@ -45,10 +49,13 @@ import {
   type FactFreshnessSummary,
   type WorkspaceFact,
 } from './contracts/fact-freshness-contract.js';
-import { firstExistingWorkspaceArtifactPath } from './utils/artifact-path-compat.js';
+import {
+  firstExistingWorkspaceArtifactPath,
+  writeWorkspaceArtifactJson,
+} from './utils/artifact-path-compat.js';
 
-export const WORKSPACE_MODEL_SCHEMA_VERSION = 'workspace-model.v1';
-export const WORKSPACE_MODEL_REPORT_PATH = '.workspai/reports/workspace-model.json';
+export const WORKSPACE_MODEL_SCHEMA_VERSION = WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.model;
+export const WORKSPACE_MODEL_REPORT_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.model;
 
 export type WorkspaceModelEvidenceRef = {
   path: string;
@@ -409,12 +416,13 @@ async function collectImportantFiles(projectPath: string): Promise<string[]> {
 async function evidenceRef(
   workspacePath: string,
   relativePath: string,
-  includeEvidence: boolean
+  includeEvidence: boolean,
+  displayPath = relativePath
 ): Promise<WorkspaceModelEvidenceRef | null> {
   const artifactPath = await firstExistingWorkspaceArtifactPath(workspacePath, relativePath);
   const exists = artifactPath !== null;
   const ref: WorkspaceModelEvidenceRef = {
-    path: relativePath.split(path.sep).join('/'),
+    path: displayPath.split(path.sep).join('/'),
     exists,
   };
 
@@ -438,42 +446,23 @@ async function projectEvidenceRefs(
   includeEvidence: boolean
 ): Promise<Record<string, WorkspaceModelEvidenceRef | null>> {
   const projectRelative = toPosixRelative(workspacePath, projectPath);
-  const projectReportPrefix = `${projectRelative}/.workspai/reports`;
-  const projectDoctor = await evidenceRef(
-    workspacePath,
-    `${projectReportPrefix}/doctor-project-last-run.json`,
-    includeEvidence
-  );
+  const projectReportPrefix = '.workspai/reports';
+  const projectEvidence = (fileName: string) =>
+    evidenceRef(
+      projectPath,
+      `${projectReportPrefix}/${fileName}`,
+      includeEvidence,
+      `${projectRelative}/${projectReportPrefix}/${fileName}`
+    );
+  const projectDoctor = await projectEvidence('doctor-project-last-run.json');
   const legacyProjectDoctor =
-    projectDoctor?.exists === true
-      ? projectDoctor
-      : await evidenceRef(
-          workspacePath,
-          `${projectReportPrefix}/doctor-last-run.json`,
-          includeEvidence
-        );
+    projectDoctor?.exists === true ? projectDoctor : await projectEvidence('doctor-last-run.json');
   return {
     doctor: legacyProjectDoctor,
-    remediationPlan: await evidenceRef(
-      workspacePath,
-      `${projectReportPrefix}/doctor-remediation-plan-last-run.json`,
-      includeEvidence
-    ),
-    fixResult: await evidenceRef(
-      workspacePath,
-      `${projectReportPrefix}/doctor-fix-result-last-run.json`,
-      includeEvidence
-    ),
-    analyze: await evidenceRef(
-      workspacePath,
-      `${projectReportPrefix}/analyze-last-run.json`,
-      includeEvidence
-    ),
-    readiness: await evidenceRef(
-      workspacePath,
-      `${projectReportPrefix}/release-readiness-last-run.json`,
-      includeEvidence
-    ),
+    remediationPlan: await projectEvidence('doctor-remediation-plan-last-run.json'),
+    fixResult: await projectEvidence('doctor-fix-result-last-run.json'),
+    analyze: await projectEvidence('analyze-last-run.json'),
+    readiness: await projectEvidence('release-readiness-last-run.json'),
   };
 }
 
@@ -1185,7 +1174,7 @@ export async function buildWorkspaceModel(
     evidence: {
       doctor: await evidenceRef(
         workspacePath,
-        '.workspai/reports/doctor-last-run.json',
+        WORKSPACE_INTELLIGENCE_ARTIFACTS.doctor,
         includeEvidence
       ),
       projectDoctor: await evidenceRef(
@@ -1215,7 +1204,7 @@ export async function buildWorkspaceModel(
       ),
       readiness: await evidenceRef(
         workspacePath,
-        '.workspai/reports/release-readiness-last-run.json',
+        WORKSPACE_INTELLIGENCE_ARTIFACTS.readiness,
         includeEvidence
       ),
       pipeline: await evidenceRef(
@@ -1610,8 +1599,9 @@ export async function writeWorkspaceModel(
   model: WorkspaceModel,
   workspacePath: string
 ): Promise<string> {
-  const outputPath = path.join(workspacePath, WORKSPACE_MODEL_REPORT_PATH);
-  await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJSON(outputPath, attachRunCorrelation(model), { spaces: 2 });
-  return outputPath;
+  return writeWorkspaceArtifactJson(
+    workspacePath,
+    WORKSPACE_MODEL_REPORT_PATH,
+    attachRunCorrelation(model)
+  );
 }

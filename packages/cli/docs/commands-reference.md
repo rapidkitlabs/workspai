@@ -82,6 +82,12 @@ npx workspai infra status [--workspace <path>] [--json] [--strict]
 
 See [workspace-run.md](./workspace-run.md) for fleet orchestration semantics.
 
+After cloning or moving an existing workspace, `workspace sync` repairs its
+machine-local global registry entry before project discovery. For workspaces
+that only have legacy `.rapidkit-workspace` metadata, run `workspace foundation
+ensure` to add the canonical marker and foundation without deleting legacy
+compatibility inputs.
+
 Workspace profile compatibility is enforced consistently across `create project`,
 `import`, `adopt`, and `bootstrap` compliance. In default `warn` policy mode,
 cross-runtime additions are allowed with a recommendation such as

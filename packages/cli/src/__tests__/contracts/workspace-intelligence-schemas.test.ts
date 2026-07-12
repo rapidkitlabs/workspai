@@ -18,6 +18,10 @@ import {
 } from '../../workspace-intelligence.js';
 import { WORKSPACE_MODEL_SCHEMA_VERSION } from '../../workspace-model.js';
 import { WORKSPACE_VERIFY_SCHEMA_VERSION } from '../../workspace-verify.js';
+import {
+  AGENT_CUSTOMIZATION_PACK_SCHEMA,
+  AGENT_REPORTS_INDEX_SCHEMA,
+} from '../../workspace-agent-sync.js';
 
 const CONTRACT_DIR = path.resolve(process.cwd(), 'contracts', 'workspace-intelligence');
 
@@ -73,6 +77,14 @@ const WORKSPACE_INTELLIGENCE_CONTRACTS = [
   {
     fileName: 'workspace-intelligence-history.v1.json',
     schemaVersion: WORKSPACE_HISTORY_SCHEMA_VERSION,
+  },
+  {
+    fileName: 'agent-reports-index.v1.json',
+    schemaVersion: AGENT_REPORTS_INDEX_SCHEMA,
+  },
+  {
+    fileName: 'agent-customization-pack-report.v1.json',
+    schemaVersion: AGENT_CUSTOMIZATION_PACK_SCHEMA,
   },
 ] as const;
 

@@ -22,6 +22,7 @@ import {
   type WorkspaceExplainTarget,
 } from './contracts/workspace-explain-contract.js';
 import { summarizeEmptyWorkspaceExplain } from './workspace-scaffold.js';
+import { writeWorkspaceArtifactJson } from './utils/artifact-path-compat.js';
 
 export type WorkspaceExplainArtifactKind = 'explain' | 'why' | 'trace';
 
@@ -370,7 +371,7 @@ export async function buildWorkspaceExplain(
       'Critical contracts',
       contractProject
         ? [
-            `Owns: ${contractProject.contracts.owns.join(', ') || 'none'}`,
+            `Owns: ${contractProject.contracts?.owns?.join(', ') || 'none'}`,
             `Publishes: ${contractProject.contracts.publishes.join(', ') || 'none'}`,
             `Consumes: ${contractProject.contracts.consumes.join(', ') || 'none'}`,
             `APIs: ${contractProject.contracts.apis.map((api) => api.name).join(', ') || 'none'}`,
@@ -423,9 +424,7 @@ export async function writeWorkspaceExplainReport(
   artifactKind: WorkspaceExplainArtifactKind = 'explain'
 ): Promise<string> {
   const relativePath = resolveWorkspaceExplainArtifactPath(artifactKind);
-  const outputPath = path.join(workspacePath, relativePath);
-  await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJson(outputPath, attachRunCorrelation(report), { spaces: 2 });
+  await writeWorkspaceArtifactJson(workspacePath, relativePath, attachRunCorrelation(report));
   return relativePath;
 }
 

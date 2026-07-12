@@ -1,14 +1,15 @@
 import { listFrontendGenerators } from '../frontend-project.js';
 import { listInteractiveKits, normalizeKitId } from './kit-registry.js';
 
-export type CreatePlannerLane = 'native-create' | 'external-create-adopt' | 'adopt-only';
+export type CreatePlannerLane = 'native' | 'official' | 'existing';
 export type CreatePlannerStatus = 'available' | 'planned';
 
-export interface ExternalCreateAdoptCandidate {
+export interface OfficialCreateCandidate {
   id: string;
   aliases: string[];
   ecosystem: string;
-  status: 'planned';
+  status: CreatePlannerStatus;
+  canExecuteCreate: boolean;
   officialCommands: string[];
   adoptAfterCreate: true;
 }
@@ -20,21 +21,28 @@ export interface CreatePlannerCapability {
   requested: string;
   resolved?: string;
   officialCommands?: string[];
-  fallbackLane?: 'adopt-only';
+  fallbackLane?: 'existing';
   reason: string;
 }
 
-const NATIVE_CREATE_KITS = new Set([
-  ...listInteractiveKits().map((kit) => kit.id),
-  ...listFrontendGenerators().map((definition) => definition.kitId),
-]);
+const NATIVE_CREATE_KITS = new Set(listInteractiveKits().map((kit) => kit.id));
 
-export const EXTERNAL_CREATE_ADOPT_CANDIDATES: ExternalCreateAdoptCandidate[] = [
+export const OFFICIAL_CREATE_CANDIDATES: OfficialCreateCandidate[] = [
+  ...listFrontendGenerators().map((definition) => ({
+    id: definition.kitId,
+    aliases: [...definition.aliases],
+    ecosystem: definition.framework,
+    status: 'available' as const,
+    canExecuteCreate: true,
+    officialCommands: [definition.commandDisplay('<name>', { skipGit: false, skipInstall: false })],
+    adoptAfterCreate: true as const,
+  })),
   {
     id: 'wordpress-site',
     aliases: ['wordpress', 'wordpress-site', 'wp', 'wp-site'],
     ecosystem: 'wordpress',
     status: 'planned',
+    canExecuteCreate: false,
     officialCommands: ['wp core download', 'wp config create', 'wp db create', 'wp core install'],
     adoptAfterCreate: true,
   },
@@ -43,6 +51,7 @@ export const EXTERNAL_CREATE_ADOPT_CANDIDATES: ExternalCreateAdoptCandidate[] = 
     aliases: ['wordpress-block', 'wp-block', 'gutenberg-block'],
     ecosystem: 'wordpress',
     status: 'planned',
+    canExecuteCreate: false,
     officialCommands: ['npx @wordpress/create-block@latest <slug>'],
     adoptAfterCreate: true,
   },
@@ -51,6 +60,7 @@ export const EXTERNAL_CREATE_ADOPT_CANDIDATES: ExternalCreateAdoptCandidate[] = 
     aliases: ['laravel', 'php-laravel'],
     ecosystem: 'php',
     status: 'planned',
+    canExecuteCreate: false,
     officialCommands: ['composer create-project laravel/laravel <name>'],
     adoptAfterCreate: true,
   },
@@ -59,6 +69,7 @@ export const EXTERNAL_CREATE_ADOPT_CANDIDATES: ExternalCreateAdoptCandidate[] = 
     aliases: ['symfony', 'php-symfony'],
     ecosystem: 'php',
     status: 'planned',
+    canExecuteCreate: false,
     officialCommands: ['composer create-project symfony/skeleton <name>'],
     adoptAfterCreate: true,
   },
@@ -67,20 +78,21 @@ export const EXTERNAL_CREATE_ADOPT_CANDIDATES: ExternalCreateAdoptCandidate[] = 
     aliases: ['rails', 'ruby-on-rails', 'ruby-rails'],
     ecosystem: 'ruby',
     status: 'planned',
+    canExecuteCreate: false,
     officialCommands: ['rails new <name>'],
     adoptAfterCreate: true,
   },
 ];
 
-const EXTERNAL_BY_ALIAS = new Map<string, ExternalCreateAdoptCandidate>();
-for (const candidate of EXTERNAL_CREATE_ADOPT_CANDIDATES) {
-  EXTERNAL_BY_ALIAS.set(candidate.id, candidate);
+const OFFICIAL_BY_ALIAS = new Map<string, OfficialCreateCandidate>();
+for (const candidate of OFFICIAL_CREATE_CANDIDATES) {
+  OFFICIAL_BY_ALIAS.set(candidate.id, candidate);
   for (const alias of candidate.aliases) {
-    EXTERNAL_BY_ALIAS.set(alias, candidate);
+    OFFICIAL_BY_ALIAS.set(alias, candidate);
   }
 }
 
-const ADOPT_ONLY_RUNTIME_ALIASES = new Set([
+const EXISTING_RUNTIME_ALIASES = new Set([
   'php',
   'ruby',
   'rust',
@@ -110,7 +122,7 @@ export function resolveCreatePlannerCapability(input: {
 
   if (input.projectExists) {
     return {
-      lane: 'adopt-only',
+      lane: 'existing',
       status: 'available',
       canExecuteCreate: false,
       requested,
@@ -121,7 +133,7 @@ export function resolveCreatePlannerCapability(input: {
   const normalizedKit = input.kitId ? normalizeKitId(input.kitId) : undefined;
   if (normalizedKit && NATIVE_CREATE_KITS.has(normalizedKit)) {
     return {
-      lane: 'native-create',
+      lane: 'native',
       status: 'available',
       canExecuteCreate: true,
       requested,
@@ -131,28 +143,30 @@ export function resolveCreatePlannerCapability(input: {
     };
   }
 
-  const external =
-    EXTERNAL_BY_ALIAS.get(requested) ??
-    EXTERNAL_BY_ALIAS.get(normalizeCapabilitySignal(input.framework) ?? '') ??
-    EXTERNAL_BY_ALIAS.get(normalizeCapabilitySignal(input.runtime) ?? '');
-  if (external) {
+  const official =
+    OFFICIAL_BY_ALIAS.get(requested) ??
+    OFFICIAL_BY_ALIAS.get(normalizeCapabilitySignal(input.framework) ?? '') ??
+    OFFICIAL_BY_ALIAS.get(normalizeCapabilitySignal(input.runtime) ?? '');
+  if (official) {
     return {
-      lane: 'external-create-adopt',
-      status: external.status,
-      canExecuteCreate: false,
+      lane: 'official',
+      status: official.status,
+      canExecuteCreate: official.canExecuteCreate,
       requested,
-      resolved: external.id,
-      officialCommands: external.officialCommands,
-      fallbackLane: 'adopt-only',
+      resolved: official.id,
+      officialCommands: official.officialCommands,
+      fallbackLane: official.canExecuteCreate ? undefined : 'existing',
       reason:
-        'External generator support is planned but not enabled; use adopt/import until Workspai owns the post-create contract.',
+        official.status === 'available'
+          ? 'Workspai runs the official ecosystem generator, then registers the project in Workspace Intelligence.'
+          : 'Official generator support is planned but not enabled; use adopt/import until Workspai owns the post-create contract.',
     };
   }
 
   const runtime = normalizeCapabilitySignal(input.runtime);
-  if (runtime && ADOPT_ONLY_RUNTIME_ALIASES.has(runtime)) {
+  if (runtime && EXISTING_RUNTIME_ALIASES.has(runtime)) {
     return {
-      lane: 'adopt-only',
+      lane: 'existing',
       status: 'available',
       canExecuteCreate: false,
       requested,
@@ -163,7 +177,7 @@ export function resolveCreatePlannerCapability(input: {
   }
 
   return {
-    lane: 'adopt-only',
+    lane: 'existing',
     status: 'available',
     canExecuteCreate: false,
     requested,
@@ -175,7 +189,7 @@ export function resolveCreatePlannerCapability(input: {
 export function shouldBlockUnsupportedNativeCreate(capability: CreatePlannerCapability): boolean {
   return (
     !capability.canExecuteCreate &&
-    (capability.lane === 'external-create-adopt' ||
-      (capability.lane === 'adopt-only' && capability.resolved !== undefined))
+    (capability.lane === 'official' ||
+      (capability.lane === 'existing' && capability.resolved !== undefined))
   );
 }

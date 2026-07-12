@@ -96,6 +96,31 @@ describe('workspace contract registry', () => {
     expect(contract.projects[0].ports).toEqual([{ name: 'http', port: 3000, protocol: 'http' }]);
   });
 
+  it('uses explicit project metadata ports instead of kit defaults', async () => {
+    const workspacePath = await makeTempDir('rk-contract-explicit-port-');
+    await fsExtra.outputJson(path.join(workspacePath, 'web', '.workspai', 'project.json'), {
+      runtime: 'node',
+      kit_name: 'nextjs',
+      frontend: { default_port: 3000 },
+    });
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.workspai', 'project.json'), {
+      runtime: 'node',
+      kit_name: 'nestjs.standard',
+      ports: [{ name: 'http', port: 3001, protocol: 'http' }],
+    });
+
+    const { contract } = await writeWorkspaceContract({ workspacePath });
+    expect(contract.projects.find((project) => project.slug === 'api')?.ports).toEqual([
+      { name: 'http', port: 3001, protocol: 'http' },
+    ]);
+    expect(contract.projects.find((project) => project.slug === 'web')?.ports).toEqual([
+      { name: 'http', port: 3000, protocol: 'http' },
+    ]);
+    await expect(verifyWorkspaceContract({ workspacePath })).resolves.toMatchObject({
+      status: 'passed',
+    });
+  });
+
   it('syncs discovered projects while preserving manually declared contracts', async () => {
     const workspacePath = await makeTempDir('rk-contract-sync-');
     await fsExtra.outputJson(path.join(workspacePath, 'orders', '.rapidkit', 'project.json'), {

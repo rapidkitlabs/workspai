@@ -1,15 +1,15 @@
 {
   "schemaVersion": "rapidkit-create-planner-capabilities-v1",
   "lanes": {
-    "native-create": {
+    "native": {
       "status": "available",
       "meaning": "Workspai owns the scaffold contract, marker, registry, doctor, bootstrap, and workspace model path."
     },
-    "external-create-adopt": {
-      "status": "planned",
-      "meaning": "A stable ecosystem generator exists, but Workspai does not yet own the post-create contract."
+    "official": {
+      "status": "available",
+      "meaning": "A stable ecosystem generator exists. Available entries run the official generator and then register the project; planned entries fall back to adopt/import."
     },
-    "adopt-only": {
+    "existing": {
       "status": "available",
       "meaning": "The project enters Workspace Intelligence through import/adopt, not native create."
     }
@@ -70,97 +70,182 @@
       "owner": "npm",
       "stability": "preview",
       "moduleSupport": false
-    },
+    }
+  ],
+  "officialCreate": [
     {
       "id": "frontend.nextjs",
-      "runtime": "node",
-      "framework": "nextjs",
-      "owner": "npm",
-      "stability": "stable",
-      "moduleSupport": false
+      "aliases": [
+        "frontend.nextjs",
+        "next",
+        "nextjs",
+        "next.js"
+      ],
+      "ecosystem": "nextjs",
+      "status": "available",
+      "canExecuteCreate": true,
+      "officialCommands": [
+        "npx create-next-app@latest <name>"
+      ],
+      "adoptAfterCreate": true
     },
     {
       "id": "frontend.remix",
-      "runtime": "node",
-      "framework": "remix",
-      "owner": "npm",
-      "stability": "stable",
-      "moduleSupport": false
+      "aliases": [
+        "frontend.remix",
+        "remix",
+        "remix-run",
+        "react-router"
+      ],
+      "ecosystem": "remix",
+      "status": "available",
+      "canExecuteCreate": true,
+      "officialCommands": [
+        "npx create-react-router@latest <name>"
+      ],
+      "adoptAfterCreate": true
     },
     {
       "id": "frontend.vite-react",
-      "runtime": "node",
-      "framework": "react",
-      "owner": "npm",
-      "stability": "stable",
-      "moduleSupport": false
+      "aliases": [
+        "frontend.vite-react",
+        "vite-react",
+        "react",
+        "vite.react"
+      ],
+      "ecosystem": "react",
+      "status": "available",
+      "canExecuteCreate": true,
+      "officialCommands": [
+        "npm create vite@latest <name> -- --template react-ts"
+      ],
+      "adoptAfterCreate": true
     },
     {
       "id": "frontend.vite-vue",
-      "runtime": "node",
-      "framework": "vue",
-      "owner": "npm",
-      "stability": "stable",
-      "moduleSupport": false
+      "aliases": [
+        "frontend.vite-vue",
+        "vite-vue",
+        "vue",
+        "vite.vue"
+      ],
+      "ecosystem": "vue",
+      "status": "available",
+      "canExecuteCreate": true,
+      "officialCommands": [
+        "npm create vite@latest <name> -- --template vue-ts"
+      ],
+      "adoptAfterCreate": true
     },
     {
       "id": "frontend.vite-svelte",
-      "runtime": "node",
-      "framework": "svelte",
-      "owner": "npm",
-      "stability": "stable",
-      "moduleSupport": false
+      "aliases": [
+        "frontend.vite-svelte",
+        "vite-svelte",
+        "svelte",
+        "vite.svelte"
+      ],
+      "ecosystem": "svelte",
+      "status": "available",
+      "canExecuteCreate": true,
+      "officialCommands": [
+        "npm create vite@latest <name> -- --template svelte-ts"
+      ],
+      "adoptAfterCreate": true
     },
     {
       "id": "frontend.vite-solid",
-      "runtime": "node",
-      "framework": "solid",
-      "owner": "npm",
-      "stability": "stable",
-      "moduleSupport": false
+      "aliases": [
+        "frontend.vite-solid",
+        "vite-solid",
+        "solid",
+        "solidjs",
+        "vite.solid"
+      ],
+      "ecosystem": "solid",
+      "status": "available",
+      "canExecuteCreate": true,
+      "officialCommands": [
+        "npm create vite@latest <name> -- --template solid-ts"
+      ],
+      "adoptAfterCreate": true
     },
     {
       "id": "frontend.vite-vanilla",
-      "runtime": "node",
-      "framework": "vite",
-      "owner": "npm",
-      "stability": "stable",
-      "moduleSupport": false
+      "aliases": [
+        "frontend.vite-vanilla",
+        "vite",
+        "vanilla",
+        "vite-vanilla"
+      ],
+      "ecosystem": "vite",
+      "status": "available",
+      "canExecuteCreate": true,
+      "officialCommands": [
+        "npm create vite@latest <name> -- --template vanilla-ts"
+      ],
+      "adoptAfterCreate": true
     },
     {
       "id": "frontend.nuxt",
-      "runtime": "node",
-      "framework": "nuxt",
-      "owner": "npm",
-      "stability": "stable",
-      "moduleSupport": false
+      "aliases": [
+        "frontend.nuxt",
+        "nuxt",
+        "nuxtjs",
+        "nuxt.js"
+      ],
+      "ecosystem": "nuxt",
+      "status": "available",
+      "canExecuteCreate": true,
+      "officialCommands": [
+        "npx create-nuxt@latest <name> --template minimal --packageManager npm --gitInit true"
+      ],
+      "adoptAfterCreate": true
     },
     {
       "id": "frontend.angular",
-      "runtime": "node",
-      "framework": "angular",
-      "owner": "npm",
-      "stability": "stable",
-      "moduleSupport": false
+      "aliases": [
+        "frontend.angular",
+        "angular",
+        "ng"
+      ],
+      "ecosystem": "angular",
+      "status": "available",
+      "canExecuteCreate": true,
+      "officialCommands": [
+        "npx @angular/cli@19 new <name>"
+      ],
+      "adoptAfterCreate": true
     },
     {
       "id": "frontend.astro",
-      "runtime": "node",
-      "framework": "astro",
-      "owner": "npm",
-      "stability": "stable",
-      "moduleSupport": false
+      "aliases": [
+        "frontend.astro",
+        "astro"
+      ],
+      "ecosystem": "astro",
+      "status": "available",
+      "canExecuteCreate": true,
+      "officialCommands": [
+        "npm create astro@4 <name>"
+      ],
+      "adoptAfterCreate": true
     },
     {
       "id": "frontend.sveltekit",
-      "runtime": "node",
-      "framework": "sveltekit",
-      "owner": "npm",
-      "stability": "stable",
-      "moduleSupport": false
-    }
-  ],
-  "externalCreateAdopt": [
+      "aliases": [
+        "frontend.sveltekit",
+        "sveltekit",
+        "svelte-kit"
+      ],
+      "ecosystem": "sveltekit",
+      "status": "available",
+      "canExecuteCreate": true,
+      "officialCommands": [
+        "npx sv@latest create <name>"
+      ],
+      "adoptAfterCreate": true
+    },
     {
       "id": "wordpress-site",
       "aliases": [
@@ -171,6 +256,7 @@
       ],
       "ecosystem": "wordpress",
       "status": "planned",
+      "canExecuteCreate": false,
       "officialCommands": [
         "wp core download",
         "wp config create",
@@ -188,6 +274,7 @@
       ],
       "ecosystem": "wordpress",
       "status": "planned",
+      "canExecuteCreate": false,
       "officialCommands": [
         "npx @wordpress/create-block@latest <slug>"
       ],
@@ -201,6 +288,7 @@
       ],
       "ecosystem": "php",
       "status": "planned",
+      "canExecuteCreate": false,
       "officialCommands": [
         "composer create-project laravel/laravel <name>"
       ],
@@ -214,6 +302,7 @@
       ],
       "ecosystem": "php",
       "status": "planned",
+      "canExecuteCreate": false,
       "officialCommands": [
         "composer create-project symfony/skeleton <name>"
       ],
@@ -228,13 +317,14 @@
       ],
       "ecosystem": "ruby",
       "status": "planned",
+      "canExecuteCreate": false,
       "officialCommands": [
         "rails new <name>"
       ],
       "adoptAfterCreate": true
     }
   ],
-  "adoptOnlyRuntimes": [
+  "existingRuntimeSignals": [
     "php",
     "ruby",
     "rust",
@@ -246,6 +336,7 @@
   "productRules": [
     "Do not translate unsupported stack requests into unrelated native kits.",
     "If native create is unavailable, explain the lane and guide to adopt/import.",
+    "The existing lane is open-ended for readable projects; existingRuntimeSignals are examples for planner detection, not an allowlist.",
     "Use the same capability contract in CLI, CI, VS Code, and AI planning surfaces."
   ]
 }

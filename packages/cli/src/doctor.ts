@@ -68,6 +68,9 @@ import type {
 import { buildEnterpriseSurfaceProbes } from './utils/doctor-surface-probes.js';
 import { historyEntryFromDoctorFixResult, recordWorkspaceHistory } from './workspace-history.js';
 import { isWorkspaceShellDirectory } from './utils/workspace-root.js';
+import { WORKSPACE_INTELLIGENCE_ARTIFACTS } from './contracts/workspace-intelligence-runtime-registry.js';
+
+export const DOCTOR_WORKSPACE_REPORT_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.doctor;
 
 function uniquePaths(paths: string[]): string[] {
   return [
@@ -1693,7 +1696,7 @@ async function writeDoctorEvidence(
   health: WorkspaceHealth,
   cachePath: string | null
 ): Promise<string | undefined> {
-  const evidencePath = path.join(workspacePath, '.workspai', 'reports', 'doctor-last-run.json');
+  const evidencePath = path.join(workspacePath, DOCTOR_WORKSPACE_REPORT_PATH);
   try {
     const blockers: string[] = [];
     for (const project of health.projects) {
@@ -1714,7 +1717,7 @@ async function writeDoctorEvidence(
     }
     await writeWorkspaceArtifactJson(
       workspacePath,
-      '.workspai/reports/doctor-last-run.json',
+      DOCTOR_WORKSPACE_REPORT_PATH,
       withGovernanceRunMetadata(
         {
           schemaVersion: DOCTOR_WORKSPACE_EVIDENCE_SCHEMA,
@@ -4221,7 +4224,7 @@ async function getWorkspaceHealth(
 
   const previousEvidencePath = await firstExistingWorkspaceArtifactPath(
     workspacePath,
-    '.workspai/reports/doctor-last-run.json'
+    DOCTOR_WORKSPACE_REPORT_PATH
   );
   const previousEvidence = previousEvidencePath
     ? await readDoctorEvidenceIfPresent(previousEvidencePath, 'workspace')

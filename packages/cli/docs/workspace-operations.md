@@ -94,6 +94,13 @@ Contract file: `.workspai/workspace.contract.json`. Verification checks schema, 
 
 Workspai keeps the contract alive during `create project` and `workspace sync` without overwriting manual API/event/owner declarations.
 
+On a freshly cloned or moved workspace, `workspace sync` also repairs the
+machine-local global registry entry before discovering projects. The command is
+therefore safe to use as the first reconciliation step after clone. For a
+legacy workspace, run `workspace foundation ensure` once to add canonical
+`.workspai-workspace` and `.workspai/*` foundation files while retaining legacy
+metadata as read compatibility input.
+
 ## Portable workspace archives
 
 ```bash

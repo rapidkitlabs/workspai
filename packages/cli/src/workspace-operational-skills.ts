@@ -24,9 +24,10 @@ import { computeInputsHash } from './contracts/freshness-metadata-contract.js';
 import type { WorkspaceAgentContext } from './workspace-context.js';
 import type { WorkspaceModel } from './workspace-model.js';
 import type { WorkspaceContract } from './utils/workspace-contract.js';
+import { WORKSPACE_INTELLIGENCE_ARTIFACTS } from './contracts/workspace-intelligence-runtime-registry.js';
 
 const CORE_REQUIRED_REPORTS = [
-  '.workspai/reports/INDEX.json',
+  WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex,
   WORKSPACE_CONTEXT_AGENT_REPORT_PATH,
   WORKSPACE_VERIFY_REPORT_PATH,
 ] as const;
@@ -47,8 +48,8 @@ const SKILL_TEMPLATES: SkillTemplate[] = [
     objective:
       'Investigate a failing API or service using Workspai evidence before editing application code.',
     steps: [
-      'Read `.workspai/reports/INDEX.json` and identify fail/warn reports for the scoped project.',
-      'Read `.workspai/reports/doctor-last-run.json`, `doctor-project-last-run.json`, and project-scoped run evidence if present.',
+      `Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` and identify fail/warn reports for the scoped project.`,
+      `Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.doctor}\`, \`doctor-project-last-run.json\`, and project-scoped run evidence if present.`,
       'If a fix was requested, read `artifact-remediation-plan-last-run.json` for cross-artifact next steps, then `doctor-remediation-plan-last-run.json` for Doctor-specific file edits.',
       'Map the failure to workspace vs project scope; cite exit codes and blocker messages.',
       'Propose the smallest safe fix (config, env, dependency) with explicit verification commands.',
@@ -60,8 +61,8 @@ const SKILL_TEMPLATES: SkillTemplate[] = [
     triggers: ['release', 'ship', 'production', 'readiness gate'],
     objective: 'Assess whether this workspace is release-ready using governed Workspai gates.',
     steps: [
-      'Read `.workspai/reports/release-readiness-last-run.json` and `pipeline-last-run.json`.',
-      'Read `.workspai/reports/workspace-verify-last-run.json` for verdict and blocking reasons.',
+      `Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.readiness}\` and \`pipeline-last-run.json\`.`,
+      `Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.verify}\` for verdict and blocking reasons.`,
       'Read `.workspai/reports/artifact-remediation-plan-last-run.json` when a Studio or agent repair path is needed.',
       'List blocking gates first; never claim ready without cited report fields.',
       'Provide one safe next command and a verification checklist.',
@@ -186,9 +187,9 @@ function summarizeContract(contract: WorkspaceContract | null): string | undefin
     return undefined;
   }
   const lines = contract.projects.slice(0, 12).map((project) => {
-    const owns = project.contracts.owns.join(', ') || 'none';
-    const publishes = project.contracts.publishes.join(', ') || 'none';
-    const consumes = project.contracts.consumes.join(', ') || 'none';
+    const owns = project.contracts?.owns?.join(', ') || 'none';
+    const publishes = project.contracts?.publishes?.join(', ') || 'none';
+    const consumes = project.contracts?.consumes?.join(', ') || 'none';
     return `- **${project.slug}**: owns \`${owns}\`; publishes \`${publishes}\`; consumes \`${consumes}\``;
   });
   return lines.join('\n');

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "rapidkit-agent-customization-pack.v1",
+  "schemaVersion": "workspai-agent-customization-pack-capabilities.v1",
   "presets": {
     "minimal": {
       "meaning": "Generate the portable grounding index, AGENTS.md, and provider-specific lightweight instructions.",

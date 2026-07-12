@@ -13,12 +13,17 @@ import {
   writeWorkspaceArtifactJson,
 } from './artifact-path-compat.js';
 import { projectMetadataCandidates, workspaceMetadataCandidates } from './workspace-paths.js';
+import {
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+} from '../contracts/workspace-intelligence-runtime-registry.js';
 
 export const WORKSPACE_CONTRACT_PATH = '.workspai/workspace.contract.json';
 export const WORKSPACE_CONTRACT_VERIFY_REPORT_PATH =
-  '.workspai/reports/workspace-contract-verify-last-run.json';
+  WORKSPACE_INTELLIGENCE_ARTIFACTS.contractVerify;
 export const WORKSPACE_CONTRACT_SCHEMA_VERSION = 1;
-export const WORKSPACE_CONTRACT_VERIFY_SCHEMA_VERSION = 'workspace-contract-verify.v1' as const;
+export const WORKSPACE_CONTRACT_VERIFY_SCHEMA_VERSION =
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.contractVerify;
 
 export type WorkspaceContractVerifyEvidence = {
   schemaVersion: typeof WORKSPACE_CONTRACT_VERIFY_SCHEMA_VERSION;
@@ -163,6 +168,40 @@ function normalizeStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
 }
 
+function normalizeProjectPorts(payload: Record<string, unknown>): WorkspaceContractPort[] {
+  const explicitPorts = Array.isArray(payload.ports) ? payload.ports : [];
+  const normalized = explicitPorts
+    .map((entry): WorkspaceContractPort | null => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const record = entry as Record<string, unknown>;
+      const port = Number(record.port);
+      if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
+      const protocol =
+        record.protocol === 'https' ||
+        record.protocol === 'grpc' ||
+        record.protocol === 'tcp' ||
+        record.protocol === 'udp'
+          ? record.protocol
+          : 'http';
+      return {
+        name: typeof record.name === 'string' && record.name.trim() ? record.name : 'http',
+        port,
+        protocol,
+      };
+    })
+    .filter((entry): entry is WorkspaceContractPort => entry !== null);
+  if (normalized.length > 0) return normalized;
+
+  const frontend =
+    payload.frontend && typeof payload.frontend === 'object' && !Array.isArray(payload.frontend)
+      ? (payload.frontend as Record<string, unknown>)
+      : undefined;
+  const scalarPort = Number(payload.port ?? frontend?.default_port);
+  return Number.isInteger(scalarPort) && scalarPort >= 1 && scalarPort <= 65535
+    ? [{ name: 'http', port: scalarPort, protocol: 'http' }]
+    : [];
+}
+
 async function firstExistingFile(candidates: string[]): Promise<string | null> {
   for (const candidate of candidates) {
     if (await fsExtra.pathExists(candidate)) {
@@ -277,18 +316,21 @@ function mergeProjectContract(
 ): { project: WorkspaceContractProject; changed: boolean } {
   const preferredPort = defaultPortForKit(discovered.kit, discovered.runtime);
   const existingPorts = existing?.ports || [];
+  const discoveredPorts = discovered.ports || [];
   const ports =
     existingPorts.length > 0
       ? existingPorts
-      : preferredPort
-        ? [
-            {
-              name: 'http',
-              port: nextAvailablePort(preferredPort, usedPorts),
-              protocol: 'http' as const,
-            },
-          ]
-        : [];
+      : discoveredPorts.length > 0
+        ? discoveredPorts
+        : preferredPort
+          ? [
+              {
+                name: 'http',
+                port: nextAvailablePort(preferredPort, usedPorts),
+                protocol: 'http' as const,
+              },
+            ]
+          : [];
 
   for (const port of ports) {
     usedPorts.add(port.port);
@@ -388,7 +430,7 @@ export async function buildWorkspaceContract(input: {
       framework,
       kit,
       modules: normalizeStringArray(payload.modules),
-      ports: [],
+      ports: normalizeProjectPorts(payload),
       contracts: {
         owns: [],
         apis: [],

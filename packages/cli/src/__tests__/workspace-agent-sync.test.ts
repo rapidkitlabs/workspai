@@ -97,6 +97,11 @@ describe('workspace agent sync', () => {
     const index = await buildWorkspaceAgentReportsIndex({ workspacePath });
 
     expect(index.schemaVersion).toBe('rapidkit-agent-reports-index.v1');
+    expect(index.intelligenceChain).toEqual({
+      schemaVersion: 'workspai-workspace-intelligence-chain-v1',
+      contractPath: 'contracts/workspace-intelligence-chain.v1.json',
+      currentStep: 'agent-sync',
+    });
     expect(index.readOrder[0]).toBe(WORKSPACE_CONTEXT_AGENT_REPORT_PATH);
     expect(index.readOrder).toEqual(
       expect.arrayContaining([

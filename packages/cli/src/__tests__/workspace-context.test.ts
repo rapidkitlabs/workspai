@@ -53,6 +53,11 @@ describe('workspace agent context', () => {
       schemaVersion: 'workspace-context.v1',
       generatedAt: '2026-06-14T00:00:00.000Z',
       agent: 'codex',
+      intelligenceChain: {
+        schemaVersion: 'workspai-workspace-intelligence-chain-v1',
+        contractPath: 'contracts/workspace-intelligence-chain.v1.json',
+        currentStep: 'context',
+      },
       workspace: {
         name: 'agent-platform',
         type: 'full-stack-workspace',
@@ -65,7 +70,7 @@ describe('workspace agent context', () => {
     expect(
       context.projects.find((project) => project.name === 'api')?.createCapability
     ).toMatchObject({
-      lane: 'native-create',
+      lane: 'native',
       canExecuteCreate: true,
       resolved: 'fastapi.standard',
     });
@@ -210,7 +215,7 @@ describe('workspace agent context', () => {
         source: 'official-generator',
       },
       createCapability: {
-        lane: 'native-create',
+        lane: 'official',
         canExecuteCreate: true,
         resolved: 'frontend.vite-react',
       },

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workspai.dev/schemas/agent-customization-pack-report.v1.json",
+  "title": "Workspai Agent Customization Pack Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "workspaceRoot",
+    "preset",
+    "targets",
+    "sourceReports",
+    "intelligenceChain",
+    "outputInventory",
+    "capabilityMatrix",
+    "drift",
+    "answerContract",
+    "refreshCommand",
+    "experimental"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "rapidkit-agent-customization-pack.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "preset": { "enum": ["minimal", "enterprise"] },
+    "targets": {
+      "type": "array",
+      "items": {
+        "enum": ["all", "vscode", "agents", "copilot", "cursor", "claude", "codex", "orca"]
+      }
+    },
+    "sourceReports": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "intelligenceChain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "contractPath", "currentStep"],
+      "properties": {
+        "schemaVersion": { "type": "string", "minLength": 1 },
+        "contractPath": { "type": "string", "minLength": 1 },
+        "currentStep": { "const": "agent-sync" }
+      }
+    },
+    "outputInventory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind", "targets", "required", "status"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "kind": {
+            "enum": [
+              "report",
+              "grounding",
+              "instruction",
+              "prompt",
+              "skill",
+              "skill-resource",
+              "operational-skill",
+              "skills-index",
+              "explain-report",
+              "agent",
+              "rule",
+              "hook",
+              "mcp-design"
+            ]
+          },
+          "targets": { "type": "array", "items": { "type": "string" } },
+          "required": { "type": "boolean" },
+          "status": { "enum": ["written", "planned", "skipped"] }
+        }
+      }
+    },
+    "capabilityMatrix": { "type": "object", "additionalProperties": true },
+    "drift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["missingRequired", "staleReports", "strictViolations"],
+      "properties": {
+        "missingRequired": { "type": "array", "items": { "type": "string" } },
+        "staleReports": { "type": "array", "items": { "type": "string" } },
+        "strictViolations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "answerContract": { "type": "array", "items": { "type": "string" } },
+    "refreshCommand": { "type": "string", "minLength": 1 },
+    "experimental": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hooksEnabled", "mcpReady"],
+      "properties": {
+        "hooksEnabled": { "type": "boolean" },
+        "mcpReady": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -81,15 +81,15 @@ npx workspai pipeline --json --strict
 Workspai does not pretend every technology is a native scaffold. It uses a
 create planner contract to choose the safest path:
 
-| Lane                    | Use when                                                                                        | Result                                                                 |
-| ----------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `native-create`         | Workspai owns the scaffold contract                                                             | Create the project with a first-class kit                              |
-| `external-create-adopt` | The ecosystem has an official generator, but Workspai does not own the post-create contract yet | Use the ecosystem generator, then adopt into Workspace Intelligence    |
-| `adopt-only`            | The project already exists or native create is not supported                                    | Register, model, verify, and govern the project without scaffolding it |
+| Lane       | Use when                                                                                        | Result                                                                 |
+| ---------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `native`   | Workspai owns the scaffold contract                                     | Create the project with a first-class Workspai kit                     |
+| `official` | The ecosystem has an official generator                                 | Run an available official generator and register it, or adopt planned handoffs |
+| `existing` | The project already exists, or no create path is available or necessary | Register, model, verify, and govern the project without scaffolding it |
 
-Native create includes FastAPI, NestJS, Go, Spring Boot, .NET, and official
-frontend generators such as Next.js, Vite, Nuxt, Angular, Astro, Remix, and
-SvelteKit.
+Native create is reserved for Workspai-owned kits such as FastAPI, NestJS,
+Go, Spring Boot, and .NET. Official generator paths cover frontend frameworks
+such as Next.js, Vite, Nuxt, Angular, Astro, Remix, and SvelteKit.
 
 External ecosystems such as WordPress, Laravel, Symfony, Rails, and generic PHP
 projects can still enter Workspai through adopt/import and receive workspace
@@ -315,6 +315,19 @@ assistance, and release decisions backed by evidence instead of guesswork.
 
 Workspace Intelligence provides a shared understanding of projects, dependencies, operational context, and release readiness for developers, CI pipelines, and AI agents.
 
+The canonical execution order is versioned in
+[`contracts/workspace-intelligence-chain.v1.json`](contracts/workspace-intelligence-chain.v1.json).
+CLI, IDE, CI, agent grounding, documentation, and diagrams must consume that
+contract instead of maintaining independent command sequences. It currently defines:
+
+```text
+Model -> Snapshot -> Diff -> Impact -> Doctor -> Contract Verify -> Readiness
+      -> Verify -> Context -> Agent Sync -> Explain
+```
+
+Each contracted step declares its command, dependencies, consumed and produced
+artifacts, and whether a non-zero structured verdict continues or stops the chain.
+
 | Command                                                      | Purpose                                                                              |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
 | `workspace model [--cache\|--incremental] --json`            | Canonical workspace model (graph-aware, incremental rebuilds)                        |
@@ -508,7 +521,7 @@ cd <project-name> && npx workspai init && npx workspai dev
 
 Backend kits: `fastapi.standard`, `nestjs.standard`, `springboot.standard`, `gofiber.standard`, `dotnet.webapi.clean`, and more.
 
-Frontend kits: `nextjs`, `remix`, `vite-react`, `nuxt`, `angular`, `astro`, `sveltekit`, and more — same command shape:
+Frontend generators: `nextjs`, `remix`, `vite-react`, `nuxt`, `angular`, `astro`, `sveltekit`, and more — same command shape:
 
 ```bash
 npx workspai create project <kit> <name>

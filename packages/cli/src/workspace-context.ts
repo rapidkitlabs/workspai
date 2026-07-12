@@ -1,5 +1,4 @@
 import path from 'path';
-import fsExtra from 'fs-extra';
 
 import {
   buildWorkspaceModel,
@@ -8,6 +7,10 @@ import {
   type WorkspaceModelValidationResult,
   type WorkspaceModelProject,
 } from './workspace-model.js';
+import {
+  buildWorkspaceIntelligenceChainContract,
+  WORKSPACE_INTELLIGENCE_CHAIN_SCHEMA_VERSION,
+} from './contracts/workspace-intelligence-chain-contract.js';
 import { attachRunCorrelation } from './observability/run-correlation.js';
 import {
   buildWorkspaceFact,
@@ -16,9 +19,15 @@ import {
   type FactFreshnessSummary,
   type WorkspaceFact,
 } from './contracts/fact-freshness-contract.js';
+import {
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+} from './contracts/workspace-intelligence-runtime-registry.js';
+import { writeWorkspaceArtifactJson } from './utils/artifact-path-compat.js';
 
-export const WORKSPACE_CONTEXT_SCHEMA_VERSION = 'workspace-context.v1';
-export const WORKSPACE_CONTEXT_AGENT_REPORT_PATH = '.workspai/reports/workspace-context-agent.json';
+export const WORKSPACE_CONTEXT_SCHEMA_VERSION =
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.agentContext;
+export const WORKSPACE_CONTEXT_AGENT_REPORT_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext;
 
 export type WorkspaceContextAgent = 'generic' | 'codex' | 'claude' | 'cursor' | 'orca';
 
@@ -52,6 +61,12 @@ export type WorkspaceAgentContext = {
   agent: WorkspaceContextAgent;
   workspaceSummary: string;
   modelRef: string;
+  intelligenceChain: {
+    schemaVersion: typeof WORKSPACE_INTELLIGENCE_CHAIN_SCHEMA_VERSION;
+    contractPath: string;
+    currentStep: 'context';
+    canonicalReadOrder: string[];
+  };
   workspace: {
     name: string;
     root: string;
@@ -147,7 +162,7 @@ function command(
         category: 'structure',
         generatedAt: input.generatedAt,
         now: input.now,
-        sourceArtifact: '.workspai/reports/workspace-model.json',
+        sourceArtifact: WORKSPACE_INTELLIGENCE_ARTIFACTS.model,
         sourcePath: `safeCommands.${input.id}`,
         reason: 'Safe command surfaces are derived from workspace model command capabilities.',
       },
@@ -398,7 +413,7 @@ export async function buildWorkspaceAgentContext(
         category: 'structure',
         generatedAt: model.generatedAt,
         now,
-        sourceArtifact: '.workspai/reports/workspace-context-agent.json',
+        sourceArtifact: WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext,
         sourcePath: `safeCommands.${safeCommand.id}`,
         reason: 'Context safe commands are derived from workspace model command capabilities.',
       },
@@ -410,13 +425,20 @@ export async function buildWorkspaceAgentContext(
     generatedAt: now.toISOString(),
     now,
   });
+  const intelligenceChain = buildWorkspaceIntelligenceChainContract();
 
   return {
     schemaVersion: WORKSPACE_CONTEXT_SCHEMA_VERSION,
     generatedAt: now.toISOString(),
     agent,
     workspaceSummary,
-    modelRef: '.workspai/reports/workspace-model.json',
+    modelRef: WORKSPACE_INTELLIGENCE_ARTIFACTS.model,
+    intelligenceChain: {
+      schemaVersion: intelligenceChain.schemaVersion,
+      contractPath: intelligenceChain.contractPath,
+      currentStep: 'context',
+      canonicalReadOrder: [...intelligenceChain.consumers.agents.canonicalReadOrder],
+    },
     workspace: {
       name: model.workspace.name,
       root: model.workspace.root,
@@ -442,7 +464,7 @@ export async function buildWorkspaceAgentContext(
     },
     validation,
     agentInstructions: [
-      'Read `.workspai/reports/INDEX.json` first, then this context pack and linked evidence reports.',
+      `Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` first, then this context pack and linked evidence reports.`,
       'Use this context as the workspace source of truth before inspecting random files.',
       'Prefer workspace-level evidence over generic framework assumptions.',
       'Use `display` commands when explaining steps to a human.',
@@ -474,8 +496,9 @@ export async function writeWorkspaceAgentContext(
   context: WorkspaceAgentContext,
   workspacePath: string
 ): Promise<string> {
-  const outputPath = path.join(workspacePath, WORKSPACE_CONTEXT_AGENT_REPORT_PATH);
-  await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJSON(outputPath, attachRunCorrelation(context), { spaces: 2 });
-  return outputPath;
+  return writeWorkspaceArtifactJson(
+    workspacePath,
+    WORKSPACE_CONTEXT_AGENT_REPORT_PATH,
+    attachRunCorrelation(context)
+  );
 }

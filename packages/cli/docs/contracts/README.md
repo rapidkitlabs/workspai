@@ -40,7 +40,8 @@ Published under `../../contracts/` (not duplicated in this folder):
 - `artifact-remediation-plan.v1.json` — cross-artifact Studio handoff for Bootstrap, Analyze, Readiness, Pipeline, Workspace Run, Workspace Verify, and Doctor plan bridging
 - `analyze-last-run.v1.json` — analyze evidence
 - `pipeline-last-run.v1.json` — governance pipeline orchestration
-- `create-planner-capabilities.v1.json` — native-create, external-create-adopt, and adopt-only capability lanes
+- `project-entry-capability.v1.json` — open-ended adopt/import contract for readable projects
+- `create-planner-capabilities.v1.json` — native, official, and existing capability lanes
 - `agent-customization-pack.v1.json` — generated instructions, prompts, skills, agents, optional hooks, MCP-ready design metadata, target matrix, and drift state for AI agent surfaces
 
 Workspace intelligence (`../../contracts/workspace-intelligence/`):

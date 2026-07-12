@@ -10,8 +10,10 @@ import {
   operationalSkillPath,
 } from './workspace-artifact-paths.js';
 import { STANDARD_ANSWER_CONTRACT_SECTIONS } from './standard-answer-contract.js';
+import { WORKSPACE_INTELLIGENCE_ARTIFACTS } from './workspace-intelligence-runtime-registry.js';
 
-export const AGENT_CUSTOMIZATION_PACK_SCHEMA_VERSION = 'rapidkit-agent-customization-pack.v1';
+export const AGENT_CUSTOMIZATION_PACK_SCHEMA_VERSION =
+  'workspai-agent-customization-pack-capabilities.v1' as const;
 
 export type AgentCustomizationPackContract = {
   schemaVersion: typeof AGENT_CUSTOMIZATION_PACK_SCHEMA_VERSION;
@@ -52,18 +54,18 @@ export function buildAgentCustomizationPackContract(): AgentCustomizationPackCon
         meaning:
           'Generate the portable grounding index, AGENTS.md, and provider-specific lightweight instructions.',
         requiredOutputs: [
-          '.workspai/reports/INDEX.json',
-          '.workspai/reports/agent-customization-pack.json',
-          'AGENTS.md',
+          WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex,
+          WORKSPACE_INTELLIGENCE_ARTIFACTS.agentCustomizationPack,
+          WORKSPACE_INTELLIGENCE_ARTIFACTS.agents,
         ],
       },
       enterprise: {
         meaning:
           'Generate the full VS Code-native pack: instructions, prompts, skills, custom agents, and validation metadata.',
         requiredOutputs: [
-          '.workspai/reports/INDEX.json',
-          '.workspai/reports/agent-customization-pack.json',
-          'AGENTS.md',
+          WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex,
+          WORKSPACE_INTELLIGENCE_ARTIFACTS.agentCustomizationPack,
+          WORKSPACE_INTELLIGENCE_ARTIFACTS.agents,
           WORKSPAI_COPILOT_WORKSPACE_INSTRUCTIONS_PATH,
           WORKSPAI_COPILOT_DIAGNOSE_PROMPT_PATH,
           WORKSPAI_COPILOT_WORKSPACE_INTELLIGENCE_SKILL_PATH,

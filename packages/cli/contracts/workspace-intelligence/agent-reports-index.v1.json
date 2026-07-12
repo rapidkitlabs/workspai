@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workspai.dev/schemas/agent-reports-index.v1.json",
+  "title": "Workspai Agent Reports Index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "workspaceRoot",
+    "intelligenceChain",
+    "readOrder",
+    "blockers",
+    "staleAfterHours",
+    "reports",
+    "refreshCommand"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "rapidkit-agent-reports-index.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "intelligenceChain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "contractPath", "currentStep"],
+      "properties": {
+        "schemaVersion": { "type": "string", "minLength": 1 },
+        "contractPath": { "type": "string", "minLength": 1 },
+        "currentStep": { "const": "agent-sync" }
+      }
+    },
+    "readOrder": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "staleAfterHours": { "type": "number", "minimum": 0 },
+    "reports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "label", "required", "exists"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "label": { "type": "string", "minLength": 1 },
+          "required": { "type": "boolean" },
+          "exists": { "type": "boolean" },
+          "generatedAt": { "type": "string", "format": "date-time" },
+          "commandId": { "type": "string" },
+          "exitCode": { "type": "integer" }
+        }
+      }
+    },
+    "refreshCommand": { "type": "string", "minLength": 1 }
+  }
+}

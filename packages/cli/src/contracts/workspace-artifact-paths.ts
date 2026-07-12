@@ -2,13 +2,13 @@
  * Single source of truth for Phase 4 canonical artifact paths (roadmap 4.0).
  * Consumed by generators, pack contract, and extension parity tests via sync.
  */
+import { WORKSPACE_INTELLIGENCE_ARTIFACTS } from './workspace-intelligence-runtime-registry.js';
 
 export const WORKSPAI_SKILLS_DIR = '.workspai/skills' as const;
 /** @deprecated Use WORKSPAI_SKILLS_DIR. */
 export const RAPIDKIT_SKILLS_DIR = '.rapidkit/skills' as const;
-export const WORKSPACE_SKILLS_INDEX_PATH = '.workspai/reports/workspace-skills-index.json' as const;
-export const WORKSPACE_EXPLAIN_REPORT_PATH =
-  '.workspai/reports/workspace-explain-last-run.json' as const;
+export const WORKSPACE_SKILLS_INDEX_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.skillsIndex;
+export const WORKSPACE_EXPLAIN_REPORT_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.explain;
 export const WORKSPACE_WHY_REPORT_PATH = '.workspai/reports/workspace-why-last-run.json' as const;
 export const WORKSPACE_TRACE_REPORT_PATH =
   '.workspai/reports/workspace-trace-last-run.json' as const;

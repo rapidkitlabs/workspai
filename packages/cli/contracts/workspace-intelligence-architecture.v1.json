@@ -1,0 +1,715 @@
+{
+  "schemaVersion": "workspai-workspace-intelligence-architecture-v1",
+  "name": "Workspace Intelligence Architecture",
+  "canonicalPositioning": {
+    "tagline": "Open-Source Workspace Intelligence for Software Systems",
+    "category": "Workspace Intelligence",
+    "primaryPromise": "Workspai turns repositories, projects, dependencies, rules, changes, and evidence into shared understanding for developers, CI, IDEs, and AI agents.",
+    "mentalModel": [
+      "Repositories · Projects · Dependencies · Changes",
+      "Workspace Intelligence",
+      "Evidence-backed outputs",
+      "Developers · CI · IDEs · AI agents"
+    ]
+  },
+  "workspaceLifecycle": {
+    "ingestionRoutes": [
+      {
+        "id": "create",
+        "label": "Create",
+        "commands": [
+          "create workspace",
+          "create project"
+        ],
+        "result": "Create a workspace or supported project and write canonical Workspai metadata."
+      },
+      {
+        "id": "adopt",
+        "label": "Adopt",
+        "commands": [
+          "adopt"
+        ],
+        "result": "Register an existing project in place without requiring source relocation."
+      },
+      {
+        "id": "import",
+        "label": "Import",
+        "commands": [
+          "import",
+          "workspace import"
+        ],
+        "result": "Attach an existing project or repository path to the workspace inventory."
+      }
+    ],
+    "durableState": [
+      {
+        "id": "workspace-identity",
+        "paths": [
+          ".workspai-workspace",
+          ".workspai/workspace.json"
+        ],
+        "purpose": "Identify the workspace boundary, profile, and canonical root."
+      },
+      {
+        "id": "project-inventory",
+        "paths": [
+          ".workspai/project.json",
+          ".workspai/context.json",
+          ".workspai/adopt.json",
+          "~/.workspai/workspaces.json",
+          "~/.rapidkit/workspaces.json (legacy compatibility mirror)"
+        ],
+        "purpose": "Record native, adopted, imported, and globally registered project locations while preserving a non-authoritative mirror for legacy extension discovery."
+      },
+      {
+        "id": "governance",
+        "paths": [
+          ".workspai/policies.yml",
+          ".workspai/workspace.contract.json"
+        ],
+        "purpose": "Define workspace policy and explicit structural relationships."
+      },
+      {
+        "id": "graph-overrides",
+        "paths": [
+          ".workspai/workspace-graph.overrides.json"
+        ],
+        "purpose": "Provide explicit dependency edges that override inferred relationships."
+      }
+    ],
+    "rule": "Create, adopt, and import are ingestion routes, not intelligence facts. Their durable state becomes observable input to Model."
+  },
+  "observedInputs": [
+    {
+      "id": "projects-repositories",
+      "label": "Projects and repositories",
+      "sources": [
+        "projects",
+        "repositories",
+        "services",
+        "modules",
+        "imported paths"
+      ],
+      "entersAt": "model"
+    },
+    {
+      "id": "runtime-dependencies",
+      "label": "Runtime and dependencies",
+      "sources": [
+        "runtime manifests",
+        "lockfiles",
+        "scripts",
+        "framework markers",
+        "package dependencies",
+        "supported source imports (currently bounded JavaScript and TypeScript scanning)"
+      ],
+      "entersAt": "model"
+    },
+    {
+      "id": "workspace-rules",
+      "label": "Workspace rules",
+      "sources": [
+        "workspace markers",
+        "registry",
+        "project metadata",
+        "contracts",
+        "policies",
+        "ownership",
+        "graph overrides"
+      ],
+      "entersAt": "model"
+    },
+    {
+      "id": "changes",
+      "label": "Changes",
+      "sources": [
+        "repository state",
+        "git state",
+        "model baseline",
+        "workspace diff"
+      ],
+      "entersAt": "diff"
+    },
+    {
+      "id": "existing-evidence",
+      "label": "Existing evidence",
+      "sources": [
+        "doctor reports",
+        "analysis reports",
+        "contract verification",
+        "release readiness",
+        "pipeline results",
+        "tests and runtime evidence",
+        "previous intelligence artifacts"
+      ],
+      "entersAt": "doctor-evidence"
+    }
+  ],
+  "outputFamilies": [
+    {
+      "id": "understanding",
+      "label": "System understanding",
+      "artifacts": [
+        ".workspai/reports/workspace-model.json",
+        ".workspai/reports/workspace-model-snapshot.json",
+        ".workspai/reports/workspace-model-diff-last-run.json",
+        ".workspai/reports/workspace-impact-last-run.json"
+      ],
+      "producedBy": [
+        "model",
+        "snapshot",
+        "diff",
+        "impact"
+      ],
+      "inventory": "complete-for-chain"
+    },
+    {
+      "id": "governance-evidence",
+      "label": "Governance evidence",
+      "artifacts": [
+        ".workspai/reports/doctor-last-run.json",
+        ".workspai/reports/workspace-contract-verify-last-run.json",
+        ".workspai/reports/release-readiness-last-run.json",
+        ".workspai/reports/workspace-verify-last-run.json",
+        ".workspai/reports/workspace-intelligence-history.json"
+      ],
+      "producedBy": [
+        "doctor-evidence",
+        "contract-evidence",
+        "readiness-evidence",
+        "verify"
+      ],
+      "inventory": "complete-for-chain"
+    },
+    {
+      "id": "agent-grounding",
+      "label": "Agent grounding",
+      "artifacts": [
+        ".workspai/reports/workspace-context-agent.json",
+        ".workspai/reports/INDEX.json",
+        ".workspai/reports/agent-customization-pack.json",
+        ".workspai/reports/workspace-skills-index.json",
+        "AGENTS.md"
+      ],
+      "producedBy": [
+        "context",
+        "agent-sync"
+      ],
+      "inventory": "canonical-minimum",
+      "inventoryContract": "contracts/agent-customization-pack.v1.json"
+    },
+    {
+      "id": "explanations",
+      "label": "Explainable decisions",
+      "artifacts": [
+        ".workspai/reports/workspace-explain-last-run.json"
+      ],
+      "producedBy": [
+        "explain"
+      ],
+      "inventory": "complete-for-chain"
+    }
+  ],
+  "deliveryChannels": [
+    {
+      "id": "artifacts",
+      "carries": [
+        "reports",
+        "models",
+        "context",
+        "grounding",
+        "skills"
+      ],
+      "authority": "canonical"
+    },
+    {
+      "id": "json-stdout",
+      "carries": [
+        "structured command results"
+      ],
+      "authority": "projection"
+    },
+    {
+      "id": "human-cli",
+      "carries": [
+        "summaries",
+        "diagnostics",
+        "next actions"
+      ],
+      "authority": "projection"
+    },
+    {
+      "id": "exit-codes",
+      "carries": [
+        "gate and command status"
+      ],
+      "authority": "projection"
+    },
+    {
+      "id": "watch-events",
+      "carries": [
+        "incremental workspace change events"
+      ],
+      "authority": "projection"
+    },
+    {
+      "id": "mcp",
+      "carries": [
+        "read-mostly access to current workspace artifacts"
+      ],
+      "authority": "projection"
+    }
+  ],
+  "feedback": {
+    "from": [
+      "developers",
+      "ci",
+      "ides",
+      "ai-agents"
+    ],
+    "signals": [
+      "source commits",
+      "dependency updates",
+      "policy and contract edits",
+      "repairs",
+      "test and runtime results",
+      "agent action outcomes"
+    ],
+    "reentersThrough": [
+      "projects-repositories",
+      "runtime-dependencies",
+      "workspace-rules",
+      "changes",
+      "existing-evidence"
+    ],
+    "rule": "Consumer actions are not silently treated as truth. They re-enter as observable changes or evidence and must be modeled and verified again."
+  },
+  "auxiliaryCapabilities": [
+    {
+      "id": "graph",
+      "commands": [
+        "workspace graph emit",
+        "workspace graph explain",
+        "workspace graph dot",
+        "workspace graph mermaid"
+      ],
+      "reads": [
+        ".workspai/reports/workspace-model.json#graph"
+      ],
+      "role": "Inspect or render the graph already embedded in the workspace model.",
+      "chainStep": false
+    },
+    {
+      "id": "watch",
+      "commands": [
+        "workspace watch"
+      ],
+      "reads": [
+        "workspace inputs",
+        ".workspai/reports/workspace-model.json"
+      ],
+      "role": "Refresh the model incrementally and emit deterministic change events.",
+      "chainStep": false
+    },
+    {
+      "id": "mcp",
+      "commands": [
+        "workspace mcp serve"
+      ],
+      "reads": [
+        "workspace evidence artifacts"
+      ],
+      "role": "Expose read-mostly workspace evidence to compatible clients.",
+      "chainStep": false
+    }
+  ],
+  "architectureCore": {
+    "executionChainContract": {
+      "schemaVersion": "workspai-workspace-intelligence-chain-v1",
+      "path": "contracts/workspace-intelligence-chain.v1.json"
+    },
+    "loop": [
+      {
+        "id": "model",
+        "status": "available",
+        "purpose": "Build the canonical current model of the software system.",
+        "commands": [
+          "workspace model --json --write"
+        ],
+        "artifacts": [
+          ".workspai/reports/workspace-model.json"
+        ]
+      },
+      {
+        "id": "snapshot",
+        "status": "available",
+        "purpose": "Persist a stable comparison baseline.",
+        "commands": [
+          "workspace snapshot --json"
+        ],
+        "artifacts": [
+          ".workspai/reports/workspace-model-snapshot.json"
+        ]
+      },
+      {
+        "id": "diff",
+        "status": "available",
+        "purpose": "Describe structural change against the selected baseline.",
+        "commands": [
+          "workspace diff --from .workspai/reports/workspace-model-snapshot.json --json"
+        ],
+        "artifacts": [
+          ".workspai/reports/workspace-model-diff-last-run.json"
+        ]
+      },
+      {
+        "id": "impact",
+        "status": "available",
+        "purpose": "Calculate transitive blast radius over the workspace graph.",
+        "commands": [
+          "workspace impact --from .workspai/reports/workspace-model-diff-last-run.json --json"
+        ],
+        "artifacts": [
+          ".workspai/reports/workspace-impact-last-run.json"
+        ]
+      },
+      {
+        "id": "doctor-evidence",
+        "status": "available",
+        "purpose": "Refresh health evidence after the impact artifact exists.",
+        "commands": [
+          "doctor workspace --json"
+        ],
+        "artifacts": [
+          ".workspai/reports/doctor-last-run.json"
+        ]
+      },
+      {
+        "id": "contract-evidence",
+        "status": "available",
+        "purpose": "Refresh structural contract evidence without hiding failed verdicts.",
+        "commands": [
+          "workspace contract verify --strict --json"
+        ],
+        "artifacts": [
+          ".workspai/reports/workspace-contract-verify-last-run.json"
+        ]
+      },
+      {
+        "id": "readiness-evidence",
+        "status": "available",
+        "purpose": "Refresh release-readiness evidence before the definitive gate.",
+        "commands": [
+          "readiness --json"
+        ],
+        "artifacts": [
+          ".workspai/reports/release-readiness-last-run.json"
+        ]
+      },
+      {
+        "id": "verify",
+        "status": "available",
+        "purpose": "Emit the definitive evidence-backed workspace gate.",
+        "commands": [
+          "workspace verify --from-impact .workspai/reports/workspace-impact-last-run.json --json"
+        ],
+        "artifacts": [
+          ".workspai/reports/workspace-verify-last-run.json",
+          ".workspai/reports/workspace-intelligence-history.json"
+        ]
+      },
+      {
+        "id": "context",
+        "status": "available",
+        "purpose": "Build compact agent context from the same verified evidence.",
+        "commands": [
+          "workspace context --for-agent --json --write --no-agent-sync"
+        ],
+        "artifacts": [
+          ".workspai/reports/workspace-context-agent.json"
+        ]
+      },
+      {
+        "id": "agent-sync",
+        "status": "available",
+        "purpose": "Distribute one context into portable agent and IDE surfaces.",
+        "commands": [
+          "workspace agent-sync --write --json --preset enterprise"
+        ],
+        "artifacts": [
+          ".workspai/reports/INDEX.json",
+          ".workspai/reports/agent-customization-pack.json",
+          ".workspai/reports/workspace-skills-index.json",
+          "AGENTS.md"
+        ]
+      },
+      {
+        "id": "explain",
+        "status": "available",
+        "purpose": "Translate evidence and blockers into a human and agent-readable narrative.",
+        "commands": [
+          "workspace explain release-blocked --json --write"
+        ],
+        "artifacts": [
+          ".workspai/reports/workspace-explain-last-run.json"
+        ]
+      }
+    ],
+    "evidencePrinciples": [
+      "Evidence is the source of understanding; documentation is an output, not the authority.",
+      "Facts should be marked or treated as verified, observed, inferred, or unknown based on available evidence.",
+      "Marketing and integration surfaces must not claim native, doctor depth, module support, or agent grounding beyond the generated contracts."
+    ]
+  },
+  "consumers": [
+    {
+      "id": "developers",
+      "status": "available",
+      "consumes": [
+        "workspace model",
+        "doctor evidence",
+        "explain/trace narratives",
+        "workspace run results"
+      ],
+      "allowedClaims": [
+        "Developers can inspect structure, context, impact, verification, and remediation evidence from one workspace model."
+      ]
+    },
+    {
+      "id": "ci",
+      "status": "available",
+      "consumes": [
+        "pipeline",
+        "readiness",
+        "workspace verify",
+        "doctor workspace/project evidence"
+      ],
+      "allowedClaims": [
+        "CI can gate release readiness and workspace verification through structured JSON reports and exit codes."
+      ]
+    },
+    {
+      "id": "ides-and-extensions",
+      "status": "available",
+      "consumes": [
+        "runtime-command-surface.v1.json",
+        "workspace registry",
+        "agent customization pack"
+      ],
+      "allowedClaims": [
+        "IDEs can discover supported command surfaces and consume shared contracts instead of parsing help text."
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "status": "available",
+      "consumes": [
+        "workspace context",
+        "AGENTS.md",
+        "skills index",
+        "MCP evidence tools"
+      ],
+      "allowedClaims": [
+        "AI agents can use generated grounding artifacts and MCP access to work from evidence-backed workspace context."
+      ]
+    },
+    {
+      "id": "docs-and-marketing",
+      "status": "available",
+      "consumes": [
+        "this architecture contract",
+        "project-entry-capability.v1.json",
+        "runtime-command-surface.v1.json",
+        "create-planner-capabilities.v1.json"
+      ],
+      "allowedClaims": [
+        "Public messaging can describe the architecture as inputs -> Workspace Intelligence -> consumers."
+      ]
+    }
+  ],
+  "claimBoundaries": {
+    "allowed": [
+      "Open-Source Workspace Intelligence for Software Systems.",
+      "One shared model of structure, context, impact, and verification.",
+      "Workspai can create projects only for native kits and available official generator paths listed in the create planner contract.",
+      "Any readable project can enter Workspace Intelligence through adopt/import when it can be registered.",
+      "Existing projects can enter Workspace Intelligence through adopt/import when they are readable and can be registered, even when native scaffold is unavailable.",
+      "Existing runtime signals in the create planner are examples for detection, not a closed allowlist of adopt/import support.",
+      "Agent grounding is available through workspace context, agent-sync, generated agent files, skills index, and MCP evidence access.",
+      "Verification and governance claims must reference doctor, analyze, readiness, pipeline, workspace verify, or generated evidence artifacts."
+    ],
+    "forbiddenUnlessImplemented": [
+      "Do not claim native scaffolding for every language or framework.",
+      "Do not claim module commands are supported for runtimes where moduleSupport/moduleCommands are false.",
+      "Do not claim a chat UI or repository chat exists in the CLI unless a shipped command or product surface implements it.",
+      "Do not present inferred or unknown facts as verified evidence.",
+      "Do not describe documentation as the source of truth; documentation must be described as generated from evidence."
+    ]
+  },
+  "createPlannerReality": {
+    "nativeCreateKits": [
+      "fastapi.standard",
+      "fastapi.ddd",
+      "nestjs.standard",
+      "springboot.standard",
+      "gofiber.standard",
+      "gogin.standard",
+      "dotnet.webapi.clean"
+    ],
+    "officialCreate": [
+      "frontend.nextjs",
+      "frontend.remix",
+      "frontend.vite-react",
+      "frontend.vite-vue",
+      "frontend.vite-svelte",
+      "frontend.vite-solid",
+      "frontend.vite-vanilla",
+      "frontend.nuxt",
+      "frontend.angular",
+      "frontend.astro",
+      "frontend.sveltekit",
+      "wordpress-site",
+      "wordpress-block",
+      "laravel",
+      "symfony",
+      "rails"
+    ],
+    "existingRuntimeSignals": [
+      "php",
+      "ruby",
+      "rust",
+      "elixir",
+      "clojure",
+      "scala",
+      "kotlin"
+    ]
+  },
+  "projectEntryCapability": {
+    "schemaVersion": "workspai-project-entry-capability-v1",
+    "name": "Project Entry Capability",
+    "plainLanguageRule": "Any readable project can enter Workspace Intelligence through adopt/import. Runtime-specific detection improves understanding depth; it is not the permission gate.",
+    "entryRoutes": [
+      {
+        "id": "create",
+        "status": "available",
+        "purpose": "Start a new project only through native kits or available official generator paths listed in the create planner contract.",
+        "commands": [
+          "create workspace",
+          "create project"
+        ]
+      },
+      {
+        "id": "adopt",
+        "status": "available",
+        "purpose": "Register an existing local project in place without moving or rewriting its source.",
+        "commands": [
+          "adopt"
+        ]
+      },
+      {
+        "id": "import",
+        "status": "available",
+        "purpose": "Attach an existing project, repository folder, or imported path to a workspace inventory.",
+        "commands": [
+          "import",
+          "workspace import"
+        ]
+      }
+    ],
+    "universalExistingProjectEntry": {
+      "status": "available",
+      "appliesTo": [
+        "any readable repository",
+        "any readable local project folder",
+        "monorepos and multi-project workspaces",
+        "known runtimes, unknown runtimes, and mixed stacks"
+      ],
+      "minimumConditions": [
+        "The path is readable by the CLI.",
+        "The workspace can write Workspai metadata or record an external adopted path.",
+        "The project can be represented with at least a name, path, and entry record."
+      ],
+      "doesNotRequire": [
+        "native scaffold support",
+        "official generator support",
+        "module command support",
+        "a known runtime detector",
+        "moving source files into the workspace"
+      ],
+      "result": [
+        "project registry membership",
+        "workspace model participation",
+        "workspace context participation",
+        "governance and evidence participation according to available facts"
+      ]
+    },
+    "supportDepths": [
+      {
+        "id": "registered",
+        "label": "Registered",
+        "meaning": "The project is known to the workspace and can participate in inventory, context, and governance.",
+        "examples": [
+          "unknown runtime",
+          "custom stack",
+          "legacy service"
+        ]
+      },
+      {
+        "id": "detected",
+        "label": "Detected",
+        "meaning": "The CLI recognizes runtime or framework signals and can label the project with higher confidence.",
+        "examples": [
+          "node package.json",
+          "python pyproject.toml",
+          "php composer.json"
+        ]
+      },
+      {
+        "id": "operational",
+        "label": "Operational",
+        "meaning": "The CLI can infer or use lifecycle commands, health checks, or workspace run stages.",
+        "examples": [
+          "test script",
+          "build script",
+          "doctor evidence"
+        ]
+      },
+      {
+        "id": "deep",
+        "label": "Deep",
+        "meaning": "The project has stack-specific module, doctor, or scaffold support beyond generic Workspace Intelligence.",
+        "examples": [
+          "FastAPI module support",
+          "NestJS module support",
+          "native Workspai kit"
+        ]
+      }
+    ],
+    "runtimeSignals": {
+      "purpose": "Help the planner and model recognize common existing-project requests and improve labels.",
+      "examples": [
+        "php",
+        "ruby",
+        "rust",
+        "elixir",
+        "clojure",
+        "scala",
+        "kotlin"
+      ],
+      "rule": "Runtime signals are examples for detection and messaging, not a closed allowlist for adopt/import."
+    },
+    "boundaries": {
+      "allowedClaims": [
+        "Any readable project can enter Workspace Intelligence through adopt/import when it can be registered.",
+        "Known runtime and framework detectors improve confidence and depth, but unknown projects can still be registered.",
+        "Create support is limited to native kits and available official generator paths in the create planner contract."
+      ],
+      "forbiddenClaims": [
+        "Do not say adopt/import supports only the listed runtime signals.",
+        "Do not say every imported project receives deep runtime-specific module support.",
+        "Do not say Workspai can natively scaffold every language or framework."
+      ]
+    }
+  },
+  "futureExtensions": []
+}

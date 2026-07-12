@@ -36,6 +36,14 @@ if (!fs.existsSync(tsupCli)) {
 runNode([tsupCli], 'building dist');
 runNode(['scripts/prepare-mock-embeddings.mjs'], 'preparing packaged embeddings');
 runNode(['scripts/verify-package-cli.mjs'], 'verifying bundled CLI command ownership');
+runNode(
+  ['scripts/check-workspace-intelligence-runtime-conformance.mjs'],
+  'validating Workspace Intelligence runtime artifacts against canonical schemas'
+);
+runNode(
+  ['scripts/check-workspace-intelligence-adversarial.mjs'],
+  'running Workspace Intelligence adversarial scenarios'
+);
 runNode(['scripts/enterprise-package-smoke.mjs'], 'running enterprise package smoke', {
   RAPIDKIT_ENTERPRISE_PREPACK: '1',
 });

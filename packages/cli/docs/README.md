@@ -18,7 +18,8 @@ Hub for user and contributor documentation. Start with the [main README](../READ
 | [commands-reference.md](./commands-reference.md) | Full CLI syntax, profiles, and policy keys |
 | [workspace-operations.md](./workspace-operations.md) | Import, adopt, snapshots, archives, contracts, infra |
 | [workspace-run.md](./workspace-run.md) | Polyglot fleet orchestration (`workspace run`) |
-| [create-planner-capabilities.md](./create-planner-capabilities.md) | Native create, external-create-adopt, and adopt-only lanes |
+| [create-planner-capabilities.md](./create-planner-capabilities.md) | Native create, official, and existing lanes |
+| [../contracts/project-entry-capability.v1.json](../contracts/project-entry-capability.v1.json) | Contract: any readable project can enter through adopt/import when it can be registered |
 | [from-code-to-shared-understanding.md](./from-code-to-shared-understanding.md) | GitHub-rendered Workspace Intelligence diagram |
 | [OPEN_SOURCE_USER_SCENARIOS.md](./OPEN_SOURCE_USER_SCENARIOS.md) | Role-based workflows (junior → enterprise) |
 | [doctor-command.md](./doctor-command.md) | Doctor scopes, CI exit codes, JSON evidence |

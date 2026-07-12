@@ -185,7 +185,7 @@ describe('workspace intelligence model', () => {
       moduleSupport: true,
       kit: 'fastapi.standard',
       createCapability: {
-        lane: 'native-create',
+        lane: 'native',
         canExecuteCreate: true,
         resolved: 'fastapi.standard',
       },
@@ -355,14 +355,14 @@ describe('workspace intelligence model', () => {
         commandDisplay: 'npm create vite@latest web -- --template react-ts',
       },
       createCapability: {
-        lane: 'native-create',
+        lane: 'official',
         canExecuteCreate: true,
         resolved: 'frontend.vite-react',
       },
     });
   });
 
-  it('keeps observed PHP projects in adopt-only create capability', async () => {
+  it('keeps observed PHP projects in existing create capability', async () => {
     const workspacePath = await makeTempDir('rk-model-php-');
     await fsExtra.outputJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
       name: 'content-platform',
@@ -385,11 +385,11 @@ describe('workspace intelligence model', () => {
       runtime: 'php',
       framework: 'laravel',
       createCapability: {
-        lane: 'external-create-adopt',
+        lane: 'official',
         status: 'planned',
         canExecuteCreate: false,
         resolved: 'laravel',
-        fallbackLane: 'adopt-only',
+        fallbackLane: 'existing',
       },
     });
   });

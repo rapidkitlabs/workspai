@@ -5,8 +5,13 @@ import type { AgentActionOutcomeRecord } from './contracts/agent-action-outcome-
 import type { DoctorFixExecutionResult } from './contracts/doctor-fix-result-contract.js';
 import {
   firstExistingWorkspaceArtifactPath,
+  withWorkspaceArtifactLock,
   writeWorkspaceArtifactJson,
 } from './utils/artifact-path-compat.js';
+import {
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+} from './contracts/workspace-intelligence-runtime-registry.js';
 
 /**
  * Lightweight health/impact history with retention (roadmap 1.21).
@@ -21,8 +26,8 @@ import {
  * entries (additive; readers ignore unknown kinds).
  */
 
-export const WORKSPACE_HISTORY_SCHEMA_VERSION = 'workspace-intelligence-history.v1' as const;
-export const WORKSPACE_HISTORY_PATH = '.workspai/reports/workspace-intelligence-history.json';
+export const WORKSPACE_HISTORY_SCHEMA_VERSION = WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.history;
+export const WORKSPACE_HISTORY_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.history;
 export const DEFAULT_HISTORY_RETENTION = 50;
 
 export type WorkspaceHistoryEntryKind = 'verify' | 'agent-action' | 'doctor-fix';
@@ -243,8 +248,23 @@ export async function recordWorkspaceHistory(
   entry: WorkspaceHistoryEntry,
   options?: { retention?: number }
 ): Promise<WorkspaceHistoryFile> {
-  const existing = await readWorkspaceHistory(workspacePath);
-  const next = appendHistoryEntry(existing, entry, options?.retention ?? DEFAULT_HISTORY_RETENTION);
-  await writeWorkspaceArtifactJson(workspacePath, WORKSPACE_HISTORY_PATH, next);
-  return next;
+  return withWorkspaceArtifactLock(workspacePath, WORKSPACE_HISTORY_PATH, async () => {
+    const existingPath = await firstExistingWorkspaceArtifactPath(
+      workspacePath,
+      WORKSPACE_HISTORY_PATH
+    );
+    const existing = await readWorkspaceHistory(workspacePath);
+    if (existingPath && !existing) {
+      throw new Error(
+        `Workspace history is unreadable or invalid; refusing to overwrite: ${existingPath}`
+      );
+    }
+    const next = appendHistoryEntry(
+      existing,
+      entry,
+      options?.retention ?? DEFAULT_HISTORY_RETENTION
+    );
+    await writeWorkspaceArtifactJson(workspacePath, WORKSPACE_HISTORY_PATH, next);
+    return next;
+  });
 }

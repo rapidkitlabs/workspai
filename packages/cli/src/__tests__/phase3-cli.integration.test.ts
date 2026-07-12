@@ -27,6 +27,47 @@ function cliEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 }
 
 describe('Phase 3 commands - CLI process integration', () => {
+  it('keeps adopt --dry-run read-only when the global wrapper option consumes the flag', () => {
+    const dist = ensureDistBuilt();
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-adopt-dry-run-'));
+    const isolatedHome = path.join(tempDir, 'home');
+    const workspaceDir = path.join(tempDir, 'workspace');
+    const projectDir = path.join(workspaceDir, 'api');
+
+    try {
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.mkdirSync(isolatedHome, { recursive: true });
+      fs.writeFileSync(
+        path.join(workspaceDir, '.workspai-workspace'),
+        JSON.stringify({ signature: 'RAPIDKIT_WORKSPACE', name: 'workspace' }, null, 2)
+      );
+      fs.writeFileSync(
+        path.join(projectDir, 'package.json'),
+        JSON.stringify({ name: 'api', scripts: { test: 'node --test' } }, null, 2)
+      );
+
+      const result = spawnSync(
+        process.execPath,
+        [dist, 'adopt', projectDir, '--workspace', workspaceDir, '--dry-run', '--json'],
+        {
+          cwd: workspaceDir,
+          encoding: 'utf8',
+          env: cliEnv({ HOME: isolatedHome, USERPROFILE: isolatedHome }),
+        }
+      );
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        dryRun: true,
+        adoptedProject: { wroteFiles: false },
+      });
+      expect(fs.existsSync(path.join(projectDir, '.workspai'))).toBe(false);
+      expect(fs.existsSync(path.join(isolatedHome, '.workspai', 'workspaces.json'))).toBe(false);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
+  }, 20_000);
+
   it('lists registered workspaces via workspace list', () => {
     const dist = ensureDistBuilt();
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-ws-list-'));

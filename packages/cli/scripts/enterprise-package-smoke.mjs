@@ -182,6 +182,10 @@ function parseTrailingJsonArray(stdout) {
 const REQUIRED_PACKAGE_FILES = [
   'dist/index.js',
   'contracts/runtime-command-surface.v1.json',
+  'contracts/create-planner-capabilities.v1.json',
+  'contracts/project-entry-capability.v1.json',
+  'contracts/workspace-intelligence-architecture.v1.json',
+  'contracts/workspace-intelligence-chain.v1.json',
   'contracts/extension-cli-compatibility.v1.json',
   'data/modules-embeddings.json',
   'templates/kits/fastapi-standard/README.md.j2',
@@ -193,10 +197,7 @@ const REQUIRED_PACKAGE_FILES = [
   'scripts/enforce-package-manager.cjs',
 ];
 
-const FORBIDDEN_PACKAGE_FILES = [
-  'workspai.config.example.js',
-  'rapidkit.config.example.js',
-];
+const FORBIDDEN_PACKAGE_FILES = ['workspai.config.example.js', 'rapidkit.config.example.js'];
 
 function isPublishedByFilesPolicy(packageJson, assetPath) {
   const files = packageJson.files ?? [];
@@ -223,7 +224,10 @@ function assertPackageFilesPolicy(requiredFiles) {
     assertFile(required);
   }
   for (const forbidden of FORBIDDEN_PACKAGE_FILES) {
-    if (isPublishedByFilesPolicy(packageJson, forbidden) || fs.existsSync(path.join(repoRoot, forbidden))) {
+    if (
+      isPublishedByFilesPolicy(packageJson, forbidden) ||
+      fs.existsSync(path.join(repoRoot, forbidden))
+    ) {
       fail(`forbidden legacy package file is still present or published: ${forbidden}`);
     }
   }
@@ -294,7 +298,15 @@ function assertCliContracts() {
       fail(`commands surface is missing top-level command: ${topLevel}`);
     }
   }
-  for (const subcommand of ['model', 'snapshot', 'diff', 'impact', 'verify', 'context', 'explain']) {
+  for (const subcommand of [
+    'model',
+    'snapshot',
+    'diff',
+    'impact',
+    'verify',
+    'context',
+    'explain',
+  ]) {
     if (!commands.workspace?.intelligenceSubcommands?.includes(subcommand)) {
       fail(`workspace intelligence surface is missing subcommand: ${subcommand}`);
     }
@@ -331,13 +343,23 @@ function smokeCreateNpmBackedKits() {
       kit: 'springboot.standard',
       name: 'enterprise-spring',
       extraArgs: ['--java-version', '21'],
-      expectedFiles: ['pom.xml', 'src/main/resources/application.yml', '.workspai/project.json', 'rapidkit'],
+      expectedFiles: [
+        'pom.xml',
+        'src/main/resources/application.yml',
+        '.workspai/project.json',
+        'rapidkit',
+      ],
     },
     {
       kit: 'dotnet.webapi.clean',
       name: 'enterprise-dotnet',
       extraArgs: ['--target-framework', 'net8.0'],
-      expectedFiles: ['src/Program.cs', 'src/enterprise-dotnet.csproj', '.workspai/project.json', 'rapidkit'],
+      expectedFiles: [
+        'src/Program.cs',
+        'src/enterprise-dotnet.csproj',
+        '.workspai/project.json',
+        'rapidkit',
+      ],
     },
   ];
 
@@ -449,6 +471,10 @@ for (const relativePath of [
   'package.json',
   'dist/index.js',
   'contracts/runtime-command-surface.v1.json',
+  'contracts/create-planner-capabilities.v1.json',
+  'contracts/project-entry-capability.v1.json',
+  'contracts/workspace-intelligence-architecture.v1.json',
+  'contracts/workspace-intelligence-chain.v1.json',
   'contracts/extension-cli-compatibility.v1.json',
   'data/modules-embeddings.json',
 ]) {

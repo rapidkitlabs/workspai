@@ -124,15 +124,15 @@
   ],
   "createPlanner": {
     "lanes": {
-      "native-create": {
+      "native": {
         "status": "available",
         "meaning": "Workspai owns the scaffold contract, marker, registry, doctor, bootstrap, and workspace model path."
       },
-      "external-create-adopt": {
-        "status": "planned",
-        "meaning": "A stable ecosystem generator exists, but Workspai does not yet own the post-create contract."
+      "official": {
+        "status": "available",
+        "meaning": "A stable ecosystem generator exists. Available entries run the official generator and then register the project; planned entries fall back to adopt/import."
       },
-      "adopt-only": {
+      "existing": {
         "status": "available",
         "meaning": "The project enters Workspace Intelligence through import/adopt, not native create."
       }
@@ -144,7 +144,9 @@
       "springboot.standard",
       "gofiber.standard",
       "gogin.standard",
-      "dotnet.webapi.clean",
+      "dotnet.webapi.clean"
+    ],
+    "officialCreate": [
       "frontend.nextjs",
       "frontend.remix",
       "frontend.vite-react",
@@ -155,16 +157,14 @@
       "frontend.nuxt",
       "frontend.angular",
       "frontend.astro",
-      "frontend.sveltekit"
-    ],
-    "externalCreateAdopt": [
+      "frontend.sveltekit",
       "wordpress-site",
       "wordpress-block",
       "laravel",
       "symfony",
       "rails"
     ],
-    "adoptOnlyRuntimes": [
+    "existingRuntimeSignals": [
       "php",
       "ruby",
       "rust",

@@ -19,6 +19,12 @@ import {
   writeWorkspaceArtifactJson,
 } from './utils/artifact-path-compat.js';
 import { workspaceMetadataCandidates } from './utils/workspace-paths.js';
+import {
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+} from './contracts/workspace-intelligence-runtime-registry.js';
+
+export const RELEASE_READINESS_REPORT_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.readiness;
 
 export type ReadinessGateStatus = 'pass' | 'warn' | 'fail';
 export type ReadinessOverallStatus = 'pass' | 'warn' | 'fail';
@@ -32,7 +38,7 @@ export interface ReadinessGateResult {
   evidencePath?: string;
 }
 
-export const RELEASE_READINESS_SCHEMA_VERSION = 'release-readiness-v1';
+export const RELEASE_READINESS_SCHEMA_VERSION = WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.readiness;
 
 export interface ReleaseReadinessContract {
   schemaVersion: typeof RELEASE_READINESS_SCHEMA_VERSION | 'v1';
@@ -458,7 +464,7 @@ async function buildVerifyGate(
 
   const cliEvidencePath = resolveWorkspaceArtifactPath(
     workspacePath,
-    '.workspai/reports/workspace-contract-verify-last-run.json'
+    WORKSPACE_INTELLIGENCE_ARTIFACTS.contractVerify
   );
   const cachedCliEvidence =
     reportsDirs
@@ -518,7 +524,7 @@ async function buildVerifyGate(
     };
     await writeWorkspaceArtifactJson(
       workspacePath,
-      '.workspai/reports/workspace-contract-verify-last-run.json',
+      WORKSPACE_INTELLIGENCE_ARTIFACTS.contractVerify,
       evidencePayload
     );
 
@@ -620,11 +626,7 @@ async function writeReadinessEvidence(
   workspacePath: string,
   payload: ReleaseReadinessContract
 ): Promise<string> {
-  return writeWorkspaceArtifactJson(
-    workspacePath,
-    '.workspai/reports/release-readiness-last-run.json',
-    payload
-  );
+  return writeWorkspaceArtifactJson(workspacePath, RELEASE_READINESS_REPORT_PATH, payload);
 }
 
 export async function evaluateReleaseReadiness(

@@ -1,9 +1,10 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
 const repoRoot = process.cwd();
 const cliPath = path.join(repoRoot, 'dist', 'index.js');
+const distPath = path.join(repoRoot, 'dist');
 
 const checks = [
   {
@@ -33,10 +34,14 @@ if (!existsSync(cliPath)) {
   fail(`missing built CLI at ${cliPath}; run npm run build before packing`);
 }
 
+const bundledJavaScript = readdirSync(distPath, { withFileTypes: true })
+  .filter((entry) => entry.isFile() && entry.name.endsWith('.js'))
+  .map((entry) => readFileSync(path.join(distPath, entry.name), 'utf8'))
+  .join('\n');
+
 for (const check of checks) {
-  const output = readFileSync(cliPath, 'utf8');
   for (const token of check.expected) {
-    if (!output.includes(token)) {
+    if (!bundledJavaScript.includes(token)) {
       fail(`${check.name} missing expected bundled token "${token}"`);
     }
   }

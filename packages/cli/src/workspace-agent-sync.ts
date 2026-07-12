@@ -40,6 +40,11 @@ import {
   WORKSPACE_SKILLS_INDEX_PATH,
 } from './contracts/workspace-artifact-paths.js';
 import { buildAgentCustomizationPackContract } from './contracts/agent-customization-pack-contract.js';
+import { buildWorkspaceIntelligenceChainContract } from './contracts/workspace-intelligence-chain-contract.js';
+import {
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+} from './contracts/workspace-intelligence-runtime-registry.js';
 import { readWorkspaceContract } from './utils/workspace-contract.js';
 import { firstExistingWorkspaceArtifactPath } from './utils/artifact-path-compat.js';
 import {
@@ -55,11 +60,12 @@ import {
   type WorkspaceContextAgent,
 } from './workspace-context.js';
 
-export const AGENT_REPORTS_INDEX_SCHEMA = 'rapidkit-agent-reports-index.v1';
-export const AGENT_CUSTOMIZATION_PACK_SCHEMA = 'rapidkit-agent-customization-pack.v1';
-export const AGENT_REPORTS_INDEX_PATH = '.workspai/reports/INDEX.json';
+export const AGENT_REPORTS_INDEX_SCHEMA = WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.agentIndex;
+export const AGENT_CUSTOMIZATION_PACK_SCHEMA =
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.agentCustomizationPack;
+export const AGENT_REPORTS_INDEX_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex;
 export const AGENT_CUSTOMIZATION_PACK_REPORT_PATH =
-  '.workspai/reports/agent-customization-pack.json';
+  WORKSPACE_INTELLIGENCE_ARTIFACTS.agentCustomizationPack;
 export {
   AGENT_GROUNDING_DOC_PATH,
   LEGACY_AGENT_GROUNDING_DOC_PATH,
@@ -114,6 +120,11 @@ export type AgentCustomizationPackReport = {
   preset: AgentCustomizationPackPreset;
   targets: AgentGroundingTarget[];
   sourceReports: string[];
+  intelligenceChain: {
+    schemaVersion: string;
+    contractPath: string;
+    currentStep: 'agent-sync';
+  };
   outputInventory: AgentCustomizationPackOutput[];
   capabilityMatrix: Record<
     AgentGroundingTarget,
@@ -153,12 +164,12 @@ export const AGENT_REPORT_CATALOG: AgentReportCatalogEntry[] = [
     required: true,
   },
   {
-    relativePath: '.workspai/reports/workspace-model.json',
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.model,
     label: 'Workspace model graph',
     required: false,
   },
   {
-    relativePath: '.workspai/reports/doctor-last-run.json',
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.doctor,
     label: 'Workspace doctor',
     required: false,
   },
@@ -193,46 +204,55 @@ export const AGENT_REPORT_CATALOG: AgentReportCatalogEntry[] = [
     required: false,
   },
   {
-    relativePath: '.workspai/reports/release-readiness-last-run.json',
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.readiness,
     label: 'Release readiness',
     required: false,
   },
   {
-    relativePath: '.workspai/reports/workspace-impact-last-run.json',
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.impact,
     label: 'Workspace impact',
     required: false,
   },
   {
-    relativePath: '.workspai/reports/workspace-verify-last-run.json',
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.verify,
     label: 'Workspace verify',
     required: false,
   },
   {
-    relativePath: '.workspai/reports/workspace-model-snapshot.json',
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.snapshot,
     label: 'Workspace model snapshot',
     required: false,
   },
   {
-    relativePath: '.workspai/reports/workspace-model-diff-last-run.json',
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.diff,
     label: 'Workspace model diff',
     required: false,
   },
   {
-    relativePath: '.workspai/reports/workspace-explain-last-run.json',
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.explain,
     label: 'Workspace explain',
     required: false,
   },
   {
-    relativePath: '.workspai/reports/workspace-contract-verify-last-run.json',
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.contractVerify,
     label: 'Workspace contract verify',
     required: false,
   },
   {
-    relativePath: '.workspai/reports/workspace-intelligence-history.json',
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.history,
     label: 'Workspace intelligence history',
     required: false,
   },
 ];
+
+export function buildCanonicalAgentReportReadOrder(): string[] {
+  const catalogPaths = AGENT_REPORT_CATALOG.map((entry) => entry.relativePath);
+  const contracted = buildWorkspaceIntelligenceChainContract().consumers.agents.canonicalReadOrder;
+  const prioritized = contracted.filter(
+    (reportPath) => reportPath !== AGENT_REPORTS_INDEX_PATH && catalogPaths.includes(reportPath)
+  );
+  return [...new Set([...prioritized, ...catalogPaths])];
+}
 
 export type AgentReportIndexEntry = {
   path: string;
@@ -248,6 +268,11 @@ export type WorkspaceAgentReportsIndex = {
   schemaVersion: typeof AGENT_REPORTS_INDEX_SCHEMA;
   generatedAt: string;
   workspaceRoot: string;
+  intelligenceChain: {
+    schemaVersion: string;
+    contractPath: string;
+    currentStep: 'agent-sync';
+  };
   readOrder: string[];
   blockers: string[];
   staleAfterHours: number;
@@ -565,12 +590,18 @@ export async function buildWorkspaceAgentReportsIndex(input: {
     0,
     16
   );
+  const intelligenceChain = buildWorkspaceIntelligenceChainContract();
 
   return {
     schemaVersion: AGENT_REPORTS_INDEX_SCHEMA,
     generatedAt: now.toISOString(),
     workspaceRoot: input.workspacePath,
-    readOrder: AGENT_REPORT_CATALOG.map((entry) => entry.relativePath),
+    intelligenceChain: {
+      schemaVersion: intelligenceChain.schemaVersion,
+      contractPath: intelligenceChain.contractPath,
+      currentStep: 'agent-sync',
+    },
+    readOrder: buildCanonicalAgentReportReadOrder(),
     blockers: uniqueBlockers,
     staleAfterHours,
     reports,
@@ -589,8 +620,8 @@ function buildAgentsMarkdown(input: {
     '',
     '## Read order (mandatory before workspace diagnosis)',
     '',
-    '1. `.workspai/reports/INDEX.json` — latest blockers, timestamps, and report paths',
-    '2. `.workspai/reports/workspace-context-agent.json` — canonical agent context pack',
+    `1. \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` — latest blockers, timestamps, and report paths`,
+    `2. \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\` — canonical agent context pack`,
     '3. Evidence artifacts listed in the index (doctor, analyze, pipeline, readiness, impact, verify)',
     '',
     'Do **not** full-repo scan until these reports are read or regenerated.',
@@ -640,7 +671,7 @@ function buildAgentGroundingDoc(index: WorkspaceAgentReportsIndex): string {
     '',
     `Generated: ${index.generatedAt}`,
     '',
-    'This file is tool-agnostic. Synced agents should read it together with `.workspai/reports/INDEX.json`.',
+    `This file is tool-agnostic. Synced agents should read it together with \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\`.`,
     '',
     '## Mandatory read order',
     '',
@@ -667,7 +698,7 @@ function buildCopilotInstructions(): string {
     'Before answering workspace, release, or architecture questions:',
     '',
     '1. Read `AGENTS.md` (managed Workspai section).',
-    '2. Read `.workspai/reports/INDEX.json` and `.workspai/reports/workspace-context-agent.json`.',
+    `2. Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` and \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\`.`,
     '3. Use evidence reports before scanning the full repository.',
     '',
     'Regenerate stale intelligence:',
@@ -683,7 +714,7 @@ function buildClaudeMarkdown(): string {
   return [
     '## Claude Code',
     '',
-    '- Load `.workspai/reports/INDEX.json` before diagnosing blockers.',
+    `- Load \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` before diagnosing blockers.`,
     '- Use `.claude/rules/workspai-evidence.md` for scoped Workspai evidence rules.',
     '- Treat `.claude/rules/rapidkit-evidence.md` as a legacy compatibility mirror.',
     '- Refresh grounding with `npx workspai workspace agent-sync --write`.',
@@ -701,8 +732,8 @@ function buildCursorRule(): string {
     '',
     'Before proposing fixes in this workspace:',
     '',
-    '1. Read `AGENTS.md` and `.workspai/reports/INDEX.json`.',
-    '2. Read `.workspai/reports/workspace-context-agent.json`.',
+    `1. Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agents}\` and \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\`.`,
+    `2. Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\`.`,
     '3. Prefer evidence in `.workspai/reports/*` over full-repo exploration.',
     '',
     'Refresh when stale:',
@@ -724,7 +755,7 @@ function buildCopilotEvidenceInstructions(): string {
     'When working under `.workspai/` or legacy `.rapidkit/`:',
     '',
     '- Treat `.workspai/reports/*` JSON reports as canonical gate and health evidence.',
-    '- Start from `.workspai/reports/INDEX.json` for read order and blockers.',
+    `- Start from \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` for read order and blockers.`,
     '- Do not invent pass/fail state — cite `exitCode`, `blockers`, and `generatedAt` fields.',
     '',
   ].join('\n');
@@ -743,7 +774,7 @@ function buildCopilotWorkspaceInstructions(): string {
     '',
     '## Scope rules',
     '',
-    '- Start from `.workspai/reports/INDEX.json` and `.workspai/reports/workspace-context-agent.json`.',
+    `- Start from \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` and \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\`.`,
     '- Distinguish workspace-level blockers from project-level blockers.',
     '- When a project is active, cite its name, path, framework, and evidence source.',
     '- Do not translate unsupported stack requests into unrelated native kits.',
@@ -778,8 +809,8 @@ function buildCopilotDiagnosePrompt(): string {
     '',
     'Read:',
     '',
-    '- `.workspai/reports/INDEX.json`',
-    '- `.workspai/reports/workspace-context-agent.json`',
+    `- \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\``,
+    `- \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\``,
     '- Any fail/warn reports referenced in the index',
     '',
     'Return:',
@@ -805,8 +836,8 @@ function buildWorkflowPrompt(input: {
     '',
     'Read first:',
     '',
-    '- `.workspai/reports/INDEX.json`',
-    '- `.workspai/reports/workspace-context-agent.json`',
+    `- \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\``,
+    `- \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\``,
     '- Any report referenced by the current blocker or task',
     '',
     'Return:',
@@ -829,13 +860,13 @@ function buildMcpToolsResource(): string {
       'Workspai MCP is a future read-mostly bridge. Use the CLI reports today; do not assume a running MCP server exists.',
       '',
       'Candidate read tools:',
-      '- `getWorkspaceModel` — read `.workspai/reports/workspace-model.json`.',
-      '- `getEvidenceIndex` — read `.workspai/reports/INDEX.json`.',
+      `- \`getWorkspaceModel\` — read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.model}\`.`,
+      `- \`getEvidenceIndex\` — read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\`.`,
       '- `getBlockers` — derive current blockers from INDEX and gate reports.',
       '- `getSafeCommands` — read safe commands from `workspace-context-agent.json`.',
       '- `getProjectContext` — return one project-scoped slice of the workspace model.',
       '- `getArtifact` — read one explicit artifact path inside the workspace root.',
-      '- `listOperationalSkills` — read `.workspai/reports/workspace-skills-index.json`.',
+      `- \`listOperationalSkills\` — read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.skillsIndex}\`.`,
       '- `getWorkspaceExplain` — read/build workspace explain for release-blocked or project scope.',
       '- `refreshWorkspaceIntelligence` — explicit user-approved refresh command only.',
       '',
@@ -860,33 +891,33 @@ function buildMcpDesignManifest(input: { workspacePath: string; generatedAt: str
       candidateTools: [
         {
           name: 'getWorkspaceModel',
-          reads: ['.workspai/reports/workspace-model.json'],
+          reads: [WORKSPACE_INTELLIGENCE_ARTIFACTS.model],
           mutates: false,
         },
         {
           name: 'getEvidenceIndex',
-          reads: ['.workspai/reports/INDEX.json'],
+          reads: [WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex],
           mutates: false,
         },
         {
           name: 'getBlockers',
           reads: [
-            '.workspai/reports/INDEX.json',
-            '.workspai/reports/workspace-verify-last-run.json',
+            WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex,
+            WORKSPACE_INTELLIGENCE_ARTIFACTS.verify,
             '.workspai/reports/pipeline-last-run.json',
           ],
           mutates: false,
         },
         {
           name: 'getSafeCommands',
-          reads: ['.workspai/reports/workspace-context-agent.json'],
+          reads: [WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext],
           mutates: false,
         },
         {
           name: 'getProjectContext',
           reads: [
-            '.workspai/reports/workspace-model.json',
-            '.workspai/reports/workspace-context-agent.json',
+            WORKSPACE_INTELLIGENCE_ARTIFACTS.model,
+            WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext,
           ],
           mutates: false,
         },
@@ -897,15 +928,15 @@ function buildMcpDesignManifest(input: { workspacePath: string; generatedAt: str
         },
         {
           name: 'listOperationalSkills',
-          reads: ['.workspai/reports/workspace-skills-index.json'],
+          reads: [WORKSPACE_INTELLIGENCE_ARTIFACTS.skillsIndex],
           mutates: false,
         },
         {
           name: 'getWorkspaceExplain',
           reads: [
-            '.workspai/reports/workspace-explain-last-run.json',
-            '.workspai/reports/workspace-verify-last-run.json',
-            '.workspai/reports/workspace-impact-last-run.json',
+            WORKSPACE_INTELLIGENCE_ARTIFACTS.explain,
+            WORKSPACE_INTELLIGENCE_ARTIFACTS.verify,
+            WORKSPACE_INTELLIGENCE_ARTIFACTS.impact,
           ],
           mutates: false,
         },
@@ -960,7 +991,10 @@ function buildExperimentalHooksConfig(input: {
           event: 'UserPromptSubmit',
           purpose: 'Inject lightweight workspace scope and evidence index hints.',
           defaultAction: 'inject-context-hint',
-          reads: ['.workspai/reports/INDEX.json', '.workspai/reports/workspace-context-agent.json'],
+          reads: [
+            WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex,
+            WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext,
+          ],
         },
       ],
     },
@@ -983,9 +1017,9 @@ function buildWorkspaceIntelligenceSkill(catalogSection?: string): string {
     '## Decision flow',
     '',
     '1. Load `resources/scope-model.md`.',
-    '2. Load `.workspai/reports/INDEX.json`.',
-    '3. Load `.workspai/reports/workspace-context-agent.json`.',
-    '4. Load `.workspai/reports/workspace-skills-index.json` when operational playbooks are needed.',
+    `2. Load \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\`.`,
+    `3. Load \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\`.`,
+    `4. Load \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.skillsIndex}\` when operational playbooks are needed.`,
     '5. Load the smallest evidence report required for the task.',
     '6. Answer with Scope, Evidence, Diagnosis, Fix Plan, Run, Verify, Assumptions.',
     '',
@@ -1020,7 +1054,7 @@ function buildWorkspaiAgent(input: {
     '',
     `Mode: ${input.mode}.`,
     '',
-    'Start every task by reading `.workspai/reports/INDEX.json` and `.workspai/reports/workspace-context-agent.json`.',
+    `Start every task by reading \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` and \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\`.`,
     '',
     'Use this answer contract:',
     '',
@@ -1050,8 +1084,8 @@ function buildCopilotSkill(): string {
     '',
     '## Workflow',
     '',
-    '1. Read `.workspai/reports/INDEX.json`',
-    '2. Read `.workspai/reports/workspace-context-agent.json`',
+    `1. Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\``,
+    `2. Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\``,
     '3. Read fail/warn evidence artifacts listed in the index',
     '4. Propose the smallest safe fix with explicit verification commands',
     '',
@@ -1131,6 +1165,7 @@ function buildAgentCustomizationPackReport(input: {
   experimentalHooks: boolean;
 }): AgentCustomizationPackReport {
   const outputInventory = [...input.outputs].sort((a, b) => a.path.localeCompare(b.path));
+  const intelligenceChain = buildWorkspaceIntelligenceChainContract();
   return {
     schemaVersion: AGENT_CUSTOMIZATION_PACK_SCHEMA,
     generatedAt: input.generatedAt,
@@ -1141,6 +1176,11 @@ function buildAgentCustomizationPackReport(input: {
       .filter((report) => report.exists)
       .map((report) => report.path)
       .sort(),
+    intelligenceChain: {
+      schemaVersion: intelligenceChain.schemaVersion,
+      contractPath: intelligenceChain.contractPath,
+      currentStep: 'agent-sync',
+    },
     outputInventory,
     capabilityMatrix: buildCapabilityMatrix({ targets: input.targets, outputs: outputInventory }),
     drift: {
@@ -1422,7 +1462,7 @@ export async function syncWorkspaceAgentGrounding(
               'Guide project onboarding using workspace model and create planner capabilities.',
             expectedOutput: [
               'Target project scope',
-              'Native create, external create-adopt, or adopt-only lane',
+              'Native create, official generator, or existing lane',
               'Safe commands',
               'Post-onboarding verification',
             ],
@@ -1544,8 +1584,8 @@ export async function syncWorkspaceAgentGrounding(
             title: 'Runtime Support',
             lines: [
               '- Native create is available only for Workspai-owned scaffold contracts.',
-              '- Unsupported stacks should use external-create-adopt when a stable ecosystem generator exists.',
-              '- Existing projects should use adopt-only when native create is unavailable.',
+              '- Unsupported stacks should use the official lane when a stable ecosystem generator exists.',
+              '- Existing projects should use the existing lane when native create is unavailable.',
             ],
           }),
         ],
@@ -1554,7 +1594,7 @@ export async function syncWorkspaceAgentGrounding(
           buildSkillResource({
             title: 'Create Planner Capabilities',
             lines: [
-              '- Use `contracts/create-planner-capabilities.v1.json` to decide native-create, external-create-adopt, or adopt-only.',
+              '- Use `contracts/create-planner-capabilities.v1.json` to decide native, official, or existing.',
               '- Do not map PHP, WordPress, Laravel, Rails, or Symfony requests to unrelated native kits.',
               '- Explain unsupported native create requests and guide users to adopt/import.',
             ],

@@ -327,6 +327,72 @@ describe('workspace verify', () => {
     expect(verify.summary.verdict).toBe('blocked');
   });
 
+  it('does not stale persisted impact when only live evidence changes after impact', async () => {
+    const workspacePath = await makeTempDir('rk-verify-impact-live-evidence-');
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {
+      name: 'api',
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
+      {
+        generatedAt: '2026-06-15T00:01:00.000Z',
+        healthScore: { percent: 92, errors: 0 },
+      }
+    );
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
+      {
+        generatedAt: '2026-06-15T00:01:00.000Z',
+        overallStatus: 'pass',
+      }
+    );
+
+    const before = await buildWorkspaceModelSnapshot({
+      workspacePath,
+      includeEvidence: true,
+      now: new Date('2026-06-15T00:00:00.000Z'),
+    });
+    const beforePath = await writeWorkspaceModelSnapshot(before, workspacePath);
+    await fsExtra.outputFile(path.join(workspacePath, 'api', 'app.py'), 'print("changed")\n');
+    const impact = await buildWorkspaceImpact({
+      workspacePath,
+      fromPath: beforePath,
+      includeEvidence: true,
+      now: new Date('2026-06-15T00:02:00.000Z'),
+    });
+    const impactPath = await writeWorkspaceImpact(impact, workspacePath);
+
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
+      {
+        generatedAt: '2026-06-15T00:03:00.000Z',
+        healthScore: { percent: 98, errors: 0 },
+      }
+    );
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
+      {
+        generatedAt: '2026-06-15T00:03:00.000Z',
+        overallStatus: 'pass',
+      }
+    );
+
+    const verify = await buildWorkspaceVerify({
+      workspacePath,
+      fromImpactPath: impactPath,
+      includeEvidence: true,
+      now: new Date('2026-06-15T00:04:00.000Z'),
+    });
+
+    expect(verify.blockingReasons.join('\n')).not.toContain(
+      'Impact evidence is stale because the current workspace model no longer matches'
+    );
+    expect(verify.steps.find((step) => step.id === 'workspace.doctor')?.status).toBe('pass');
+    expect(verify.steps.find((step) => step.id === 'workspace.readiness')?.status).toBe('pass');
+  });
+
   it('does not accept workspace run evidence from a different project', async () => {
     const workspacePath = await makeTempDir('rk-verify-project-evidence-');
     await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {

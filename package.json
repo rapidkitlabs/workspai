@@ -1,5 +1,5 @@
 {
-  "name": "workspai-monorepo",
+  "name": "workspai",
   "private": true,
   "version": "0.43.1",
   "description": "Workspai monorepo for Workspace Intelligence packages.",
@@ -8,6 +8,10 @@
   "workspaces": [
     "packages/*"
   ],
+  "overrides": {
+    "minimatch": "^10.2.1",
+    "esbuild": "^0.28.1"
+  },
   "scripts": {
     "workspaces:list": "corepack npm query .workspace",
     "check": "corepack npm --workspaces --if-present run check",

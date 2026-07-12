@@ -47,4 +47,36 @@ describe('workspace foundation ensure', () => {
     expect(second.status).toBe('skipped');
     expect(second.created).toEqual([]);
   });
+
+  it('adds the canonical marker when only a legacy workspace marker exists', async () => {
+    const workspacePath = await makeTempDir('rk-foundation-legacy-marker-');
+    await fsExtra.writeJson(path.join(workspacePath, '.rapidkit-workspace'), {
+      signature: 'RAPIDKIT_WORKSPACE',
+      createdBy: 'rapidkit-npm',
+      version: '0.42.0',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      name: 'legacy-workspace',
+      metadata: {
+        npm: {
+          packageVersion: '0.42.0',
+          installMethod: 'venv',
+        },
+      },
+    });
+
+    const result = await ensureWorkspaceFoundation(workspacePath, { profile: 'polyglot' });
+
+    expect(result.created).toContain('.workspai-workspace');
+    const canonical = await fsExtra.readJson(path.join(workspacePath, '.workspai-workspace'));
+    expect(canonical).toMatchObject({
+      signature: 'RAPIDKIT_WORKSPACE',
+      createdBy: 'workspai-cli',
+      name: 'legacy-workspace',
+      metadata: {
+        npm: {
+          installMethod: 'venv',
+        },
+      },
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -9,6 +9,7 @@ import {
   normalizeHistoryEntry,
   readWorkspaceHistory,
   recordWorkspaceHistory,
+  WORKSPACE_HISTORY_PATH,
   WORKSPACE_HISTORY_SCHEMA_VERSION,
   type WorkspaceHistoryEntry,
 } from '../workspace-history.js';
@@ -61,6 +62,34 @@ describe('workspace intelligence history (1.21)', () => {
     const reloaded = await readWorkspaceHistory(workspacePath);
     expect(reloaded?.entries).toHaveLength(2);
     expect(reloaded?.entries.at(-1)?.verdict).toBe('blocked');
+  });
+
+  it('does not lose entries during concurrent updates', async () => {
+    const entries = Array.from({ length: 20 }, (_, index) =>
+      entry(`2026-07-12T00:00:${String(index).padStart(2, '0')}.000Z`, 'ready')
+    );
+
+    await Promise.all(entries.map((item) => recordWorkspaceHistory(workspacePath, item)));
+
+    const reloaded = await readWorkspaceHistory(workspacePath);
+    expect(reloaded?.entries).toHaveLength(entries.length);
+    expect(new Set(reloaded?.entries.map((item) => item.generatedAt))).toEqual(
+      new Set(entries.map((item) => item.generatedAt))
+    );
+    await expect(
+      readFile(path.join(workspacePath, `${WORKSPACE_HISTORY_PATH}.lock`), 'utf8')
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('preserves corrupt history instead of silently replacing it', async () => {
+    const historyPath = path.join(workspacePath, WORKSPACE_HISTORY_PATH);
+    await mkdir(path.dirname(historyPath), { recursive: true });
+    await writeFile(historyPath, '{broken-json', 'utf8');
+
+    await expect(recordWorkspaceHistory(workspacePath, entry('t1', 'ready'))).rejects.toThrow(
+      /refusing to overwrite/i
+    );
+    expect(await readFile(historyPath, 'utf8')).toBe('{broken-json');
   });
 
   it('returns null when no history exists', async () => {

@@ -30,7 +30,6 @@ import {
 } from './utils/platform-capabilities.js';
 import {
   createNpmWorkspaceMarker,
-  readWorkspaceMarker,
   writeWorkspaceMarker as writeWorkspaceMarkerToFile,
 } from './workspace-marker.js';
 import { buildCleanGitEnv } from './utils/git-worktree.js';
@@ -76,7 +75,7 @@ async function writeWorkspaceGitignore(workspacePath: string): Promise<void> {
   // Keep parity with the VS Code extension workspace output.
   await fsExtra.outputFile(
     path.join(workspacePath, '.gitignore'),
-    `.venv/\n__pycache__/\n*.pyc\n.env\n${WORKSPAI_WORKSPACE_MARKER}\n${LEGACY_RAPIDKIT_WORKSPACE_MARKER}\n${LEGACY_RAPIDKIT_METADATA_DIR}/\n\n`,
+    `.venv/\n__pycache__/\n*.pyc\n.env\n${LEGACY_RAPIDKIT_WORKSPACE_MARKER}\n${LEGACY_RAPIDKIT_METADATA_DIR}/\n\n`,
     'utf-8'
   );
 }
@@ -424,8 +423,10 @@ export async function syncWorkspaceFoundationFiles(
   }
 
   if (writeMarker) {
-    const markerExists = !!(await readWorkspaceMarker(workspacePath));
-    if (!markerExists || !onlyIfMissing) {
+    const canonicalMarkerExists = await fsExtra.pathExists(
+      path.join(workspacePath, WORKSPAI_WORKSPACE_MARKER)
+    );
+    if (!canonicalMarkerExists || !onlyIfMissing) {
       const markerObj = createNpmWorkspaceMarker(workspaceName, getVersion(), installMethod);
       if (pythonVersion) {
         if (!markerObj.metadata) markerObj.metadata = {};

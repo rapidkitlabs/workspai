@@ -14,8 +14,11 @@ const GENERATED_FILES = [
   'agent-customization-pack.v1.json',
   'backend-import-stack-parity.snapshot.json',
   'module-layout.v1.json',
+  'project-entry-capability.v1.json',
   'infra-stack.v1.json',
   'extension-cli-compatibility.v1.json',
+  'workspace-intelligence-architecture.v1.json',
+  'workspace-intelligence-chain.v1.json',
 ];
 
 function runGenerator() {
@@ -34,15 +37,11 @@ function runGenerator() {
   );
   const hasLocalTsx = fs.existsSync(localTsx);
   const runner = hasLocalTsx ? localTsx : fs.existsSync(workspaceTsx) ? workspaceTsx : 'npx';
-  const result = spawnSync(
-    runner,
-    runner === 'npx' ? ['tsx', scriptPath] : [scriptPath],
-    {
-      cwd: cliRoot,
-      stdio: 'inherit',
-      shell: process.platform === 'win32',
-    }
-  );
+  const result = spawnSync(runner, runner === 'npx' ? ['tsx', scriptPath] : [scriptPath], {
+    cwd: cliRoot,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  });
 
   if (result.error) {
     console.error('Could not run shared contract generator.');

@@ -5,6 +5,7 @@ import fsExtra from 'fs-extra';
 import { attachRunCorrelation } from './observability/run-correlation.js';
 import {
   buildWorkspaceImpact,
+  hashWorkspaceModel,
   WORKSPACE_IMPACT_REPORT_PATH,
   WORKSPACE_IMPACT_SCHEMA_VERSION,
   WORKSPACE_MODEL_SNAPSHOT_REPORT_PATH,
@@ -28,16 +29,25 @@ import {
 import { buildResolutionHintsForBlockingReasons } from './workspace-blocker-resolution-hints.js';
 import { softenEmptyWorkspaceVerifyVerdict } from './workspace-scaffold.js';
 import type { BlockerResolution } from './contracts/blocker-resolution-contract.js';
-import { firstExistingWorkspaceArtifactPath } from './utils/artifact-path-compat.js';
+import {
+  firstExistingWorkspaceArtifactPath,
+  writeWorkspaceArtifactJson,
+} from './utils/artifact-path-compat.js';
 import {
   compareFreshness,
   computeProjectFreshnessHashes,
   freshnessHashRecord,
   type FreshnessComparison,
 } from './workspace-graph-freshness.js';
+import {
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+} from './contracts/workspace-intelligence-runtime-registry.js';
+import { assertJsonSchemaContract } from './utils/json-schema-contract.js';
+import { collectGitWorkingTreeObservation } from './workspace-git-observation.js';
 
-export const WORKSPACE_VERIFY_SCHEMA_VERSION = 'workspace-verify.v1';
-export const WORKSPACE_VERIFY_REPORT_PATH = '.workspai/reports/workspace-verify-last-run.json';
+export const WORKSPACE_VERIFY_SCHEMA_VERSION = WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.verify;
+export const WORKSPACE_VERIFY_REPORT_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.verify;
 
 export type WorkspaceVerifyStepStatus = 'pass' | 'warn' | 'fail' | 'missing' | 'skipped';
 
@@ -159,7 +169,62 @@ async function readImpactFromPath(filePath: string): Promise<WorkspaceImpact> {
   if (record.schemaVersion !== WORKSPACE_IMPACT_SCHEMA_VERSION) {
     throw new Error(`Unsupported workspace impact schema: ${String(record.schemaVersion)}`);
   }
-  return record as WorkspaceImpact;
+  assertJsonSchemaContract(
+    payload,
+    'contracts/workspace-intelligence/workspace-impact.v1.json',
+    `Workspace impact ${filePath}`
+  );
+  const impact = record as WorkspaceImpact;
+  assertJsonSchemaContract(
+    impact.diff,
+    'contracts/workspace-intelligence/workspace-model-diff.v1.json',
+    `Embedded workspace diff in ${filePath}`
+  );
+  const semanticErrors: string[] = [];
+  if (impact.summary.affectedProjects !== impact.affectedProjects.length) {
+    semanticErrors.push('summary.affectedProjects does not match affectedProjects.length');
+  }
+  if (impact.summary.workspaceItems !== impact.workspaceImpact.length) {
+    semanticErrors.push('summary.workspaceItems does not match workspaceImpact.length');
+  }
+  if (impact.summary.recommendedCommands !== impact.verificationPlan.length) {
+    semanticErrors.push('summary.recommendedCommands does not match verificationPlan.length');
+  }
+  if (impact.summary.blastRadius.directlyAffected !== impact.affectedProjects.length) {
+    semanticErrors.push('blastRadius.directlyAffected does not match affectedProjects.length');
+  }
+  if (impact.summary.blastRadius.transitivelyAffected !== impact.transitiveImpact.length) {
+    semanticErrors.push('blastRadius.transitivelyAffected does not match transitiveImpact.length');
+  }
+  const maxDistance = impact.transitiveImpact.reduce(
+    (maximum, item) => Math.max(maximum, item.distance ?? 0),
+    0
+  );
+  if (impact.summary.blastRadius.maxDistance !== maxDistance) {
+    semanticErrors.push('blastRadius.maxDistance does not match transitive impact distances');
+  }
+  const graphEdges = impact.diff.currentModel.graph?.edges.length ?? 0;
+  if (impact.summary.blastRadius.graphEdges !== graphEdges) {
+    semanticErrors.push('blastRadius.graphEdges does not match the embedded model graph');
+  }
+  if (impact.summary.changed !== impact.diff.summary.changed) {
+    semanticErrors.push('summary.changed does not match embedded diff summary');
+  }
+  if (impact.fromRef !== impact.diff.fromRef) {
+    semanticErrors.push('fromRef does not match embedded diff fromRef');
+  }
+  if (impact.workspace.name !== impact.diff.currentModel.workspace.name) {
+    semanticErrors.push('workspace.name does not match the embedded model');
+  }
+  if (impact.diff.toHash !== hashWorkspaceModel(impact.diff.currentModel)) {
+    semanticErrors.push('embedded diff current-model hash does not match toHash');
+  }
+  if (semanticErrors.length > 0) {
+    throw new Error(
+      `Workspace impact semantic integrity failed: ${semanticErrors.join('; ')} (${filePath})`
+    );
+  }
+  return impact;
 }
 
 function dedupeCommands(commands: WorkspaceImpactCommand[]): WorkspaceImpactCommand[] {
@@ -194,18 +259,13 @@ function evidencePathForCommand(
   workspacePath: string
 ): string | undefined {
   if (command.id === 'workspace.doctor') {
-    return path.join(workspacePath, '.workspai', 'reports', 'doctor-last-run.json');
+    return path.join(workspacePath, WORKSPACE_INTELLIGENCE_ARTIFACTS.doctor);
   }
   if (command.id === 'workspace.contract.verify') {
-    return path.join(
-      workspacePath,
-      '.workspai',
-      'reports',
-      'workspace-contract-verify-last-run.json'
-    );
+    return path.join(workspacePath, WORKSPACE_INTELLIGENCE_ARTIFACTS.contractVerify);
   }
   if (command.id === 'workspace.readiness') {
-    return path.join(workspacePath, '.workspai', 'reports', 'release-readiness-last-run.json');
+    return path.join(workspacePath, WORKSPACE_INTELLIGENCE_ARTIFACTS.readiness);
   }
   if (command.id === 'workspace.analyze') {
     return path.join(workspacePath, '.workspai', 'reports', 'analyze-last-run.json');
@@ -838,7 +898,7 @@ async function resolveImpactForVerify(
       schemaVersion: WORKSPACE_IMPACT_SCHEMA_VERSION,
       generatedAt: (options.now ?? new Date()).toISOString(),
       fromRef: 'baseline',
-      diffRef: '.workspai/reports/workspace-model-diff-last-run.json',
+      diffRef: WORKSPACE_INTELLIGENCE_ARTIFACTS.diff,
       workspace: {
         name: model.workspace.name,
         profile: model.workspace.profile,
@@ -868,10 +928,10 @@ async function resolveImpactForVerify(
         unsafeAssumptions: ['Do not claim runtime verification passed unless evidence exists.'],
       },
       diff: {
-        schemaVersion: 'workspace-model-diff.v1',
+        schemaVersion: WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.diff,
         generatedAt: (options.now ?? new Date()).toISOString(),
         fromRef: 'baseline',
-        toRef: '.workspai/reports/workspace-model.json',
+        toRef: WORKSPACE_INTELLIGENCE_ARTIFACTS.model,
         fromHash: 'baseline',
         toHash: 'baseline',
         summary: {
@@ -919,6 +979,45 @@ export async function buildWorkspaceVerify(
   const workspacePath = path.resolve(options.workspacePath);
   const { impact, fromImpactRef, impactFromDisk } = await resolveImpactForVerify(options);
   const model = impact.diff.currentModel;
+  const currentModel = impactFromDisk
+    ? await buildWorkspaceModel({
+        workspacePath,
+        includeAbsolutePaths: options.includeAbsolutePaths,
+        includeEvidence: options.includeEvidence,
+        observableScanDepth: options.observableScanDepth,
+        now: options.now,
+      })
+    : model;
+  const impactDriftReasons: string[] = [];
+  if (impactFromDisk && hashWorkspaceModel(currentModel) !== impact.diff.toHash) {
+    impactDriftReasons.push(
+      'workspace.impact: Impact evidence is stale because the current workspace model no longer matches the embedded model. Regenerate diff and impact.'
+    );
+  }
+  const impactGit = impact.diff.git;
+  if (impactFromDisk && impactGit?.available) {
+    const currentGit = collectGitWorkingTreeObservation(workspacePath, {
+      ref: impactGit.ref,
+    });
+    const expectedGitChanges = impact.diff.changes
+      .filter((change) => change.type.startsWith('git.'))
+      .map((change) => `${change.type}:${change.target}`)
+      .sort();
+    const currentGitChanges = [
+      ...currentGit.changedFiles.map((target) => `git.file.changed:${target}`),
+      ...currentGit.untrackedFiles.map((target) => `git.untracked:${target}`),
+      ...currentGit.deletedFiles.map((target) => `git.deleted:${target}`),
+    ].sort();
+    if (
+      !currentGit.available ||
+      currentGit.commit !== impactGit.commit ||
+      JSON.stringify(currentGitChanges) !== JSON.stringify(expectedGitChanges)
+    ) {
+      impactDriftReasons.push(
+        'workspace.impact: Impact evidence is stale because Git changes no longer match the diff observation. Regenerate diff and impact.'
+      );
+    }
+  }
   const evidenceGeneratedAtFloor = resolveEvidenceFreshnessFloor(impact, impactFromDisk);
   const verificationPlan = dedupeCommands([
     ...workspaceVerificationPlan(),
@@ -963,6 +1062,7 @@ export async function buildWorkspaceVerify(
       ...subgraphGate.blockingReasons,
       ...integrityReasons,
       ...policyDecision.blockingReasons,
+      ...impactDriftReasons,
     ],
     needsAttention: subgraphGate.needsAttention || policyDecision.needsAttention,
   });
@@ -977,6 +1077,7 @@ export async function buildWorkspaceVerify(
     ...subgraphGate.blockingReasons,
     ...integrityReasons,
     ...policyDecision.blockingReasons,
+    ...impactDriftReasons,
   ];
   const policyErrorCount = policyViolations.filter(
     (violation) => violation.severity === 'error'
@@ -1046,7 +1147,7 @@ async function collectPolicyViolations(
 
   const contractReportPath = await firstExistingWorkspaceArtifactPath(
     workspacePath,
-    '.workspai/reports/workspace-contract-verify-last-run.json'
+    WORKSPACE_INTELLIGENCE_ARTIFACTS.contractVerify
   );
   try {
     if (contractReportPath && (await fsExtra.pathExists(contractReportPath))) {
@@ -1112,10 +1213,11 @@ export async function writeWorkspaceVerify(
   verify: WorkspaceVerify,
   workspacePath: string
 ): Promise<string> {
-  const outputPath = path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH);
-  await fsExtra.ensureDir(path.dirname(outputPath));
-  await fsExtra.writeJson(outputPath, attachRunCorrelation(verify), { spaces: 2 });
-  return outputPath;
+  return writeWorkspaceArtifactJson(
+    workspacePath,
+    WORKSPACE_VERIFY_REPORT_PATH,
+    attachRunCorrelation(verify)
+  );
 }
 
 export type WorkspaceVerifyGateMode = 'default' | 'strict';

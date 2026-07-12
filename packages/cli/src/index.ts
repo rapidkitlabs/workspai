@@ -84,6 +84,10 @@ import {
 import { emitWorkspacePhase } from './observability/cli-progress.js';
 import { getPublishedContractVersions } from './contracts/published-contract-versions.js';
 import {
+  WORKSPACE_INTELLIGENCE_COMMAND_SIGNATURES,
+  WORKSPACE_INTELLIGENCE_ROOT_COMMANDS,
+} from './contracts/workspace-intelligence-runtime-registry.js';
+import {
   isNpmBackedKit,
   normalizeKitId,
   resolveKitDefinition,
@@ -135,6 +139,7 @@ import {
   findExistingWorkspacePath,
   getCanonicalWorkspacesDirectory,
   projectMetadataCandidates,
+  projectMetadataPath,
   resolveAvailableWorkspaceSlot,
   resolveManagedDefaultImportWorkspacePath,
   workspaceMetadataCandidates,
@@ -203,6 +208,30 @@ function readFlagValue(argv: string[], flag: string): string | undefined {
   const eq = argv.find((a) => a.startsWith(`${flag}=`));
   if (eq) return eq.slice(flag.length + 1);
   return undefined;
+}
+
+async function persistRequestedProjectPort(args: string[], cwd: string): Promise<void> {
+  const rawPort = readFlagValue(args, '--port')?.trim();
+  const projectName = args[3];
+  if (!rawPort || !projectName || !/^\d+$/.test(rawPort)) return;
+
+  const port = Number.parseInt(rawPort, 10);
+  if (port < 1 || port > 65535) return;
+
+  const outputDir = readFlagValue(args, '--output') || '.';
+  const projectPath = path.resolve(cwd, outputDir, projectName);
+  const metadataPath =
+    projectMetadataCandidates(projectPath, 'project.json').find((candidate) =>
+      fs.existsSync(candidate)
+    ) ?? projectMetadataPath(projectPath, 'project.json');
+  if (!(await fsExtra.pathExists(metadataPath))) return;
+
+  const metadata = (await fsExtra.readJson(metadataPath)) as Record<string, unknown>;
+  await fsExtra.writeJson(
+    metadataPath,
+    { ...metadata, ports: [{ name: 'http', port, protocol: 'http' }] },
+    { spaces: 2 }
+  );
 }
 
 async function enforceWorkspaceProfileForRequestedKit(kitName: string): Promise<boolean> {
@@ -574,6 +603,7 @@ async function runNpmBackedKitCreate(args: string[]): Promise<number> {
       skipGit,
       skipInstall,
     });
+    await persistRequestedProjectPort(args, process.cwd());
 
     const workspacePath = findWorkspaceUp(process.cwd());
     if (workspacePath) {
@@ -736,6 +766,7 @@ async function runCreateFallback(args: string[], reasonCode: BridgeFailureCode):
       skipInstall,
       engine,
     });
+    await persistRequestedProjectPort(args, process.cwd());
 
     // Sync workspace to register the new project
     if (workspacePath) {
@@ -761,7 +792,7 @@ function printUnsupportedNativeCreate(capability: CreatePlannerCapability): void
   process.stderr.write(chalk.gray(`Reason: ${capability.reason}\n`));
 
   if (capability.officialCommands?.length) {
-    process.stderr.write(chalk.gray('External generator candidates:\n'));
+    process.stderr.write(chalk.gray('Official generator candidates:\n'));
     for (const command of capability.officialCommands) {
       process.stderr.write(chalk.gray(`  - ${command}\n`));
     }
@@ -1278,6 +1309,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
 
         // If project creation succeeded, sync Python version and register workspace projects
         if (exitCode === 0) {
+          await persistRequestedProjectPort(args, process.cwd());
           const workspacePath = workspacePathForCreate || findWorkspaceUp(process.cwd());
           if (workspacePath) {
             // Sync Python version from workspace to newly created project
@@ -1380,14 +1412,12 @@ const LOCAL_COMMANDS = [
 // Any new workspace-level command must be added here to prevent accidental core forwarding.
 export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
   'analyze',
-  'readiness',
-  'doctor',
+  ...WORKSPACE_INTELLIGENCE_ROOT_COMMANDS,
   'autopilot',
   'pipeline',
   'import',
   'adopt',
   'snapshot',
-  'workspace',
   'bootstrap',
   'setup',
   'cache',
@@ -1402,14 +1432,12 @@ export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
 
 const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
   'analyze',
-  'readiness',
-  'doctor',
+  ...WORKSPACE_INTELLIGENCE_ROOT_COMMANDS,
   'autopilot',
   'pipeline',
   'import',
   'adopt',
   'snapshot',
-  'workspace',
   'ai',
   'config',
   'product',
@@ -6385,7 +6413,7 @@ program
   });
 
 program
-  .command('readiness')
+  .command(WORKSPACE_INTELLIGENCE_COMMAND_SIGNATURES.readiness)
   .description(
     '🚦 Generate machine-readable release readiness summary (env + doctor + analyze + verify + dependency)'
   )
@@ -6581,7 +6609,11 @@ program
         enableModules?: boolean;
       }
     ) => {
-      const code = await handleAdoptCommand(source, options);
+      const code = await handleAdoptCommand(source, {
+        ...options,
+        dryRun: options.dryRun === true || process.argv.includes('--dry-run'),
+        enableModules: options.enableModules === true || process.argv.includes('--enable-modules'),
+      });
       if (code !== 0) {
         process.exit(code);
       }
@@ -6937,7 +6969,7 @@ projectCommand
   );
 
 program
-  .command('doctor [scope]')
+  .command(WORKSPACE_INTELLIGENCE_COMMAND_SIGNATURES.doctor)
   .description(
     '🩺 Check Workspai system health by default; use workspace or project for scoped checks'
   )
@@ -7037,7 +7069,7 @@ program
 
 // Workspace management command
 program
-  .command('workspace <action> [subaction] [key] [value]')
+  .command(WORKSPACE_INTELLIGENCE_COMMAND_SIGNATURES.workspace)
   .description(
     'Manage Workspai workspaces (list, sync, policy, share, export, run, intelligence)\n' +
       '  workspace run <stage>   \u2014 fleet stage execution across discovered projects\n' +
@@ -9435,7 +9467,11 @@ if (shouldBootstrapCli) {
       .parseAsync()
       .then(() => exitAfterOutputFlush(0))
       .catch((error) => {
-        process.stderr.write(`Workspai CLI failed: ${(error as Error)?.message ?? error}\n`);
+        const detail =
+          shouldDebugWorkspaiArgs() && error instanceof Error && error.stack
+            ? error.stack
+            : ((error as Error)?.message ?? error);
+        process.stderr.write(`Workspai CLI failed: ${detail}\n`);
         process.exit(1);
       });
   } else if (shouldHandleWorkspaceInitDirectly) {

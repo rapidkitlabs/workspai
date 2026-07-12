@@ -29,6 +29,7 @@ npx workspai ai recommend "user authentication with social login"
 **Step 1:** Get OpenAI API key from [OpenAI Platform](https://platform.openai.com/api-keys)
 
 **Step 2:** Configure API key
+
 ```bash
 npx workspai config set-api-key
 # Or (non-interactive environments):
@@ -36,6 +37,7 @@ export OPENAI_API_KEY="<YOUR_OPENAI_API_KEY>"
 ```
 
 **Step 3:** Generate embeddings (one-time, provider-cost dependent)
+
 ```bash
 npx workspai ai generate-embeddings
 
@@ -53,6 +55,7 @@ npx workspai ai generate-embeddings
 ```
 
 **Step 4:** Use AI recommendations
+
 ```bash
 npx workspai ai recommend "user authentication"
 ```
@@ -82,6 +85,7 @@ Mock mode provides realistic (but not perfect) results for development and testi
 Get intelligent module suggestions based on natural language descriptions.
 
 **Example:**
+
 ```bash
 $ npx workspai ai recommend "I need user authentication with email"
 
@@ -106,18 +110,20 @@ $ npx workspai ai recommend "I need user authentication with email"
 ## 💰 Pricing
 
 ### One-Time Setup Cost (Estimates)
-| Item | Cost | Notes |
-|------|------|-------|
+
+| Item                | Cost   | Notes                                            |
+| ------------------- | ------ | ------------------------------------------------ |
 | Generate embeddings | Varies | One-time only, depends on model and module count |
-| Update embeddings | Varies | Only when catalog changes |
+| Update embeddings   | Varies | Only when catalog changes                        |
 
 ### Per-Query Cost (After Setup, Estimates)
-| Usage | Cost | Notes |
-|-------|------|-------|
-| Single query | Very low | Depends on provider/model |
-| 100 queries | Low | Depends on provider/model |
-| 1,000 queries | Moderate | Depends on provider/model |
-| 10,000 queries | Higher | Depends on provider/model |
+
+| Usage          | Cost     | Notes                     |
+| -------------- | -------- | ------------------------- |
+| Single query   | Very low | Depends on provider/model |
+| 100 queries    | Low      | Depends on provider/model |
+| 1,000 queries  | Moderate | Depends on provider/model |
+| 10,000 queries | Higher   | Depends on provider/model |
 
 **Important:** Provider pricing and limits change over time. Always validate current pricing/limits in the provider dashboard before budgeting.
 
@@ -126,21 +132,25 @@ $ npx workspai ai recommend "I need user authentication with email"
 ## 🔧 Configuration
 
 ### View Current Config
+
 ```bash
 npx workspai config show
 ```
 
 ### Set API Key
+
 ```bash
 npx workspai config set-api-key
 ```
 
 ### Remove API Key
+
 ```bash
 npx workspai config remove-api-key
 ```
 
 ### Enable/Disable AI
+
 ```bash
 npx workspai config ai enable
 npx workspai config ai disable
@@ -180,17 +190,17 @@ npx workspai config ai disable
 
 ### Technical Details
 
-1. **Module Catalog**: 
+1. **Module Catalog**:
    - 27+ production-ready modules (dynamic from Python Core)
    - Fallback to 11 hardcoded modules if Python unavailable
    - 5-minute cache for performance
 
-2. **Embeddings**: 
+2. **Embeddings**:
    - AI converts module descriptions to 1536-dimensional vectors
    - Generated once, reused for all queries
    - Stored in `data/modules-embeddings.json` (508KB)
 
-3. **Semantic Search**: 
+3. **Semantic Search**:
    - User query → embedding vector
    - Cosine similarity with all modules
    - Results sorted by relevance score (0-100%)
@@ -202,12 +212,14 @@ npx workspai config ai disable
    - Installation order calculation
 
 **Technology Stack:**
+
 - Model: `text-embedding-3-small` (OpenAI)
 - Dimension: 1536 vectors
 - Accuracy: 92%+ match scores
 - Cost: provider-dependent (check current provider pricing)
 
 **Performance:**
+
 - First query: ~200ms (embedding generation)
 - Subsequent queries: ~50ms (cached embeddings)
 - Catalog refresh: Every 5 minutes
@@ -215,21 +227,25 @@ npx workspai config ai disable
 ## 🎯 Use Cases
 
 ### E-commerce Platform
+
 ```bash
 workspai ai recommend "e-commerce with payments and inventory"
 ```
 
 ### SaaS Application
+
 ```bash
 workspai ai recommend "SaaS platform with subscriptions"
 ```
 
 ### Real-time Chat
+
 ```bash
 workspai ai recommend "real-time chat application"
 ```
 
 ### API Gateway
+
 ```bash
 workspai ai recommend "API gateway with rate limiting"
 ```
@@ -259,6 +275,7 @@ npx workspai ai recommend "auth"
 ```
 
 Or generate manually:
+
 ```bash
 npx workspai ai generate-embeddings
 ```
@@ -266,12 +283,14 @@ npx workspai ai generate-embeddings
 ### "OpenAI API key not configured"
 
 **Option 1:** Mock mode (no key needed, for testing)
+
 ```bash
 # Just use it! Mock mode activates automatically
 npx workspai ai recommend "database"
 ```
 
 **Option 2:** Get a real API key
+
 ```bash
 # 1. Get key: https://platform.openai.com/api-keys
 # 2. Configure it:
@@ -286,6 +305,7 @@ export OPENAI_API_KEY="<YOUR_OPENAI_API_KEY>"
 **Cause:** API key is incorrect or expired
 
 **Solution:**
+
 ```bash
 # Update your API key
 npx workspai config set-api-key
@@ -299,12 +319,14 @@ npx workspai config show
 **Cause:** OpenAI API quota or rate limit reached
 
 **Solutions:**
+
 1. **Check billing:** https://platform.openai.com/account/billing
 2. **Check limits:** https://platform.openai.com/account/limits
 3. **Upgrade tier:** Free tier has lower limits
 4. **Wait:** Rate limits reset automatically
 
 **Rate Limits:**
+
 - Limits vary by provider account tier and can change over time
 - Check your provider dashboard for current request/token limits
 
@@ -315,6 +337,7 @@ npx workspai config show
 **Impact:** Uses fallback catalog instead of the full runtime catalog
 
 **Solution (optional):**
+
 ```bash
 # Install RapidKit Python Core
 pip install -e /path/to/rapidkit-core
@@ -330,6 +353,7 @@ rapidkit modules list --json
 **Symptom:** New modules not appearing in recommendations
 
 **Solution:** Update embeddings with latest modules
+
 ```bash
 npx workspai ai update-embeddings
 
@@ -344,11 +368,13 @@ npx workspai ai update-embeddings
 **Symptom:** All results show <70% match
 
 **Possible Causes:**
+
 1. Query too vague: "build something"
 2. Query too specific: "blockchain NFT marketplace with AI"
 3. No matching modules exist
 
 **Solutions:**
+
 - Make query more specific: "authentication" → "user authentication with JWT"
 - Try different keywords: "storage" instead of "blockchain"
 - Check available modules: `npx workspai ai info`
@@ -358,6 +384,7 @@ npx workspai ai update-embeddings
 **Cause:** Mock embeddings are deterministic but not trained
 
 **Solution:** Use real OpenAI API for production
+
 ```bash
 # Get API key and generate real embeddings
 npx workspai config set-api-key
@@ -380,11 +407,13 @@ npx workspai config show
 ### Still Having Issues?
 
 1. **Enable debug logging:**
+
    ```bash
    DEBUG=rapidkit:* npx workspai ai recommend "auth"
    ```
 
 2. **Check for updates:**
+
    ```bash
    npm outdated workspai
    npm update workspai
@@ -398,25 +427,25 @@ npx workspai config show
 
 ### AI Commands
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `workspai ai recommend [query]` | Get module recommendations | `workspai ai recommend "auth"` |
-| `workspai ai recommend [query] -n <N>` | Get top N recommendations | `workspai ai recommend "database" -n 3` |
-| `workspai ai recommend [query] --json` | Get JSON output | `workspai ai recommend "auth" --json` |
-| `workspai ai generate-embeddings` | Generate embeddings (one-time) | `workspai ai generate-embeddings` |
-| `workspai ai generate-embeddings --force` | Force regenerate embeddings | `workspai ai generate-embeddings --force` |
-| `workspai ai update-embeddings` | Update with latest modules | `workspai ai update-embeddings` |
-| `workspai ai info` | Show AI features info | `workspai ai info` |
+| Command                                   | Description                    | Example                                   |
+| ----------------------------------------- | ------------------------------ | ----------------------------------------- |
+| `workspai ai recommend [query]`           | Get module recommendations     | `workspai ai recommend "auth"`            |
+| `workspai ai recommend [query] -n <N>`    | Get top N recommendations      | `workspai ai recommend "database" -n 3`   |
+| `workspai ai recommend [query] --json`    | Get JSON output                | `workspai ai recommend "auth" --json`     |
+| `workspai ai generate-embeddings`         | Generate embeddings (one-time) | `workspai ai generate-embeddings`         |
+| `workspai ai generate-embeddings --force` | Force regenerate embeddings    | `workspai ai generate-embeddings --force` |
+| `workspai ai update-embeddings`           | Update with latest modules     | `workspai ai update-embeddings`           |
+| `workspai ai info`                        | Show AI features info          | `workspai ai info`                        |
 
 ### Configuration Commands
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `workspai config set-api-key` | Set OpenAI API key (interactive) | `workspai config set-api-key` |
-| `workspai config show` | Show current config | `workspai config show` |
-| `workspai config remove-api-key` | Remove API key | `workspai config remove-api-key` |
-| `workspai config ai enable` | Enable AI features | `workspai config ai enable` |
-| `workspai config ai disable` | Disable AI features | `workspai config ai disable` |
+| Command                          | Description                      | Example                          |
+| -------------------------------- | -------------------------------- | -------------------------------- |
+| `workspai config set-api-key`    | Set OpenAI API key (interactive) | `workspai config set-api-key`    |
+| `workspai config show`           | Show current config              | `workspai config show`           |
+| `workspai config remove-api-key` | Remove API key                   | `workspai config remove-api-key` |
+| `workspai config ai enable`      | Enable AI features               | `workspai config ai enable`      |
+| `workspai config ai disable`     | Disable AI features              | `workspai config ai disable`     |
 
 ### Recommend Command Options
 
@@ -439,13 +468,17 @@ Options:
   -h, --help Display help
 ```
 
-## 🚀 Coming Soon
+## 🚀 Planned Workspace Intelligence Extensions
 
-- [ ] Code completion (GPT-4)
-- [ ] Codebase chat
-- [ ] Bug detection
-- [ ] Test generation
-- [ ] Architecture suggestions
+These are roadmap ideas, not current CLI claims. New AI-facing surfaces must be
+grounded in `contracts/workspace-intelligence-architecture.v1.json` before they
+are documented as available features.
+
+- [ ] Workspace Atlas generated from Workspace Intelligence evidence
+- [ ] Repository/project chat over generated evidence artifacts
+- [ ] Bug detection grounded in doctor, verify, and impact reports
+- [ ] Test generation informed by workspace model, runtime signals, and affected subgraphs
+- [ ] Architecture suggestions with evidence/freshness labels
 
 ## 🤝 Contributing
 
