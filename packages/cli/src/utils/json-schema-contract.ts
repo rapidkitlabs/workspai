@@ -30,7 +30,17 @@ function validatorFor(relativeContractPath: string): ValidateFunction {
 
   const schema = JSON.parse(fs.readFileSync(contractPath, 'utf8')) as AnySchema & {
     $schema?: string;
+    $ref?: string;
   };
+  if (typeof schema.$ref === 'string' && !schema.$ref.startsWith('#')) {
+    const referencedRelativePath = path
+      .join(path.dirname(relativeContractPath), schema.$ref)
+      .split(path.sep)
+      .join('/');
+    const validator = validatorFor(referencedRelativePath);
+    validatorCache.set(contractPath, validator);
+    return validator;
+  }
   const AjvConstructor = schema.$schema?.includes('2020-12') ? Ajv2020 : Ajv;
   const ajv = new AjvConstructor({ allErrors: true, strict: true, allowUnionTypes: true });
   addFormats(ajv);

@@ -238,6 +238,8 @@ export async function discoverProjectJsonFiles(workspacePath: string): Promise<s
   const visited = new Set<string>();
   const ignored = new Set([
     '.git',
+    '.workspai',
+    '.rapidkit',
     'node_modules',
     '.venv',
     'venv',
@@ -314,6 +316,7 @@ function mergeProjectContract(
   discovered: WorkspaceContractProject,
   usedPorts: Set<number>
 ): { project: WorkspaceContractProject; changed: boolean } {
+  const preserveExistingIdentity = existing !== undefined && existing.source === undefined;
   const preferredPort = defaultPortForKit(discovered.kit, discovered.runtime);
   const existingPorts = existing?.ports || [];
   const discoveredPorts = discovered.ports || [];
@@ -341,12 +344,18 @@ function mergeProjectContract(
     ...existing,
     slug: existing?.slug || discovered.slug,
     relativePath:
-      existing?.relativePath && isSafeContractRelativePath(existing.relativePath)
+      preserveExistingIdentity &&
+      existing?.relativePath &&
+      isSafeContractRelativePath(existing.relativePath)
         ? existing.relativePath
         : discovered.relativePath,
-    source: existing?.source || discovered.source,
-    relationship: existing?.relationship || discovered.relationship,
-    externalPath: existing?.externalPath || discovered.externalPath,
+    source: preserveExistingIdentity ? existing?.source || discovered.source : discovered.source,
+    relationship: preserveExistingIdentity
+      ? existing?.relationship || discovered.relationship
+      : discovered.relationship,
+    externalPath: preserveExistingIdentity
+      ? existing?.externalPath || discovered.externalPath
+      : discovered.externalPath,
     runtime: existing?.runtime || discovered.runtime,
     framework: existing?.framework || discovered.framework,
     kit: existing?.kit || discovered.kit,
@@ -442,12 +451,21 @@ export async function buildWorkspaceContract(input: {
     });
   }
 
+  const projectsBySlug = new Map<string, WorkspaceContractProject>();
+  for (const project of projects) {
+    const key = normalizeProjectSlug(project.slug, project.relativePath);
+    const existing = projectsBySlug.get(key);
+    if (!existing || (existing.source !== 'workspace' && project.source === 'workspace')) {
+      projectsBySlug.set(key, project);
+    }
+  }
+
   return {
     schemaVersion: WORKSPACE_CONTRACT_SCHEMA_VERSION,
     kind: 'rapidkit.workspace.contract',
     generatedAt: (input.now ?? new Date()).toISOString(),
     workspace,
-    projects,
+    projects: [...projectsBySlug.values()],
   };
 }
 
@@ -521,6 +539,12 @@ export async function syncWorkspaceContract(input: {
   }
 
   for (const project of existingBySlug.values()) {
+    // Entries managed by discovery/import registries must disappear when their
+    // source disappears (archive/delete/import removal). Source-less entries are
+    // treated as manually declared contract records and remain authoritative.
+    if (project.source) {
+      continue;
+    }
     const merged = mergeProjectContract(project, project, usedPorts);
     projects.push(merged.project);
   }

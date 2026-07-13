@@ -86,7 +86,8 @@ export function registerConfigCommands(program: Command): void {
   config
     .command('remove-api-key')
     .description('Remove stored OpenAI API key')
-    .action(async () => {
+    .option('--yes', 'Remove without an interactive confirmation prompt')
+    .action(async (options: { yes?: boolean }) => {
       const userConfig = getUserConfig();
 
       if (!userConfig.openaiApiKey) {
@@ -94,15 +95,24 @@ export function registerConfigCommands(program: Command): void {
         return;
       }
 
-      // Confirm removal
-      const answers = await prompt([
-        {
-          type: 'confirm',
-          name: 'confirm',
-          message: 'Are you sure you want to remove your OpenAI API key?',
-          default: false,
-        },
-      ]);
+      const confirmedWithoutPrompt = options.yes === true || process.argv.includes('--yes');
+      if (!confirmedWithoutPrompt && (!process.stdin.isTTY || !process.stdout.isTTY)) {
+        console.error(
+          chalk.red('Cannot confirm API key removal in a non-interactive session. Use --yes.')
+        );
+        process.exit(1);
+      }
+
+      const answers = confirmedWithoutPrompt
+        ? { confirm: true }
+        : await prompt([
+            {
+              type: 'confirm',
+              name: 'confirm',
+              message: 'Are you sure you want to remove your OpenAI API key?',
+              default: false,
+            },
+          ]);
 
       if (answers.confirm) {
         setUserConfig({ openaiApiKey: undefined });

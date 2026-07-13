@@ -68,6 +68,31 @@ describe('workspace intelligence model', () => {
     );
   });
 
+  it('never labels missing evidence as fresh', async () => {
+    const workspacePath = await makeTempDir('rk-model-missing-evidence-');
+    await fsExtra.outputJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
+      workspace_name: 'missing-evidence',
+    });
+
+    const model = await buildWorkspaceModel({
+      workspacePath,
+      includeEvidence: true,
+      now: new Date('2026-06-14T00:00:00.000Z'),
+    });
+    const missingEvidenceFacts = (model.facts ?? []).filter(
+      (fact) =>
+        fact.scope === 'evidence' &&
+        typeof fact.value === 'object' &&
+        fact.value !== null &&
+        'exists' in fact.value &&
+        fact.value.exists === false
+    );
+
+    expect(missingEvidenceFacts.length).toBeGreaterThan(0);
+    expect(missingEvidenceFacts.every((fact) => fact.freshness.status === 'unknown')).toBe(true);
+    expect(model.factFreshness?.status).toBe('unknown');
+  });
+
   it('embeds a first-class dependency graph and keeps the model hash deterministic across time', async () => {
     const workspacePath = await makeTempDir('rk-model-graph-');
     await fsExtra.outputJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {

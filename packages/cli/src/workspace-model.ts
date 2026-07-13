@@ -550,6 +550,9 @@ async function readWorkspaceJson(workspacePath: string): Promise<Record<string, 
 }
 
 function inferWorkspaceType(projects: WorkspaceModelProject[]): string {
+  if (projects.length === 0) {
+    return 'empty-workspace';
+  }
   if (projects.some((project) => project.kind === 'frontend') && projects.length > 1) {
     return 'full-stack-workspace';
   }
@@ -1018,6 +1021,7 @@ export function buildWorkspaceModelFacts(model: WorkspaceModel, now: Date): Work
             category: 'verification',
             generatedAt: ref?.generatedAt ?? generatedAt,
             now,
+            status: ref?.exists ? undefined : 'unknown',
             sourceArtifact: ref?.path ?? sourceArtifact,
             sourcePath: modelFactSourcePath([projectSource, 'evidence', key]),
             verifyBeforeUse: true,
@@ -1042,6 +1046,7 @@ export function buildWorkspaceModelFacts(model: WorkspaceModel, now: Date): Work
           category: 'verification',
           generatedAt: ref?.generatedAt ?? generatedAt,
           now,
+          status: ref?.exists ? undefined : 'unknown',
           sourceArtifact: ref?.path ?? sourceArtifact,
           sourcePath: modelFactSourcePath(['evidence', key]),
           verifyBeforeUse: true,

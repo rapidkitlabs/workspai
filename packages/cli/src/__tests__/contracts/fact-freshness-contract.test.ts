@@ -1,12 +1,29 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildFactFreshnessContract,
   buildWorkspaceFact,
   FACT_FRESHNESS_SCHEMA_VERSION,
   summarizeFactFreshness,
 } from '../../contracts/fact-freshness-contract.js';
 
 describe('fact freshness contract', () => {
+  it('treats an invalid source timestamp as unknown without throwing', () => {
+    expect(
+      buildFactFreshnessContract({
+        kind: 'evidence-backed',
+        category: 'verification',
+        generatedAt: 'not-a-date',
+        now: new Date('2026-06-02T00:00:00.000Z'),
+        reason: 'External evidence can contain a malformed timestamp.',
+      })
+    ).toMatchObject({
+      generatedAt: '2026-06-02T00:00:00.000Z',
+      status: 'unknown',
+      verifyBeforeUse: true,
+    });
+  });
+
   it('marks durable structure facts as fresh and reusable within their contract', () => {
     const fact = buildWorkspaceFact({
       id: 'workspace.name',

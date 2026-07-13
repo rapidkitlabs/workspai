@@ -2,11 +2,110 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "required": [
-    "schemaVersion"
+    "schemaVersion",
+    "kind",
+    "sequence",
+    "timestamp",
+    "mode",
+    "modelHash",
+    "modelHashChanged",
+    "changedProjects",
+    "addedProjects",
+    "removedProjects",
+    "graph",
+    "durationMs"
   ],
   "properties": {
     "schemaVersion": {
       "const": "workspace-watch-event.v1"
+    },
+    "kind": {
+      "enum": [
+        "ready",
+        "changed",
+        "unchanged",
+        "error"
+      ]
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": -1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "mode": {
+      "enum": [
+        "initial",
+        "full",
+        "incremental",
+        "unchanged"
+      ]
+    },
+    "modelHash": {
+      "type": "string",
+      "pattern": "^(?:[a-f0-9]{64})?$"
+    },
+    "modelHashChanged": {
+      "type": "boolean"
+    },
+    "changedProjects": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "addedProjects": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "removedProjects": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "graph": {
+      "type": "object",
+      "required": [
+        "nodeCount",
+        "edgeCount",
+        "edgesAdded",
+        "edgesRemoved"
+      ],
+      "properties": {
+        "nodeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edgesAdded": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "edgesRemoved": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "durationMs": {
+      "type": "number",
+      "minimum": 0
+    },
+    "error": {
+      "type": "string"
     }
   },
   "additionalProperties": true

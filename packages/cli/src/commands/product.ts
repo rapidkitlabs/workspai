@@ -3,9 +3,23 @@ import chalk from 'chalk';
 import crypto from 'crypto';
 import path from 'path';
 import fsExtra from 'fs-extra';
+import { assertJsonSchemaContract } from '../utils/json-schema-contract.js';
 
 export const PRODUCT_PLAN_SCHEMA_VERSION = 'rapidkit.product-factory-plan.v1' as const;
 export const PRODUCT_MANIFEST_SCHEMA_VERSION = 'rapidkit.private-product-manifest.v1' as const;
+
+function readRawFlagValue(flag: string): string | undefined {
+  const argv = process.argv;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === flag) {
+      const value = argv[index + 1];
+      return value && !value.startsWith('-') ? value : undefined;
+    }
+    if (token.startsWith(`${flag}=`)) return token.slice(flag.length + 1);
+  }
+  return undefined;
+}
 
 type BacklogProduct = {
   rank?: unknown;
@@ -400,6 +414,7 @@ export function registerProductCommands(program: Command): void {
     .option('--json', 'Print JSON to stdout')
     .action(async (backlog: string, options) => {
       try {
+        const output = options.output || readRawFlagValue('--output');
         const plan = await buildProductFactoryPlan({
           backlogPath: backlog,
           kit: options.kit,
@@ -407,13 +422,18 @@ export function registerProductCommands(program: Command): void {
           category: options.category,
           limit: options.limit,
         });
-        if (options.output) {
-          await writeJsonFile(options.output, plan, true);
+        assertJsonSchemaContract(
+          plan,
+          'contracts/product-factory-plan.v1.json',
+          'Product Factory plan'
+        );
+        if (output) {
+          await writeJsonFile(output, plan, true);
         }
         if (options.json) {
           console.log(stableJson(plan));
         } else {
-          printPlanSummary(plan, options.output);
+          printPlanSummary(plan, output);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -439,6 +459,7 @@ export function registerProductCommands(program: Command): void {
     .option('--force', 'Overwrite existing manifest file')
     .action(async (slug: string, options) => {
       try {
+        const output = options.output || readRawFlagValue('--output');
         assertValidSlug(slug);
         const manifest = await buildPrivateProductManifest({
           backlogPath: options.fromBacklog,
@@ -446,7 +467,12 @@ export function registerProductCommands(program: Command): void {
           kit: options.kit,
           outputRoot: options.workspaceOutput,
         });
-        const outputPath = resolveManifestOutputPath(options.output, slug);
+        assertJsonSchemaContract(
+          manifest,
+          'contracts/private-product-manifest.v1.json',
+          'Private product manifest'
+        );
+        const outputPath = resolveManifestOutputPath(output, slug);
         await writeJsonFile(outputPath, manifest, options.force === true);
         if (options.json) {
           console.log(stableJson(manifest));

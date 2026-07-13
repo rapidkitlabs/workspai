@@ -2,12 +2,57 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "required": [
-    "schemaVersion"
+    "schema",
+    "name",
+    "mode",
+    "createdAt",
+    "workspaceName",
+    "workspacePath",
+    "copiedPaths",
+    "projects"
   ],
   "properties": {
-    "schemaVersion": {
+    "schema": {
       "const": "rapidkit-workspace-snapshot-v1"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "enum": [
+        "metadata",
+        "full"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workspaceName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspacePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "copiedPaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

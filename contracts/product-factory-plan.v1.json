@@ -2,11 +2,198 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "required": [
-    "schemaVersion"
+    "schemaVersion",
+    "generatedAt",
+    "source",
+    "defaults",
+    "stats",
+    "products"
   ],
   "properties": {
     "schemaVersion": {
       "const": "rapidkit.product-factory-plan.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "backlogPath",
+        "backlogSchemaVersion",
+        "purpose",
+        "publicationRule"
+      ],
+      "properties": {
+        "backlogPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "backlogSchemaVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "purpose": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "publicationRule": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "defaults": {
+      "type": "object",
+      "required": [
+        "kit",
+        "workspaceProfile",
+        "projectSlug"
+      ],
+      "properties": {
+        "kit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceProfile": {
+          "const": "enterprise"
+        },
+        "projectSlug": {
+          "const": "api"
+        }
+      },
+      "additionalProperties": false
+    },
+    "stats": {
+      "type": "object",
+      "required": [
+        "totalProducts",
+        "plannedProducts",
+        "readyProducts",
+        "blockedProducts",
+        "uniqueModules",
+        "knownModuleGaps"
+      ],
+      "properties": {
+        "totalProducts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "plannedProducts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readyProducts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blockedProducts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uniqueModules": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "knownModuleGaps": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rank",
+          "slug",
+          "title",
+          "category",
+          "tier",
+          "summary",
+          "modules",
+          "moduleGaps",
+          "recommendedKit",
+          "workspaceProfile",
+          "readiness"
+        ],
+        "properties": {
+          "rank": {
+            "type": "number"
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tier": {
+            "type": "string",
+            "minLength": 1
+          },
+          "summary": {
+            "type": "string"
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "moduleGaps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "recommendedKit": {
+            "type": "string",
+            "minLength": 1
+          },
+          "workspaceProfile": {
+            "const": "enterprise"
+          },
+          "readiness": {
+            "type": "object",
+            "required": [
+              "status",
+              "blockingGaps"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "ready-for-private-manifest",
+                  "blocked-by-module-gaps"
+                ]
+              },
+              "blockingGaps": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "additionalProperties": true

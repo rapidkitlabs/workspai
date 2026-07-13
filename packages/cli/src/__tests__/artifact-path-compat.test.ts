@@ -13,6 +13,7 @@ import {
   withWorkspaceArtifactLock,
 } from '../utils/artifact-path-compat';
 import { WORKSPACE_INTELLIGENCE_ARTIFACTS } from '../contracts/workspace-intelligence-runtime-registry';
+import { workspaceArtifactContractFor } from '../contracts/artifact-contract-registry';
 
 const temporaryRoots: string[] = [];
 
@@ -63,6 +64,20 @@ describe('workspace artifact path compatibility', () => {
     expect(
       await fsExtra.pathExists(path.join(root, WORKSPACE_INTELLIGENCE_ARTIFACTS.analyze))
     ).toBe(false);
+  });
+
+  it('registers supplemental producer artifacts at the write boundary', () => {
+    for (const artifactPath of [
+      '.workspai/cache/workspace-model.v1.json',
+      '.workspai/workspace-registry.v1.json',
+      '.workspai/reports/doctor-project-last-run.json',
+      '.workspai/reports/autopilot-release-last-run.json',
+      '.workspai/reports/autopilot-release.json',
+      '.workspai/reports/workspace-why-last-run.json',
+      '.workspai/reports/workspace-trace-last-run.json',
+    ]) {
+      expect(workspaceArtifactContractFor(artifactPath), artifactPath).not.toBeNull();
+    }
   });
 
   it('rejects writes through a report-directory symlink outside the workspace', async () => {

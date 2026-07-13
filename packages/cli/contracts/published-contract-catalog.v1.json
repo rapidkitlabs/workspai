@@ -237,7 +237,7 @@
     },
     "doctorRemediationPlan": {
       "schemaVersion": "doctor-remediation-plan-v2",
-      "contractPath": "contracts/doctor-remediation-plan.v1.json",
+      "contractPath": "contracts/doctor-remediation-plan.v2.json",
       "publication": "json-schema"
     },
     "artifactRemediationPlan": {
@@ -248,6 +248,86 @@
     "doctorFixResult": {
       "schemaVersion": "rapidkit-doctor-fix-result-v1",
       "contractPath": "contracts/workspace-intelligence/doctor-fix-result.v1.json",
+      "publication": "json-schema"
+    },
+    "autopilotRelease": {
+      "schemaVersion": "autopilot-release-v1",
+      "contractPath": "contracts/autopilot-release.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceList": {
+      "schemaVersion": "rapidkit-workspace-list-v1",
+      "contractPath": "contracts/workspace-list.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceSync": {
+      "schemaVersion": "rapidkit-workspace-sync-v1",
+      "contractPath": "contracts/workspace-sync.v1.json",
+      "publication": "json-schema"
+    },
+    "compatibilityMatrix": {
+      "schemaVersion": "rapidkit.compatibility-matrix.v1",
+      "contractPath": "contracts/compatibility-matrix.v1.json",
+      "publication": "json-schema"
+    },
+    "mcpDesign": {
+      "schemaVersion": "workspai-mcp-design.v1",
+      "contractPath": "contracts/workspace-intelligence/mcp-design.v1.json",
+      "publication": "json-schema"
+    },
+    "agentHooks": {
+      "schemaVersion": "workspai-agent-hooks.v1",
+      "contractPath": "contracts/workspace-intelligence/agent-hooks.v1.json",
+      "publication": "json-schema"
+    },
+    "projectArchive": {
+      "schemaVersion": "rapidkit-project-archive-v1",
+      "contractPath": "contracts/project-archive.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceSnapshot": {
+      "schemaVersion": "rapidkit-workspace-snapshot-v1",
+      "contractPath": "contracts/workspace-snapshot.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceSnapshotV2": {
+      "schemaVersion": "rapidkit-workspace-snapshot-v2",
+      "contractPath": "contracts/workspace-snapshot.v2.json",
+      "publication": "json-schema"
+    },
+    "infraPlan": {
+      "schemaVersion": "rapidkit.infra-plan.v1",
+      "contractPath": "contracts/infra-plan.v1.json",
+      "publication": "json-schema"
+    },
+    "privateProductManifest": {
+      "schemaVersion": "rapidkit.private-product-manifest.v1",
+      "contractPath": "contracts/private-product-manifest.v1.json",
+      "publication": "json-schema"
+    },
+    "productFactoryPlan": {
+      "schemaVersion": "rapidkit.product-factory-plan.v1",
+      "contractPath": "contracts/product-factory-plan.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceModelCache": {
+      "schemaVersion": "workspace-model-cache.v1",
+      "contractPath": "contracts/workspace-model-cache.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceWatchEvent": {
+      "schemaVersion": "workspace-watch-event.v1",
+      "contractPath": "contracts/workspace-watch-event.v1.json",
+      "publication": "json-schema"
+    },
+    "doctorProjectScan": {
+      "schemaVersion": "doctor-project-scan-v2",
+      "contractPath": "contracts/doctor-project-scan.v2.json",
+      "publication": "json-schema"
+    },
+    "doctorWorkspaceCache": {
+      "schemaVersion": "doctor-workspace-cache-v2",
+      "contractPath": "contracts/doctor-workspace-cache.v2.json",
       "publication": "json-schema"
     }
   }

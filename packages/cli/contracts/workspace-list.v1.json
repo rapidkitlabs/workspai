@@ -3,14 +3,53 @@
   "type": "object",
   "required": [
     "schemaVersion",
-    "status"
+    "registryPath",
+    "workspaces",
+    "summary"
   ],
   "properties": {
     "schemaVersion": {
       "const": "rapidkit-workspace-list-v1"
     },
-    "status": {
-      "type": "string"
+    "registryPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaces": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "total",
+        "missing",
+        "registryExists",
+        "registryValid",
+        "cleanupApplied"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "registryExists": {
+          "type": "boolean"
+        },
+        "registryValid": {
+          "type": "boolean"
+        },
+        "cleanupApplied": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": true

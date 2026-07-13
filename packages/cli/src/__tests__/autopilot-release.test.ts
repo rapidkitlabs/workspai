@@ -18,6 +18,7 @@ vi.mock('../workspace-run.js', () => {
 
 import { execa } from 'execa';
 import { runWorkspaceStage } from '../workspace-run.js';
+import type { WorkspaceRunReport } from '../workspace-run.js';
 import { runAutopilotRelease, AUTOPILOT_RELEASE_ALIAS_FILENAME } from '../autopilot-release.js';
 
 const createdPaths: string[] = [];
@@ -39,6 +40,48 @@ async function makeWorkspace(): Promise<string> {
   });
 
   return workspace;
+}
+
+function makeWorkspaceRunReport(
+  workspacePath: string,
+  stage: WorkspaceRunReport['stage'] = 'test'
+): WorkspaceRunReport {
+  return {
+    schemaVersion: '1.0',
+    workspacePath,
+    stage,
+    generatedAt: new Date().toISOString(),
+    durationMs: 1,
+    options: {
+      affected: true,
+      blastRadius: false,
+      since: null,
+      parallel: false,
+      maxWorkers: 1,
+      continueOnError: false,
+      strict: false,
+      enforceGates: false,
+      scope: null,
+      reusePassed: false,
+    },
+    selection: {
+      mode: 'affected',
+      since: null,
+      scope: null,
+      graphStatus: 'not-applicable',
+      expansionDepth: 0,
+    },
+    summary: {
+      projectCount: 1,
+      selectedCount: 1,
+      passed: 1,
+      failed: 0,
+      skipped: 0,
+      exitCode: 0,
+    },
+    projects: [],
+    gates: { enforced: false, results: [], blocked: false },
+  };
 }
 
 afterEach(async () => {
@@ -463,15 +506,7 @@ describe('autopilot-release', () => {
     const workspace = await makeWorkspace();
 
     const runWorkspaceStageMock = runWorkspaceStage as unknown as ReturnType<typeof vi.fn>;
-    runWorkspaceStageMock.mockResolvedValue({
-      stage: 'test',
-      affectedOnly: true,
-      strict: false,
-      completedAt: new Date().toISOString(),
-      summary: { total: 1, passed: 1, failed: 0, skipped: 0 },
-      projects: [],
-      gates: { enabled: true, results: [] },
-    });
+    runWorkspaceStageMock.mockResolvedValue(makeWorkspaceRunReport(workspace));
 
     const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
     execaMock.mockImplementation(async (_cmd: string, args: string[]) => {
@@ -523,15 +558,7 @@ describe('autopilot-release', () => {
     const workspace = await makeWorkspace();
 
     const runWorkspaceStageMock = runWorkspaceStage as unknown as ReturnType<typeof vi.fn>;
-    runWorkspaceStageMock.mockResolvedValue({
-      stage: 'test',
-      affectedOnly: true,
-      strict: false,
-      completedAt: new Date().toISOString(),
-      summary: { total: 1, passed: 1, failed: 0, skipped: 0 },
-      projects: [],
-      gates: { enabled: true, results: [] },
-    });
+    runWorkspaceStageMock.mockResolvedValue(makeWorkspaceRunReport(workspace));
 
     const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
     execaMock.mockImplementation(async (_cmd: string, args: string[]) => {
@@ -600,15 +627,7 @@ describe('autopilot-release', () => {
     const workspace = await makeWorkspace();
 
     const runWorkspaceStageMock = runWorkspaceStage as unknown as ReturnType<typeof vi.fn>;
-    runWorkspaceStageMock.mockResolvedValue({
-      stage: 'test',
-      affectedOnly: true,
-      strict: false,
-      completedAt: new Date().toISOString(),
-      summary: { total: 1, passed: 1, failed: 0, skipped: 0 },
-      projects: [],
-      gates: { enabled: true, results: [] },
-    });
+    runWorkspaceStageMock.mockResolvedValue(makeWorkspaceRunReport(workspace));
 
     const execaMock = execa as unknown as ReturnType<typeof vi.fn>;
     execaMock.mockImplementation(async (_cmd: string, args: string[]) => {

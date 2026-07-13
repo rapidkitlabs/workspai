@@ -2,11 +2,58 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "required": [
-    "schemaVersion"
+    "schemaVersion",
+    "name",
+    "path",
+    "venvActive",
+    "depsInstalled",
+    "coreInstalled",
+    "issues"
   ],
   "properties": {
     "schemaVersion": {
       "const": "doctor-project-scan-v2"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "venvActive": {
+      "type": "boolean"
+    },
+    "depsInstalled": {
+      "type": "boolean"
+    },
+    "coreInstalled": {
+      "type": "boolean"
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "fixCommands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "runtimeFamily": {
+      "type": "string"
+    },
+    "projectKind": {
+      "type": "string"
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
     }
   },
   "additionalProperties": true

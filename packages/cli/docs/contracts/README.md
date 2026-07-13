@@ -36,7 +36,7 @@ Published under `../../contracts/` (not duplicated in this folder):
 - `release-readiness.v1.json` — release readiness gate evidence
 - `workspace-run-last.v1.json` — multi-stage workspace run evidence
 - `doctor-workspace-evidence.v1.json` / `doctor-project-evidence.v1.json` — doctor evidence
-- `doctor-remediation-plan.v1.json` — persisted Doctor fix/plan Studio handoff contract
+- `doctor-remediation-plan.v2.json` — canonical persisted Doctor fix/plan Studio handoff contract (`v1` path is a deprecated compatibility alias)
 - `artifact-remediation-plan.v1.json` — cross-artifact Studio handoff for Bootstrap, Analyze, Readiness, Pipeline, Workspace Run, Workspace Verify, and Doctor plan bridging
 - `analyze-last-run.v1.json` — analyze evidence
 - `pipeline-last-run.v1.json` — governance pipeline orchestration

@@ -1,7 +1,9 @@
 import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
+import { once } from 'node:events';
 import { createReadStream, createWriteStream } from 'node:fs';
+import * as readline from 'node:readline';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
@@ -260,6 +262,9 @@ export function shouldExcludeWorkspaceArchivePath(
   if (EXCLUDED_BASENAMES.has(basename)) {
     return true;
   }
+  if (/\.(?:workspai|rapidkit)-archive\.zip$/i.test(basename)) {
+    return true;
+  }
   if (!options?.includeEnv && SECRET_BASENAME_PATTERNS.some((pattern) => pattern.test(basename))) {
     return true;
   }
@@ -267,13 +272,14 @@ export function shouldExcludeWorkspaceArchivePath(
   return basename.endsWith('.pyc') || basename.endsWith('.log');
 }
 
-async function walkWorkspaceFiles(
+async function* walkWorkspaceFiles(
   workspacePath: string,
   currentPath: string,
-  files: Array<{ relativePath: string; fullPath: string }>,
   options?: { includeEnv?: boolean }
-): Promise<void> {
-  const entries = await fsExtra.readdir(currentPath, { withFileTypes: true });
+): AsyncGenerator<{ relativePath: string; fullPath: string }> {
+  const entries = (await fsExtra.readdir(currentPath, { withFileTypes: true })).sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
   for (const entry of entries) {
     const fullPath = path.join(currentPath, entry.name);
     const relativePath = toArchivePath(path.relative(workspacePath, fullPath));
@@ -281,11 +287,11 @@ async function walkWorkspaceFiles(
       continue;
     }
     if (entry.isDirectory()) {
-      await walkWorkspaceFiles(workspacePath, fullPath, files, options);
+      yield* walkWorkspaceFiles(workspacePath, fullPath, options);
       continue;
     }
     if (entry.isFile()) {
-      files.push({ relativePath, fullPath });
+      yield { relativePath, fullPath };
     }
   }
 }
@@ -315,6 +321,10 @@ type ExportCandidate = {
   sha256: string;
 };
 
+type ManifestFileEntry = WorkspaceArchiveManifest['files'][number];
+type ManifestSpoolEntry = ManifestFileEntry & { mtimeMs: number };
+type WorkspaceArchiveManifestBase = Omit<WorkspaceArchiveManifest, 'files'>;
+
 async function hashWorkspaceFile(candidate: {
   relativePath: string;
   fullPath: string;
@@ -337,6 +347,73 @@ async function hashWorkspaceFile(candidate: {
     mtimeMs: after.mtimeMs,
     sha256: hash.digest('hex'),
   };
+}
+
+async function writeLine(
+  stream: ReturnType<typeof createWriteStream>,
+  line: string
+): Promise<void> {
+  if (!stream.write(line)) {
+    await once(stream, 'drain');
+  }
+}
+
+async function closeWriteStream(stream: ReturnType<typeof createWriteStream>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    stream.once('error', reject);
+    stream.end(resolve);
+  });
+}
+
+async function* readManifestSpool(spoolPath: string): AsyncGenerator<ManifestSpoolEntry> {
+  const lines = readline.createInterface({
+    input: createReadStream(spoolPath),
+    crlfDelay: Infinity,
+  });
+  for await (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    yield JSON.parse(trimmed) as ManifestSpoolEntry;
+  }
+}
+
+async function writeWorkspaceArchiveManifestFile(input: {
+  manifestBase: WorkspaceArchiveManifestBase;
+  spoolPath: string;
+  manifestPath: string;
+}): Promise<void> {
+  const stream = createWriteStream(input.manifestPath, { flags: 'wx' });
+  try {
+    await writeLine(stream, '{\n');
+    for (const [key, value] of Object.entries(input.manifestBase)) {
+      await writeLine(stream, `  ${JSON.stringify(key)}: ${JSON.stringify(value, null, 2)},\n`);
+    }
+    await writeLine(stream, '  "files": [\n');
+    let first = true;
+    for await (const entry of readManifestSpool(input.spoolPath)) {
+      const { mtimeMs: _mtimeMs, ...file } = entry;
+      await writeLine(stream, `${first ? '' : ',\n'}    ${JSON.stringify(file)}`);
+      first = false;
+    }
+    await writeLine(stream, '\n  ]\n}\n');
+    await closeWriteStream(stream);
+  } catch (error) {
+    stream.destroy();
+    await fsExtra.remove(input.manifestPath).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function loadManifestFromSpool(
+  manifestBase: WorkspaceArchiveManifestBase,
+  spoolPath: string
+): Promise<WorkspaceArchiveManifest> {
+  const files: WorkspaceArchiveManifest['files'] = [];
+  for await (const entry of readManifestSpool(spoolPath)) {
+    const { mtimeMs: _mtimeMs, ...file } = entry;
+    files.push(file);
+  }
+  return { ...manifestBase, files };
 }
 
 async function replaceFileAtomically(temporaryPath: string, targetPath: string): Promise<void> {
@@ -363,7 +440,7 @@ export async function exportWorkspaceArchive(
   const archivePath = path.resolve(
     options.outputPath || `${sanitizeWorkspaceArchiveName(workspaceName)}.workspai-archive.zip`
   );
-  const manifest: WorkspaceArchiveManifest = {
+  const manifestBase: WorkspaceArchiveManifestBase = {
     schemaVersion: WORKSPACE_ARCHIVE_MANIFEST_SCHEMA_VERSION,
     version: 1,
     kind: WORKSPACE_ARCHIVE_KIND,
@@ -389,42 +466,54 @@ export async function exportWorkspaceArchive(
         '*.log',
       ],
     },
-    files: [],
   };
 
-  const discovered: Array<{ relativePath: string; fullPath: string }> = [];
-  await walkWorkspaceFiles(workspacePath, workspacePath, discovered, {
-    includeEnv: options.includeEnv === true,
-  });
   const normalizedArchivePath = path.resolve(archivePath);
-  const candidates: ExportCandidate[] = [];
-  for (const candidate of discovered
-    .filter((entry) => path.resolve(entry.fullPath) !== normalizedArchivePath)
-    .sort((a, b) => a.relativePath.localeCompare(b.relativePath))) {
-    const hashed = await hashWorkspaceFile(candidate);
-    candidates.push(hashed);
-    manifest.files.push({
-      path: hashed.relativePath,
-      size: hashed.size,
-      sha256: hashed.sha256,
-    });
-  }
-
   await fsExtra.ensureDir(path.dirname(archivePath));
   const temporaryPath = `${archivePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  const spoolDir = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'workspai-archive-export-'));
+  const spoolPath = path.join(spoolDir, 'manifest-files.jsonl');
+  const manifestPath = path.join(spoolDir, 'archive-manifest.json');
   const zipFile = new yazl.ZipFile();
   const timestamp = options.now ?? new Date();
   const compress = options.compression === 'deflate';
   try {
-    for (const candidate of candidates) {
-      zipFile.addFile(candidate.fullPath, candidate.relativePath, {
+    const spoolStream = createWriteStream(spoolPath, { flags: 'wx' });
+    try {
+      for await (const candidate of walkWorkspaceFiles(workspacePath, workspacePath, {
+        includeEnv: options.includeEnv === true,
+      })) {
+        if (path.resolve(candidate.fullPath) === normalizedArchivePath) continue;
+        const hashed = await hashWorkspaceFile(candidate);
+        const spoolEntry: ManifestSpoolEntry = {
+          path: hashed.relativePath,
+          size: hashed.size,
+          sha256: hashed.sha256,
+          mtimeMs: hashed.mtimeMs,
+        };
+        await writeLine(spoolStream, `${JSON.stringify(spoolEntry)}\n`);
+      }
+      await closeWriteStream(spoolStream);
+    } catch (error) {
+      spoolStream.destroy();
+      throw error;
+    }
+
+    await writeWorkspaceArchiveManifestFile({
+      manifestBase,
+      spoolPath,
+      manifestPath,
+    });
+
+    for await (const file of readManifestSpool(spoolPath)) {
+      const fullPath = path.join(workspacePath, ...file.path.split('/'));
+      zipFile.addFile(fullPath, file.path, {
         compress,
-        forceZip64Format: candidate.size >= 0xffffffff,
+        forceZip64Format: file.size >= 0xffffffff,
         mtime: timestamp,
       });
     }
-    const manifestData = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
-    zipFile.addBuffer(manifestData, WORKSPACE_ARCHIVE_MANIFEST_PATH, {
+    zipFile.addFile(manifestPath, WORKSPACE_ARCHIVE_MANIFEST_PATH, {
       compress,
       mtime: timestamp,
     });
@@ -434,15 +523,17 @@ export async function exportWorkspaceArchive(
       createWriteStream(temporaryPath, { flags: 'wx' })
     );
 
-    for (const candidate of candidates) {
-      const current = await fsExtra.stat(candidate.fullPath);
-      if (current.size !== candidate.size || current.mtimeMs !== candidate.mtimeMs) {
-        throw new Error(`Workspace file changed while writing archive: ${candidate.relativePath}`);
+    for await (const file of readManifestSpool(spoolPath)) {
+      const fullPath = path.join(workspacePath, ...file.path.split('/'));
+      const current = await fsExtra.stat(fullPath);
+      if (current.size !== file.size || current.mtimeMs !== file.mtimeMs) {
+        throw new Error(`Workspace file changed while writing archive: ${file.path}`);
       }
     }
 
     const archiveStat = await fsExtra.stat(temporaryPath);
     await replaceFileAtomically(temporaryPath, archivePath);
+    const manifest = await loadManifestFromSpool(manifestBase, spoolPath);
     return validateArchiveOperationResult({
       schemaVersion: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
       operation: 'export',
@@ -452,6 +543,7 @@ export async function exportWorkspaceArchive(
       bytesWritten: archiveStat.size,
     });
   } finally {
+    await fsExtra.remove(spoolDir).catch(() => undefined);
     await fsExtra.remove(temporaryPath).catch(() => undefined);
   }
 }
@@ -962,22 +1054,23 @@ async function doctorResolvedWorkspaceArchive(options: {
   });
 }
 
-async function ensureOutputPath(
-  outputPath: string,
-  force: boolean,
-  dryRun: boolean
-): Promise<void> {
-  if (!(await fsExtra.pathExists(outputPath))) {
-    if (!dryRun) await fsExtra.ensureDir(outputPath);
-    return;
+async function validateHydrateOutputPath(outputPath: string, force: boolean): Promise<boolean> {
+  const stat = await fsExtra.lstat(outputPath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (!stat) return false;
+  if (stat.isSymbolicLink()) {
+    throw new Error(`Output directory must not be a symbolic link: ${outputPath}`);
+  }
+  if (!stat.isDirectory()) {
+    throw new Error(`Output path is not a directory: ${outputPath}`);
   }
   const entries = await fsExtra.readdir(outputPath);
   if (entries.length > 0 && !force) {
     throw new Error(`Output directory is not empty: ${outputPath}. Use --force to overwrite.`);
   }
-  if (!dryRun) {
-    await fsExtra.emptyDir(outputPath);
-  }
+  return true;
 }
 
 export async function hydrateWorkspaceArchive(
@@ -1024,17 +1117,54 @@ export async function hydrateWorkspaceArchive(
       options.outputPath ||
         sanitizeWorkspaceArchiveName(manifest.workspaceName || 'imported-workspace')
     );
-    await ensureOutputPath(outputPath, options.force === true, options.dryRun === true);
+    const outputExisted = await validateHydrateOutputPath(outputPath, options.force === true);
 
-    for (const entry of entries) {
-      const targetPath = path.resolve(outputPath, entry.targetName);
-      if (!isPathInsideDirectory(targetPath, outputPath)) {
-        throw new Error(`Archive entry escapes output directory: ${entry.targetName}`);
-      }
-      if (!options.dryRun) {
-        await fsExtra.ensureDir(path.dirname(targetPath));
-        const stream = await openEntryStream(loaded.zipFile, entry.entry);
-        await pipeline(stream, createWriteStream(targetPath));
+    if (!options.dryRun) {
+      const parentPath = path.dirname(outputPath);
+      const operationId = `${process.pid}-${crypto.randomUUID()}`;
+      const stagingPath = path.join(
+        parentPath,
+        `.${path.basename(outputPath)}.hydrate-${operationId}.tmp`
+      );
+      const backupPath = path.join(
+        parentPath,
+        `.${path.basename(outputPath)}.hydrate-${operationId}.backup`
+      );
+      let outputMovedToBackup = false;
+      let committed = false;
+
+      await fsExtra.ensureDir(parentPath);
+      try {
+        await fsExtra.ensureDir(stagingPath);
+        for (const entry of entries) {
+          const targetPath = path.resolve(stagingPath, entry.targetName);
+          if (!isPathInsideDirectory(targetPath, stagingPath)) {
+            throw new Error(`Archive entry escapes output directory: ${entry.targetName}`);
+          }
+          await fsExtra.ensureDir(path.dirname(targetPath));
+          const stream = await openEntryStream(loaded.zipFile, entry.entry);
+          await pipeline(stream, createWriteStream(targetPath, { flags: 'wx' }));
+        }
+
+        if (outputExisted) {
+          await fsExtra.rename(outputPath, backupPath);
+          outputMovedToBackup = true;
+        }
+        await fsExtra.rename(stagingPath, outputPath);
+        committed = true;
+        if (outputMovedToBackup) {
+          await fsExtra.remove(backupPath).catch(() => undefined);
+        }
+      } catch (error) {
+        if (outputMovedToBackup && !(await fsExtra.pathExists(outputPath))) {
+          await fsExtra.rename(backupPath, outputPath).catch(() => undefined);
+        }
+        throw error;
+      } finally {
+        await fsExtra.remove(stagingPath).catch(() => undefined);
+        if (committed) {
+          await fsExtra.remove(backupPath).catch(() => undefined);
+        }
       }
     }
 

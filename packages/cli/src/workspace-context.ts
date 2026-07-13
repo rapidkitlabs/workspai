@@ -322,12 +322,12 @@ function evidenceState(model: WorkspaceModel): { available: string[]; missing: s
 function summarizeWorkspace(model: WorkspaceModel): string {
   const projectCount = model.summary.projectCount;
   const runtimeText = model.summary.runtimes.length
-    ? model.summary.runtimes.join(', ')
-    : 'no runtime';
+    ? `${model.summary.runtimes.join(', ')} runtime coverage`
+    : 'no runtime coverage';
   const surfaceText = model.identity.surfaces.length
     ? model.identity.surfaces.join(', ')
     : 'no detected surfaces';
-  return `${model.workspace.name} is a ${model.identity.workspaceType} with ${projectCount} project${projectCount === 1 ? '' : 's'}, ${runtimeText} runtime coverage, and ${surfaceText}.`;
+  return `${model.workspace.name} is a ${model.identity.workspaceType} with ${projectCount} project${projectCount === 1 ? '' : 's'}, ${runtimeText}, and ${surfaceText}.`;
 }
 
 function unsafeAssumptions(model: WorkspaceModel): string[] {

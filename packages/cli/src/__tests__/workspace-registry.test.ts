@@ -85,6 +85,30 @@ describe('workspace registry', () => {
     ]);
   });
 
+  it('reconciles archived workspace projects out of the shared registry', async () => {
+    const homePath = await makeTempDir('rapidkit-registry-prune-home-');
+    const workspacePath = await makeTempDir('rapidkit-registry-prune-workspace-');
+    const projectPath = path.join(workspacePath, 'api');
+    const archivePath = path.join(workspacePath, '.workspai', 'archive', 'projects', 'api');
+    process.env.HOME = homePath;
+    process.env.USERPROFILE = homePath;
+    if (process.platform === 'win32') process.env.APPDATA = homePath;
+
+    await fsExtra.outputJson(path.join(projectPath, '.workspai', 'project.json'), {
+      schemaVersion: 'workspai-project-v1',
+      name: 'api',
+    });
+    await syncWorkspaceProjects(workspacePath, true);
+    await fsExtra.move(projectPath, archivePath);
+
+    await syncWorkspaceProjects(workspacePath, true);
+
+    const canonical = await fsExtra.readJson(
+      path.join(getWorkspaceRegistryDirectory(), 'workspaces.json')
+    );
+    expect(canonical.workspaces[0].projects).toEqual([]);
+  });
+
   it('migrates a legacy-only registry into the canonical registry without losing entries', async () => {
     const homePath = await makeTempDir('rapidkit-registry-home-');
     const existingWorkspacePath = path.join(homePath, 'workspaces', 'legacy-workspace');

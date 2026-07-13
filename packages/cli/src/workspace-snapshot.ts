@@ -6,6 +6,7 @@ import { existsSync } from 'fs';
 import fsExtra from 'fs-extra';
 
 import { removeImportedProjectsRegistryEntries } from './imported-projects-registry.js';
+import { assertJsonSchemaContract } from './utils/json-schema-contract.js';
 import { discoverWorkspaceProjects } from './utils/workspace-discovery.js';
 import {
   hasWorkspaceRootMarkers,
@@ -14,12 +15,14 @@ import {
   workspaceMetadataPath,
 } from './utils/workspace-paths.js';
 
-export const WORKSPACE_SNAPSHOT_SCHEMA = 'rapidkit-workspace-snapshot-v1';
+export const WORKSPACE_SNAPSHOT_SCHEMA_V1 = 'rapidkit-workspace-snapshot-v1' as const;
+export const WORKSPACE_SNAPSHOT_SCHEMA_V2 = 'rapidkit-workspace-snapshot-v2' as const;
+export const WORKSPACE_SNAPSHOT_SCHEMA = WORKSPACE_SNAPSHOT_SCHEMA_V1;
 export const PROJECT_ARCHIVE_SCHEMA = 'rapidkit-project-archive-v1';
 const PROJECT_ARCHIVE_MANIFEST_FILE = 'workspai-archive.json';
 const LEGACY_PROJECT_ARCHIVE_MANIFEST_FILE = 'rapidkit-archive.json';
 
-export type SnapshotMode = 'metadata' | 'full';
+export type SnapshotMode = 'metadata' | 'full' | 'project';
 
 export interface WorkspaceSnapshotProject {
   name: string;
@@ -27,7 +30,7 @@ export interface WorkspaceSnapshotProject {
 }
 
 export interface WorkspaceSnapshotManifest {
-  schema: typeof WORKSPACE_SNAPSHOT_SCHEMA;
+  schema: typeof WORKSPACE_SNAPSHOT_SCHEMA_V1 | typeof WORKSPACE_SNAPSHOT_SCHEMA_V2;
   name: string;
   mode: SnapshotMode;
   reason?: string;
@@ -36,6 +39,11 @@ export interface WorkspaceSnapshotManifest {
   workspacePath: string;
   copiedPaths: string[];
   projects: WorkspaceSnapshotProject[];
+  recoveryScope?: {
+    kind: 'project';
+    projectName: string;
+    relativePath: string;
+  };
 }
 
 export interface CreateWorkspaceSnapshotOptions {
@@ -375,6 +383,13 @@ function createSnapshotStagingPath(name: string): string {
   );
 }
 
+function createWorkspaceLocalSnapshotStagingPath(workspacePath: string, name: string): string {
+  return path.join(
+    snapshotsRoot(workspacePath),
+    `.tmp-${process.pid}-${name}-${crypto.randomBytes(4).toString('hex')}`
+  );
+}
+
 function shouldCopyPath(workspacePath: string, sourcePath: string): boolean {
   const relativePath = path.relative(workspacePath, sourcePath);
   if (!relativePath) {
@@ -475,6 +490,11 @@ async function writeSnapshotManifest(
   snapshotPath: string,
   manifest: WorkspaceSnapshotManifest
 ): Promise<void> {
+  const contractPath =
+    manifest.schema === WORKSPACE_SNAPSHOT_SCHEMA_V2
+      ? 'contracts/workspace-snapshot.v2.json'
+      : 'contracts/workspace-snapshot.v1.json';
+  assertJsonSchemaContract(manifest, contractPath, 'Workspace snapshot manifest');
   await fsExtra.writeJson(path.join(snapshotPath, 'snapshot.json'), manifest, { spaces: 2 });
 }
 
@@ -484,11 +504,27 @@ async function readSnapshotManifest(snapshotPath: string): Promise<WorkspaceSnap
   if (
     !manifest ||
     typeof manifest !== 'object' ||
-    (manifest as WorkspaceSnapshotManifest).schema !== WORKSPACE_SNAPSHOT_SCHEMA
+    ![WORKSPACE_SNAPSHOT_SCHEMA_V1, WORKSPACE_SNAPSHOT_SCHEMA_V2].includes(
+      (manifest as WorkspaceSnapshotManifest).schema
+    )
   ) {
     throw new Error(`Invalid Workspai workspace snapshot manifest: ${manifestPath}`);
   }
-  return manifest as WorkspaceSnapshotManifest;
+  const typedManifest = manifest as WorkspaceSnapshotManifest;
+  const contractPath =
+    typedManifest.schema === WORKSPACE_SNAPSHOT_SCHEMA_V2
+      ? 'contracts/workspace-snapshot.v2.json'
+      : 'contracts/workspace-snapshot.v1.json';
+  assertJsonSchemaContract(typedManifest, contractPath, 'Workspace snapshot manifest');
+  if (
+    typedManifest.mode === 'project' &&
+    (typedManifest.schema !== WORKSPACE_SNAPSHOT_SCHEMA_V2 ||
+      typedManifest.recoveryScope?.kind !== 'project' ||
+      !typedManifest.recoveryScope.relativePath)
+  ) {
+    throw new Error(`Invalid project recovery snapshot manifest: ${manifestPath}`);
+  }
+  return typedManifest;
 }
 
 async function collectDirectoryStats(rootPath: string): Promise<{ files: number; bytes: number }> {
@@ -603,6 +639,95 @@ export async function createWorkspaceSnapshot(
   }
 }
 
+async function createProjectRecoverySnapshot(options: {
+  workspacePath: string;
+  projectPath: string;
+  namePrefix: string;
+  reason: string;
+  moveSource: boolean;
+}): Promise<CreateWorkspaceSnapshotResult> {
+  const workspacePath = path.resolve(options.workspacePath);
+  const projectPath = path.resolve(options.projectPath);
+  const relativePath = path.relative(workspacePath, projectPath);
+  if (
+    !relativePath ||
+    relativePath.startsWith('..') ||
+    path.isAbsolute(relativePath) ||
+    relativePath
+      .split(path.sep)
+      .some((segment) => segment === '.workspai' || segment === '.rapidkit')
+  ) {
+    throw new Error(`Project recovery path must be a project inside the workspace: ${projectPath}`);
+  }
+
+  const projectName = path.basename(projectPath);
+  const name = slugifySnapshotName(
+    `${options.namePrefix}-${projectName}-${timestampForPath()}-${crypto.randomBytes(3).toString('hex')}`
+  );
+  const snapshotPath = path.join(snapshotsRoot(workspacePath), name);
+  const stagingPath = createWorkspaceLocalSnapshotStagingPath(workspacePath, name);
+  const stagedProjectPath = path.join(snapshotFilesRoot(stagingPath), relativePath);
+  let sourceMoved = false;
+
+  try {
+    await fsExtra.ensureDir(path.dirname(stagedProjectPath));
+    if (options.moveSource) {
+      await fsExtra.move(projectPath, stagedProjectPath, { overwrite: false });
+      sourceMoved = true;
+    } else {
+      await fsExtra.copy(projectPath, stagedProjectPath, {
+        overwrite: false,
+        errorOnExist: true,
+        filter: (candidatePath) => shouldCopyPath(projectPath, candidatePath),
+      });
+    }
+
+    const manifest: WorkspaceSnapshotManifest = {
+      schema: WORKSPACE_SNAPSHOT_SCHEMA_V2,
+      name,
+      mode: 'project',
+      reason: options.reason,
+      createdAt: new Date().toISOString(),
+      workspaceName: await getWorkspaceName(workspacePath),
+      workspacePath,
+      copiedPaths: [relativePath],
+      projects: [{ name: projectName, relativePath }],
+      recoveryScope: { kind: 'project', projectName, relativePath },
+    };
+
+    await writeSnapshotManifest(stagingPath, manifest);
+    await fsExtra.move(stagingPath, snapshotPath, { overwrite: false });
+    await appendAuditEvent(workspacePath, {
+      action: 'snapshot.create',
+      target: name,
+      status: 'succeeded',
+      reason: options.reason,
+      details: { mode: 'project', copiedPaths: [relativePath], snapshotPath, projectCount: 1 },
+    });
+    return { manifest, snapshotPath };
+  } catch (error) {
+    if (sourceMoved && !(await fsExtra.pathExists(projectPath))) {
+      const recoveryCandidate = (await fsExtra.pathExists(stagedProjectPath))
+        ? stagedProjectPath
+        : path.join(snapshotFilesRoot(snapshotPath), relativePath);
+      if (await fsExtra.pathExists(recoveryCandidate)) {
+        await fsExtra.ensureDir(path.dirname(projectPath));
+        await fsExtra.move(recoveryCandidate, projectPath, { overwrite: false });
+      }
+    }
+    await fsExtra.remove(stagingPath);
+    await fsExtra.remove(snapshotPath);
+    await appendAuditEvent(workspacePath, {
+      action: 'snapshot.create',
+      target: name,
+      status: 'failed',
+      reason: options.reason,
+      details: { mode: 'project', error: error instanceof Error ? error.message : String(error) },
+    });
+    throw error;
+  }
+}
+
 export async function inspectWorkspaceSnapshot(
   options: InspectWorkspaceSnapshotOptions
 ): Promise<InspectWorkspaceSnapshotResult> {
@@ -653,6 +778,93 @@ export async function listWorkspaceSnapshots(
   return snapshots.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+const OPERATIONAL_HISTORY_PATHS = [
+  '.workspai/snapshots',
+  '.workspai/archive',
+  '.workspai/audit',
+  '.rapidkit/snapshots',
+  '.rapidkit/archive',
+  '.rapidkit/audit',
+] as const;
+
+async function restoreFullSnapshotAtomically(input: {
+  workspacePath: string;
+  filesRoot: string;
+  snapshotName: string;
+}): Promise<string> {
+  const parentPath = path.dirname(input.workspacePath);
+  const workspaceBaseName = path.basename(input.workspacePath);
+  const suffix = `${timestampForPath()}-${crypto.randomBytes(4).toString('hex')}`;
+  const stagingPath = path.join(parentPath, `.${workspaceBaseName}.restore-staging-${suffix}`);
+  const backupPath = path.join(parentPath, `.${workspaceBaseName}.pre-restore-${suffix}`);
+  const failedPath = path.join(parentPath, `.${workspaceBaseName}.restore-failed-${suffix}`);
+  const movedOperationalPaths: string[] = [];
+  let workspaceMoved = false;
+  let replacementInstalled = false;
+
+  try {
+    await fsExtra.copy(input.filesRoot, stagingPath, {
+      overwrite: false,
+      errorOnExist: true,
+      filter: (candidatePath) => shouldCopyPath(input.filesRoot, candidatePath),
+    });
+    await canonicalizeLegacyMetadataTree(stagingPath);
+    await fsExtra.rename(input.workspacePath, backupPath);
+    workspaceMoved = true;
+    await fsExtra.rename(stagingPath, input.workspacePath);
+    replacementInstalled = true;
+
+    for (const relativePath of OPERATIONAL_HISTORY_PATHS) {
+      const sourcePath = path.join(backupPath, relativePath);
+      if (!(await fsExtra.pathExists(sourcePath))) continue;
+      const destinationPath = path.join(input.workspacePath, relativePath);
+      if (await fsExtra.pathExists(destinationPath)) {
+        throw new Error(`Full restore operational path collision: ${relativePath}`);
+      }
+      await fsExtra.ensureDir(path.dirname(destinationPath));
+      await fsExtra.rename(sourcePath, destinationPath);
+      movedOperationalPaths.push(relativePath);
+    }
+
+    return backupPath;
+  } catch (error) {
+    for (const relativePath of [...movedOperationalPaths].reverse()) {
+      const sourcePath = path.join(input.workspacePath, relativePath);
+      const destinationPath = path.join(backupPath, relativePath);
+      if (await fsExtra.pathExists(sourcePath)) {
+        await fsExtra.ensureDir(path.dirname(destinationPath));
+        await fsExtra.rename(sourcePath, destinationPath);
+      }
+    }
+    if (replacementInstalled && (await fsExtra.pathExists(input.workspacePath))) {
+      await fsExtra.rename(input.workspacePath, failedPath);
+    }
+    if (workspaceMoved && (await fsExtra.pathExists(backupPath))) {
+      await fsExtra.rename(backupPath, input.workspacePath);
+    }
+    await fsExtra.remove(failedPath);
+    await fsExtra.remove(stagingPath);
+    throw new Error(
+      `Atomic full restore failed for ${input.snapshotName}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+async function rollbackMovedProjectSnapshot(
+  snapshot: CreateWorkspaceSnapshotResult,
+  workspacePath: string
+): Promise<void> {
+  const relativePath = snapshot.manifest.recoveryScope?.relativePath;
+  if (!relativePath) return;
+  const storedPath = path.join(snapshotFilesRoot(snapshot.snapshotPath), relativePath);
+  const projectPath = path.join(workspacePath, relativePath);
+  if ((await fsExtra.pathExists(storedPath)) && !(await fsExtra.pathExists(projectPath))) {
+    await fsExtra.ensureDir(path.dirname(projectPath));
+    await fsExtra.move(storedPath, projectPath, { overwrite: false });
+  }
+  await fsExtra.remove(snapshot.snapshotPath);
+}
+
 export async function restoreWorkspaceSnapshot(
   options: RestoreWorkspaceSnapshotOptions
 ): Promise<RestoreWorkspaceSnapshotResult> {
@@ -699,7 +911,65 @@ export async function restoreWorkspaceSnapshot(
   });
 
   let safetySnapshotPath: string | undefined;
-  if (options.safetySnapshot !== false) {
+  if (manifest.mode === 'full') {
+    safetySnapshotPath = await restoreFullSnapshotAtomically({
+      workspacePath,
+      filesRoot,
+      snapshotName: manifest.name,
+    });
+  } else if (manifest.mode === 'project') {
+    const relativePath = manifest.recoveryScope?.relativePath;
+    if (!relativePath) {
+      throw new Error(`Project recovery snapshot is missing recoveryScope: ${manifest.name}`);
+    }
+    const sourcePath = path.join(filesRoot, relativePath);
+    const projectPath = path.join(workspacePath, relativePath);
+    const projectExists = await fsExtra.pathExists(projectPath);
+    let safetySnapshot: CreateWorkspaceSnapshotResult | undefined;
+    const transientRollbackPath = path.join(
+      path.dirname(projectPath),
+      `.${path.basename(projectPath)}.pre-restore-${process.pid}-${crypto.randomBytes(4).toString('hex')}`
+    );
+    let transientProjectMoved = false;
+    if (projectExists && options.safetySnapshot !== false) {
+      safetySnapshot = await createProjectRecoverySnapshot({
+        workspacePath,
+        projectPath,
+        namePrefix: `pre-restore-${manifest.name}`,
+        reason: `Automatic project recovery snapshot before restoring ${manifest.name}`,
+        moveSource: true,
+      });
+      safetySnapshotPath = safetySnapshot.snapshotPath;
+    } else if (projectExists) {
+      await fsExtra.rename(projectPath, transientRollbackPath);
+      transientProjectMoved = true;
+    }
+
+    const temporaryProjectPath = path.join(
+      path.dirname(projectPath),
+      `.${path.basename(projectPath)}.restore-${process.pid}-${crypto.randomBytes(4).toString('hex')}`
+    );
+    try {
+      await fsExtra.copy(sourcePath, temporaryProjectPath, {
+        overwrite: false,
+        errorOnExist: true,
+      });
+      await fsExtra.rename(temporaryProjectPath, projectPath);
+      if (transientProjectMoved) {
+        await fsExtra.remove(transientRollbackPath);
+      }
+    } catch (error) {
+      await fsExtra.remove(temporaryProjectPath);
+      if (transientProjectMoved && (await fsExtra.pathExists(transientRollbackPath))) {
+        await fsExtra.remove(projectPath);
+        await fsExtra.rename(transientRollbackPath, projectPath);
+      }
+      if (safetySnapshot) {
+        await rollbackMovedProjectSnapshot(safetySnapshot, workspacePath);
+      }
+      throw error;
+    }
+  } else if (options.safetySnapshot !== false) {
     const safetySnapshot = await createWorkspaceSnapshot({
       workspacePath,
       name: `pre-restore-${manifest.name}-${timestampForPath()}`,
@@ -709,14 +979,7 @@ export async function restoreWorkspaceSnapshot(
     safetySnapshotPath = safetySnapshot.snapshotPath;
   }
 
-  if (manifest.mode === 'full') {
-    await fsExtra.copy(filesRoot, workspacePath, {
-      overwrite: true,
-      errorOnExist: false,
-      filter: (candidatePath) => shouldCopyPath(filesRoot, candidatePath),
-    });
-    await canonicalizeLegacyMetadataTree(workspacePath);
-  } else {
+  if (manifest.mode === 'metadata') {
     const restoredCanonicalPaths = new Set<string>();
     for (const relativePath of manifest.copiedPaths) {
       const canonicalRelativePath = toWorkspaiArtifactPath(relativePath);
@@ -808,11 +1071,7 @@ function archivedProjectPath(workspacePath: string, projectName: string): string
 }
 
 async function readArchiveManifest(archivePath: string): Promise<ProjectArchiveManifest> {
-  const manifestPath =
-    [PROJECT_ARCHIVE_MANIFEST_FILE, LEGACY_PROJECT_ARCHIVE_MANIFEST_FILE]
-      .map((fileName) => path.join(archivePath, fileName))
-      .find((candidate) => fsExtra.existsSync(candidate)) ??
-    path.join(archivePath, PROJECT_ARCHIVE_MANIFEST_FILE);
+  const manifestPath = archiveManifestPath(archivePath);
   const manifest: unknown = await fsExtra.readJson(manifestPath);
   if (
     !manifest ||
@@ -821,7 +1080,21 @@ async function readArchiveManifest(archivePath: string): Promise<ProjectArchiveM
   ) {
     throw new Error(`Invalid Workspai archive manifest: ${manifestPath}`);
   }
+  assertJsonSchemaContract(
+    manifest,
+    'contracts/project-archive.v1.json',
+    'Project archive manifest'
+  );
   return manifest as ProjectArchiveManifest;
+}
+
+function archiveManifestPath(archivePath: string): string {
+  return (
+    [PROJECT_ARCHIVE_MANIFEST_FILE, LEGACY_PROJECT_ARCHIVE_MANIFEST_FILE]
+      .map((fileName) => path.join(archivePath, fileName))
+      .find((candidate) => fsExtra.existsSync(candidate)) ??
+    path.join(archivePath, PROJECT_ARCHIVE_MANIFEST_FILE)
+  );
 }
 
 export async function listArchivedProjects(
@@ -903,6 +1176,19 @@ export async function archiveWorkspaceProject(
   const projectName = path.basename(projectPath);
   const archivePath = archivedProjectPath(workspacePath, projectName);
   const manifestPath = path.join(archivePath, PROJECT_ARCHIVE_MANIFEST_FILE);
+  const archiveStagingPath = `${archivePath}.tmp-${process.pid}`;
+  const stagingManifestPath = path.join(archiveStagingPath, PROJECT_ARCHIVE_MANIFEST_FILE);
+
+  for (const reservedManifestName of [
+    PROJECT_ARCHIVE_MANIFEST_FILE,
+    LEGACY_PROJECT_ARCHIVE_MANIFEST_FILE,
+  ]) {
+    if (await fsExtra.pathExists(path.join(projectPath, reservedManifestName))) {
+      throw new Error(
+        `Project contains reserved archive manifest path and cannot be archived safely: ${reservedManifestName}`
+      );
+    }
+  }
 
   if (options.dryRun) {
     await appendAuditEvent(workspacePath, {
@@ -928,15 +1214,13 @@ export async function archiveWorkspaceProject(
     safetySnapshot: true,
   });
 
-  const safetySnapshot = await createWorkspaceSnapshot({
+  const safetySnapshot = await createProjectRecoverySnapshot({
     workspacePath,
-    name: `pre-archive-${projectName}-${timestampForPath()}`,
+    projectPath,
+    namePrefix: 'pre-archive',
     reason: options.reason || `Automatic safety snapshot before archiving ${projectName}`,
-    includeProjects: false,
+    moveSource: false,
   });
-
-  await fsExtra.ensureDir(path.dirname(archivePath));
-  await fsExtra.move(projectPath, archivePath, { overwrite: false });
 
   const manifest: ProjectArchiveManifest = {
     schema: PROJECT_ARCHIVE_SCHEMA,
@@ -947,8 +1231,32 @@ export async function archiveWorkspaceProject(
     archivedAt: new Date().toISOString(),
     safetySnapshotPath: safetySnapshot.snapshotPath,
   };
+  assertJsonSchemaContract(
+    manifest,
+    'contracts/project-archive.v1.json',
+    'Project archive manifest'
+  );
 
-  await fsExtra.writeJson(manifestPath, manifest, { spaces: 2 });
+  let projectMoved = false;
+  try {
+    await fsExtra.ensureDir(path.dirname(archivePath));
+    await fsExtra.move(projectPath, archiveStagingPath, { overwrite: false });
+    projectMoved = true;
+    await fsExtra.writeJson(stagingManifestPath, manifest, { spaces: 2 });
+    await fsExtra.rename(archiveStagingPath, archivePath);
+  } catch (error) {
+    if (projectMoved && !(await fsExtra.pathExists(projectPath))) {
+      const rollbackPath = (await fsExtra.pathExists(archiveStagingPath))
+        ? archiveStagingPath
+        : archivePath;
+      if (await fsExtra.pathExists(rollbackPath)) {
+        await fsExtra.remove(path.join(rollbackPath, PROJECT_ARCHIVE_MANIFEST_FILE));
+        await fsExtra.move(rollbackPath, projectPath, { overwrite: false });
+      }
+    }
+    await fsExtra.remove(archiveStagingPath);
+    throw error;
+  }
   await removeImportedProjectsRegistryEntries(workspacePath, [projectPath]);
   await syncWorkspaceProjectsBestEffort(workspacePath);
 
@@ -1015,14 +1323,13 @@ export async function deleteWorkspaceProject(
     safetySnapshot: true,
   });
 
-  const safetySnapshot = await createWorkspaceSnapshot({
+  const safetySnapshot = await createProjectRecoverySnapshot({
     workspacePath,
-    name: `pre-delete-${projectName}-${timestampForPath()}`,
+    projectPath,
+    namePrefix: 'pre-delete',
     reason: options.reason || `Automatic safety snapshot before deleting ${projectName}`,
-    includeProjects: false,
+    moveSource: true,
   });
-
-  await fsExtra.remove(projectPath);
   await removeImportedProjectsRegistryEntries(workspacePath, [projectPath]);
   await syncWorkspaceProjectsBestEffort(workspacePath);
 
@@ -1091,14 +1398,55 @@ export async function restoreArchivedProject(
     safetySnapshot: true,
   });
 
-  const safetySnapshot = await createWorkspaceSnapshot({
-    workspacePath,
-    name: `pre-restore-project-${projectName}-${timestampForPath()}`,
-    reason: options.reason || `Automatic safety snapshot before restoring ${projectName}`,
-    includeProjects: false,
-  });
+  const existingProject = await fsExtra.pathExists(projectPath);
+  const safetySnapshot = existingProject
+    ? await createProjectRecoverySnapshot({
+        workspacePath,
+        projectPath,
+        namePrefix: 'pre-restore-project',
+        reason: options.reason || `Automatic safety snapshot before restoring ${projectName}`,
+        moveSource: true,
+      })
+    : await createWorkspaceSnapshot({
+        workspacePath,
+        name: `pre-restore-project-${projectName}-${timestampForPath()}`,
+        reason: options.reason || `Automatic safety snapshot before restoring ${projectName}`,
+        includeProjects: false,
+      });
 
-  await fsExtra.move(archivePath, projectPath, { overwrite: options.force === true });
+  const sourceManifestPath = archiveManifestPath(archivePath);
+  const restoreReceiptPath = workspaceMetadataPath(
+    workspacePath,
+    'audit',
+    'restores',
+    `${path.basename(archivePath)}.json`
+  );
+  try {
+    await fsExtra.move(archivePath, projectPath, { overwrite: false });
+    await fsExtra.ensureDir(path.dirname(restoreReceiptPath));
+    await fsExtra.move(
+      path.join(projectPath, path.basename(sourceManifestPath)),
+      restoreReceiptPath,
+      { overwrite: false }
+    );
+  } catch (error) {
+    if (await fsExtra.pathExists(projectPath)) {
+      if (await fsExtra.pathExists(restoreReceiptPath)) {
+        await fsExtra.move(
+          restoreReceiptPath,
+          path.join(projectPath, path.basename(sourceManifestPath)),
+          { overwrite: false }
+        );
+      }
+      if (!(await fsExtra.pathExists(archivePath))) {
+        await fsExtra.move(projectPath, archivePath, { overwrite: false });
+      }
+    }
+    if (existingProject) {
+      await rollbackMovedProjectSnapshot(safetySnapshot, workspacePath);
+    }
+    throw error;
+  }
   await syncWorkspaceProjectsBestEffort(workspacePath);
 
   await appendAuditEvent(workspacePath, {
@@ -1109,6 +1457,7 @@ export async function restoreArchivedProject(
     details: {
       archivePath,
       projectPath,
+      restoreReceiptPath,
       safetySnapshotPath: safetySnapshot.snapshotPath,
     },
   });
@@ -1119,7 +1468,7 @@ export async function restoreArchivedProject(
     projectPath,
     action: 'restore',
     archivePath,
-    manifestPath: path.join(projectPath, PROJECT_ARCHIVE_MANIFEST_FILE),
+    manifestPath: restoreReceiptPath,
     safetySnapshotPath: safetySnapshot.snapshotPath,
     dryRun: false,
   };

@@ -79,6 +79,108 @@ describe('workspace contract registry', () => {
     });
   });
 
+  it('excludes archived metadata and deduplicates stale imported copies of local projects', async () => {
+    const workspacePath = await makeTempDir('rk-contract-archive-filter-');
+    const externalCopy = await makeTempDir('rk-contract-external-copy-');
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.workspai', 'project.json'), {
+      runtime: 'node',
+      kit_name: 'nestjs.standard',
+    });
+    await fsExtra.outputJson(
+      path.join(
+        workspacePath,
+        '.workspai',
+        'archive',
+        'projects',
+        'old-api',
+        '.workspai',
+        'project.json'
+      ),
+      { runtime: 'node', kit_name: 'nestjs.standard' }
+    );
+    await fsExtra.outputJson(path.join(externalCopy, '.workspai', 'project.json'), {
+      runtime: 'node',
+      kit_name: 'nestjs.standard',
+    });
+    await upsertImportedProjectsRegistry(workspacePath, [
+      {
+        name: 'api',
+        path: externalCopy,
+        relativePath: 'api',
+        relationship: 'imported',
+        source: 'local-folder',
+        stack: 'nestjs',
+        runtime: 'node',
+        framework: 'nestjs',
+        frameworkDisplayName: 'NestJS',
+        supportTier: 'extended',
+        moduleSupport: false,
+        confidence: 'high',
+        importedAt: '2026-07-13T00:00:00.000Z',
+      },
+    ]);
+
+    const contract = await buildWorkspaceContract({ workspacePath });
+
+    expect(contract.projects).toHaveLength(1);
+    expect(contract.projects[0]).toMatchObject({
+      slug: 'api',
+      relativePath: 'api',
+      source: 'workspace',
+    });
+
+    await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_CONTRACT_PATH), {
+      ...contract,
+      projects: [
+        {
+          ...contract.projects[0],
+          relativePath: 'external/api',
+          source: 'local-folder',
+          relationship: 'imported',
+          externalPath: externalCopy,
+        },
+      ],
+    });
+    const synced = await syncWorkspaceContract({ workspacePath });
+    expect(synced.contract.projects[0]).toMatchObject({
+      slug: 'api',
+      relativePath: 'api',
+      source: 'workspace',
+    });
+    expect(synced.contract.projects[0].externalPath).toBeUndefined();
+  });
+
+  it('removes discovery-managed projects that have been archived while preserving manual entries', async () => {
+    const workspacePath = await makeTempDir('rk-contract-prune-managed-');
+    await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_CONTRACT_PATH), {
+      schemaVersion: 1,
+      kind: 'rapidkit.workspace.contract',
+      generatedAt: '2026-07-13T00:00:00.000Z',
+      workspace: { name: 'prune-ws' },
+      projects: [
+        {
+          slug: 'archived-api',
+          relativePath: 'archived-api',
+          source: 'workspace',
+          modules: [],
+          ports: [],
+          contracts: { owns: [], apis: [], publishes: [], consumes: [], dependsOn: [], env: [] },
+        },
+        {
+          slug: 'manual-service',
+          relativePath: 'manual-service',
+          modules: [],
+          ports: [],
+          contracts: { owns: [], apis: [], publishes: [], consumes: [], dependsOn: [], env: [] },
+        },
+      ],
+    });
+
+    const result = await syncWorkspaceContract({ workspacePath });
+
+    expect(result.contract.projects.map((project) => project.slug)).toEqual(['manual-service']);
+  });
+
   it('writes and verifies a valid workspace contract', async () => {
     const workspacePath = await makeTempDir('rk-contract-write-');
     await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {

@@ -22,6 +22,7 @@ const GENERATED_FILES = [
   'workspace-intelligence/agent-hooks.v1.json',
   'project-archive.v1.json',
   'workspace-snapshot.v1.json',
+  'workspace-snapshot.v2.json',
   'infra-plan.v1.json',
   'private-product-manifest.v1.json',
   'product-factory-plan.v1.json',

@@ -69,6 +69,7 @@ import { buildEnterpriseSurfaceProbes } from './utils/doctor-surface-probes.js';
 import { historyEntryFromDoctorFixResult, recordWorkspaceHistory } from './workspace-history.js';
 import { isWorkspaceShellDirectory } from './utils/workspace-root.js';
 import { WORKSPACE_INTELLIGENCE_ARTIFACTS } from './contracts/workspace-intelligence-runtime-registry.js';
+import { assertJsonSchemaContract } from './utils/json-schema-contract.js';
 
 export const DOCTOR_WORKSPACE_REPORT_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.doctor;
 
@@ -1663,7 +1664,13 @@ async function loadWorkspaceProjectCache(
 ): Promise<DoctorWorkspaceCacheEntry | null> {
   try {
     if (!(await fsExtra.pathExists(cachePath))) return null;
-    const cached = (await fsExtra.readJSON(cachePath)) as DoctorWorkspaceCacheEntry;
+    const cachedPayload: unknown = await fsExtra.readJSON(cachePath);
+    assertJsonSchemaContract(
+      cachedPayload,
+      'contracts/doctor-workspace-cache.v2.json',
+      `Doctor workspace cache ${cachePath}`
+    );
+    const cached = cachedPayload as DoctorWorkspaceCacheEntry;
     if (!cached || cached.signature !== signature || !Array.isArray(cached.projects)) {
       return null;
     }
@@ -1684,6 +1691,11 @@ async function saveWorkspaceProjectCache(
   entry: DoctorWorkspaceCacheEntry
 ): Promise<void> {
   try {
+    assertJsonSchemaContract(
+      entry,
+      'contracts/doctor-workspace-cache.v2.json',
+      `Doctor workspace cache ${cachePath}`
+    );
     await fsExtra.ensureDir(path.dirname(cachePath));
     await fsExtra.writeJSON(cachePath, entry, { spaces: 2 });
   } catch {

@@ -100,6 +100,20 @@ describe('workspace agent context', () => {
     });
   });
 
+  it('describes an empty workspace without assigning a backend identity', async () => {
+    const workspacePath = await makeTempDir('rk-context-empty-');
+    await fsExtra.outputJson(path.join(workspacePath, '.workspai', 'workspace.json'), {
+      workspace_name: 'empty-platform',
+      profile: 'minimal',
+    });
+
+    const context = await buildWorkspaceAgentContext({ workspacePath, agent: 'codex' });
+
+    expect(context.workspace.type).toBe('empty-workspace');
+    expect(context.workspaceSummary).toContain('no runtime coverage');
+    expect(context.workspaceSummary).not.toContain('no runtime runtime coverage');
+  });
+
   it('separates simple display commands from pinned execution commands', async () => {
     const workspacePath = await makeTempDir('rk-context-command-');
     await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {

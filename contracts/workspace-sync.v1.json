@@ -3,14 +3,27 @@
   "type": "object",
   "required": [
     "schemaVersion",
-    "status"
+    "workspacePath",
+    "registry",
+    "contractSynced",
+    "registrySummary"
   ],
   "properties": {
     "schemaVersion": {
       "const": "rapidkit-workspace-sync-v1"
     },
-    "status": {
-      "type": "string"
+    "workspacePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "registry": {
+      "type": "object"
+    },
+    "contractSynced": {
+      "type": "boolean"
+    },
+    "registrySummary": {
+      "type": "object"
     }
   },
   "additionalProperties": true

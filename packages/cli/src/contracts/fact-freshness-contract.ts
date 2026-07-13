@@ -105,16 +105,22 @@ export function buildFactFreshnessContract(input: {
   reason: string;
 }): FactFreshnessContract {
   const now = input.now ?? new Date();
-  const generatedAt = input.generatedAt ?? now.toISOString();
+  const requestedGeneratedAt = input.generatedAt ?? now.toISOString();
+  const requestedGeneratedTime = Date.parse(requestedGeneratedAt);
+  const hasValidGeneratedAt = Number.isFinite(requestedGeneratedTime);
+  const generatedAt = hasValidGeneratedAt ? requestedGeneratedAt : now.toISOString();
   const ttlSeconds = input.ttlSeconds === undefined ? ttlForKind(input.kind) : input.ttlSeconds;
   const status = resolveStatus({
     generatedAt,
     ttlSeconds,
-    status: input.status,
+    status: input.status ?? (hasValidGeneratedAt ? undefined : 'unknown'),
     now,
   });
+  const generatedTime = Date.parse(generatedAt);
   const expiresAt =
-    ttlSeconds === null ? undefined : new Date(Date.parse(generatedAt) + ttlSeconds * 1000);
+    ttlSeconds === null || !Number.isFinite(generatedTime)
+      ? undefined
+      : new Date(generatedTime + ttlSeconds * 1000);
   const verifyBeforeUse =
     input.verifyBeforeUse ??
     (input.kind === 'live' ||

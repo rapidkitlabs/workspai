@@ -1001,7 +1001,7 @@ export async function buildWorkspaceVerify(
     });
     const expectedGitChanges = impact.diff.changes
       .filter((change) => change.type.startsWith('git.'))
-      .map((change) => `${change.type}:${change.target}`)
+      .map((change) => `${change.type}:${change.target.replace(/^git:/, '')}`)
       .sort();
     const currentGitChanges = [
       ...currentGit.changedFiles.map((target) => `git.file.changed:${target}`),

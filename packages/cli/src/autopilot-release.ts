@@ -58,6 +58,7 @@ export interface AutopilotReleaseReport {
   };
   stages: AutopilotStageResult[];
   blockingReasons: string[];
+  warningReasons: string[];
   nextActions: string[];
   artifacts: {
     reportPath: string;
@@ -679,8 +680,10 @@ export async function runAutopilotRelease(
       ? stages.some((stage) => stage.status === 'warn' || stage.status === 'fail')
       : failCount > 0;
 
-  const dedupedBlockers = [...new Set(blockingReasons)];
-  const blockers = executionError || hasStrictBlockers ? Math.max(1, dedupedBlockers.length) : 0;
+  const dedupedReasons = [...new Set(blockingReasons)];
+  const blockers = executionError || hasStrictBlockers ? Math.max(1, dedupedReasons.length) : 0;
+  const effectiveBlockingReasons = blockers > 0 ? dedupedReasons : [];
+  const warningReasons = blockers === 0 ? dedupedReasons : [];
 
   const releaseScore = computeReleaseScore(stages);
   const verdict = executionError
@@ -701,7 +704,7 @@ export async function runAutopilotRelease(
   const nextActions = buildNextActions({
     mode,
     executionError,
-    blockers: dedupedBlockers,
+    blockers: dedupedReasons,
     hasWarnings: warnCount > 0,
   });
 
@@ -720,11 +723,12 @@ export async function runAutopilotRelease(
       blockers,
       warnings: warnCount,
       safeFixesApplied,
-      manualActions: dedupedBlockers.length,
+      manualActions: dedupedReasons.length,
       exitCode,
     },
     stages,
-    blockingReasons: dedupedBlockers,
+    blockingReasons: effectiveBlockingReasons,
+    warningReasons,
     nextActions,
     artifacts: {
       reportPath,
@@ -790,6 +794,13 @@ export async function runAutopilotRelease(
       console.log(chalk.bold.red('\nBlocking reasons:'));
       for (const reason of report.blockingReasons) {
         console.log(chalk.red(` - ${reason}`));
+      }
+    }
+
+    if (report.warningReasons.length > 0) {
+      console.log(chalk.bold.yellow('\nWarning reasons:'));
+      for (const reason of report.warningReasons) {
+        console.log(chalk.yellow(` - ${reason}`));
       }
     }
 

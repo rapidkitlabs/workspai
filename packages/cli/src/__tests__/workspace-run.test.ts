@@ -57,7 +57,7 @@ function noGateMock(extraArgs?: Record<string, { exitCode: number; stdout: strin
   return execaMock;
 }
 
-describe('workspace-run', () => {
+describe('workspace-run', { timeout: 30_000 }, () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });

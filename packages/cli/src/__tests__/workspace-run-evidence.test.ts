@@ -100,4 +100,35 @@ describe('workspace run evidence', () => {
     expect(normalized?.stages.test?.stage).toBe('test');
     expect(resolveWorkspaceRunStageReport(legacy, 'test')?.stage).toBe('test');
   });
+
+  it('preserves both stages when publishers race', async () => {
+    const workspace = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-race-'));
+    createdPaths.push(workspace);
+
+    await Promise.all([
+      publishWorkspaceRunStageReport(workspace, makeStageReport(workspace, 'test')),
+      publishWorkspaceRunStageReport(workspace, makeStageReport(workspace, 'build')),
+    ]);
+
+    const evidence = await readWorkspaceRunEvidence(workspace);
+    expect(evidence?.stages.test?.stage).toBe('test');
+    expect(evidence?.stages.build?.stage).toBe('build');
+  });
+
+  it('refuses to overwrite unreadable existing evidence', async () => {
+    const workspace = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-invalid-'));
+    createdPaths.push(workspace);
+    const reportPath = path.join(
+      workspace,
+      '.workspai',
+      'reports',
+      WORKSPACE_RUN_LAST_REPORT_FILENAME
+    );
+    await fsExtra.outputFile(reportPath, '{invalid json');
+
+    await expect(
+      publishWorkspaceRunStageReport(workspace, makeStageReport(workspace, 'test'))
+    ).rejects.toThrow('refusing to overwrite');
+    expect(await fsExtra.readFile(reportPath, 'utf-8')).toBe('{invalid json');
+  });
 });

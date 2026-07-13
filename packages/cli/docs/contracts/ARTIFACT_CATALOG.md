@@ -34,7 +34,7 @@ exclude the canonical marker.
 | ------------------------------------ | ----------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------ |
 | `doctor workspace`                   | `.workspai/reports/doctor-last-run.json`                    | `doctor-workspace-evidence-v1`  | `contracts/doctor-workspace-evidence.v1.json`                |
 | `doctor project`                     | `.workspai/reports/doctor-project-last-run.json`            | `doctor-project-evidence-v1`    | `contracts/doctor-project-evidence.v1.json`                  |
-| `doctor * --plan`                    | `.workspai/reports/doctor-remediation-plan-last-run.json`   | `doctor-remediation-plan-v2`    | `contracts/doctor-remediation-plan.v1.json`                  |
+| `doctor * --plan`                    | `.workspai/reports/doctor-remediation-plan-last-run.json`   | `doctor-remediation-plan-v2`    | `contracts/doctor-remediation-plan.v2.json`                  |
 | `doctor * --fix/--apply`             | `.workspai/reports/doctor-fix-result-last-run.json`         | `rapidkit-doctor-fix-result-v1` | `contracts/workspace-intelligence/doctor-fix-result.v1.json` |
 | `workspace remediation-plan --write` | `.workspai/reports/artifact-remediation-plan-last-run.json` | `artifact-remediation-plan-v1`  | `contracts/artifact-remediation-plan.v1.json`                |
 | `analyze`                            | `.workspai/reports/analyze-last-run.json`                   | `rapidkit-analyze-v1`           | `contracts/analyze-last-run.v1.json`                         |
@@ -46,7 +46,7 @@ exclude the canonical marker.
 Side/cache (not gates): `.workspai/reports/doctor-workspace-cache.json` (`doctor-workspace-cache-v2`).
 
 Doctor Studio handoff:
-`doctor-remediation-plan-v2` (`contracts/doctor-remediation-plan.v1.json`) is emitted in JSON
+`doctor-remediation-plan-v2` (`contracts/doctor-remediation-plan.v2.json`) is emitted in JSON
 responses and persisted to `.workspai/reports/doctor-remediation-plan-last-run.json` by
 `doctor workspace|project --plan`, `--fix`, and `--apply` so IDEs can render approved commands,
 typed file edits, diff previews, ordered phases, step dependencies, rollback, and verification

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 import { computeInputsHash } from './contracts/freshness-metadata-contract.js';
 import { computeProjectOwnHashes } from './workspace-graph-freshness.js';
+import { assertJsonSchemaContract } from './utils/json-schema-contract.js';
 import {
   buildWorkspaceModelIncremental,
   type BuildWorkspaceModelOptions,
@@ -55,6 +56,15 @@ export type WorkspaceWatchEvent = {
   durationMs: number;
   error?: string;
 };
+
+function validatedWorkspaceWatchEvent(event: WorkspaceWatchEvent): WorkspaceWatchEvent {
+  assertJsonSchemaContract(
+    event,
+    'contracts/workspace-watch-event.v1.json',
+    'Workspace watch event'
+  );
+  return event;
+}
 
 function edgeKey(edge: WorkspaceWatchGraphEdgeRef): string {
   return `${edge.from}\u0000${edge.to}\u0000${edge.kind}`;
@@ -205,7 +215,7 @@ export class WorkspaceWatchEngine {
     const diff = diffWatchModels(previous, next);
     const modelHash = computeWatchModelHash(next);
     const modelHashChanged = previous ? computeWatchModelHash(previous) !== modelHash : true;
-    return {
+    return validatedWorkspaceWatchEvent({
       schemaVersion: WORKSPACE_WATCH_EVENT_SCHEMA_VERSION,
       kind,
       sequence: this.sequence++,
@@ -223,7 +233,7 @@ export class WorkspaceWatchEngine {
         edgesRemoved: diff.edgesRemoved,
       },
       durationMs,
-    };
+    });
   }
 }
 
@@ -322,21 +332,23 @@ export async function runWorkspaceWatch(options: RunWorkspaceWatchOptions): Prom
       const event = await engine.pulse();
       options.emit(event);
     } catch (error) {
-      options.emit({
-        schemaVersion: WORKSPACE_WATCH_EVENT_SCHEMA_VERSION,
-        kind: 'error',
-        sequence: -1,
-        timestamp: new Date().toISOString(),
-        mode: 'full',
-        modelHash: engine.currentModel ? computeWatchModelHash(engine.currentModel) : '',
-        modelHashChanged: false,
-        changedProjects: [],
-        addedProjects: [],
-        removedProjects: [],
-        graph: { nodeCount: 0, edgeCount: 0, edgesAdded: [], edgesRemoved: [] },
-        durationMs: 0,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      options.emit(
+        validatedWorkspaceWatchEvent({
+          schemaVersion: WORKSPACE_WATCH_EVENT_SCHEMA_VERSION,
+          kind: 'error',
+          sequence: -1,
+          timestamp: new Date().toISOString(),
+          mode: 'full',
+          modelHash: engine.currentModel ? computeWatchModelHash(engine.currentModel) : '',
+          modelHashChanged: false,
+          changedProjects: [],
+          addedProjects: [],
+          removedProjects: [],
+          graph: { nodeCount: 0, edgeCount: 0, edgesAdded: [], edgesRemoved: [] },
+          durationMs: 0,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
     } finally {
       pulsing = false;
       // Start the self-write suppression window after the rebuild (and its cache

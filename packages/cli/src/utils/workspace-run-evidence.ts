@@ -6,7 +6,8 @@ import type {
   WorkspaceRunStage,
   WorkspaceRunStageName,
 } from '../workspace-run.js';
-import { workspaceMetadataCandidates, workspaceMetadataPath } from './workspace-paths.js';
+import { workspaceMetadataCandidates } from './workspace-paths.js';
+import { withWorkspaceArtifactLock, writeWorkspaceArtifactJson } from './artifact-path-compat.js';
 
 export const WORKSPACE_RUN_EVIDENCE_SCHEMA_VERSION = 'workspace-run-v1';
 export const WORKSPACE_RUN_LAST_REPORT_FILENAME = 'workspace-run-last.json';
@@ -51,11 +52,6 @@ async function readJsonFile<T>(filePath: string): Promise<T | null> {
   } catch {
     return null;
   }
-}
-
-async function writeJsonFile(filePath: string, payload: unknown): Promise<void> {
-  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.promises.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -150,40 +146,50 @@ export async function publishWorkspaceRunStageReport(
   stageReport: WorkspaceRunReport
 ): Promise<WorkspaceRunEvidence> {
   const resolvedWorkspacePath = path.resolve(workspacePath);
-  const reportPath = workspaceMetadataPath(
+  return withWorkspaceArtifactLock(
     resolvedWorkspacePath,
-    'reports',
-    WORKSPACE_RUN_LAST_REPORT_FILENAME
-  );
-  const existingPath = (
-    await Promise.all(
-      workspaceMetadataCandidates(
+    WORKSPACE_RUN_LAST_REPORT_RELATIVE_PATH,
+    async () => {
+      const existingPath = (
+        await Promise.all(
+          workspaceMetadataCandidates(
+            resolvedWorkspacePath,
+            'reports',
+            WORKSPACE_RUN_LAST_REPORT_FILENAME
+          ).map(async (candidate) => ((await pathExists(candidate)) ? candidate : null))
+        )
+      ).find((candidate): candidate is string => typeof candidate === 'string');
+      const existing = existingPath ? await readJsonFile<unknown>(existingPath) : null;
+      const normalized = normalizeWorkspaceRunEvidence(existing);
+      if (existingPath && !normalized) {
+        throw new Error(
+          `Workspace run evidence is unreadable or invalid; refusing to overwrite: ${existingPath}`
+        );
+      }
+      const stages: Partial<Record<WorkspaceRunStageName, WorkspaceRunReport>> = normalized
+        ? { ...normalized.stages }
+        : {};
+
+      stages[stageReport.stage] = stageReport;
+
+      const evidence: WorkspaceRunEvidence = {
+        schemaVersion: WORKSPACE_RUN_EVIDENCE_SCHEMA_VERSION,
+        generatedAt: stageReport.generatedAt,
+        workspacePath: stageReport.workspacePath,
+        latestStage: stageReport.stage,
+        stages,
+        enterpriseControls: {
+          jsonReady: true,
+          evidencePath: WORKSPACE_RUN_LAST_REPORT_RELATIVE_PATH,
+        },
+      };
+
+      await writeWorkspaceArtifactJson(
         resolvedWorkspacePath,
-        'reports',
-        WORKSPACE_RUN_LAST_REPORT_FILENAME
-      ).map(async (candidate) => ((await pathExists(candidate)) ? candidate : null))
-    )
-  ).find((candidate): candidate is string => typeof candidate === 'string');
-  const existing = existingPath ? await readJsonFile<unknown>(existingPath) : null;
-  const normalized = normalizeWorkspaceRunEvidence(existing);
-  const stages: Partial<Record<WorkspaceRunStageName, WorkspaceRunReport>> = normalized
-    ? { ...normalized.stages }
-    : {};
-
-  stages[stageReport.stage] = stageReport;
-
-  const evidence: WorkspaceRunEvidence = {
-    schemaVersion: WORKSPACE_RUN_EVIDENCE_SCHEMA_VERSION,
-    generatedAt: stageReport.generatedAt,
-    workspacePath: stageReport.workspacePath,
-    latestStage: stageReport.stage,
-    stages,
-    enterpriseControls: {
-      jsonReady: true,
-      evidencePath: WORKSPACE_RUN_LAST_REPORT_RELATIVE_PATH,
-    },
-  };
-
-  await writeJsonFile(reportPath, evidence);
-  return evidence;
+        WORKSPACE_RUN_LAST_REPORT_RELATIVE_PATH,
+        evidence
+      );
+      return evidence;
+    }
+  );
 }

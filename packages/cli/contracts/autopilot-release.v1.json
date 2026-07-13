@@ -32,15 +32,103 @@
       ]
     },
     "summary": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "releaseScore",
+        "verdict",
+        "blockers",
+        "warnings",
+        "safeFixesApplied",
+        "manualActions",
+        "exitCode"
+      ],
+      "properties": {
+        "releaseScore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "verdict": {
+          "enum": [
+            "approved",
+            "blocked",
+            "partial"
+          ]
+        },
+        "blockers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warnings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "safeFixesApplied": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "manualActions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exitCode": {
+          "enum": [
+            0,
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "stages": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "required": [
+          "name",
+          "status",
+          "durationMs",
+          "summary"
+        ],
+        "properties": {
+          "name": {
+            "enum": [
+              "doctor-workspace",
+              "analyze",
+              "readiness",
+              "remediation-plan",
+              "remediation-apply",
+              "workspace-run-test-build"
+            ]
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "warn",
+              "fail",
+              "skipped"
+            ]
+          },
+          "durationMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       }
     },
     "blockingReasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warningReasons": {
       "type": "array",
       "items": {
         "type": "string"
@@ -53,7 +141,63 @@
       }
     },
     "artifacts": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "reportPath"
+      ],
+      "properties": {
+        "reportPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aliasEvidencePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analyzeEvidencePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "readinessEvidencePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceRunEvidencePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceRunTestPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceRunBuildPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "enterpriseControls": {
+      "type": "object",
+      "required": [
+        "jsonReady",
+        "evidencePath",
+        "aliasEvidencePath"
+      ],
+      "properties": {
+        "jsonReady": {
+          "type": "boolean"
+        },
+        "evidencePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aliasEvidencePath": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": true

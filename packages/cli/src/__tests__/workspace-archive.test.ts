@@ -155,6 +155,8 @@ describe('workspace archive export/hydrate', () => {
     expect(shouldExcludeWorkspaceArchivePath('api/.env')).toBe(true);
     expect(shouldExcludeWorkspaceArchivePath('api/.env.example')).toBe(false);
     expect(shouldExcludeWorkspaceArchivePath('api/src/main.py')).toBe(false);
+    expect(shouldExcludeWorkspaceArchivePath('backups/old.workspai-archive.zip')).toBe(true);
+    expect(shouldExcludeWorkspaceArchivePath('backups/old.rapidkit-archive.zip')).toBe(true);
   });
 
   it('exports and hydrates a portable archive without dependency or secret files', async () => {
@@ -225,6 +227,64 @@ describe('workspace archive export/hydrate', () => {
     expect(await fsExtra.pathExists(path.join(hydratePath, 'api', 'src', 'main.ts'))).toBe(true);
     expect(await fsExtra.pathExists(path.join(hydratePath, 'api', '.env'))).toBe(false);
   });
+
+  it('atomically replaces an existing hydrate target when force is enabled', async () => {
+    const workspacePath = await makeTempDir('rk-workspace-hydrate-force-src-');
+    const outputRoot = await makeTempDir('rk-workspace-hydrate-force-out-');
+    const archivePath = path.join(outputRoot, 'team.workspai-archive.zip');
+    const hydratePath = path.join(outputRoot, 'hydrated');
+
+    await fsExtra.writeJson(path.join(workspacePath, '.workspai-workspace'), {
+      signature: 'WORKSPAI_WORKSPACE',
+      name: 'force-ws',
+    });
+    await fsExtra.outputFile(path.join(workspacePath, 'api', 'main.ts'), 'new content');
+    await exportWorkspaceArchive({ workspacePath, outputPath: archivePath });
+    await fsExtra.outputFile(path.join(hydratePath, 'old.txt'), 'old content');
+
+    await hydrateWorkspaceArchive({
+      archivePathOrUrl: archivePath,
+      outputPath: hydratePath,
+      force: true,
+    });
+
+    expect(await fsExtra.pathExists(path.join(hydratePath, 'old.txt'))).toBe(false);
+    expect(await fsExtra.readFile(path.join(hydratePath, 'api', 'main.ts'), 'utf-8')).toBe(
+      'new content'
+    );
+    expect((await fsExtra.readdir(outputRoot)).some((name) => name.includes('.hydrate-'))).toBe(
+      false
+    );
+  });
+
+  it.runIf(process.platform !== 'win32')(
+    'refuses to hydrate through a symbolic-link target',
+    async () => {
+      const workspacePath = await makeTempDir('rk-workspace-hydrate-link-src-');
+      const outputRoot = await makeTempDir('rk-workspace-hydrate-link-out-');
+      const externalPath = await makeTempDir('rk-workspace-hydrate-link-external-');
+      const archivePath = path.join(outputRoot, 'team.workspai-archive.zip');
+      const hydratePath = path.join(outputRoot, 'hydrated');
+
+      await fsExtra.writeJson(path.join(workspacePath, '.workspai-workspace'), {
+        signature: 'WORKSPAI_WORKSPACE',
+        name: 'link-ws',
+      });
+      await fsExtra.outputFile(path.join(workspacePath, 'api', 'main.ts'), 'new content');
+      await exportWorkspaceArchive({ workspacePath, outputPath: archivePath });
+      await fsExtra.outputFile(path.join(externalPath, 'sentinel.txt'), 'keep');
+      await fsExtra.symlink(externalPath, hydratePath, 'dir');
+
+      await expect(
+        hydrateWorkspaceArchive({
+          archivePathOrUrl: archivePath,
+          outputPath: hydratePath,
+          force: true,
+        })
+      ).rejects.toThrow('must not be a symbolic link');
+      expect(await fsExtra.readFile(path.join(externalPath, 'sentinel.txt'), 'utf-8')).toBe('keep');
+    }
+  );
 
   it('inspects and verifies archive manifests with file checksums', async () => {
     const workspacePath = await makeTempDir('rk-workspace-verify-src-');

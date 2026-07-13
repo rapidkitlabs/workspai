@@ -161,6 +161,22 @@ async function sha256File(filePath: string): Promise<string> {
   return createHash('sha256').update(content).digest('hex');
 }
 
+async function listFilesRecursively(rootPath: string): Promise<string[]> {
+  if (!(await fsExtra.pathExists(rootPath))) return [];
+  const files: string[] = [];
+  const queue = [rootPath];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    for (const entry of await fs.readdir(current, { withFileTypes: true })) {
+      const entryPath = path.join(current, entry.name);
+      if (entry.isFile()) files.push(entryPath);
+      else if (entry.isDirectory()) queue.push(entryPath);
+    }
+  }
+  return files;
+}
+
 async function writeJsonFile(filePath: string, payload: unknown): Promise<void> {
   await fsExtra.outputFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
 }
@@ -742,7 +758,7 @@ export async function runMirrorLifecycle(
 
     if (sourcePath && (await fsExtra.pathExists(sourcePath))) {
       await fsExtra.ensureDir(path.dirname(targetPath));
-      await fsExtra.copyFile(sourcePath, targetPath);
+      await fs.copyFile(sourcePath, targetPath);
       details.syncedArtifacts += 1;
       mirrored = true;
       provenance = {
@@ -1049,10 +1065,12 @@ export async function runMirrorLifecycle(
 
   const keepLast = config.retention?.keepLast;
   if (typeof keepLast === 'number' && keepLast > 0) {
-    const entries = await fs.readdir(mirrorArtifactsDir, { withFileTypes: true });
-    const files = entries
-      .filter((entry) => entry.isFile())
-      .map((entry) => path.join(mirrorArtifactsDir, entry.name));
+    const activeArtifactPaths = new Set(
+      lockEntries.map((entry) => path.resolve(workspacePath, entry.path))
+    );
+    const files = (await listFilesRecursively(mirrorArtifactsDir)).filter(
+      (filePath) => !activeArtifactPaths.has(path.resolve(filePath))
+    );
 
     if (files.length > keepLast) {
       const withStat = await Promise.all(

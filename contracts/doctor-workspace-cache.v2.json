@@ -2,11 +2,80 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "required": [
-    "schemaVersion"
+    "schemaVersion",
+    "signature",
+    "generatedAt",
+    "projects"
   ],
   "properties": {
     "schemaVersion": {
       "const": "doctor-workspace-cache-v2"
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "path",
+          "venvActive",
+          "depsInstalled",
+          "coreInstalled",
+          "issues"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "venvActive": {
+            "type": "boolean"
+          },
+          "depsInstalled": {
+            "type": "boolean"
+          },
+          "coreInstalled": {
+            "type": "boolean"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fixCommands": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "runtimeFamily": {
+            "type": "string"
+          },
+          "projectKind": {
+            "type": "string"
+          },
+          "probes": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "additionalProperties": true
+      }
     }
   },
   "additionalProperties": true

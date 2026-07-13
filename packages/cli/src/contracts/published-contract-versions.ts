@@ -31,6 +31,7 @@ import {
   WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
 } from './workspace-archive-contract.js';
 import { CLI_OPERATION_RESULT_SCHEMA_VERSION } from './cli-operation-result-contract.js';
+import { OPERATIONAL_JSON_SCHEMA_VERSIONS } from './operational-json-schemas.js';
 
 export const PUBLISHED_CONTRACT_CATALOG_SCHEMA_VERSION =
   'workspai-published-contract-catalog-v1' as const;
@@ -68,6 +69,7 @@ export function getPublishedContractVersions() {
     doctorRemediationPlan: DOCTOR_REMEDIATION_PLAN_SCHEMA_VERSION,
     artifactRemediationPlan: ARTIFACT_REMEDIATION_PLAN_SCHEMA_VERSION,
     doctorFixResult: DOCTOR_FIX_RESULT_SCHEMA_VERSION,
+    ...OPERATIONAL_JSON_SCHEMA_VERSIONS,
   };
 }
 
@@ -115,9 +117,25 @@ export function getPublishedContractCatalog() {
     workspaceSkillsIndex: 'contracts/workspace-intelligence/workspace-skills-index.v1.json',
     workspaceExplain: 'contracts/workspace-intelligence/workspace-explain.v1.json',
     agentActionOutcome: 'contracts/workspace-intelligence/agent-action-outcome.v1.json',
-    doctorRemediationPlan: 'contracts/doctor-remediation-plan.v1.json',
+    doctorRemediationPlan: 'contracts/doctor-remediation-plan.v2.json',
     artifactRemediationPlan: 'contracts/artifact-remediation-plan.v1.json',
     doctorFixResult: 'contracts/workspace-intelligence/doctor-fix-result.v1.json',
+    autopilotRelease: 'contracts/autopilot-release.v1.json',
+    workspaceList: 'contracts/workspace-list.v1.json',
+    workspaceSync: 'contracts/workspace-sync.v1.json',
+    compatibilityMatrix: 'contracts/compatibility-matrix.v1.json',
+    mcpDesign: 'contracts/workspace-intelligence/mcp-design.v1.json',
+    agentHooks: 'contracts/workspace-intelligence/agent-hooks.v1.json',
+    projectArchive: 'contracts/project-archive.v1.json',
+    workspaceSnapshot: 'contracts/workspace-snapshot.v1.json',
+    workspaceSnapshotV2: 'contracts/workspace-snapshot.v2.json',
+    infraPlan: 'contracts/infra-plan.v1.json',
+    privateProductManifest: 'contracts/private-product-manifest.v1.json',
+    productFactoryPlan: 'contracts/product-factory-plan.v1.json',
+    workspaceModelCache: 'contracts/workspace-model-cache.v1.json',
+    workspaceWatchEvent: 'contracts/workspace-watch-event.v1.json',
+    doctorProjectScan: 'contracts/doctor-project-scan.v2.json',
+    doctorWorkspaceCache: 'contracts/doctor-workspace-cache.v2.json',
   };
 
   return Object.fromEntries(

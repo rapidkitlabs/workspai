@@ -33,6 +33,18 @@ function runGit(workspacePath: string, args: string[]): { ok: boolean; stdout: s
   return { ok: true, stdout: (result.stdout ?? '').trim() };
 }
 
+/**
+ * Runtime evidence must not become an input to its own freshness calculation.
+ * Otherwise writing impact/verify reports changes `git status` and immediately
+ * makes the just-produced intelligence chain stale.
+ */
+export function isGeneratedWorkspaceRuntimePath(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, '/').replace(/^\.\//, '');
+  return ['.workspai/reports/', '.workspai/cache/', '.rapidkit/reports/', '.rapidkit/cache/'].some(
+    (prefix) => normalized.startsWith(prefix)
+  );
+}
+
 function parsePorcelainStatus(raw: string): {
   changedFiles: string[];
   untrackedFiles: string[];
@@ -49,6 +61,9 @@ function parsePorcelainStatus(raw: string): {
     const status = line.slice(0, 2);
     const filePath = line.slice(3).trim();
     if (!filePath) {
+      continue;
+    }
+    if (isGeneratedWorkspaceRuntimePath(filePath)) {
       continue;
     }
     if (status === '??') {

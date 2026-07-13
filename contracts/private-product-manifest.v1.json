@@ -2,11 +2,153 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "required": [
-    "schemaVersion"
+    "schemaVersion",
+    "generatedAt",
+    "product",
+    "workspace",
+    "projects",
+    "factory"
   ],
   "properties": {
     "schemaVersion": {
       "const": "rapidkit.private-product-manifest.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "product": {
+      "type": "object",
+      "required": [
+        "rank",
+        "slug",
+        "title",
+        "category",
+        "tier",
+        "summary"
+      ],
+      "properties": {
+        "rank": {
+          "type": "number"
+        },
+        "slug": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tier": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "workspace": {
+      "type": "object",
+      "required": [
+        "name",
+        "profile",
+        "outputHint"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "profile": {
+          "const": "enterprise"
+        },
+        "outputHint": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "projects": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "slug",
+          "kit",
+          "runtime",
+          "framework",
+          "modules",
+          "moduleGaps"
+        ],
+        "properties": {
+          "slug": {
+            "const": "api"
+          },
+          "kit": {
+            "type": "string",
+            "minLength": 1
+          },
+          "runtime": {
+            "const": "python"
+          },
+          "framework": {
+            "const": "fastapi"
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "moduleGaps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "factory": {
+      "type": "object",
+      "required": [
+        "sourceBacklogPath",
+        "manifestChecksum",
+        "requiredCommands",
+        "releaseEvidencePath"
+      ],
+      "properties": {
+        "sourceBacklogPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifestChecksum": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "requiredCommands": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "releaseEvidencePath": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": true

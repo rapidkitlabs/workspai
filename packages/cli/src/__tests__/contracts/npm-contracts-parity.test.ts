@@ -28,6 +28,7 @@ const CLI_EXTENSION_CONTRACT_FILES = [
   'doctor-workspace-evidence.v1.json',
   'doctor-project-evidence.v1.json',
   'doctor-remediation-plan.v1.json',
+  'doctor-remediation-plan.v2.json',
   'artifact-remediation-plan.v1.json',
   'analyze-last-run.v1.json',
 ];

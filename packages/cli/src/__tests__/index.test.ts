@@ -1058,6 +1058,87 @@ describe('CLI Entry Point', () => {
       }
     });
 
+    it('emits a single JSON document for workspace init --json', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-init-json-'));
+      await fs.writeFile(path.join(workspaceRoot, '.workspai-workspace'), '');
+
+      try {
+        const { stdout, exitCode } = await execa(
+          'node',
+          [CLI_PATH, 'workspace', 'init', '--json', '--no-gates'],
+          { cwd: workspaceRoot }
+        );
+        expect(exitCode).toBe(0);
+        expect(() => JSON.parse(stdout)).not.toThrow();
+        expect(JSON.parse(stdout)).toMatchObject({ stage: 'init' });
+      } finally {
+        await fs.remove(workspaceRoot);
+      }
+    });
+
+    it('uses the fleet-size worker default when parallel mode omits max-workers', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-workers-default-'));
+      await fs.writeFile(path.join(workspaceRoot, '.workspai-workspace'), '');
+      for (const name of ['api-a', 'api-b', 'api-c']) {
+        await fs.outputJson(path.join(workspaceRoot, name, 'package.json'), {
+          name,
+          scripts: { test: 'node --version' },
+        });
+        await fs.outputJson(path.join(workspaceRoot, name, '.workspai', 'project.json'), {
+          name,
+          runtime: 'node',
+          kit_name: 'vite-react',
+        });
+      }
+
+      const result = await execa(
+        'node',
+        [CLI_PATH, 'workspace', 'run', 'test', '--parallel', '--json', '--no-gates'],
+        { cwd: workspaceRoot }
+      );
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        options: { parallel: true, maxWorkers: 3 },
+        summary: { selectedCount: 3 },
+      });
+    }, 30000);
+
+    it('rejects invalid max-workers with a structured JSON error', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-workers-invalid-'));
+      await fs.writeFile(path.join(workspaceRoot, '.workspai-workspace'), '');
+
+      const result = await execa(
+        'node',
+        [CLI_PATH, 'workspace', 'run', 'test', '--max-workers', '0', '--json', '--no-gates'],
+        { cwd: workspaceRoot, reject: false }
+      );
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        schemaVersion: 'workspai-cli-operation-result-v1',
+        operation: 'workspace run test',
+        status: 'error',
+        error: { code: 'cli.option.max-workers.invalid' },
+      });
+    });
+
+    it('rejects workspace flags that are valid globally but meaningless for the selected action', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-flag-capability-'));
+      await fs.writeFile(path.join(workspaceRoot, '.workspai-workspace'), '');
+
+      const result = await execa('node', [CLI_PATH, 'workspace', 'model', '--parallel', '--json'], {
+        cwd: workspaceRoot,
+        reject: false,
+      });
+      expect(result.exitCode).toBe(2);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        schemaVersion: 'workspai-cli-operation-result-v1',
+        operation: 'workspace model',
+        status: 'error',
+        exitCode: 2,
+        error: { code: 'workspace.option.unsupported' },
+        context: { action: 'model', unsupportedFlags: ['--parallel'] },
+      });
+    });
+
     it('should list workspace init in unknown workspace action help', async () => {
       try {
         await execa('node', [CLI_PATH, 'workspace', 'unknown-action']);
@@ -1069,6 +1150,38 @@ describe('CLI Entry Point', () => {
         // Pin against the canonical workspace command surface (single source of truth).
         expect(output).toContain(`Available: ${WORKSPACE_SUBCOMMANDS.join(', ')}`);
       }
+    });
+
+    it('emits a structured JSON error when a workspace root is required', async () => {
+      const nonWorkspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'workspai-no-root-json-'));
+      try {
+        const result = await execa('node', [CLI_PATH, 'workspace', 'model', '--json'], {
+          cwd: nonWorkspaceRoot,
+          reject: false,
+        });
+        expect(result.exitCode).toBe(1);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          schemaVersion: 'workspai-cli-operation-result-v1',
+          operation: 'workspace model',
+          status: 'error',
+          error: { code: 'workspace.root.required' },
+        });
+      } finally {
+        await fs.remove(nonWorkspaceRoot);
+      }
+    });
+
+    it('emits a structured JSON error for an unknown workspace action', async () => {
+      const result = await execa('node', [CLI_PATH, 'workspace', 'unknown-action', '--json'], {
+        reject: false,
+      });
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        schemaVersion: 'workspai-cli-operation-result-v1',
+        operation: 'workspace unknown-action',
+        status: 'error',
+        error: { code: 'workspace.action.unknown' },
+      });
     });
 
     it('should handle invalid project names gracefully', async () => {

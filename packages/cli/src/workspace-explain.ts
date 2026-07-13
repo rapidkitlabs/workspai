@@ -23,6 +23,8 @@ import {
 } from './contracts/workspace-explain-contract.js';
 import { summarizeEmptyWorkspaceExplain } from './workspace-scaffold.js';
 import { writeWorkspaceArtifactJson } from './utils/artifact-path-compat.js';
+import { assertWorkspaceArtifactContract } from './contracts/artifact-contract-registry.js';
+import { assertJsonSchemaContract } from './utils/json-schema-contract.js';
 
 export type WorkspaceExplainArtifactKind = 'explain' | 'why' | 'trace';
 
@@ -39,13 +41,26 @@ export function resolveWorkspaceExplainArtifactPath(
   }
 }
 
-async function readJsonFile<T>(absolutePath: string): Promise<T | null> {
+async function readJsonFile<T>(
+  absolutePath: string,
+  artifactPath?: string,
+  contractPath?: string
+): Promise<T | null> {
   try {
     if (!(await fsExtra.pathExists(absolutePath))) {
       return null;
     }
-    return (await fsExtra.readJson(absolutePath)) as T;
-  } catch {
+    const payload = (await fsExtra.readJson(absolutePath)) as T;
+    if (artifactPath) {
+      assertWorkspaceArtifactContract(artifactPath, payload, absolutePath);
+    } else if (contractPath) {
+      assertJsonSchemaContract(payload, contractPath, absolutePath);
+    }
+    return payload;
+  } catch (error) {
+    if ((artifactPath || contractPath) && (await fsExtra.pathExists(absolutePath))) {
+      throw error;
+    }
     return null;
   }
 }
@@ -174,14 +189,16 @@ export async function buildWorkspaceExplain(
   let verify = input.verify;
   if (verify === undefined) {
     verify = await readJsonFile<WorkspaceVerify>(
-      path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH)
+      path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH),
+      WORKSPACE_VERIFY_REPORT_PATH
     );
   }
 
   let impact = input.impact;
   if (impact === undefined) {
     impact = await readJsonFile<WorkspaceImpact>(
-      path.join(workspacePath, WORKSPACE_IMPACT_REPORT_PATH)
+      path.join(workspacePath, WORKSPACE_IMPACT_REPORT_PATH),
+      WORKSPACE_IMPACT_REPORT_PATH
     );
   }
 
@@ -278,7 +295,7 @@ export async function buildWorkspaceExplain(
     const diff = await readJsonFile<{
       summary?: { changedProjects?: string[] };
       changes?: Array<{ project?: string; type?: string }>;
-    }>(diffPath);
+    }>(diffPath, undefined, 'contracts/workspace-intelligence/workspace-model-diff.v1.json');
     const changed = diff?.summary?.changedProjects ?? [
       ...new Set((diff?.changes ?? []).map((change) => change.project).filter(Boolean)),
     ];

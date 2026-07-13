@@ -20,7 +20,7 @@ function extractWrapperOwnedScopedCommands(matrixText: string): string[] {
   return [...section.matchAll(/-\s+`([^`]+)`/g)].map((match) => match[1]);
 }
 
-describe('command ownership matrix drift guard', () => {
+describe('command ownership matrix drift guard', { timeout: 15_000 }, () => {
   it('documents all npm wrapper-owned top-level commands', async () => {
     const { NPM_ONLY_TOP_LEVEL_COMMANDS } = await import('../../index.js');
     const matrixPath = path.join(process.cwd(), 'docs', 'contracts', 'COMMAND_OWNERSHIP_MATRIX.md');

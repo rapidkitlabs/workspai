@@ -17,6 +17,7 @@ import { renderInfraComposeYaml } from './infra-compose.js';
 import { collectWorkspaceInfraConnectionDefaults, parsePostgresServiceEnv } from './infra-env.js';
 import { firstExistingWorkspaceArtifactPath } from './artifact-path-compat.js';
 import { workspaceMetadataCandidates } from './workspace-paths.js';
+import { assertJsonSchemaContract } from './json-schema-contract.js';
 
 function sourceTargetsService(
   source: { kind: string; value: string },
@@ -167,6 +168,11 @@ export async function writeInfraArtifacts(input: {
   const planPath = path.join(workspacePath, INFRA_PLAN_RELATIVE_PATH);
   const envExamplePath = path.join(workspacePath, INFRA_ENV_EXAMPLE_RELATIVE_PATH);
   const contract = loadInfraStackContract();
+  assertJsonSchemaContract(
+    input.plan,
+    'contracts/infra-plan.v1.json',
+    'Workspai infrastructure plan'
+  );
 
   const composeYaml = renderInfraComposeYaml({
     plan: input.plan,

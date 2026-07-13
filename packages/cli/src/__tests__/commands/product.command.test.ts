@@ -9,6 +9,7 @@ import {
   buildProductFactoryPlan,
   registerProductCommands,
 } from '../../commands/product.js';
+import { assertJsonSchemaContract } from '../../utils/json-schema-contract.js';
 
 const tempDirs: string[] = [];
 const fixedNow = new Date('2026-06-02T12:00:00.000Z');
@@ -96,6 +97,9 @@ describe('product command', () => {
       readiness: { status: 'ready-for-private-manifest' },
     });
     expect(plan.products[1].readiness.blockingGaps).toEqual(['crm_core', 'sales_outreach']);
+    expect(() =>
+      assertJsonSchemaContract(plan, 'contracts/product-factory-plan.v1.json', 'test plan')
+    ).not.toThrow();
   });
 
   it('creates a private manifest with workspace, module, command, and checksum metadata', async () => {
@@ -134,6 +138,13 @@ describe('product command', () => {
     expect(manifest.factory.requiredCommands).toContain(
       'npx workspai create workspace rapidkit-ai-support-agent --yes --profile enterprise'
     );
+    expect(() =>
+      assertJsonSchemaContract(
+        manifest,
+        'contracts/private-product-manifest.v1.json',
+        'test manifest'
+      )
+    ).not.toThrow();
   });
 
   it('writes plan and manifest files through commander actions', async () => {

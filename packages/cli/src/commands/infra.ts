@@ -14,6 +14,7 @@ import {
   type InfraPlan,
 } from '../utils/infra-stack.js';
 import { normalizeRegistryPath } from '../utils/registry-path.js';
+import { assertJsonSchemaContract } from '../utils/json-schema-contract.js';
 
 export function resolveInfraWorkspacePath(workspacePath?: string): string {
   const resolved = workspacePath ? path.resolve(workspacePath) : findWorkspaceRoot(process.cwd());
@@ -36,7 +37,9 @@ async function ensurePlanExists(workspacePath: string): Promise<InfraPlan> {
       `Infra plan not found at ${INFRA_PLAN_RELATIVE_PATH}. Run: npx workspai infra plan`
     );
   }
-  return (await fsExtra.readJson(planPath)) as InfraPlan;
+  const plan: unknown = await fsExtra.readJson(planPath);
+  assertJsonSchemaContract(plan, 'contracts/infra-plan.v1.json', `Infra plan ${planPath}`);
+  return plan as InfraPlan;
 }
 
 export async function runDockerCompose(input: {

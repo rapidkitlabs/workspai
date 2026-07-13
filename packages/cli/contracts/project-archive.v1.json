@@ -2,12 +2,39 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "required": [
-    "schemaVersion"
+    "schema",
+    "projectName",
+    "originalPath",
+    "archivedPath",
+    "archivedAt"
   ],
   "properties": {
-    "schemaVersion": {
+    "schema": {
       "const": "rapidkit-project-archive-v1"
+    },
+    "projectName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "originalPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "archivedPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string"
+    },
+    "archivedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "safetySnapshotPath": {
+      "type": "string",
+      "minLength": 1
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

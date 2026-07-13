@@ -225,6 +225,50 @@ function readFlagValue(argv: string[], flag: string): string | undefined {
   return undefined;
 }
 
+function parseMaxWorkersOption(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === '') {
+    return undefined;
+  }
+  const normalized = raw.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error('--max-workers must be an integer between 1 and 16.');
+  }
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 16) {
+    throw new Error('--max-workers must be an integer between 1 and 16.');
+  }
+  return parsed;
+}
+
+function resolveMaxWorkersOption(input: {
+  raw: string | undefined;
+  operation: string;
+  json: boolean;
+}): number | undefined {
+  try {
+    return parseMaxWorkersOption(input.raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (input.json) {
+      console.log(
+        JSON.stringify(
+          cliOperationError({
+            operation: input.operation,
+            code: 'cli.option.max-workers.invalid',
+            message,
+            context: { value: input.raw ?? null, minimum: 1, maximum: 16 },
+          }),
+          null,
+          2
+        )
+      );
+    } else {
+      console.error(chalk.red(`❌ ${message}`));
+    }
+    process.exit(1);
+  }
+}
+
 async function persistRequestedProjectPort(args: string[], cwd: string): Promise<void> {
   const rawPort = readFlagValue(args, '--port')?.trim();
   const projectName = args[3];
@@ -1490,6 +1534,9 @@ function isNpmOnlyTopLevelCommand(command: string | undefined): boolean {
 function isNpmOnlyScopedCommand(args: readonly string[]): boolean {
   const first = args[0];
   const second = args[1];
+  if (first === 'project' && (second === '--help' || second === '-h' || second === 'help')) {
+    return true;
+  }
   return NPM_ONLY_SCOPED_COMMANDS.some(([command, subcommand]) => {
     if (first !== command) return false;
     if (!second) return true;
@@ -3056,6 +3103,14 @@ export async function handleBootstrapCommand(
   args: string[],
   initRunner: (nextArgs: string[]) => Promise<number> = handleInitCommand
 ): Promise<number> {
+  if (args.includes('--help') || args.includes('-h') || args.includes('help')) {
+    console.log(
+      chalk.yellow(
+        'Usage: workspai bootstrap [path] [--profile <minimal|java-only|go-only|dotnet-only|python-only|node-only|polyglot|enterprise>] [--ci] [--offline] [--json] [--compliance-only]'
+      )
+    );
+    return 0;
+  }
   const prevSkipLockSync = process.env.RAPIDKIT_SKIP_LOCK_SYNC;
   if (typeof prevSkipLockSync === 'undefined') {
     process.env.RAPIDKIT_SKIP_LOCK_SYNC = '1';
@@ -3302,7 +3357,7 @@ export async function handleBootstrapCommand(
 
     const profile: BootstrapProfile = selectedProfile || workspaceProfile || 'minimal';
 
-    if (workspacePath) {
+    if (workspacePath && !complianceOnly) {
       try {
         const requiresPythonProfile =
           profile === 'python-only' || profile === 'polyglot' || profile === 'enterprise';
@@ -3346,12 +3401,23 @@ export async function handleBootstrapCommand(
           message: `Failed to synchronize workspace foundation files: ${(error as Error).message}`,
         });
       }
+    } else if (workspacePath) {
+      checks.push({
+        id: 'workspace.foundation.sync',
+        status: 'skipped',
+        message: 'Workspace foundation synchronization skipped by --compliance-only.',
+      });
     }
 
     // Persist profile back to workspace.json if an explicit/profile-selected value was given
     // and differs from what's currently stored. This keeps workspace.json as the
     // single source of truth so future bare `workspai bootstrap` calls inherit it.
-    if (workspacePath && selectedProfile && selectedProfile !== workspaceProfile) {
+    if (
+      workspacePath &&
+      !complianceOnly &&
+      selectedProfile &&
+      selectedProfile !== workspaceProfile
+    ) {
       try {
         const workspaceManifestPath = workspaceMetadataPath(workspacePath, 'workspace.json');
         const raw = await fs.promises.readFile(workspaceManifestPath, 'utf-8');
@@ -3542,21 +3608,29 @@ export async function handleBootstrapCommand(
         }
       }
 
-      const lifecycleResult = await runMirrorLifecycle(workspacePath, {
-        ciMode,
-        offlineMode,
-      });
-      checks.push(
-        ...lifecycleResult.checks.map((check) => ({
-          id: check.id,
-          status: check.status,
-          message: check.message,
-        }))
-      );
-      mirrorLifecycleDetails = lifecycleResult.details;
+      if (complianceOnly) {
+        checks.push({
+          id: 'mirror.lifecycle',
+          status: 'skipped',
+          message: 'Mirror synchronization lifecycle skipped by --compliance-only.',
+        });
+      } else {
+        const lifecycleResult = await runMirrorLifecycle(workspacePath, {
+          ciMode,
+          offlineMode,
+        });
+        checks.push(
+          ...lifecycleResult.checks.map((check) => ({
+            id: check.id,
+            status: check.status,
+            message: check.message,
+          }))
+        );
+        mirrorLifecycleDetails = lifecycleResult.details;
 
-      if (lifecycleResult.details.lockWritten) {
-        mirrorLockExists = true;
+        if (lifecycleResult.details.lockWritten) {
+          mirrorLockExists = true;
+        }
       }
 
       if (offlineMode) {
@@ -3601,10 +3675,12 @@ export async function handleBootstrapCommand(
       } else {
         checks.push({
           id: 'profile.enterprise.ci',
-          status: ciMode ? 'passed' : 'failed',
+          status: ciMode ? 'passed' : complianceOnly ? 'skipped' : 'failed',
           message: ciMode
             ? 'enterprise profile running with --ci.'
-            : 'enterprise profile expects --ci for deterministic non-interactive mode.',
+            : complianceOnly
+              ? 'Enterprise runtime execution skipped by --compliance-only; --ci is not required.'
+              : 'enterprise profile expects --ci for deterministic non-interactive mode.',
         });
 
         checks.push({
@@ -3650,6 +3726,7 @@ export async function handleBootstrapCommand(
         ci: ciMode,
         offline: offlineMode,
         strict: policy.mode === 'strict',
+        complianceOnly,
       },
       policyMode: policy.mode,
       policyRules: policy.rules,
@@ -3682,7 +3759,8 @@ export async function handleBootstrapCommand(
       return 1;
     }
 
-    const deterministicJsonEnterpriseViolation = jsonMode && profile === 'enterprise' && !ciMode;
+    const deterministicJsonEnterpriseViolation =
+      jsonMode && profile === 'enterprise' && !ciMode && !complianceOnly;
     if (deterministicJsonEnterpriseViolation) {
       const report = enrichBootstrapComplianceReport(
         {
@@ -3784,7 +3862,9 @@ export async function handleBootstrapCommand(
       };
     };
 
-    // JSON + --compliance-only skips init to keep stdout clean for compliance-only CI gates.
+    // Compliance-only is observational with respect to runtime initialization in
+    // both human and JSON modes. JSON additionally captures any init output when
+    // initialization is requested so stdout remains a single JSON document.
     let initExitCode = 0;
     let initOutput:
       | {
@@ -3793,7 +3873,7 @@ export async function handleBootstrapCommand(
           stderr: { bytes: number; excerpt: string[] };
         }
       | undefined;
-    const skipInit = jsonMode && complianceOnly;
+    const skipInit = complianceOnly;
     if (!skipInit) {
       if (jsonMode) {
         const captured = await captureBootstrapInitOutput(() => initRunner(initArgs));
@@ -3816,7 +3896,7 @@ export async function handleBootstrapCommand(
         ...baseReport,
         result: resultValue,
         initExitCode,
-        complianceOnly: jsonMode && complianceOnly,
+        complianceOnly,
         ...(initOutput ? { initOutput } : {}),
       },
       exitCode,
@@ -3827,7 +3907,7 @@ export async function handleBootstrapCommand(
     await writeJsonFile(reportPath, report);
     await writeJsonFile(latestReportPath, report);
 
-    if (workspacePath && initExitCode === 0) {
+    if (workspacePath && !complianceOnly && initExitCode === 0) {
       try {
         const { syncWorkspaceProjects } = await import('./workspace.js');
         await syncWorkspaceProjects(workspacePath, jsonMode);
@@ -3849,7 +3929,7 @@ export async function handleBootstrapCommand(
       console.log(chalk.gray(`Compliance report: ${reportPath}`));
     }
 
-    return initExitCode;
+    return exitCode;
   } finally {
     if (typeof prevSkipLockSync === 'undefined') {
       delete process.env.RAPIDKIT_SKIP_LOCK_SYNC;
@@ -4992,6 +5072,22 @@ export async function handleMirrorCommand(args: string[]): Promise<number> {
   const artifactsDir = workspaceMetadataPath(workspacePath, 'mirror', 'artifacts');
   const reportsDir = workspaceMetadataPath(workspacePath, 'reports');
 
+  async function countMirrorArtifacts(directory: string): Promise<number> {
+    if (!(await fsExtra.pathExists(directory))) return 0;
+    let count = 0;
+    const queue = [directory];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current) continue;
+      const entries = await fs.promises.readdir(current, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile()) count += 1;
+        else if (entry.isDirectory()) queue.push(path.join(current, entry.name));
+      }
+    }
+    return count;
+  }
+
   async function writeMirrorReport(payload: Record<string, unknown>): Promise<void> {
     const reportTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const reportPath = path.join(reportsDir, `mirror-ops-${reportTimestamp}.json`);
@@ -5008,54 +5104,17 @@ export async function handleMirrorCommand(args: string[]): Promise<number> {
   }> {
     const configExists = await fsExtra.pathExists(mirrorConfigPath);
     const lockExists = await fsExtra.pathExists(mirrorLockPath);
-    let artifactsCount = 0;
-    if (await fsExtra.pathExists(artifactsDir)) {
-      artifactsCount = (await fs.promises.readdir(artifactsDir, { withFileTypes: true })).filter(
-        (entry) => entry.isFile()
-      ).length;
-    }
+    const artifactsCount = await countMirrorArtifacts(artifactsDir);
     return { configExists, lockExists, artifactsCount };
   }
 
   if (action === 'status') {
-    // Auto-create a default mirror-config.json if it doesn't exist yet.
-    // This removes the perpetual "Config: missing" noise and gives users
-    // a clear starting point for enabling mirroring.
-    const configExists = await fsExtra.pathExists(mirrorConfigPath);
-    if (!configExists) {
-      try {
-        const defaultConfig = {
-          schema_version: '1.0',
-          enabled: false,
-          strategy: 'on-demand',
-          artifacts: [],
-          created_at: new Date().toISOString(),
-          note: 'Auto-generated by workspai mirror status. Set enabled: true and add artifact entries to activate mirroring.',
-        };
-        await fsExtra.ensureDir(path.dirname(mirrorConfigPath));
-        await fs.promises.writeFile(
-          mirrorConfigPath,
-          JSON.stringify(defaultConfig, null, 2) + '\n',
-          'utf-8'
-        );
-        if (!jsonMode) {
-          console.log(
-            chalk.gray('  mirror-config.json created with defaults (.workspai/mirror-config.json)')
-          );
-        }
-      } catch {
-        /* non-fatal */
-      }
-    }
-    // Re-read after potential auto-create so the display reflects the actual state
+    // Status is observational: it must not create configuration that could
+    // accidentally satisfy enterprise compliance checks.
     const configNowExists = await fsExtra.pathExists(mirrorConfigPath);
 
-    const artifactsExists = await fsExtra.pathExists(artifactsDir);
     const lockExists = await fsExtra.pathExists(mirrorLockPath);
-    const artifactsCount = artifactsExists
-      ? (await fs.promises.readdir(artifactsDir, { withFileTypes: true })).filter((e) => e.isFile())
-          .length
-      : 0;
+    const artifactsCount = await countMirrorArtifacts(artifactsDir);
 
     const statusPayload = {
       command: 'mirror',
@@ -6523,10 +6582,11 @@ program
         process.exit(1);
       }
 
-      const maxWorkersRaw = Number(options.maxWorkers ?? '');
-      const maxWorkers = Number.isFinite(maxWorkersRaw)
-        ? Math.max(1, Math.trunc(maxWorkersRaw))
-        : undefined;
+      const maxWorkers = resolveMaxWorkersOption({
+        raw: options.maxWorkers,
+        operation: 'autopilot release',
+        json: options.json === true,
+      });
 
       const { runAutopilotRelease } = await import('./autopilot-release.js');
       let report;
@@ -6858,7 +6918,22 @@ projectCommand
           console.log(chalk.gray(`   Safety snapshot: ${result.safetySnapshotPath}`));
         }
       } catch (error) {
-        console.log(chalk.red(`❌ Project archive failed: ${(error as Error).message}`));
+        const message = (error as Error).message;
+        if (options.json) {
+          console.log(
+            JSON.stringify(
+              cliOperationError({
+                operation: 'project archive',
+                code: 'project.archive.failed',
+                message,
+              }),
+              null,
+              2
+            )
+          );
+        } else {
+          console.log(chalk.red(`❌ Project archive failed: ${message}`));
+        }
         process.exit(1);
       }
     }
@@ -6892,7 +6967,7 @@ projectCommand
           targetName: options.name,
           reason: options.reason,
           force: options.force === true,
-          dryRun: options.dryRun === true,
+          dryRun: options.dryRun === true || process.argv.includes('--dry-run'),
         });
 
         if (options.json) {
@@ -6911,7 +6986,22 @@ projectCommand
           console.log(chalk.gray(`   Safety snapshot: ${result.safetySnapshotPath}`));
         }
       } catch (error) {
-        console.log(chalk.red(`❌ Project restore failed: ${(error as Error).message}`));
+        const message = (error as Error).message;
+        if (options.json) {
+          console.log(
+            JSON.stringify(
+              cliOperationError({
+                operation: 'project restore',
+                code: 'project.restore.failed',
+                message,
+              }),
+              null,
+              2
+            )
+          );
+        } else {
+          console.log(chalk.red(`❌ Project restore failed: ${message}`));
+        }
         process.exit(1);
       }
     }
@@ -6965,7 +7055,22 @@ projectCommand
           console.log(chalk.gray(`   Safety snapshot: ${result.safetySnapshotPath}`));
         }
       } catch (error) {
-        console.log(chalk.red(`❌ Project delete failed: ${(error as Error).message}`));
+        const message = (error as Error).message;
+        if (options.json) {
+          console.log(
+            JSON.stringify(
+              cliOperationError({
+                operation: 'project delete',
+                code: 'project.delete.failed',
+                message,
+              }),
+              null,
+              2
+            )
+          );
+        } else {
+          console.log(chalk.red(`❌ Project delete failed: ${message}`));
+        }
         process.exit(1);
       }
     }
@@ -7217,6 +7322,25 @@ program
         requestedWorkspace ?? findWorkspaceRootUp(process.cwd()) ?? findWorkspaceUp(process.cwd());
 
       if (!workspacePath || !hasWorkspaceRootMarkers(workspacePath)) {
+        if (actionOptions.json === true || process.argv.includes('--json')) {
+          console.log(
+            JSON.stringify(
+              cliOperationError({
+                operation: `workspace ${actionName}`,
+                code: 'workspace.root.required',
+                message:
+                  'Not inside a Workspai workspace. Run from a workspace directory or pass --workspace <path>.',
+                context: {
+                  cwd: path.resolve(process.cwd()),
+                  ...(requestedWorkspace ? { requestedWorkspace } : {}),
+                },
+              }),
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
         console.log(chalk.red('❌ Not inside a Workspai workspace'));
         console.log(chalk.gray('💡 Run from a workspace directory or pass --workspace <path>.'));
         process.exit(1);
@@ -7285,6 +7409,179 @@ program
         downloadTimeoutMs: timeout,
       };
     };
+
+    const allowedWorkspaceFlagsByAction: Record<string, readonly string[]> = {
+      list: ['--json'],
+      model: [
+        '--workspace',
+        '--json',
+        '--include-paths',
+        '--include-evidence',
+        '--scan-depth',
+        '--cache',
+        '--incremental',
+        '--write',
+        '--strict',
+      ],
+      'agent-sync': [
+        '--workspace',
+        '--json',
+        '--scope',
+        '--for-agent',
+        '--write',
+        '--dry-run',
+        '--strict',
+        '--preset',
+        '--refresh-context',
+        '--refresh',
+        '--target',
+        '--experimental-hooks',
+        '--hydrate-prompts',
+      ],
+      'remediation-plan': ['--workspace', '--json', '--include-paths', '--ci', '--write'],
+      context: [
+        '--workspace',
+        '--json',
+        '--for-agent',
+        '--scope',
+        '--include-evidence',
+        '--scan-depth',
+        '--write',
+        '--agent-sync',
+        '--no-agent-sync',
+        '--preset',
+        '--target',
+        '--strict',
+      ],
+      snapshot: ['--workspace', '--json', '--include-paths', '--include-evidence', '--scan-depth'],
+      diff: [
+        '--workspace',
+        '--json',
+        '--from',
+        '--include-paths',
+        '--include-evidence',
+        '--scan-depth',
+        '--strict',
+      ],
+      impact: ['--workspace', '--json', '--from', '--scope', '--strict'],
+      verify: ['--workspace', '--json', '--from-impact', '--scope', '--strict'],
+      graph: [
+        '--workspace',
+        '--json',
+        '--include-paths',
+        '--include-evidence',
+        '--scan-depth',
+        '--scope',
+      ],
+      watch: ['--workspace', '--json', '--once', '--scan-depth'],
+      sync: ['--workspace', '--json'],
+      registry: ['--workspace', '--json', '--refresh'],
+      foundation: ['--workspace', '--json', '--force'],
+      policy: ['--workspace', '--json'],
+      contract: ['--workspace', '--json', '--output', '--force', '--strict'],
+      share: [
+        '--workspace',
+        '--json',
+        '--output',
+        '--include-paths',
+        '--no-doctor',
+        '--no-blueprint',
+      ],
+      export: ['--workspace', '--json', '--output', '--include-env', '--archive-compression'],
+      archive: [
+        '--json',
+        '--strict',
+        '--max-download-size',
+        '--max-expanded-size',
+        '--download-timeout-ms',
+      ],
+      hydrate: [
+        '--json',
+        '--output',
+        '--force',
+        '--dry-run',
+        '--strict',
+        '--max-download-size',
+        '--max-expanded-size',
+        '--download-timeout-ms',
+      ],
+      import: [
+        '--json',
+        '--output',
+        '--force',
+        '--dry-run',
+        '--strict',
+        '--max-download-size',
+        '--max-expanded-size',
+        '--download-timeout-ms',
+      ],
+      run: [
+        '--workspace',
+        '--json',
+        '--scope',
+        '--affected',
+        '--blast-radius',
+        '--since',
+        '--parallel',
+        '--max-workers',
+        '--continue-on-error',
+        '--reuse-passed',
+        '--strict',
+        '--no-gates',
+      ],
+      explain: ['--workspace', '--json', '--scope', '--write'],
+      why: ['--workspace', '--json', '--scope', '--write'],
+      trace: ['--workspace', '--json', '--from', '--write'],
+      feedback: ['--workspace', '--json'],
+      mcp: ['--workspace', '--json'],
+      init: [
+        '--workspace',
+        '--json',
+        '--scope',
+        '--parallel',
+        '--max-workers',
+        '--continue-on-error',
+        '--reuse-passed',
+        '--strict',
+        '--no-gates',
+      ],
+    };
+    const allKnownWorkspaceFlags = new Set(
+      Object.values(allowedWorkspaceFlagsByAction).flatMap((flags) => [...flags])
+    );
+    const presentedWorkspaceFlags = new Set(
+      process.argv
+        .slice(2)
+        .filter((token) => token.startsWith('--'))
+        .map((token) => token.split('=', 1)[0])
+        .filter((flag) => allKnownWorkspaceFlags.has(flag))
+    );
+    const allowedFlags = allowedWorkspaceFlagsByAction[action];
+    const unsupportedFlags = allowedFlags
+      ? [...presentedWorkspaceFlags].filter((flag) => !allowedFlags.includes(flag))
+      : [];
+    if (unsupportedFlags.length > 0) {
+      const message = `${unsupportedFlags.join(', ')} ${unsupportedFlags.length === 1 ? 'is' : 'are'} not supported by workspace ${action}.`;
+      if (actionOptions.json === true || presentedWorkspaceFlags.has('--json')) {
+        console.log(
+          JSON.stringify(
+            cliOperationError({
+              operation: `workspace ${action}`,
+              code: 'workspace.option.unsupported',
+              message,
+              exitCode: 2,
+              context: { action, unsupportedFlags, allowedFlags },
+            }),
+            null,
+            2
+          )
+        );
+      } else {
+        console.log(chalk.red(`❌ ${message}`));
+        console.log(chalk.gray(`   Allowed flags: ${allowedFlags.join(', ') || 'none'}`));
+      }
+      process.exit(2);
+    }
 
     // Emit a deterministic `progress` start event for every workspace intelligence
     // command so IDE/CI consumers track phases via `cli-log-event.v1` on stderr.
@@ -8192,7 +8489,7 @@ program
         WORKSPACE_CONTRACT_PATH,
       } = await import('./utils/workspace-contract.js');
       const contractAction = subaction || 'inspect';
-      const contractPath = actionOptions.output;
+      const contractPath = workspaceOutputPath();
 
       try {
         if (contractAction === 'init') {
@@ -8602,7 +8899,7 @@ program
       try {
         const result = await hydrateWorkspaceArchive({
           archivePathOrUrl,
-          outputPath: actionOptions.output,
+          outputPath: workspaceOutputPath(),
           force: actionOptions.force === true || hasRawFlag('--force'),
           dryRun: actionOptions.dryRun === true || hasRawFlag('--dry-run'),
           strict: actionOptions.strict === true || hasRawFlag('--strict'),
@@ -8635,7 +8932,7 @@ program
                 status: 'error',
                 timestamp: new Date().toISOString(),
                 archivePathOrUrl,
-                ...(actionOptions.output ? { outputPath: actionOptions.output } : {}),
+                ...(workspaceOutputPath() ? { outputPath: workspaceOutputPath() } : {}),
                 dryRun: actionOptions.dryRun === true || hasRawFlag('--dry-run'),
                 error: {
                   code: `workspace.${action}.failed`,
@@ -8684,10 +8981,11 @@ program
         }
       }
 
-      const maxWorkersRaw = Number(actionOptions.maxWorkers ?? '');
-      const maxWorkers = Number.isFinite(maxWorkersRaw)
-        ? Math.max(1, Math.trunc(maxWorkersRaw))
-        : undefined;
+      const maxWorkers = resolveMaxWorkersOption({
+        raw: actionOptions.maxWorkers,
+        operation: `workspace run ${stageName}`,
+        json: actionOptions.json === true || hasRawFlag('--json'),
+      });
 
       if (stageName === 'init') {
         if (actionOptions.json === true) {
@@ -8919,26 +9217,31 @@ program
       }
       await runWorkspaceMcpServe({ workspacePath });
     } else if (action === 'init') {
-      console.log(
-        chalk.yellow('ℹ  workspace init is an alias of: npx workspai workspace run init')
-      );
-      console.log(
-        chalk.gray(
-          '   Equivalent full-init aliases at workspace root:\n' +
-            '   npx workspai init | npx workspai workspace init | npx workspai workspace run init\n'
-        )
-      );
+      if (!actionOptions.json) {
+        console.log(
+          chalk.yellow('ℹ  workspace init is an alias of: npx workspai workspace run init')
+        );
+        console.log(
+          chalk.gray(
+            '   Equivalent full-init aliases at workspace root:\n' +
+              '   npx workspai init | npx workspai workspace init | npx workspai workspace run init\n'
+          )
+        );
+      }
 
       const workspacePath = requireWorkspaceRootForAction('init');
 
-      const maxWorkersRaw = Number(actionOptions.maxWorkers ?? '');
-      const maxWorkers = Number.isFinite(maxWorkersRaw)
-        ? Math.max(1, Math.trunc(maxWorkersRaw))
-        : undefined;
+      const maxWorkers = resolveMaxWorkersOption({
+        raw: actionOptions.maxWorkers,
+        operation: 'workspace init',
+        json: actionOptions.json === true || hasRawFlag('--json'),
+      });
 
-      const workspaceInitCode = await installWorkspaceDependencies(workspacePath);
-      if (workspaceInitCode !== 0) {
-        process.exit(workspaceInitCode);
+      if (actionOptions.json !== true) {
+        const workspaceInitCode = await installWorkspaceDependencies(workspacePath);
+        if (workspaceInitCode !== 0) {
+          process.exit(workspaceInitCode);
+        }
       }
 
       const { runWorkspaceStage } = await import('./workspace-run.js');
@@ -8965,6 +9268,21 @@ program
         process.exit(report.summary.exitCode);
       }
     } else {
+      if (actionOptions.json === true || hasRawFlag('--json')) {
+        console.log(
+          JSON.stringify(
+            cliOperationError({
+              operation: `workspace ${action}`,
+              code: 'workspace.action.unknown',
+              message: `Unknown workspace action: ${action}`,
+              context: { availableActions: WORKSPACE_SUBCOMMANDS },
+            }),
+            null,
+            2
+          )
+        );
+        process.exit(1);
+      }
       console.log(chalk.red(`Unknown workspace action: ${action}`));
       console.log(chalk.gray(`Available: ${WORKSPACE_SUBCOMMANDS.join(', ')}`));
       process.exit(1);
@@ -9018,7 +9336,7 @@ function printHelp() {
   console.log(chalk.white('3. Generate agent-ready context\n'));
   console.log(chalk.cyan(cmd('   npx workspai workspace context --for-agent --json --write\n')));
   console.log(chalk.white('4. Analyze change impact\n'));
-  console.log(chalk.cyan(cmd('   npx workspai workspace impact --from <snapshot>\n')));
+  console.log(chalk.cyan(cmd('   npx workspai workspace impact --from <diff>\n')));
   console.log(chalk.white('5. Verify release readiness\n'));
   console.log(chalk.cyan(cmd('   npx workspai workspace verify --strict')));
   console.log(chalk.cyan(cmd('   npx workspai pipeline --strict\n')));
@@ -9038,7 +9356,7 @@ function printHelp() {
   console.log(chalk.white('What should AI agents know?\n'));
   console.log(chalk.cyan(cmd('   npx workspai workspace context --for-agent --json --write\n')));
   console.log(chalk.white('What breaks if this changes?\n'));
-  console.log(chalk.cyan(cmd('   npx workspai workspace impact --from <snapshot>\n')));
+  console.log(chalk.cyan(cmd('   npx workspai workspace impact --from <diff>\n')));
   console.log(chalk.white('Is this change safe?\n'));
   console.log(chalk.cyan(cmd('   npx workspai workspace verify --strict\n')));
   console.log(chalk.white('Why is release blocked?\n'));

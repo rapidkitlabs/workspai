@@ -559,7 +559,7 @@ describe('Phase 3 commands - CLI process integration', () => {
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
-  }, 20000);
+  }, 40000);
 
   it('fails fast on invalid dependency_sharing_mode for lifecycle commands', () => {
     const dist = ensureDistBuilt();

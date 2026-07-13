@@ -365,6 +365,7 @@ export async function syncWorkspaceProjects(
     let addedCount = 0;
     let skippedCount = 0;
     const addedPaths: string[] = [];
+    const discoveredProjects: WorkspaceProject[] = [];
 
     const queue = [workspacePath];
     const visited = new Set<string>();
@@ -405,9 +406,9 @@ export async function syncWorkspaceProjects(
 
           if (isRapidkitProject) {
             const projectName = path.basename(projectPath);
-            const exists = workspace.projects.some(
-              (p) => p.path === projectPath || p.name === projectName
-            );
+            const exists = workspace.projects.some((p) => p.path === projectPath);
+
+            discoveredProjects.push({ name: projectName, path: projectPath });
 
             if (!exists) {
               workspace.projects.push({
@@ -430,26 +431,23 @@ export async function syncWorkspaceProjects(
       }
     }
 
+    await mutateWorkspaceRegistry((latestRegistry) => {
+      const latestWorkspace = latestRegistry.workspaces.find(
+        (entry) => entry.path === normalizedWorkspacePath
+      );
+      if (!latestWorkspace) return;
+      const workspacePrefix = `${normalizedWorkspacePath}${path.sep}`;
+      const externalProjects = (latestWorkspace.projects || []).filter(
+        (project) =>
+          project.path !== normalizedWorkspacePath && !project.path.startsWith(workspacePrefix)
+      );
+      latestWorkspace.projects = normalizeWorkspaceEntry({
+        ...latestWorkspace,
+        projects: [...externalProjects, ...discoveredProjects],
+      }).projects;
+    });
+
     if (addedCount > 0) {
-      await mutateWorkspaceRegistry((latestRegistry) => {
-        const latestWorkspace = latestRegistry.workspaces.find(
-          (entry) => entry.path === normalizedWorkspacePath
-        );
-        if (!latestWorkspace) return;
-        latestWorkspace.projects = Array.isArray(latestWorkspace.projects)
-          ? latestWorkspace.projects
-          : [];
-        for (const addedPath of addedPaths) {
-          const projectName = path.basename(addedPath);
-          if (
-            !latestWorkspace.projects.some(
-              (project) => project.path === addedPath || project.name === projectName
-            )
-          ) {
-            latestWorkspace.projects.push({ name: projectName, path: addedPath });
-          }
-        }
-      });
       if (!silent) console.log(`\n✅ Synced ${addedCount} project(s) to registry`);
     } else {
       if (!silent) console.log(`\n✅ All projects already registered (${skippedCount} found)`);

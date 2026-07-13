@@ -174,10 +174,35 @@ describe('workspace-snapshot lifecycle', () => {
     expect(manifest.projectName).toBe('orders');
     expect(manifest.reason).toBe('superseded by v2');
     expect(result.safetySnapshotPath).toContain('pre-archive-orders');
+    expect(
+      await fsExtra.pathExists(
+        path.join(result.safetySnapshotPath!, 'files', 'orders', 'package.json')
+      )
+    ).toBe(true);
 
     const archives = await listArchivedProjects({ workspacePath });
     expect(archives).toHaveLength(1);
     expect(archives[0].projectName).toBe('orders');
+  });
+
+  it('refuses reserved archive manifest collisions without moving project data', async () => {
+    await fsExtra.outputFile(
+      path.join(workspacePath, 'orders', 'workspai-archive.json', 'sentinel.txt'),
+      'keep me'
+    );
+
+    await expect(archiveWorkspaceProject({ workspacePath, project: 'orders' })).rejects.toThrow(
+      /reserved archive manifest path/
+    );
+    expect(await fsExtra.readFile(path.join(workspacePath, 'orders', 'package.json'), 'utf8')).toBe(
+      '{"name":"orders"}'
+    );
+    expect(
+      await fsExtra.readFile(
+        path.join(workspacePath, 'orders', 'workspai-archive.json', 'sentinel.txt'),
+        'utf8'
+      )
+    ).toBe('keep me');
   });
 
   it('treats delete as archive by default and requires exact confirmation for permanent delete', async () => {
@@ -208,6 +233,81 @@ describe('workspace-snapshot lifecycle', () => {
     expect(deleted.action).toBe('delete');
     expect(await fsExtra.pathExists(path.join(workspacePath, 'orders'))).toBe(false);
     expect(deleted.safetySnapshotPath).toContain('pre-delete-orders');
+    expect(
+      await fsExtra.pathExists(
+        path.join(deleted.safetySnapshotPath!, 'files', 'orders', 'package.json')
+      )
+    ).toBe(true);
+
+    const recovered = await restoreWorkspaceSnapshot({
+      workspacePath,
+      name: path.basename(deleted.safetySnapshotPath!),
+      force: true,
+    });
+    expect(recovered.restoredPaths).toEqual(['orders']);
+    expect(await fsExtra.pathExists(path.join(workspacePath, 'orders', 'package.json'))).toBe(true);
+  });
+
+  it('preserves an overwritten project as a selective recovery snapshot', async () => {
+    const archived = await archiveWorkspaceProject({ workspacePath, project: 'orders' });
+    await fsExtra.outputJson(path.join(workspacePath, 'orders', 'package.json'), {
+      name: 'replacement-orders',
+    });
+    await fsExtra.outputJson(path.join(workspacePath, 'orders', '.rapidkit', 'project.json'), {
+      runtime: 'node',
+    });
+
+    const restored = await restoreArchivedProject({
+      workspacePath,
+      archive: archived.archivePath!,
+      force: true,
+    });
+
+    expect((await fsExtra.readJson(path.join(workspacePath, 'orders', 'package.json'))).name).toBe(
+      'orders'
+    );
+    expect(
+      (
+        await fsExtra.readJson(
+          path.join(restored.safetySnapshotPath!, 'files', 'orders', 'package.json')
+        )
+      ).name
+    ).toBe('replacement-orders');
+  });
+
+  it('restores full snapshots as an exact directory swap and retains the previous workspace', async () => {
+    const snapshot = await createWorkspaceSnapshot({
+      workspacePath,
+      name: 'exact-full',
+      includeProjects: true,
+    });
+    await fsExtra.outputFile(
+      path.join(workspacePath, 'unexpected-after-snapshot.txt'),
+      'remove me'
+    );
+    await fsExtra.outputJson(path.join(workspacePath, 'orders', 'package.json'), {
+      name: 'mutated-orders',
+    });
+
+    const restored = await restoreWorkspaceSnapshot({
+      workspacePath,
+      name: snapshot.manifest.name,
+      force: true,
+    });
+
+    expect(
+      await fsExtra.pathExists(path.join(workspacePath, 'unexpected-after-snapshot.txt'))
+    ).toBe(false);
+    expect((await fsExtra.readJson(path.join(workspacePath, 'orders', 'package.json'))).name).toBe(
+      'orders'
+    );
+    expect(restored.safetySnapshotPath).toBeTruthy();
+    expect(
+      await fsExtra.pathExists(
+        path.join(restored.safetySnapshotPath!, 'unexpected-after-snapshot.txt')
+      )
+    ).toBe(true);
+    await fsExtra.remove(restored.safetySnapshotPath!);
   });
 
   it('restores archived projects and writes audit events', async () => {
@@ -225,7 +325,19 @@ describe('workspace-snapshot lifecycle', () => {
 
     expect(restored.action).toBe('restore');
     expect(await fsExtra.pathExists(path.join(workspacePath, 'orders', 'package.json'))).toBe(true);
+    expect(
+      await fsExtra.pathExists(path.join(workspacePath, 'orders', 'workspai-archive.json'))
+    ).toBe(false);
+    expect(restored.manifestPath).toContain(path.join('.workspai', 'audit', 'restores'));
+    expect(await fsExtra.pathExists(restored.manifestPath!)).toBe(true);
     expect(await fsExtra.pathExists(archived.archivePath!)).toBe(false);
+
+    const rearchived = await archiveWorkspaceProject({
+      workspacePath,
+      project: 'orders',
+      reason: 'archive again after restore',
+    });
+    expect(await fsExtra.pathExists(path.join(rearchived.archivePath!, 'package.json'))).toBe(true);
 
     const auditLog = await fsExtra.readFile(
       path.join(workspacePath, '.workspai', 'audit', 'events.jsonl'),

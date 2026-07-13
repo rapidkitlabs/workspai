@@ -223,6 +223,16 @@ describe('governance artifact JSON schemas', () => {
     );
   });
 
+  it('publishes Doctor remediation plan v2 at its canonical path and retains the v1 alias', () => {
+    const canonical = readSchema('doctor-remediation-plan.v2.json');
+    const legacyAlias = readSchema('doctor-remediation-plan.v1.json');
+
+    expect(canonical.$id).toBe('https://rapidkit.dev/contracts/doctor-remediation-plan.v2.json');
+    expect(canonical.$ref).toBe('doctor-remediation-plan.v1.json');
+    expect(legacyAlias.$id).toBe('https://rapidkit.dev/contracts/doctor-remediation-plan.v1.json');
+    expect(schemaConst(legacyAlias)).toBe('doctor-remediation-plan-v2');
+  });
+
   it('defines cross-artifact remediation plan contract for Studio handoff', () => {
     const schema = readSchema('artifact-remediation-plan.v1.json');
     const defs = schema.$defs as Record<string, any>;

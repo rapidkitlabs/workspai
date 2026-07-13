@@ -24,6 +24,64 @@ import { WORKSPACE_VERIFY_REPORT_PATH } from '../workspace-verify.js';
 
 let workspacePath: string;
 
+function verifyFixture(input: {
+  risk: 'low' | 'high';
+  affectedProjects: number;
+  blockers: string[];
+}) {
+  return {
+    schemaVersion: 'workspace-verify.v1',
+    generatedAt: new Date().toISOString(),
+    workspacePath,
+    mode: 'evidence',
+    summary: {
+      verdict: 'blocked',
+      exitCode: 2,
+      stepsPassed: 0,
+      stepsWarn: 0,
+      stepsFailed: 0,
+      stepsMissing: input.blockers.length,
+      stepsSkipped: 0,
+    },
+    impact: {
+      changed: input.affectedProjects > 0,
+      risk: input.risk,
+      affectedProjects: input.affectedProjects,
+      recommendedCommands: 0,
+    },
+    freshness: {
+      verdict: 'fresh',
+      baseline: 'none',
+      changed: [],
+      added: [],
+      removed: [],
+      projectHashes: {},
+    },
+    blockingReasons: input.blockers,
+    missingEvidence: [],
+    resolutionHints: [],
+    steps: [],
+    verificationPlan: [],
+    affectedSubgraph: {
+      totalProjects: input.affectedProjects,
+      directlyChanged: [],
+      transitiveDependents: [],
+      covered: [],
+      uncovered: [],
+      unverifiable: [],
+    },
+    graphIntegrity: {
+      ok: true,
+      cycles: [],
+      danglingEdges: [],
+      orphans: [],
+      stats: { nodeCount: 0, edgeCount: 0, cycleCount: 0, danglingCount: 0, orphanCount: 0 },
+    },
+    policyMode: 'warn',
+    policyViolations: [],
+  };
+}
+
 beforeEach(async () => {
   workspacePath = await mkdtemp(path.join(tmpdir(), 'rk-explain-'));
   await fsExtra.outputJson(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
@@ -68,17 +126,14 @@ describe('workspace explain (Phase 4.B)', () => {
   });
 
   it('uses scaffold wording for release-blocked explain in an empty workspace', async () => {
-    await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH), {
-      schemaVersion: 'workspace-verify.v1',
-      generatedAt: new Date().toISOString(),
-      summary: { verdict: 'blocked', exitCode: 2 },
-      impact: { risk: 'low', affectedProjects: 0 },
-      freshness: { verdict: 'fresh' },
-      blockingReasons: ['workspace.doctor: Doctor evidence is stale'],
-      resolutionHints: [],
-      steps: [],
-      policyViolations: [],
-    });
+    await fsExtra.outputJson(
+      path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH),
+      verifyFixture({
+        risk: 'low',
+        affectedProjects: 0,
+        blockers: ['workspace.doctor: Doctor evidence is stale'],
+      })
+    );
 
     const report = await buildWorkspaceExplain({
       workspacePath,
@@ -91,17 +146,14 @@ describe('workspace explain (Phase 4.B)', () => {
   });
 
   it('builds release-blocked explain from verify report', async () => {
-    await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH), {
-      schemaVersion: 'workspace-verify.v1',
-      generatedAt: new Date().toISOString(),
-      summary: { verdict: 'blocked', exitCode: 2 },
-      impact: { risk: 'high', affectedProjects: 1 },
-      freshness: { verdict: 'fresh' },
-      blockingReasons: ['doctor workspace failed'],
-      resolutionHints: [],
-      steps: [],
-      policyViolations: [],
-    });
+    await fsExtra.outputJson(
+      path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH),
+      verifyFixture({
+        risk: 'high',
+        affectedProjects: 1,
+        blockers: ['doctor workspace failed'],
+      })
+    );
 
     const report = await buildWorkspaceExplain({
       workspacePath,
@@ -111,6 +163,21 @@ describe('workspace explain (Phase 4.B)', () => {
     expect(report.schemaVersion).toBe(WORKSPACE_EXPLAIN_SCHEMA_VERSION);
     expect(report.summary).toContain('blocked');
     expect(report.blockingReasons).toContain('doctor workspace failed');
+  });
+
+  it('rejects malformed verify evidence instead of narrating unvalidated data', async () => {
+    await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH), {
+      schemaVersion: 'workspace-verify.v1',
+      generatedAt: new Date().toISOString(),
+      summary: { verdict: 'blocked', exitCode: 2 },
+    });
+
+    await expect(
+      buildWorkspaceExplain({
+        workspacePath,
+        target: { kind: 'release-blocked' },
+      })
+    ).rejects.toThrow('violates contracts/workspace-intelligence/workspace-verify.v1.json');
   });
 
   it('writes explain, why, and trace artifacts to separate last-run paths', async () => {

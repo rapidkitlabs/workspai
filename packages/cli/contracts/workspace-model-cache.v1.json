@@ -2,11 +2,53 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "required": [
-    "schemaVersion"
+    "schemaVersion",
+    "cliVersion",
+    "inputsHash",
+    "generatedAt",
+    "model"
   ],
   "properties": {
     "schemaVersion": {
       "const": "workspace-model-cache.v1"
+    },
+    "cliVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputsHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "model": {
+      "type": "object",
+      "required": [
+        "schemaVersion"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "workspace-model.v1"
+        }
+      },
+      "additionalProperties": true
+    },
+    "projectSignatures": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "workspaceFileSignatures": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
     }
   },
   "additionalProperties": true

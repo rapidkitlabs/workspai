@@ -100,6 +100,64 @@ describe('Phase 3 command contract handlers', () => {
       }
     });
 
+    it('renders help without invoking workspace initialization', async () => {
+      const index = await import('../index.js');
+      const initRunner = vi.fn().mockResolvedValue(0);
+
+      const code = await index.handleBootstrapCommand(['bootstrap', '--help'], initRunner);
+
+      expect(code).toBe(0);
+      expect(initRunner).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Usage: workspai bootstrap')
+      );
+    });
+
+    it('never invokes runtime initialization in compliance-only mode', async () => {
+      const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-bootstrap-compliance-'));
+      const workspaiDir = path.join(workspaceRoot, '.workspai');
+      await mkdir(workspaiDir, { recursive: true });
+      await writeFile(path.join(workspaceRoot, '.workspai-workspace'), '{}', 'utf-8');
+      await writeFile(
+        path.join(workspaiDir, 'workspace.json'),
+        JSON.stringify({ profile: 'enterprise' }, null, 2),
+        'utf-8'
+      );
+      await writeFile(
+        path.join(workspaiDir, 'policies.yml'),
+        ['version: "1.0"', 'mode: warn', 'rules:', '  enforce_workspace_marker: true', ''].join(
+          '\n'
+        ),
+        'utf-8'
+      );
+      process.chdir(workspaceRoot);
+
+      const index = await import('../index.js');
+      const initRunner = vi.fn().mockResolvedValue(0);
+
+      const code = await index.handleBootstrapCommand(
+        ['bootstrap', '--profile=enterprise', '--compliance-only'],
+        initRunner
+      );
+
+      expect(code).toBe(1);
+      expect(initRunner).not.toHaveBeenCalled();
+      const report = (await fsExtra.readJson(
+        path.join(workspaiDir, 'reports', 'bootstrap-compliance.latest.json')
+      )) as {
+        complianceOnly?: boolean;
+        checks?: Array<{ id: string; status: string }>;
+      };
+      expect(report.complianceOnly).toBe(true);
+      expect(report.checks).toContainEqual({
+        id: 'profile.enterprise.ci',
+        status: 'skipped',
+        message: expect.any(String),
+      });
+
+      await cleanupWorkspaceDir(workspaceRoot);
+    });
+
     it('rewrites bootstrap command to init and preserves trailing args', async () => {
       const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-bootstrap-init-args-'));
       const projectDir = path.join(workspaceRoot, 'apps', 'api');
@@ -315,7 +373,7 @@ describe('Phase 3 command contract handlers', () => {
         initRunner
       );
 
-      expect(code).toBe(0);
+      expect(code).toBe(1);
       expect(initRunner).toHaveBeenCalledWith(['init', './apps/api']);
       expect(process.env.RAPIDKIT_BOOTSTRAP_CI).toBe('1');
       expect(process.env.RAPIDKIT_OFFLINE_MODE).toBe('1');
@@ -730,6 +788,9 @@ describe('Phase 3 command contract handlers', () => {
 
       expect(code).toBe(0);
       const fsExtra = await import('fs-extra');
+      await expect(fsExtra.pathExists(path.join(workspaiDir, 'mirror-config.json'))).resolves.toBe(
+        false
+      );
       await expect(
         fsExtra.pathExists(path.join(workspaiDir, 'reports', 'mirror-ops.latest.json'))
       ).resolves.toBe(true);
@@ -1752,6 +1813,7 @@ describe('Phase 3 command contract handlers', () => {
       await expect(index.shouldForwardToCore(['doctor', 'workspace'])).resolves.toBe(false);
       await expect(index.shouldForwardToCore(['workspace', 'list'])).resolves.toBe(false);
       await expect(index.shouldForwardToCore(['project'])).resolves.toBe(false);
+      await expect(index.shouldForwardToCore(['project', '--help'])).resolves.toBe(false);
       await expect(index.shouldForwardToCore(['project', 'archive', 'api'])).resolves.toBe(false);
       await expect(index.shouldForwardToCore(['project', 'delete', 'api'])).resolves.toBe(false);
       await expect(index.shouldForwardToCore(['project', 'commands', '--json'])).resolves.toBe(

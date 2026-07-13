@@ -5,6 +5,7 @@ import path from 'path';
 import { createHash, createSign, generateKeyPairSync } from 'crypto';
 import { createServer } from 'http';
 import type { AddressInfo } from 'net';
+import fsExtra from 'fs-extra';
 import { runMirrorLifecycle } from '../utils/mirror.js';
 
 async function makeWorkspace(prefix: string) {
@@ -347,7 +348,7 @@ describe('runMirrorLifecycle unit coverage', () => {
     ).toBe(true);
   });
 
-  it('rotates old artifacts when retention keepLast is configured', async () => {
+  it('rotates stale artifacts without deleting artifacts referenced by the new lock', async () => {
     const workspaceRoot = await makeWorkspace('mirror-retention-rotation');
     tempDirs.push(workspaceRoot);
 
@@ -377,13 +378,45 @@ describe('runMirrorLifecycle unit coverage', () => {
         },
       ],
     });
+    const staleArtifact = path.join(
+      workspaceRoot,
+      '.workspai',
+      'mirror',
+      'artifacts',
+      'stale',
+      'old.bin'
+    );
+    const retainedStaleArtifact = path.join(
+      workspaceRoot,
+      '.workspai',
+      'mirror',
+      'artifacts',
+      'stale',
+      'recent.bin'
+    );
+    await fsExtra.outputFile(staleArtifact, 'old');
+    await fsExtra.outputFile(retainedStaleArtifact, 'recent');
+    const older = new Date('2020-01-01T00:00:00.000Z');
+    await fsExtra.utimes(staleArtifact, older, older);
 
     const result = await runMirrorLifecycle(workspaceRoot, {
       ciMode: true,
       offlineMode: false,
     });
 
-    expect(result.details.rotatedFiles).toBeGreaterThan(0);
+    expect(result.details.rotatedFiles).toBe(1);
+    await expect(
+      fsExtra.pathExists(
+        path.join(workspaceRoot, '.workspai', 'mirror', 'artifacts', 'rotation-a.bin')
+      )
+    ).resolves.toBe(true);
+    await expect(
+      fsExtra.pathExists(
+        path.join(workspaceRoot, '.workspai', 'mirror', 'artifacts', 'rotation-b.bin')
+      )
+    ).resolves.toBe(true);
+    await expect(fsExtra.pathExists(staleArtifact)).resolves.toBe(false);
+    await expect(fsExtra.pathExists(retainedStaleArtifact)).resolves.toBe(true);
     expect(result.checks.some((c) => c.id === 'mirror.rotate' && c.status === 'passed')).toBe(true);
   });
 

@@ -85,17 +85,17 @@ describe('config command', () => {
     logSpy.mockRestore();
   });
 
-  it('remove-api-key removes key when user confirms', async () => {
+  it('remove-api-key removes key non-interactively with --yes', async () => {
     getUserConfigMock.mockReturnValue({ openaiApiKey: 'sk-old' });
-    promptMock.mockResolvedValue({ confirm: true });
 
     const { registerConfigCommands } = await import('../../commands/config.js');
     const program = new Command();
     registerConfigCommands(program);
 
-    await program.parseAsync(['node', 'rapidkit', 'config', 'remove-api-key']);
+    await program.parseAsync(['node', 'rapidkit', 'config', 'remove-api-key', '--yes']);
 
     expect(setUserConfigMock).toHaveBeenCalledWith({ openaiApiKey: undefined });
+    expect(promptMock).not.toHaveBeenCalled();
   });
 
   it('remove-api-key does nothing when key is missing', async () => {
