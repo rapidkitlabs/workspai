@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "workspai-workspace-archive-capabilities-v1",
+  "commands": [
+    "export",
+    "inspect",
+    "verify",
+    "doctor",
+    "hydrate"
+  ],
+  "container": {
+    "writeFormat": "zip64",
+    "readFormats": [
+      "zip",
+      "zip64"
+    ],
+    "compressionModes": [
+      "store",
+      "deflate"
+    ],
+    "defaultCompression": "store"
+  },
+  "streaming": {
+    "export": true,
+    "remoteDownload": true,
+    "inspect": true,
+    "verify": true,
+    "hydrate": true,
+    "payloadBufferedInMemory": false
+  },
+  "sizePolicy": {
+    "workspacePayloadDefault": "unlimited",
+    "safetyBudgets": "opt-in",
+    "manifestMemoryLimitBytes": 268435456,
+    "remoteDownloadTimeoutDefaultMs": 1800000
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "manifestRequired": true,
+    "strictVerificationRequiresChecksums": true
+  },
+  "cliFlags": {
+    "archiveCompression": {
+      "signature": "--archive-compression <mode>",
+      "description": "Archive compression: store (default) or deflate",
+      "appliesTo": [
+        "export"
+      ]
+    },
+    "maxDownloadSize": {
+      "signature": "--max-download-size <size>",
+      "description": "Optional maximum remote archive download size (for example 8gb)",
+      "appliesTo": [
+        "inspect",
+        "verify",
+        "doctor",
+        "hydrate"
+      ]
+    },
+    "maxExpandedSize": {
+      "signature": "--max-expanded-size <size>",
+      "description": "Optional maximum expanded archive payload size (for example 20gb)",
+      "appliesTo": [
+        "inspect",
+        "verify",
+        "doctor",
+        "hydrate"
+      ]
+    },
+    "downloadTimeoutMs": {
+      "signature": "--download-timeout-ms <ms>",
+      "description": "Remote archive download timeout in milliseconds; 0 disables it",
+      "appliesTo": [
+        "inspect",
+        "verify",
+        "doctor",
+        "hydrate"
+      ]
+    }
+  },
+  "contracts": {
+    "manifest": {
+      "schemaVersion": "workspai-workspace-archive-manifest-v1",
+      "path": "contracts/workspace-archive-manifest.v1.json"
+    },
+    "operationResult": {
+      "schemaVersion": "workspai-workspace-archive-operation-result-v1",
+      "path": "contracts/workspace-archive-operation-result.v1.json"
+    }
+  }
+}

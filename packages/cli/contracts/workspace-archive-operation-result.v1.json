@@ -1,0 +1,565 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workspai.dev/contracts/workspace-archive-operation-result.v1.json",
+  "title": "Workspai Workspace Archive Operation Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "operation",
+    "status"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "workspai-workspace-archive-operation-result-v1"
+    },
+    "operation": {
+      "enum": [
+        "export",
+        "inspect",
+        "verify",
+        "doctor",
+        "hydrate"
+      ]
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "warning",
+        "failed",
+        "error"
+      ]
+    },
+    "archivePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "outputPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dryRun": {
+      "type": "boolean"
+    },
+    "archivePathOrUrl": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "manifest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/manifest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "bytesWritten": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "workspaceName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fileCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "totalBytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "verifiedFiles": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "missingChecksumFiles": {
+      "$ref": "#/$defs/pathList"
+    },
+    "missingArchiveEntries": {
+      "$ref": "#/$defs/pathList"
+    },
+    "extraArchiveEntries": {
+      "$ref": "#/$defs/pathList"
+    },
+    "recommendedActions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "size",
+          "hasChecksum"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hasChecksum": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "size"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "mismatches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "expected",
+          "actual"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          },
+          "actual": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "size",
+              "sha256"
+            ],
+            "properties": {
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "message"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "warning",
+              "failed"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "export"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "warning",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "operation",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "archivePath": true,
+          "manifest": true,
+          "bytesWritten": true
+        },
+        "required": [
+          "archivePath",
+          "manifest",
+          "bytesWritten"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "inspect"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "warning",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "operation",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "archivePath": true,
+          "manifest": true,
+          "fileCount": true,
+          "totalBytes": true,
+          "entries": true
+        },
+        "required": [
+          "archivePath",
+          "manifest",
+          "fileCount",
+          "totalBytes",
+          "entries"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "verify"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "warning",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "operation",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "archivePath": true,
+          "manifest": true,
+          "fileCount": true,
+          "totalBytes": true,
+          "verifiedFiles": true,
+          "missingChecksumFiles": true,
+          "missingArchiveEntries": true,
+          "extraArchiveEntries": true,
+          "mismatches": true
+        },
+        "required": [
+          "archivePath",
+          "manifest",
+          "fileCount",
+          "totalBytes",
+          "verifiedFiles",
+          "missingChecksumFiles",
+          "missingArchiveEntries",
+          "extraArchiveEntries",
+          "mismatches"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "doctor"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "warning",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "operation",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "archivePath": true,
+          "workspaceName": true,
+          "fileCount": true,
+          "totalBytes": true,
+          "checks": true,
+          "recommendedActions": true
+        },
+        "required": [
+          "archivePath",
+          "workspaceName",
+          "fileCount",
+          "totalBytes",
+          "checks",
+          "recommendedActions"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "hydrate"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "warning",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "operation",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "archivePath": true,
+          "outputPath": true,
+          "dryRun": true,
+          "manifest": true,
+          "files": true
+        },
+        "required": [
+          "archivePath",
+          "outputPath",
+          "dryRun",
+          "manifest",
+          "files"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "error"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "archivePathOrUrl": true,
+          "timestamp": true,
+          "error": true
+        },
+        "required": [
+          "timestamp",
+          "error"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "kind",
+        "workspaceName",
+        "exportedAt",
+        "security",
+        "files"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "workspai-workspace-archive-manifest-v1"
+        },
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "workspai.workspace.archive"
+        },
+        "workspaceName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exportedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "exportedBy": {
+          "enum": [
+            "workspai",
+            "workspai-vscode"
+          ]
+        },
+        "archiveFormat": {
+          "enum": [
+            "zip-store",
+            "zip-deflate"
+          ]
+        },
+        "containerFormat": {
+          "enum": [
+            "zip",
+            "zip64"
+          ]
+        },
+        "compression": {
+          "enum": [
+            "store",
+            "deflate"
+          ]
+        },
+        "streaming": {
+          "type": "boolean"
+        },
+        "security": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "envFilesIncluded",
+            "excludedByDefault"
+          ],
+          "properties": {
+            "envFilesIncluded": {
+              "type": "boolean"
+            },
+            "excludedByDefault": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "size",
+              "sha256"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "pathList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    }
+  }
+}

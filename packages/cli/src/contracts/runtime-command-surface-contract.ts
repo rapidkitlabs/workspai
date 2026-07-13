@@ -16,6 +16,11 @@ import {
   WORKSPACE_INTELLIGENCE_SUBCOMMANDS,
   WORKSPACE_SUBCOMMANDS,
 } from '../utils/workspace-command-surface.js';
+import {
+  WORKSPACE_ARCHIVE_CAPABILITIES_CONTRACT_PATH,
+  WORKSPACE_ARCHIVE_CAPABILITIES_SCHEMA_VERSION,
+  WORKSPACE_ARCHIVE_CLI_FLAGS,
+} from './workspace-archive-contract.js';
 
 export const RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION = 'rapidkit-runtime-command-surface-v1';
 
@@ -28,6 +33,12 @@ export type RuntimeCommandSurfaceContract = {
   coreProjectCommands: string[];
   workspaceSubcommands: string[];
   workspaceIntelligenceSubcommands: string[];
+  workspaceArchive: {
+    schemaVersion: string;
+    contractPath: string;
+    commands: string[];
+    flags: string[];
+  };
   moduleSuggestionFrameworks: string[];
   moduleUnsupportedFrameworks: string[];
   scaffoldKits: string[];
@@ -139,6 +150,12 @@ export function buildRuntimeCommandSurfaceContract(): RuntimeCommandSurfaceContr
     coreProjectCommands: [...RUNTIME_SURFACE_CORE_PROJECT_COMMANDS],
     workspaceSubcommands: [...WORKSPACE_SUBCOMMANDS],
     workspaceIntelligenceSubcommands: [...WORKSPACE_INTELLIGENCE_SUBCOMMANDS],
+    workspaceArchive: {
+      schemaVersion: WORKSPACE_ARCHIVE_CAPABILITIES_SCHEMA_VERSION,
+      contractPath: WORKSPACE_ARCHIVE_CAPABILITIES_CONTRACT_PATH,
+      commands: ['export', 'inspect', 'verify', 'doctor', 'hydrate'],
+      flags: Object.values(WORKSPACE_ARCHIVE_CLI_FLAGS).map((flag) => flag.signature),
+    },
     moduleSuggestionFrameworks: buildModuleSuggestionFrameworks(),
     moduleUnsupportedFrameworks: buildModuleUnsupportedFrameworks(),
     scaffoldKits: buildScaffoldKits(),

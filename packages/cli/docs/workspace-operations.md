@@ -113,6 +113,24 @@ npx workspai workspace hydrate team-workspace.workspai-archive.zip --output ./te
 
 Export excludes dependency folders, build output, git history, logs, `.env`, and private keys by default. Use `--include-env` only for trusted internal handoffs. Hydrate accepts legacy `.rapidkit-workspace` and `.rapidkit/*` archive entries, but restores them as canonical `.workspai-workspace` and `.workspai/*` paths.
 
+Archive export, verification, and hydrate stream file payloads instead of loading the workspace into memory. Exports use ZIP64, so multi-gigabyte workspaces and archives with more than 65,535 files are supported. Stored ZIP entries are the default; use `--archive-compression deflate` when transfer size matters more than export CPU time.
+
+Workspace size is unrestricted by default. For untrusted remote archives, optional operational budgets can be set without imposing a product-wide workspace limit:
+
+```bash
+npx workspai workspace hydrate https://example.test/team.zip \
+  --output ./team-workspace \
+  --max-download-size 100gb \
+  --max-expanded-size 500gb \
+  --download-timeout-ms 21600000
+```
+
+IDE, CI, and AI consumers can discover archive behavior from
+`contracts/workspace-archive-capabilities.v1.json`. The embedded manifest and every successful
+`--json` operation result are runtime-validated against
+`contracts/workspace-archive-manifest.v1.json` and
+`contracts/workspace-archive-operation-result.v1.json`.
+
 ## Workspace infrastructure (sidecar)
 
 Discovery sources: Core module slugs, project `.env.example`, workspace contract env, and `.workspai/infra/overrides.json`.

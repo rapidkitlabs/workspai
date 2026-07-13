@@ -21,11 +21,19 @@ import { WORKSPACE_MODEL_SCHEMA_VERSION } from '../workspace-model.js';
 import { WORKSPACE_IMPACT_SCHEMA_VERSION } from '../workspace-intelligence.js';
 import { WORKSPACE_VERIFY_SCHEMA_VERSION } from '../workspace-verify.js';
 import { WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS } from './workspace-intelligence-runtime-registry.js';
+import {
+  WORKSPACE_ARCHIVE_CAPABILITIES_SCHEMA_VERSION,
+  WORKSPACE_ARCHIVE_MANIFEST_SCHEMA_VERSION,
+  WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+} from './workspace-archive-contract.js';
 
 /** Single source of truth for schema versions advertised to IDE/CI consumers. */
 export function getPublishedContractVersions() {
   return {
     runtimeCommandSurface: RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION,
+    workspaceArchiveCapabilities: WORKSPACE_ARCHIVE_CAPABILITIES_SCHEMA_VERSION,
+    workspaceArchiveManifest: WORKSPACE_ARCHIVE_MANIFEST_SCHEMA_VERSION,
+    workspaceArchiveOperationResult: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
     projectEntryCapability: PROJECT_ENTRY_CAPABILITY_SCHEMA_VERSION,
     workspaceIntelligenceArchitecture: WORKSPACE_INTELLIGENCE_ARCHITECTURE_SCHEMA_VERSION,
     workspaceIntelligenceChain: WORKSPACE_INTELLIGENCE_CHAIN_SCHEMA_VERSION,

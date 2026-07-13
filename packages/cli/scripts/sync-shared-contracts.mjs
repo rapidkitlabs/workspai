@@ -30,6 +30,9 @@ const vscodeRoot = process.env.RAPIDKIT_VSCODE_REPO_PATH
 
 const GENERATED_FILES = [
   'runtime-command-surface.v1.json',
+  'workspace-archive-capabilities.v1.json',
+  'workspace-archive-manifest.v1.json',
+  'workspace-archive-operation-result.v1.json',
   'create-planner-capabilities.v1.json',
   'agent-customization-pack.v1.json',
   'backend-import-stack-parity.snapshot.json',
@@ -46,6 +49,9 @@ const VSCODE_SRC_CONTRACT_FILES = [
   'create-planner-capabilities.v1.json',
   'release-readiness.v1.json',
   'workspace-registry.v1.json',
+  'workspace-archive-capabilities.v1.json',
+  'workspace-archive-manifest.v1.json',
+  'workspace-archive-operation-result.v1.json',
 ];
 
 function runGenerator() {

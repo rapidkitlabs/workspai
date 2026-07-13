@@ -13,6 +13,11 @@ import { buildProjectEntryCapabilityContract } from '../../contracts/project-ent
 import { buildRuntimeCommandSurfaceContract } from '../../contracts/runtime-command-surface-contract';
 import { buildWorkspaceIntelligenceArchitectureContract } from '../../contracts/workspace-intelligence-architecture-contract';
 import { buildWorkspaceIntelligenceChainContract } from '../../contracts/workspace-intelligence-chain-contract';
+import {
+  buildWorkspaceArchiveCapabilitiesContract,
+  buildWorkspaceArchiveManifestSchema,
+  buildWorkspaceArchiveOperationResultSchema,
+} from '../../contracts/workspace-archive-contract';
 
 function readJsonContract(fileName: string): unknown {
   const contractPath = path.resolve(process.cwd(), 'contracts', fileName);
@@ -23,6 +28,18 @@ describe('generated shared contracts (Wave B + C)', () => {
   it('keeps committed runtime command surface aligned with the generator', () => {
     expect(readJsonContract('runtime-command-surface.v1.json')).toEqual(
       buildRuntimeCommandSurfaceContract()
+    );
+  });
+
+  it('keeps committed workspace archive contracts aligned with their generators', () => {
+    expect(readJsonContract('workspace-archive-capabilities.v1.json')).toEqual(
+      buildWorkspaceArchiveCapabilitiesContract()
+    );
+    expect(readJsonContract('workspace-archive-manifest.v1.json')).toEqual(
+      buildWorkspaceArchiveManifestSchema()
+    );
+    expect(readJsonContract('workspace-archive-operation-result.v1.json')).toEqual(
+      buildWorkspaceArchiveOperationResultSchema()
     );
   });
 

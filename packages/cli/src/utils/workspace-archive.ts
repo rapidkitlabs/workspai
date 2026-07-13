@@ -1,10 +1,21 @@
 import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
-import zlib from 'zlib';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 import fsExtra from 'fs-extra';
+import * as yauzl from 'yauzl';
+import * as yazl from 'yazl';
 
+import {
+  WORKSPACE_ARCHIVE_MANIFEST_CONTRACT_PATH,
+  WORKSPACE_ARCHIVE_MANIFEST_SCHEMA_VERSION,
+  WORKSPACE_ARCHIVE_OPERATION_RESULT_CONTRACT_PATH,
+  WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+} from '../contracts/workspace-archive-contract.js';
+import { assertJsonSchemaContract } from './json-schema-contract.js';
 import {
   hasWorkspaceRootMarkers,
   toWorkspaiArtifactPath,
@@ -17,12 +28,17 @@ const LEGACY_WORKSPACE_ARCHIVE_MANIFEST_PATH = '.rapidkit/archive-manifest.json'
 export const WORKSPACE_ARCHIVE_KIND = 'workspai.workspace.archive';
 
 export interface WorkspaceArchiveManifest {
+  /** Added by current exporters; omitted by legacy v1 archives. */
+  schemaVersion?: typeof WORKSPACE_ARCHIVE_MANIFEST_SCHEMA_VERSION;
   version: 1;
   kind: typeof WORKSPACE_ARCHIVE_KIND;
   workspaceName: string;
   exportedAt: string;
   exportedBy?: 'workspai' | 'workspai-vscode';
   archiveFormat?: 'zip-store' | 'zip-deflate';
+  containerFormat?: 'zip' | 'zip64';
+  compression?: 'store' | 'deflate';
+  streaming?: boolean;
   security: {
     envFilesIncluded: boolean;
     excludedByDefault: string[];
@@ -39,9 +55,13 @@ export interface WorkspaceArchiveExportOptions {
   outputPath?: string;
   includeEnv?: boolean;
   now?: Date;
+  compression?: 'store' | 'deflate';
 }
 
 export interface WorkspaceArchiveExportResult {
+  schemaVersion: typeof WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION;
+  operation: 'export';
+  status: 'passed';
   archivePath: string;
   manifest: WorkspaceArchiveManifest;
   bytesWritten: number;
@@ -50,6 +70,8 @@ export interface WorkspaceArchiveExportResult {
 export type WorkspaceArchiveVerificationStatus = 'passed' | 'warning' | 'failed';
 
 export interface WorkspaceArchiveVerificationResult {
+  schemaVersion: typeof WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION;
+  operation: 'verify';
   archivePath: string;
   manifest: WorkspaceArchiveManifest;
   status: WorkspaceArchiveVerificationStatus;
@@ -67,6 +89,9 @@ export interface WorkspaceArchiveVerificationResult {
 }
 
 export interface WorkspaceArchiveInspectResult {
+  schemaVersion: typeof WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION;
+  operation: 'inspect';
+  status: 'passed';
   archivePath: string;
   manifest: WorkspaceArchiveManifest;
   fileCount: number;
@@ -75,6 +100,8 @@ export interface WorkspaceArchiveInspectResult {
 }
 
 export interface WorkspaceArchiveDoctorResult {
+  schemaVersion: typeof WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION;
+  operation: 'doctor';
   archivePath: string;
   status: WorkspaceArchiveVerificationStatus;
   workspaceName: string;
@@ -90,9 +117,22 @@ export interface WorkspaceArchiveHydrateOptions {
   force?: boolean;
   dryRun?: boolean;
   strict?: boolean;
+  safety?: WorkspaceArchiveSafetyOptions;
+}
+
+export interface WorkspaceArchiveSafetyOptions {
+  /** Maximum downloaded bytes for URL inputs. Omit for no size limit. */
+  maxDownloadBytes?: number;
+  /** Maximum total uncompressed payload bytes. Omit for no workspace-size limit. */
+  maxExpandedBytes?: number;
+  /** Maximum time for a remote download. Set to 0 to disable the timeout. */
+  downloadTimeoutMs?: number;
 }
 
 export interface WorkspaceArchiveHydrateResult {
+  schemaVersion: typeof WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION;
+  operation: 'hydrate';
+  status: 'passed';
   archivePath: string;
   outputPath: string;
   dryRun: boolean;
@@ -100,13 +140,24 @@ export interface WorkspaceArchiveHydrateResult {
   files: Array<{ path: string; size: number }>;
 }
 
-type ZipEntry = {
+type ArchiveEntry = {
   name: string;
-  data: Buffer;
-  crc32: number;
   size: number;
-  offset: number;
+  compressedSize: number;
+  crc32: number;
+  entry: yauzl.Entry;
 };
+
+type LoadedWorkspaceArchive = {
+  archivePath: string;
+  entries: ArchiveEntry[];
+  manifest: WorkspaceArchiveManifest;
+  zipFile: yauzl.ZipFile;
+  cleanup?: string;
+};
+
+const DEFAULT_DOWNLOAD_TIMEOUT_MS = 30 * 60 * 1000;
+const MAX_MANIFEST_BYTES_IN_MEMORY = 256 * 1024 * 1024;
 
 const EXCLUDED_SEGMENTS = new Set([
   '__pycache__',
@@ -216,46 +267,6 @@ export function shouldExcludeWorkspaceArchivePath(
   return basename.endsWith('.pyc') || basename.endsWith('.log');
 }
 
-function sha256(data: Buffer): string {
-  return crypto.createHash('sha256').update(data).digest('hex');
-}
-
-const CRC_TABLE = new Uint32Array(256).map((_, index) => {
-  let c = index;
-  for (let k = 0; k < 8; k += 1) {
-    c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-  }
-  return c >>> 0;
-});
-
-function crc32(data: Buffer): number {
-  let crc = 0xffffffff;
-  for (const byte of data) {
-    crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function uint16(value: number): Buffer {
-  const buffer = Buffer.allocUnsafe(2);
-  buffer.writeUInt16LE(value, 0);
-  return buffer;
-}
-
-function uint32(value: number): Buffer {
-  const buffer = Buffer.allocUnsafe(4);
-  buffer.writeUInt32LE(value >>> 0, 0);
-  return buffer;
-}
-
-function dosDateTime(date: Date): { time: number; date: number } {
-  const year = Math.max(date.getFullYear(), 1980);
-  const time =
-    (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
-  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
-  return { time, date: dosDate };
-}
-
 async function walkWorkspaceFiles(
   workspacePath: string,
   currentPath: string,
@@ -296,115 +307,46 @@ async function readWorkspaceName(workspacePath: string): Promise<string> {
   return path.basename(path.resolve(workspacePath));
 }
 
-async function buildArchiveEntries(
-  workspacePath: string,
-  manifest: WorkspaceArchiveManifest,
-  options?: { includeEnv?: boolean }
-): Promise<ZipEntry[]> {
-  const candidates: Array<{ relativePath: string; fullPath: string }> = [];
-  await walkWorkspaceFiles(workspacePath, workspacePath, candidates, options);
+type ExportCandidate = {
+  relativePath: string;
+  fullPath: string;
+  size: number;
+  mtimeMs: number;
+  sha256: string;
+};
 
-  const entries: ZipEntry[] = [];
-  for (const candidate of candidates.sort((a, b) => a.relativePath.localeCompare(b.relativePath))) {
-    const data = await fsExtra.readFile(candidate.fullPath);
-    if (data.length >= 0xffffffff) {
-      throw new Error(
-        `File is too large for portable workspace archive: ${candidate.relativePath}`
-      );
-    }
-    manifest.files.push({
-      path: candidate.relativePath,
-      size: data.length,
-      sha256: sha256(data),
-    });
-    entries.push({
-      name: candidate.relativePath,
-      data,
-      crc32: crc32(data),
-      size: data.length,
-      offset: 0,
-    });
+async function hashWorkspaceFile(candidate: {
+  relativePath: string;
+  fullPath: string;
+}): Promise<ExportCandidate> {
+  const before = await fsExtra.stat(candidate.fullPath);
+  const hash = crypto.createHash('sha256');
+  let size = 0;
+  for await (const chunk of createReadStream(candidate.fullPath)) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += bytes.length;
+    hash.update(bytes);
   }
-
-  const manifestData = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
-  entries.push({
-    name: WORKSPACE_ARCHIVE_MANIFEST_PATH,
-    data: manifestData,
-    crc32: crc32(manifestData),
-    size: manifestData.length,
-    offset: 0,
-  });
-
-  return entries;
+  const after = await fsExtra.stat(candidate.fullPath);
+  if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || size !== after.size) {
+    throw new Error(`Workspace file changed while preparing archive: ${candidate.relativePath}`);
+  }
+  return {
+    ...candidate,
+    size,
+    mtimeMs: after.mtimeMs,
+    sha256: hash.digest('hex'),
+  };
 }
 
-function buildZip(entries: ZipEntry[], date = new Date()): Buffer {
-  const localParts: Buffer[] = [];
-  const centralParts: Buffer[] = [];
-  let offset = 0;
-  const stamp = dosDateTime(date);
-
-  for (const entry of entries) {
-    const name = Buffer.from(entry.name, 'utf-8');
-    entry.offset = offset;
-    const localHeader = Buffer.concat([
-      uint32(0x04034b50),
-      uint16(20),
-      uint16(0x0800),
-      uint16(0),
-      uint16(stamp.time),
-      uint16(stamp.date),
-      uint32(entry.crc32),
-      uint32(entry.size),
-      uint32(entry.size),
-      uint16(name.length),
-      uint16(0),
-      name,
-    ]);
-    localParts.push(localHeader, entry.data);
-    offset += localHeader.length + entry.data.length;
+async function replaceFileAtomically(temporaryPath: string, targetPath: string): Promise<void> {
+  try {
+    await fsExtra.rename(temporaryPath, targetPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'EEXIST' && code !== 'EPERM') throw error;
+    await fsExtra.move(temporaryPath, targetPath, { overwrite: true });
   }
-
-  const centralDirectoryOffset = offset;
-  for (const entry of entries) {
-    const name = Buffer.from(entry.name, 'utf-8');
-    const centralHeader = Buffer.concat([
-      uint32(0x02014b50),
-      uint16(20),
-      uint16(20),
-      uint16(0x0800),
-      uint16(0),
-      uint16(stamp.time),
-      uint16(stamp.date),
-      uint32(entry.crc32),
-      uint32(entry.size),
-      uint32(entry.size),
-      uint16(name.length),
-      uint16(0),
-      uint16(0),
-      uint16(0),
-      uint16(0),
-      uint32(0),
-      uint32(entry.offset),
-      name,
-    ]);
-    centralParts.push(centralHeader);
-    offset += centralHeader.length;
-  }
-
-  const centralDirectorySize = offset - centralDirectoryOffset;
-  const endRecord = Buffer.concat([
-    uint32(0x06054b50),
-    uint16(0),
-    uint16(0),
-    uint16(entries.length),
-    uint16(entries.length),
-    uint32(centralDirectorySize),
-    uint32(centralDirectoryOffset),
-    uint16(0),
-  ]);
-
-  return Buffer.concat([...localParts, ...centralParts, endRecord]);
 }
 
 export async function exportWorkspaceArchive(
@@ -422,12 +364,16 @@ export async function exportWorkspaceArchive(
     options.outputPath || `${sanitizeWorkspaceArchiveName(workspaceName)}.workspai-archive.zip`
   );
   const manifest: WorkspaceArchiveManifest = {
+    schemaVersion: WORKSPACE_ARCHIVE_MANIFEST_SCHEMA_VERSION,
     version: 1,
     kind: WORKSPACE_ARCHIVE_KIND,
     workspaceName,
     exportedAt: (options.now ?? new Date()).toISOString(),
     exportedBy: 'workspai',
-    archiveFormat: 'zip-store',
+    archiveFormat: options.compression === 'deflate' ? 'zip-deflate' : 'zip-store',
+    containerFormat: 'zip64',
+    compression: options.compression === 'deflate' ? 'deflate' : 'store',
+    streaming: true,
     security: {
       envFilesIncluded: options.includeEnv === true,
       excludedByDefault: [
@@ -445,111 +391,254 @@ export async function exportWorkspaceArchive(
     },
     files: [],
   };
-  const entries = await buildArchiveEntries(workspacePath, manifest, {
+
+  const discovered: Array<{ relativePath: string; fullPath: string }> = [];
+  await walkWorkspaceFiles(workspacePath, workspacePath, discovered, {
     includeEnv: options.includeEnv === true,
   });
-  const archive = buildZip(entries, options.now ?? new Date());
+  const normalizedArchivePath = path.resolve(archivePath);
+  const candidates: ExportCandidate[] = [];
+  for (const candidate of discovered
+    .filter((entry) => path.resolve(entry.fullPath) !== normalizedArchivePath)
+    .sort((a, b) => a.relativePath.localeCompare(b.relativePath))) {
+    const hashed = await hashWorkspaceFile(candidate);
+    candidates.push(hashed);
+    manifest.files.push({
+      path: hashed.relativePath,
+      size: hashed.size,
+      sha256: hashed.sha256,
+    });
+  }
+
   await fsExtra.ensureDir(path.dirname(archivePath));
-  await fsExtra.writeFile(archivePath, archive);
-  return { archivePath, manifest, bytesWritten: archive.length };
-}
+  const temporaryPath = `${archivePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  const zipFile = new yazl.ZipFile();
+  const timestamp = options.now ?? new Date();
+  const compress = options.compression === 'deflate';
+  try {
+    for (const candidate of candidates) {
+      zipFile.addFile(candidate.fullPath, candidate.relativePath, {
+        compress,
+        forceZip64Format: candidate.size >= 0xffffffff,
+        mtime: timestamp,
+      });
+    }
+    const manifestData = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
+    zipFile.addBuffer(manifestData, WORKSPACE_ARCHIVE_MANIFEST_PATH, {
+      compress,
+      mtime: timestamp,
+    });
+    zipFile.end({ forceZip64Format: true, comment: '' });
+    await pipeline(
+      zipFile.outputStream as Readable,
+      createWriteStream(temporaryPath, { flags: 'wx' })
+    );
 
-function findEndOfCentralDirectory(buffer: Buffer): number {
-  const minOffset = Math.max(0, buffer.length - 0xffff - 22);
-  for (let offset = buffer.length - 22; offset >= minOffset; offset -= 1) {
-    if (buffer.readUInt32LE(offset) === 0x06054b50) {
-      return offset;
-    }
-  }
-  throw new Error('Invalid ZIP archive: end of central directory not found.');
-}
-
-function parseZipEntries(buffer: Buffer): Array<{ name: string; data: Buffer; size: number }> {
-  const eocd = findEndOfCentralDirectory(buffer);
-  const entryCount = buffer.readUInt16LE(eocd + 10);
-  const centralOffset = buffer.readUInt32LE(eocd + 16);
-  const entries: Array<{ name: string; data: Buffer; size: number }> = [];
-  let cursor = centralOffset;
-
-  for (let index = 0; index < entryCount; index += 1) {
-    if (buffer.readUInt32LE(cursor) !== 0x02014b50) {
-      throw new Error('Invalid ZIP archive: central directory is corrupted.');
-    }
-    const method = buffer.readUInt16LE(cursor + 10);
-    if (method !== 0 && method !== 8) {
-      throw new Error(
-        'Unsupported ZIP archive: only stored/deflated entries are supported by Workspai.'
-      );
-    }
-    const compressedSize = buffer.readUInt32LE(cursor + 20);
-    const uncompressedSize = buffer.readUInt32LE(cursor + 24);
-    const nameLength = buffer.readUInt16LE(cursor + 28);
-    const extraLength = buffer.readUInt16LE(cursor + 30);
-    const commentLength = buffer.readUInt16LE(cursor + 32);
-    const localOffset = buffer.readUInt32LE(cursor + 42);
-    const name = buffer.subarray(cursor + 46, cursor + 46 + nameLength).toString('utf-8');
-    assertSafeEntryName(name);
-    const isDirectoryEntry = name.endsWith('/');
-
-    if (buffer.readUInt32LE(localOffset) !== 0x04034b50) {
-      throw new Error(`Invalid ZIP archive: local header missing for ${name}.`);
-    }
-    const localNameLength = buffer.readUInt16LE(localOffset + 26);
-    const localExtraLength = buffer.readUInt16LE(localOffset + 28);
-    const dataOffset = localOffset + 30 + localNameLength + localExtraLength;
-    const compressedData = buffer.subarray(dataOffset, dataOffset + compressedSize);
-    if (compressedData.length !== compressedSize) {
-      throw new Error(`Invalid ZIP archive: size mismatch for ${name}.`);
-    }
-    if (isDirectoryEntry) {
-      if (compressedSize !== 0 || uncompressedSize !== 0) {
-        throw new Error(`Invalid ZIP archive: directory entry contains data for ${name}.`);
+    for (const candidate of candidates) {
+      const current = await fsExtra.stat(candidate.fullPath);
+      if (current.size !== candidate.size || current.mtimeMs !== candidate.mtimeMs) {
+        throw new Error(`Workspace file changed while writing archive: ${candidate.relativePath}`);
       }
-      cursor += 46 + nameLength + extraLength + commentLength;
-      continue;
     }
-    const data = method === 8 ? zlib.inflateRawSync(compressedData) : compressedData;
-    if (data.length !== uncompressedSize) {
-      throw new Error(`Invalid ZIP archive: inflated size mismatch for ${name}.`);
-    }
-    entries.push({ name, data, size: uncompressedSize });
-    cursor += 46 + nameLength + extraLength + commentLength;
-  }
 
-  return entries;
+    const archiveStat = await fsExtra.stat(temporaryPath);
+    await replaceFileAtomically(temporaryPath, archivePath);
+    return validateArchiveOperationResult({
+      schemaVersion: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+      operation: 'export',
+      status: 'passed',
+      archivePath,
+      manifest,
+      bytesWritten: archiveStat.size,
+    });
+  } finally {
+    await fsExtra.remove(temporaryPath).catch(() => undefined);
+  }
 }
 
 async function resolveArchivePath(
-  input: string
+  input: string,
+  safety: WorkspaceArchiveSafetyOptions = {}
 ): Promise<{ archivePath: string; cleanup?: string }> {
   if (/^https?:\/\//i.test(input)) {
-    const response = await fetch(input);
-    if (!response.ok) {
-      throw new Error(`Failed to download workspace archive: HTTP ${response.status}`);
-    }
-    const bytes = Buffer.from(await response.arrayBuffer());
     const tempDir = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'workspai-workspace-archive-'));
     const archivePath = path.join(tempDir, 'workspace.workspai-archive.zip');
-    await fsExtra.writeFile(archivePath, bytes);
-    return { archivePath, cleanup: tempDir };
+    const controller = new AbortController();
+    const timeoutMs = safety.downloadTimeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS;
+    const timeout =
+      timeoutMs > 0
+        ? setTimeout(() => controller.abort(new Error('Download timed out')), timeoutMs)
+        : null;
+    try {
+      const response = await fetch(input, { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(`Failed to download workspace archive: HTTP ${response.status}`);
+      }
+      if (!response.body) {
+        throw new Error('Failed to download workspace archive: response body is empty.');
+      }
+      const declaredLength = Number(response.headers.get('content-length'));
+      if (
+        safety.maxDownloadBytes !== undefined &&
+        Number.isFinite(declaredLength) &&
+        declaredLength > safety.maxDownloadBytes
+      ) {
+        throw new Error(
+          `Workspace archive download exceeds configured limit (${declaredLength} > ${safety.maxDownloadBytes} bytes).`
+        );
+      }
+      let downloadedBytes = 0;
+      const meter = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          downloadedBytes += chunk.length;
+          if (safety.maxDownloadBytes !== undefined && downloadedBytes > safety.maxDownloadBytes) {
+            callback(
+              new Error(
+                `Workspace archive download exceeds configured limit (${safety.maxDownloadBytes} bytes).`
+              )
+            );
+            return;
+          }
+          callback(null, chunk);
+        },
+      });
+      const source = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
+      await pipeline(source, meter, createWriteStream(archivePath, { flags: 'wx' }));
+      return { archivePath, cleanup: tempDir };
+    } catch (error) {
+      await fsExtra.remove(tempDir).catch(() => undefined);
+      if (controller.signal.aborted) {
+        throw new Error(`Workspace archive download timed out after ${timeoutMs}ms.`, {
+          cause: error,
+        });
+      }
+      throw error;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   }
   return { archivePath: path.resolve(input) };
 }
 
-function parseManifest(
-  entries: Array<{ name: string; data: Buffer }>
-): WorkspaceArchiveManifest | null {
-  const manifestEntry = entries.find(
-    (entry) =>
-      entry.name === WORKSPACE_ARCHIVE_MANIFEST_PATH ||
-      entry.name === LEGACY_WORKSPACE_ARCHIVE_MANIFEST_PATH
+function openZipFile(archivePath: string): Promise<yauzl.ZipFile> {
+  return new Promise((resolve, reject) => {
+    yauzl.open(
+      archivePath,
+      {
+        autoClose: false,
+        lazyEntries: true,
+        decodeStrings: true,
+        validateEntrySizes: true,
+        strictFileNames: true,
+      },
+      (error, zipFile) => {
+        if (error || !zipFile) reject(error ?? new Error('Failed to open workspace archive.'));
+        else resolve(zipFile);
+      }
+    );
+  });
+}
+
+function listZipEntries(zipFile: yauzl.ZipFile): Promise<ArchiveEntry[]> {
+  return new Promise((resolve, reject) => {
+    const entries: ArchiveEntry[] = [];
+    const onError = (error: Error) => reject(error);
+    zipFile.once('error', onError);
+    zipFile.on('entry', (entry: yauzl.Entry) => {
+      try {
+        assertSafeEntryName(entry.fileName);
+        if (entry.isEncrypted()) {
+          throw new Error(
+            `Encrypted workspace archive entries are not supported: ${entry.fileName}`
+          );
+        }
+        if (!entry.fileName.endsWith('/')) {
+          entries.push({
+            name: entry.fileName,
+            size: entry.uncompressedSize,
+            compressedSize: entry.compressedSize,
+            crc32: entry.crc32,
+            entry,
+          });
+        }
+        zipFile.readEntry();
+      } catch (error) {
+        reject(error);
+      }
+    });
+    zipFile.once('end', () => {
+      zipFile.removeListener('error', onError);
+      resolve(entries);
+    });
+    zipFile.readEntry();
+  });
+}
+
+function openEntryStream(zipFile: yauzl.ZipFile, entry: yauzl.Entry): Promise<Readable> {
+  return new Promise((resolve, reject) => {
+    zipFile.openReadStream(entry, (error, stream) => {
+      if (error || !stream) reject(error ?? new Error(`Failed to read ${entry.fileName}.`));
+      else resolve(stream);
+    });
+  });
+}
+
+async function readEntryBuffer(
+  zipFile: yauzl.ZipFile,
+  entry: ArchiveEntry,
+  maxBytes = MAX_MANIFEST_BYTES_IN_MEMORY
+): Promise<Buffer> {
+  if (entry.size > maxBytes) {
+    throw new Error(`Workspace archive manifest exceeds ${maxBytes} bytes.`);
+  }
+  const chunks: Buffer[] = [];
+  let total = 0;
+  const stream = await openEntryStream(zipFile, entry.entry);
+  for await (const chunk of stream) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += bytes.length;
+    if (total > maxBytes) {
+      stream.destroy();
+      throw new Error(`Workspace archive manifest exceeds ${maxBytes} bytes.`);
+    }
+    chunks.push(bytes);
+  }
+  return Buffer.concat(chunks, total);
+}
+
+function parseManifest(data: Buffer): WorkspaceArchiveManifest {
+  const parsed = JSON.parse(data.toString('utf-8')) as WorkspaceArchiveManifest;
+  assertJsonSchemaContract(
+    parsed,
+    WORKSPACE_ARCHIVE_MANIFEST_CONTRACT_PATH,
+    'Workspace archive manifest'
   );
-  if (!manifestEntry) return null;
-  const parsed = JSON.parse(manifestEntry.data.toString('utf-8')) as WorkspaceArchiveManifest;
-  if (parsed.kind !== WORKSPACE_ARCHIVE_KIND) {
-    throw new Error('Archive manifest kind is not a RapidKit/Workspai workspace archive.');
+  const paths = new Set<string>();
+  for (const file of parsed.files) {
+    if (!isSafeArchiveEntryName(file.path) || toArchivePath(file.path) !== file.path) {
+      throw new Error(`Workspace archive manifest contains an unsafe path: ${file.path}`);
+    }
+    if (
+      file.path === WORKSPACE_ARCHIVE_MANIFEST_PATH ||
+      file.path === LEGACY_WORKSPACE_ARCHIVE_MANIFEST_PATH
+    ) {
+      throw new Error(`Workspace archive manifest cannot inventory itself: ${file.path}`);
+    }
+    if (paths.has(file.path)) {
+      throw new Error(`Workspace archive manifest contains duplicate path: ${file.path}`);
+    }
+    paths.add(file.path);
   }
   return parsed;
+}
+
+function validateArchiveOperationResult<T>(result: T): T {
+  assertJsonSchemaContract(
+    result,
+    WORKSPACE_ARCHIVE_OPERATION_RESULT_CONTRACT_PATH,
+    'Workspace archive operation result'
+  );
+  return result;
 }
 
 function canonicalHydrateEntryName(entryName: string): string {
@@ -557,12 +646,9 @@ function canonicalHydrateEntryName(entryName: string): string {
 }
 
 function getHydratableArchiveEntries(
-  entries: Array<{ name: string; data: Buffer; size: number }>
-): Array<{ sourceName: string; targetName: string; data: Buffer; size: number }> {
-  const byTarget = new Map<
-    string,
-    { sourceName: string; targetName: string; data: Buffer; size: number }
-  >();
+  entries: ArchiveEntry[]
+): Array<ArchiveEntry & { sourceName: string; targetName: string }> {
+  const byTarget = new Map<string, ArchiveEntry & { sourceName: string; targetName: string }>();
 
   for (const entry of entries) {
     if (
@@ -576,10 +662,9 @@ function getHydratableArchiveEntries(
     const existing = byTarget.get(targetName);
     if (!existing) {
       byTarget.set(targetName, {
+        ...entry,
         sourceName: entry.name,
         targetName,
-        data: entry.data,
-        size: entry.size,
       });
       continue;
     }
@@ -588,14 +673,13 @@ function getHydratableArchiveEntries(
     const existingIsCanonical = existing.sourceName === existing.targetName;
     if (currentIsCanonical && !existingIsCanonical) {
       byTarget.set(targetName, {
+        ...entry,
         sourceName: entry.name,
         targetName,
-        data: entry.data,
-        size: entry.size,
       });
       continue;
     }
-    if (existing.data.equals(entry.data)) {
+    if (existing.size === entry.size && existing.crc32 === entry.crc32) {
       continue;
     }
     if (existingIsCanonical) {
@@ -610,24 +694,41 @@ function getHydratableArchiveEntries(
   return [...byTarget.values()].sort((a, b) => a.targetName.localeCompare(b.targetName));
 }
 
-async function loadWorkspaceArchive(input: string): Promise<{
-  archivePath: string;
-  entries: Array<{ name: string; data: Buffer; size: number }>;
-  manifest: WorkspaceArchiveManifest;
-  cleanup?: string;
-}> {
-  const resolved = await resolveArchivePath(input);
+async function loadWorkspaceArchive(
+  input: string,
+  safety: WorkspaceArchiveSafetyOptions = {}
+): Promise<LoadedWorkspaceArchive> {
+  const resolved = await resolveArchivePath(input, safety);
+  let zipFile: yauzl.ZipFile | undefined;
   try {
-    const archiveBuffer = await fsExtra.readFile(resolved.archivePath);
-    const entries = parseZipEntries(archiveBuffer);
-    const manifest = parseManifest(entries);
-    if (!manifest) {
+    zipFile = await openZipFile(resolved.archivePath);
+    const entries = await listZipEntries(zipFile);
+    const totalExpandedBytes = entries.reduce((total, entry) => total + entry.size, 0);
+    if (safety.maxExpandedBytes !== undefined && totalExpandedBytes > safety.maxExpandedBytes) {
+      throw new Error(
+        `Workspace archive payload exceeds configured limit (${totalExpandedBytes} > ${safety.maxExpandedBytes} bytes).`
+      );
+    }
+    const manifestEntry = entries.find(
+      (entry) =>
+        entry.name === WORKSPACE_ARCHIVE_MANIFEST_PATH ||
+        entry.name === LEGACY_WORKSPACE_ARCHIVE_MANIFEST_PATH
+    );
+    if (!manifestEntry) {
       throw new Error(
         `Workspace archive is missing ${workspaceMetadataPath('', 'archive-manifest.json').replace(/^\//, '')}.`
       );
     }
-    return { archivePath: resolved.archivePath, entries, manifest, cleanup: resolved.cleanup };
+    const manifest = parseManifest(await readEntryBuffer(zipFile, manifestEntry));
+    return {
+      archivePath: resolved.archivePath,
+      entries,
+      manifest,
+      zipFile,
+      cleanup: resolved.cleanup,
+    };
   } catch (error) {
+    zipFile?.close();
     if (resolved.cleanup) {
       await fsExtra.remove(resolved.cleanup).catch(() => undefined);
     }
@@ -635,7 +736,11 @@ async function loadWorkspaceArchive(input: string): Promise<{
   }
 }
 
-async function cleanupLoadedArchive(loaded: { cleanup?: string }): Promise<void> {
+async function cleanupLoadedArchive(loaded: {
+  zipFile?: yauzl.ZipFile;
+  cleanup?: string;
+}): Promise<void> {
+  loaded.zipFile?.close();
   if (loaded.cleanup) {
     await fsExtra.remove(loaded.cleanup).catch(() => undefined);
   }
@@ -643,8 +748,9 @@ async function cleanupLoadedArchive(loaded: { cleanup?: string }): Promise<void>
 
 export async function inspectWorkspaceArchive(options: {
   archivePathOrUrl: string;
+  safety?: WorkspaceArchiveSafetyOptions;
 }): Promise<WorkspaceArchiveInspectResult> {
-  const loaded = await loadWorkspaceArchive(options.archivePathOrUrl);
+  const loaded = await loadWorkspaceArchive(options.archivePathOrUrl, options.safety);
   try {
     const entriesByName = new Map(
       loaded.entries
@@ -661,13 +767,16 @@ export async function inspectWorkspaceArchive(options: {
       hasChecksum: typeof file.sha256 === 'string' && file.sha256.length > 0,
     }));
 
-    return {
+    return validateArchiveOperationResult({
+      schemaVersion: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+      operation: 'inspect',
+      status: 'passed',
       archivePath: loaded.archivePath,
       manifest: loaded.manifest,
       fileCount: entries.length,
       totalBytes: entries.reduce((total, entry) => total + entry.size, 0),
       entries,
-    };
+    });
   } finally {
     await cleanupLoadedArchive(loaded);
   }
@@ -676,8 +785,9 @@ export async function inspectWorkspaceArchive(options: {
 export async function verifyWorkspaceArchive(options: {
   archivePathOrUrl: string;
   requireChecksums?: boolean;
+  safety?: WorkspaceArchiveSafetyOptions;
 }): Promise<WorkspaceArchiveVerificationResult> {
-  const loaded = await loadWorkspaceArchive(options.archivePathOrUrl);
+  const loaded = await loadWorkspaceArchive(options.archivePathOrUrl, options.safety);
   try {
     const entriesByName = new Map(
       loaded.entries
@@ -705,8 +815,16 @@ export async function verifyWorkspaceArchive(options: {
         continue;
       }
 
-      const actual = { size: entry.size, sha256: sha256(entry.data) };
-      if (entry.size !== file.size) {
+      const hash = crypto.createHash('sha256');
+      let actualSize = 0;
+      const stream = await openEntryStream(loaded.zipFile, entry.entry);
+      for await (const chunk of stream) {
+        const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        actualSize += bytes.length;
+        hash.update(bytes);
+      }
+      const actual = { size: actualSize, sha256: hash.digest('hex') };
+      if (actualSize !== entry.size || actualSize !== file.size) {
         mismatches.push({
           path: file.path,
           expected: { size: file.size, sha256: file.sha256 },
@@ -738,7 +856,9 @@ export async function verifyWorkspaceArchive(options: {
       extraArchiveEntries.length > 0;
     const warning = missingChecksumFiles.length > 0;
 
-    return {
+    return validateArchiveOperationResult({
+      schemaVersion: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+      operation: 'verify',
       archivePath: loaded.archivePath,
       manifest: loaded.manifest,
       status: failed ? 'failed' : warning ? 'warning' : 'passed',
@@ -749,7 +869,7 @@ export async function verifyWorkspaceArchive(options: {
       missingArchiveEntries,
       extraArchiveEntries,
       mismatches,
-    };
+    });
   } finally {
     await cleanupLoadedArchive(loaded);
   }
@@ -758,10 +878,28 @@ export async function verifyWorkspaceArchive(options: {
 export async function doctorWorkspaceArchive(options: {
   archivePathOrUrl: string;
   strict?: boolean;
+  safety?: WorkspaceArchiveSafetyOptions;
 }): Promise<WorkspaceArchiveDoctorResult> {
-  const inspected = await inspectWorkspaceArchive({ archivePathOrUrl: options.archivePathOrUrl });
+  const resolved = await resolveArchivePath(options.archivePathOrUrl, options.safety);
+  try {
+    return await doctorResolvedWorkspaceArchive({
+      archivePath: resolved.archivePath,
+      strict: options.strict,
+    });
+  } finally {
+    if (resolved.cleanup) {
+      await fsExtra.remove(resolved.cleanup).catch(() => undefined);
+    }
+  }
+}
+
+async function doctorResolvedWorkspaceArchive(options: {
+  archivePath: string;
+  strict?: boolean;
+}): Promise<WorkspaceArchiveDoctorResult> {
+  const inspected = await inspectWorkspaceArchive({ archivePathOrUrl: options.archivePath });
   const verification = await verifyWorkspaceArchive({
-    archivePathOrUrl: options.archivePathOrUrl,
+    archivePathOrUrl: options.archivePath,
     requireChecksums: options.strict === true,
   });
   const checks: WorkspaceArchiveDoctorResult['checks'] = [];
@@ -811,7 +949,9 @@ export async function doctorWorkspaceArchive(options: {
 
   const failed = checks.some((check) => check.status === 'failed');
   const warning = checks.some((check) => check.status === 'warning');
-  return {
+  return validateArchiveOperationResult({
+    schemaVersion: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+    operation: 'doctor',
     archivePath: inspected.archivePath,
     status: failed ? 'failed' : warning ? 'warning' : 'passed',
     workspaceName: inspected.manifest.workspaceName,
@@ -819,7 +959,7 @@ export async function doctorWorkspaceArchive(options: {
     totalBytes: inspected.totalBytes,
     checks,
     recommendedActions,
-  };
+  });
 }
 
 async function ensureOutputPath(
@@ -843,7 +983,7 @@ async function ensureOutputPath(
 export async function hydrateWorkspaceArchive(
   options: WorkspaceArchiveHydrateOptions
 ): Promise<WorkspaceArchiveHydrateResult> {
-  const loaded = await loadWorkspaceArchive(options.archivePathOrUrl);
+  const loaded = await loadWorkspaceArchive(options.archivePathOrUrl, options.safety);
   try {
     const verification = await verifyWorkspaceArchive({
       archivePathOrUrl: loaded.archivePath,
@@ -893,17 +1033,21 @@ export async function hydrateWorkspaceArchive(
       }
       if (!options.dryRun) {
         await fsExtra.ensureDir(path.dirname(targetPath));
-        await fsExtra.writeFile(targetPath, entry.data);
+        const stream = await openEntryStream(loaded.zipFile, entry.entry);
+        await pipeline(stream, createWriteStream(targetPath));
       }
     }
 
-    return {
+    return validateArchiveOperationResult({
+      schemaVersion: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+      operation: 'hydrate',
+      status: 'passed',
       archivePath: loaded.archivePath,
       outputPath,
       dryRun: options.dryRun === true,
       manifest,
       files: entries.map((entry) => ({ path: entry.targetName, size: entry.size })),
-    };
+    });
   } finally {
     await cleanupLoadedArchive(loaded);
   }

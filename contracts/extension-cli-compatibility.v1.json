@@ -4,6 +4,9 @@
   "minimumVerifiedCliVersion": "0.43.1",
   "publishedContractSchemas": {
     "runtimeCommandSurface": "rapidkit-runtime-command-surface-v1",
+    "workspaceArchiveCapabilities": "workspai-workspace-archive-capabilities-v1",
+    "workspaceArchiveManifest": "workspai-workspace-archive-manifest-v1",
+    "workspaceArchiveOperationResult": "workspai-workspace-archive-operation-result-v1",
     "projectEntryCapability": "workspai-project-entry-capability-v1",
     "workspaceIntelligenceArchitecture": "workspai-workspace-intelligence-architecture-v1",
     "workspaceIntelligenceChain": "workspai-workspace-intelligence-chain-v1",

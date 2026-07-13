@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workspai.dev/contracts/workspace-archive-manifest.v1.json",
+  "title": "Workspai Workspace Archive Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "kind",
+    "workspaceName",
+    "exportedAt",
+    "security",
+    "files"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "workspai-workspace-archive-manifest-v1"
+    },
+    "version": {
+      "const": 1
+    },
+    "kind": {
+      "const": "workspai.workspace.archive"
+    },
+    "workspaceName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exportedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "exportedBy": {
+      "enum": [
+        "workspai",
+        "workspai-vscode"
+      ]
+    },
+    "archiveFormat": {
+      "enum": [
+        "zip-store",
+        "zip-deflate"
+      ]
+    },
+    "containerFormat": {
+      "enum": [
+        "zip",
+        "zip64"
+      ]
+    },
+    "compression": {
+      "enum": [
+        "store",
+        "deflate"
+      ]
+    },
+    "streaming": {
+      "type": "boolean"
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "envFilesIncluded",
+        "excludedByDefault"
+      ],
+      "properties": {
+        "envFilesIncluded": {
+          "type": "boolean"
+        },
+        "excludedByDefault": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "size",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    }
+  }
+}

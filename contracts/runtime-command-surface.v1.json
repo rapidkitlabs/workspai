@@ -82,6 +82,23 @@
     "why",
     "trace"
   ],
+  "workspaceArchive": {
+    "schemaVersion": "workspai-workspace-archive-capabilities-v1",
+    "contractPath": "contracts/workspace-archive-capabilities.v1.json",
+    "commands": [
+      "export",
+      "inspect",
+      "verify",
+      "doctor",
+      "hydrate"
+    ],
+    "flags": [
+      "--archive-compression <mode>",
+      "--max-download-size <size>",
+      "--max-expanded-size <size>",
+      "--download-timeout-ms <ms>"
+    ]
+  },
   "moduleSuggestionFrameworks": [
     "fastapi",
     "nestjs"

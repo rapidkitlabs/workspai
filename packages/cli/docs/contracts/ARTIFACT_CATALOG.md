@@ -30,18 +30,18 @@ exclude the canonical marker.
 
 ## Governance evidence loop
 
-| Command                  | Primary artifact                                          | Schema version                  | JSON Schema                                                  |
-| ------------------------ | --------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------ |
-| `doctor workspace`       | `.workspai/reports/doctor-last-run.json`                  | `doctor-workspace-evidence-v1`  | `contracts/doctor-workspace-evidence.v1.json`                |
-| `doctor project`         | `.workspai/reports/doctor-project-last-run.json`          | `doctor-project-evidence-v1`    | `contracts/doctor-project-evidence.v1.json`                  |
-| `doctor * --plan`        | `.workspai/reports/doctor-remediation-plan-last-run.json` | `doctor-remediation-plan-v2`    | `contracts/doctor-remediation-plan.v1.json`                  |
-| `doctor * --fix/--apply` | `.workspai/reports/doctor-fix-result-last-run.json`       | `rapidkit-doctor-fix-result-v1` | `contracts/workspace-intelligence/doctor-fix-result.v1.json` |
-| `workspace remediation-plan --write` | `.workspai/reports/artifact-remediation-plan-last-run.json` | `artifact-remediation-plan-v1` | `contracts/artifact-remediation-plan.v1.json` |
-| `analyze`                | `.workspai/reports/analyze-last-run.json`                 | `rapidkit-analyze-v1`           | `contracts/analyze-last-run.v1.json`                         |
-| `readiness`              | `.workspai/reports/release-readiness-last-run.json`       | `release-readiness-v1`          | `contracts/release-readiness.v1.json`                        |
-| `pipeline`               | `.workspai/reports/pipeline-last-run.json`                | `rapidkit-pipeline-v1`          | `contracts/pipeline-last-run.v1.json`                        |
-| `autopilot release`      | `.workspai/reports/autopilot-release-last-run.json`       | `autopilot-release-v1`          | —                                                            |
-|                          | `.workspai/reports/autopilot-release.json`                | (alias, same payload)           | —                                                            |
+| Command                              | Primary artifact                                            | Schema version                  | JSON Schema                                                  |
+| ------------------------------------ | ----------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------ |
+| `doctor workspace`                   | `.workspai/reports/doctor-last-run.json`                    | `doctor-workspace-evidence-v1`  | `contracts/doctor-workspace-evidence.v1.json`                |
+| `doctor project`                     | `.workspai/reports/doctor-project-last-run.json`            | `doctor-project-evidence-v1`    | `contracts/doctor-project-evidence.v1.json`                  |
+| `doctor * --plan`                    | `.workspai/reports/doctor-remediation-plan-last-run.json`   | `doctor-remediation-plan-v2`    | `contracts/doctor-remediation-plan.v1.json`                  |
+| `doctor * --fix/--apply`             | `.workspai/reports/doctor-fix-result-last-run.json`         | `rapidkit-doctor-fix-result-v1` | `contracts/workspace-intelligence/doctor-fix-result.v1.json` |
+| `workspace remediation-plan --write` | `.workspai/reports/artifact-remediation-plan-last-run.json` | `artifact-remediation-plan-v1`  | `contracts/artifact-remediation-plan.v1.json`                |
+| `analyze`                            | `.workspai/reports/analyze-last-run.json`                   | `rapidkit-analyze-v1`           | `contracts/analyze-last-run.v1.json`                         |
+| `readiness`                          | `.workspai/reports/release-readiness-last-run.json`         | `release-readiness-v1`          | `contracts/release-readiness.v1.json`                        |
+| `pipeline`                           | `.workspai/reports/pipeline-last-run.json`                  | `rapidkit-pipeline-v1`          | `contracts/pipeline-last-run.v1.json`                        |
+| `autopilot release`                  | `.workspai/reports/autopilot-release-last-run.json`         | `autopilot-release-v1`          | —                                                            |
+|                                      | `.workspai/reports/autopilot-release.json`                  | (alias, same payload)           | —                                                            |
 
 Side/cache (not gates): `.workspai/reports/doctor-workspace-cache.json` (`doctor-workspace-cache-v2`).
 
@@ -244,26 +244,29 @@ Canonical source: `src/observability/run-correlation.ts` (`attachRunCorrelation`
 
 ## Operational / platform
 
-| Command                          | Artifact                                                               | Notes                                                                                        |
-| -------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `workspace run`                  | `workspace-run-last.json`                                              | `workspace-run-v1` (multi-stage: `stages.test`, `stages.build`, …)                           | `contracts/workspace-run-last.v1.json` |
-| `autopilot release` (run stages) | same `workspace-run-last.json`                                         | Autopilot publishes test/build into aggregate (no separate `autopilot-workspace-run-*.json`) | —                                      |
-| `bootstrap`                      | `bootstrap-compliance-{ts}.json`, `bootstrap-compliance.latest.json`   |                                                                                              |
-| `mirror status`                  | `mirror-ops-{ts}.json`, `mirror-ops.latest.json`                       |                                                                                              |
-| `mirror` (transparency)          | `transparency-evidence-{ts}.json`, `transparency-evidence.latest.json` |                                                                                              |
-| `infra plan`                     | `infra-plan.json`                                                      | `rapidkit.infra-plan.v1`                                                                     |
-| `workspace archive`              | `archive-manifest.json`                                                | Root `.workspai/`, handoff                                                                   |
-| `workspace share`                | `reports/share-bundle.json` (default)                                  | Aggregation bundle                                                                           |
-| `import` / `adopt`               | `{project}/.workspai/import-readiness.json`                            | Per project                                                                                  |
-| `workspace contract verify`      | `workspace-contract-verify-last-run.json`                              | CLI verify cache                                                                             |
+| Command                          | Artifact                                                               | Notes                                                                                        | Contract                                                             |
+| -------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `workspace run`                  | `workspace-run-last.json`                                              | `workspace-run-v1` (multi-stage: `stages.test`, `stages.build`, …)                           | `contracts/workspace-run-last.v1.json`                               |
+| `autopilot release` (run stages) | same `workspace-run-last.json`                                         | Autopilot publishes test/build into aggregate (no separate `autopilot-workspace-run-*.json`) | —                                                                    |
+| `bootstrap`                      | `bootstrap-compliance-{ts}.json`, `bootstrap-compliance.latest.json`   |                                                                                              | —                                                                    |
+| `mirror status`                  | `mirror-ops-{ts}.json`, `mirror-ops.latest.json`                       |                                                                                              | —                                                                    |
+| `mirror` (transparency)          | `transparency-evidence-{ts}.json`, `transparency-evidence.latest.json` |                                                                                              | —                                                                    |
+| `infra plan`                     | `infra-plan.json`                                                      | `rapidkit.infra-plan.v1`                                                                     | —                                                                    |
+| `workspace archive`              | `.workspai/archive-manifest.json` inside ZIP/ZIP64                     | Streaming handoff; workspace payload is unlimited by default and safety budgets are opt-in   | `contracts/workspace-archive-manifest.v1.json`                       |
+| `workspace share`                | `reports/share-bundle.json` (default)                                  | Aggregation bundle                                                                           | —                                                                    |
+| `import` / `adopt`               | `{project}/.workspai/import-readiness.json`                            | Per project                                                                                  | —                                                                    |
+| `workspace contract verify`      | `workspace-contract-verify-last-run.json`                              | CLI verify cache                                                                             | `contracts/workspace-intelligence/workspace-contract-verify.v1.json` |
 
 ## Static capability contracts
 
-| Contract                                        | Schema version                            | Consumer purpose                                                                                 |
-| ----------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `contracts/runtime-command-surface.v1.json`     | `rapidkit-runtime-command-surface-v1`     | Runtime commands, scaffold kits, and create planner summary                                      |
-| `contracts/project-entry-capability.v1.json`    | `workspai-project-entry-capability-v1`    | Open-ended adopt/import capability boundaries for readable projects                              |
-| `contracts/create-planner-capabilities.v1.json` | `rapidkit-create-planner-capabilities-v1` | Native create, official, and existing lanes for CLI, CI, VS Code, and AI planners |
+| Contract                                               | Schema version                                   | Consumer purpose                                                                   |
+| ------------------------------------------------------ | ------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `contracts/runtime-command-surface.v1.json`            | `rapidkit-runtime-command-surface-v1`            | Runtime commands, scaffold kits, and create planner summary                        |
+| `contracts/project-entry-capability.v1.json`           | `workspai-project-entry-capability-v1`           | Open-ended adopt/import capability boundaries for readable projects                |
+| `contracts/create-planner-capabilities.v1.json`        | `rapidkit-create-planner-capabilities-v1`        | Native create, official, and existing lanes for CLI, CI, VS Code, and AI planners  |
+| `contracts/workspace-archive-capabilities.v1.json`     | `workspai-workspace-archive-capabilities-v1`     | ZIP64, streaming, compression, limits, commands, flags, and linked archive schemas |
+| `contracts/workspace-archive-manifest.v1.json`         | `workspai-workspace-archive-manifest-v1`         | Runtime-validated archive manifest, file inventory, checksums, and security policy |
+| `contracts/workspace-archive-operation-result.v1.json` | `workspai-workspace-archive-operation-result-v1` | Stable JSON results for export, inspect, verify, doctor, hydrate, and failures     |
 
 ## Observability stream (not on-disk)
 

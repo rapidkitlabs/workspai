@@ -10,6 +10,9 @@ const contractsDir = path.resolve(cliRoot, 'contracts');
 
 const GENERATED_FILES = [
   'runtime-command-surface.v1.json',
+  'workspace-archive-capabilities.v1.json',
+  'workspace-archive-manifest.v1.json',
+  'workspace-archive-operation-result.v1.json',
   'create-planner-capabilities.v1.json',
   'agent-customization-pack.v1.json',
   'backend-import-stack-parity.snapshot.json',

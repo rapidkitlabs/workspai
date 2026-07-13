@@ -11,6 +11,11 @@ import { buildProjectEntryCapabilityContract } from '../src/contracts/project-en
 import { buildRuntimeCommandSurfaceContract } from '../src/contracts/runtime-command-surface-contract.js';
 import { buildWorkspaceIntelligenceArchitectureContract } from '../src/contracts/workspace-intelligence-architecture-contract.js';
 import { buildWorkspaceIntelligenceChainContract } from '../src/contracts/workspace-intelligence-chain-contract.js';
+import {
+  buildWorkspaceArchiveCapabilitiesContract,
+  buildWorkspaceArchiveManifestSchema,
+  buildWorkspaceArchiveOperationResultSchema,
+} from '../src/contracts/workspace-archive-contract.js';
 
 const contractsDir = path.resolve(process.cwd(), 'contracts');
 
@@ -22,6 +27,12 @@ function writeJson(fileName: string, value: unknown) {
 }
 
 writeJson('runtime-command-surface.v1.json', buildRuntimeCommandSurfaceContract());
+writeJson('workspace-archive-capabilities.v1.json', buildWorkspaceArchiveCapabilitiesContract());
+writeJson('workspace-archive-manifest.v1.json', buildWorkspaceArchiveManifestSchema());
+writeJson(
+  'workspace-archive-operation-result.v1.json',
+  buildWorkspaceArchiveOperationResultSchema()
+);
 writeJson('create-planner-capabilities.v1.json', buildCreatePlannerCapabilitiesContract());
 writeJson('agent-customization-pack.v1.json', buildAgentCustomizationPackContract());
 writeJson('backend-import-stack-parity.snapshot.json', buildImportStackParitySnapshot());

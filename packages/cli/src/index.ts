@@ -84,6 +84,10 @@ import {
 import { emitWorkspacePhase } from './observability/cli-progress.js';
 import { getPublishedContractVersions } from './contracts/published-contract-versions.js';
 import {
+  WORKSPACE_ARCHIVE_CLI_FLAGS,
+  WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+} from './contracts/workspace-archive-contract.js';
+import {
   WORKSPACE_INTELLIGENCE_COMMAND_SIGNATURES,
   WORKSPACE_INTELLIGENCE_ROOT_COMMANDS,
 } from './contracts/workspace-intelligence-runtime-registry.js';
@@ -7122,6 +7126,22 @@ program
   .option('--no-doctor', 'Exclude doctor evidence in workspace share bundle')
   .option('--no-blueprint', 'Exclude reproducibility blueprint from workspace share bundle')
   .option('--include-env', 'Include .env/private key files in workspace export archive')
+  .option(
+    WORKSPACE_ARCHIVE_CLI_FLAGS.archiveCompression.signature,
+    WORKSPACE_ARCHIVE_CLI_FLAGS.archiveCompression.description
+  )
+  .option(
+    WORKSPACE_ARCHIVE_CLI_FLAGS.maxDownloadSize.signature,
+    WORKSPACE_ARCHIVE_CLI_FLAGS.maxDownloadSize.description
+  )
+  .option(
+    WORKSPACE_ARCHIVE_CLI_FLAGS.maxExpandedSize.signature,
+    WORKSPACE_ARCHIVE_CLI_FLAGS.maxExpandedSize.description
+  )
+  .option(
+    WORKSPACE_ARCHIVE_CLI_FLAGS.downloadTimeoutMs.signature,
+    WORKSPACE_ARCHIVE_CLI_FLAGS.downloadTimeoutMs.description
+  )
   .option('--force', 'Overwrite an existing hydrate output directory')
   .option('--refresh', 'Publish workspace registry summary before reading status')
   .option('--dry-run', 'Preview hydrate without writing files')
@@ -7167,6 +7187,10 @@ program
       doctor?: boolean;
       blueprint?: boolean;
       includeEnv?: boolean;
+      archiveCompression?: string;
+      maxDownloadSize?: string;
+      maxExpandedSize?: string;
+      downloadTimeoutMs?: string;
       force?: boolean;
       refresh?: boolean;
       dryRun?: boolean;
@@ -7221,6 +7245,46 @@ program
       }
       const parsed = Number.parseInt(actionOptions.scanDepth, 10);
       return Number.isFinite(parsed) ? parsed : undefined;
+    };
+    const parseArchiveByteSize = (raw: string | undefined, flag: string): number | undefined => {
+      if (!raw) return undefined;
+      const match = raw
+        .trim()
+        .toLowerCase()
+        .match(/^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb|tb)?$/);
+      if (!match) {
+        throw new Error(`${flag} must be a byte size such as 500gb or 2tb.`);
+      }
+      const factors: Record<string, number> = {
+        b: 1,
+        kb: 1024,
+        mb: 1024 ** 2,
+        gb: 1024 ** 3,
+        tb: 1024 ** 4,
+      };
+      const bytes = Number(match[1]) * factors[match[2] || 'b'];
+      if (!Number.isSafeInteger(Math.floor(bytes)) || bytes <= 0) {
+        throw new Error(`${flag} is outside the supported numeric range.`);
+      }
+      return Math.floor(bytes);
+    };
+    const workspaceArchiveSafety = () => {
+      const timeoutRaw = actionOptions.downloadTimeoutMs;
+      const timeout = timeoutRaw === undefined ? undefined : Number.parseInt(timeoutRaw, 10);
+      if (timeout !== undefined && (!Number.isFinite(timeout) || timeout < 0)) {
+        throw new Error('--download-timeout-ms must be zero or a positive integer.');
+      }
+      return {
+        maxDownloadBytes: parseArchiveByteSize(
+          actionOptions.maxDownloadSize,
+          '--max-download-size'
+        ),
+        maxExpandedBytes: parseArchiveByteSize(
+          actionOptions.maxExpandedSize,
+          '--max-expanded-size'
+        ),
+        downloadTimeoutMs: timeout,
+      };
     };
 
     // Emit a deterministic `progress` start event for every workspace intelligence
@@ -8294,26 +8358,55 @@ program
       );
     } else if (action === 'export') {
       const workspacePath = requireWorkspaceRootForAction('export');
-      const { exportWorkspaceArchive } = await import('./utils/workspace-archive.js');
-      const result = await exportWorkspaceArchive({
-        workspacePath,
-        outputPath: workspaceOutputPath() || subaction,
-        includeEnv: actionOptions.includeEnv === true || hasRawFlag('--include-env'),
-      });
+      try {
+        const { exportWorkspaceArchive } = await import('./utils/workspace-archive.js');
+        const compression = actionOptions.archiveCompression?.trim().toLowerCase() ?? 'store';
+        if (compression !== 'store' && compression !== 'deflate') {
+          throw new Error('--archive-compression must be store or deflate.');
+        }
+        const result = await exportWorkspaceArchive({
+          workspacePath,
+          outputPath: workspaceOutputPath() || subaction,
+          includeEnv: actionOptions.includeEnv === true || hasRawFlag('--include-env'),
+          compression,
+        });
 
-      if (actionOptions.json) {
-        console.log(JSON.stringify(result, null, 2));
-        return;
-      }
+        if (actionOptions.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
 
-      const sizeMb = (result.bytesWritten / (1024 * 1024)).toFixed(2);
-      console.log(chalk.green(`✔ Workspace archive exported: ${result.archivePath}`));
-      console.log(chalk.gray(`   Files: ${result.manifest.files.length}`));
-      console.log(chalk.gray(`   Size: ${sizeMb} MB`));
-      if (!result.manifest.security.envFilesIncluded) {
-        console.log(
-          chalk.gray('   Secrets: excluded (.env, private keys, logs, dependency caches)')
-        );
+        const sizeMb = (result.bytesWritten / (1024 * 1024)).toFixed(2);
+        console.log(chalk.green(`✔ Workspace archive exported: ${result.archivePath}`));
+        console.log(chalk.gray(`   Files: ${result.manifest.files.length}`));
+        console.log(chalk.gray(`   Size: ${sizeMb} MB`));
+        if (!result.manifest.security.envFilesIncluded) {
+          console.log(
+            chalk.gray('   Secrets: excluded (.env, private keys, logs, dependency caches)')
+          );
+        }
+      } catch (error) {
+        if (actionOptions.json) {
+          console.log(
+            JSON.stringify(
+              {
+                schemaVersion: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+                operation: 'export',
+                status: 'error',
+                timestamp: new Date().toISOString(),
+                error: {
+                  code: 'workspace.archive.export.failed',
+                  message: (error as Error).message,
+                },
+              },
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
+        console.log(chalk.red(`❌ Workspace archive export failed: ${(error as Error).message}`));
+        process.exit(1);
       }
     } else if (
       action === 'archive' &&
@@ -8321,6 +8414,25 @@ program
     ) {
       const archivePathOrUrl = key;
       if (!archivePathOrUrl) {
+        if (actionOptions.json) {
+          console.log(
+            JSON.stringify(
+              {
+                schemaVersion: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+                operation: subaction,
+                status: 'error',
+                timestamp: new Date().toISOString(),
+                error: {
+                  code: `workspace.archive.${subaction}.input-required`,
+                  message: `workspace archive ${subaction} requires an archive path or URL.`,
+                },
+              },
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
         console.log(
           chalk.red(`❌ workspace archive ${subaction} requires an archive path or URL.`)
         );
@@ -8334,7 +8446,10 @@ program
         await import('./utils/workspace-archive.js');
       try {
         if (subaction === 'inspect') {
-          const result = await inspectWorkspaceArchive({ archivePathOrUrl });
+          const result = await inspectWorkspaceArchive({
+            archivePathOrUrl,
+            safety: workspaceArchiveSafety(),
+          });
           if (actionOptions.json) {
             console.log(JSON.stringify(result, null, 2));
             return;
@@ -8353,6 +8468,7 @@ program
           const result = await doctorWorkspaceArchive({
             archivePathOrUrl,
             strict: actionOptions.strict === true || hasRawFlag('--strict'),
+            safety: workspaceArchiveSafety(),
           });
           if (actionOptions.json) {
             console.log(JSON.stringify(result, null, 2));
@@ -8387,6 +8503,7 @@ program
         const result = await verifyWorkspaceArchive({
           archivePathOrUrl,
           requireChecksums: actionOptions.strict === true || hasRawFlag('--strict'),
+          safety: workspaceArchiveSafety(),
         });
         if (actionOptions.json) {
           console.log(JSON.stringify(result, null, 2));
@@ -8430,8 +8547,8 @@ program
           console.log(
             JSON.stringify(
               {
-                schemaVersion: 'workspace-archive-error-v1',
-                command: `workspace archive ${subaction}`,
+                schemaVersion: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+                operation: subaction,
                 status: 'error',
                 timestamp: new Date().toISOString(),
                 archivePathOrUrl,
@@ -8454,6 +8571,25 @@ program
     } else if (action === 'hydrate' || action === 'import') {
       const archivePathOrUrl = subaction;
       if (!archivePathOrUrl) {
+        if (actionOptions.json) {
+          console.log(
+            JSON.stringify(
+              {
+                schemaVersion: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+                operation: 'hydrate',
+                status: 'error',
+                timestamp: new Date().toISOString(),
+                error: {
+                  code: `workspace.${action}.input-required`,
+                  message: `workspace ${action} requires an archive path or URL.`,
+                },
+              },
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
         console.log(chalk.red(`❌ workspace ${action} requires an archive path or URL.`));
         console.log(
           chalk.white(
@@ -8471,6 +8607,7 @@ program
           force: actionOptions.force === true || hasRawFlag('--force'),
           dryRun: actionOptions.dryRun === true || hasRawFlag('--dry-run'),
           strict: actionOptions.strict === true || hasRawFlag('--strict'),
+          safety: workspaceArchiveSafety(),
         });
 
         if (actionOptions.json) {
@@ -8494,12 +8631,12 @@ program
           console.log(
             JSON.stringify(
               {
-                schemaVersion: 'workspace-archive-error-v1',
-                command: `workspace ${action}`,
+                schemaVersion: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
+                operation: 'hydrate',
                 status: 'error',
                 timestamp: new Date().toISOString(),
                 archivePathOrUrl,
-                outputPath: actionOptions.output ?? null,
+                ...(actionOptions.output ? { outputPath: actionOptions.output } : {}),
                 dryRun: actionOptions.dryRun === true || hasRawFlag('--dry-run'),
                 error: {
                   code: `workspace.${action}.failed`,

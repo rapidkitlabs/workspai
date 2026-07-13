@@ -318,6 +318,33 @@ describe('workspace archive export/hydrate', () => {
     expect(preview.manifest?.kind).toBe('workspai.workspace.archive');
   });
 
+  it('writes ZIP64 archives and enforces only explicitly configured payload budgets', async () => {
+    const workspacePath = await makeTempDir('rk-workspace-zip64-src-');
+    const outputRoot = await makeTempDir('rk-workspace-zip64-out-');
+    const archivePath = path.join(outputRoot, 'large-capable.workspai-archive.zip');
+
+    await fsExtra.writeJson(path.join(workspacePath, '.workspai-workspace'), {
+      signature: 'WORKSPAI_WORKSPACE',
+      name: 'large-capable',
+    });
+    await fsExtra.outputFile(path.join(workspacePath, 'services', 'api', 'main.ts'), 'export {};');
+
+    await exportWorkspaceArchive({ workspacePath, outputPath: archivePath });
+    const archive = await fsExtra.readFile(archivePath);
+    expect(archive.indexOf(uint32(0x06064b50))).toBeGreaterThan(-1);
+    expect(archive.indexOf(uint32(0x07064b50))).toBeGreaterThan(-1);
+
+    const unrestricted = await inspectWorkspaceArchive({ archivePathOrUrl: archivePath });
+    expect(unrestricted.fileCount).toBeGreaterThan(0);
+
+    await expect(
+      inspectWorkspaceArchive({
+        archivePathOrUrl: archivePath,
+        safety: { maxExpandedBytes: 1 },
+      })
+    ).rejects.toThrow('payload exceeds configured limit');
+  });
+
   it('hydrates deflated archives that contain directory entries from external ZIP tools', async () => {
     const outputRoot = await makeTempDir('rk-workspace-deflated-out-');
     const archivePath = path.join(outputRoot, 'external.rapidkit-archive.zip');
