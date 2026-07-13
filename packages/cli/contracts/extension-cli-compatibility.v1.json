@@ -4,6 +4,8 @@
   "minimumVerifiedCliVersion": "0.43.1",
   "publishedContractSchemas": {
     "runtimeCommandSurface": "rapidkit-runtime-command-surface-v1",
+    "cliOperationResult": "workspai-cli-operation-result-v1",
+    "publishedContractCatalog": "workspai-published-contract-catalog-v1",
     "workspaceArchiveCapabilities": "workspai-workspace-archive-capabilities-v1",
     "workspaceArchiveManifest": "workspai-workspace-archive-manifest-v1",
     "workspaceArchiveOperationResult": "workspai-workspace-archive-operation-result-v1",
@@ -15,6 +17,7 @@
       "snapshot": "workspace-model-snapshot.v1",
       "diff": "workspace-model-diff.v1",
       "impact": "workspace-impact.v1",
+      "analyze": "rapidkit-analyze-v1",
       "doctor": "doctor-workspace-evidence-v1",
       "contractVerify": "workspace-contract-verify.v1",
       "readiness": "release-readiness-v1",

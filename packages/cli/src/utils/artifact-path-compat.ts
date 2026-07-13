@@ -2,6 +2,7 @@ import path from 'path';
 import { randomUUID } from 'node:crypto';
 import { open } from 'node:fs/promises';
 import fsExtra from 'fs-extra';
+import { assertWorkspaceArtifactContract } from '../contracts/artifact-contract-registry.js';
 import { toLegacyRapidkitArtifactPath, toWorkspaiArtifactPath } from './workspace-paths.js';
 
 function assertWorkspaceContainedPath(workspacePath: string, relativePath: string): string {
@@ -194,6 +195,7 @@ export async function writeWorkspaceArtifactJson(
   relativePath: string,
   payload: unknown
 ): Promise<string> {
+  assertWorkspaceArtifactContract(relativePath, payload);
   const primaryPath = resolveWorkspaceArtifactPath(workspacePath, relativePath);
 
   await replaceArtifactAtomically(workspacePath, primaryPath, (temporaryPath) =>

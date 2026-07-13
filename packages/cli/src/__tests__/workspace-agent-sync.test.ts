@@ -83,8 +83,19 @@ describe('workspace agent sync', () => {
     await fsExtra.outputJson(
       path.join(workspacePath, '.workspai', 'reports', 'pipeline-last-run.json'),
       {
+        schemaVersion: 'rapidkit-pipeline-v1',
         generatedAt: new Date().toISOString(),
-        blockers: ['pipeline stage failed'],
+        workspacePath,
+        summary: {
+          verdict: 'blocked',
+          exitCode: 2,
+          stagesPassed: 0,
+          stagesWarn: 0,
+          stagesFailed: 1,
+        },
+        stages: [],
+        blockingReasons: ['pipeline stage failed'],
+        artifacts: { reportPath: '.workspai/reports/pipeline-last-run.json' },
         commandId: 'workspacePipeline',
         exitCode: 2,
       }

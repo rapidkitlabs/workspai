@@ -12,7 +12,11 @@ import {
   resolveGovernanceRunId,
   withGovernanceRunMetadata,
 } from './utils/governance-report-metadata.js';
-import { writeWorkspaceArtifactText } from './utils/artifact-path-compat.js';
+import { writeWorkspaceArtifactJson } from './utils/artifact-path-compat.js';
+import {
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+} from './contracts/workspace-intelligence-runtime-registry.js';
 import {
   hasWorkspaceRootMarkers,
   projectMetadataCandidates,
@@ -62,7 +66,7 @@ export interface AnalyzeGraphImpact {
 }
 
 export interface AnalyzeReport {
-  schemaVersion: 'rapidkit-analyze-v1';
+  schemaVersion: typeof WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.analyze;
   generatedAt: string;
   workspacePath: string;
   workspaceDetected: boolean;
@@ -657,7 +661,7 @@ export async function runAnalyze(options: AnalyzeOptions = {}): Promise<AnalyzeR
         ? 'needs-attention'
         : 'ready';
   const report: AnalyzeReport = {
-    schemaVersion: 'rapidkit-analyze-v1',
+    schemaVersion: WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.analyze,
     generatedAt: new Date().toISOString(),
     workspacePath,
     workspaceDetected,
@@ -687,7 +691,7 @@ export async function runAnalyze(options: AnalyzeOptions = {}): Promise<AnalyzeR
       jsonReady: true,
       ciGateCommand: 'workspai analyze --json --strict',
       releaseGateCommand: 'workspai autopilot release --mode enforce --json',
-      evidencePath: '.workspai/reports/analyze-last-run.json',
+      evidencePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.analyze,
     },
   };
 
@@ -715,10 +719,10 @@ export async function runAnalyze(options: AnalyzeOptions = {}): Promise<AnalyzeR
         .slice(0, 12),
       runId: resolveGovernanceRunId(),
     });
-    await writeWorkspaceArtifactText(
+    await writeWorkspaceArtifactJson(
       workspacePath,
-      '.workspai/reports/analyze-last-run.json',
-      `${JSON.stringify(enriched, null, 2)}\n`
+      WORKSPACE_INTELLIGENCE_ARTIFACTS.analyze,
+      enriched
     );
   }
 

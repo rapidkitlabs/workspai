@@ -45,12 +45,15 @@ import {
   WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
   WORKSPACE_INTELLIGENCE_ARTIFACTS,
 } from './contracts/workspace-intelligence-runtime-registry.js';
+import {
+  assertWorkspaceArtifactContract,
+  workspaceArtifactContractFor,
+} from './contracts/artifact-contract-registry.js';
 import { readWorkspaceContract } from './utils/workspace-contract.js';
 import { firstExistingWorkspaceArtifactPath } from './utils/artifact-path-compat.js';
 import {
   buildWorkspaceModel,
   WORKSPACE_MODEL_REPORT_PATH,
-  WORKSPACE_MODEL_SCHEMA_VERSION,
   type WorkspaceModel,
 } from './workspace-model.js';
 import {
@@ -194,7 +197,7 @@ export const AGENT_REPORT_CATALOG: AgentReportCatalogEntry[] = [
     required: false,
   },
   {
-    relativePath: '.workspai/reports/analyze-last-run.json',
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.analyze,
     label: 'Workspace analyze',
     required: false,
   },
@@ -259,6 +262,8 @@ export type AgentReportIndexEntry = {
   label: string;
   required: boolean;
   exists: boolean;
+  validity: 'valid' | 'invalid' | 'uncontracted' | 'missing';
+  validationError?: string;
   generatedAt?: string;
   commandId?: string;
   exitCode?: number;
@@ -471,17 +476,6 @@ function isRequiredPackOutput(relativePath: string, preset: AgentCustomizationPa
   return contract.presets[preset].requiredOutputs.includes(relativePath);
 }
 
-function isPersistedWorkspaceModel(raw: Record<string, unknown>): raw is WorkspaceModel {
-  return (
-    raw.schemaVersion === WORKSPACE_MODEL_SCHEMA_VERSION &&
-    typeof raw.generatedAt === 'string' &&
-    raw.summary != null &&
-    typeof raw.summary === 'object' &&
-    !Array.isArray(raw.summary) &&
-    Array.isArray(raw.projects)
-  );
-}
-
 async function resolveModelForAgentSync(
   workspacePath: string,
   prefetched?: WorkspaceModel
@@ -495,9 +489,8 @@ async function resolveModelForAgentSync(
   if (await fsExtra.pathExists(reportPath)) {
     try {
       const raw = (await fsExtra.readJson(reportPath)) as Record<string, unknown>;
-      if (isPersistedWorkspaceModel(raw)) {
-        return raw;
-      }
+      assertWorkspaceArtifactContract(WORKSPACE_MODEL_REPORT_PATH, raw, reportPath);
+      return raw as WorkspaceModel;
     } catch {
       // fall through to live build
     }
@@ -544,15 +537,41 @@ function buildCapabilityMatrix(input: {
   ) as AgentCustomizationPackReport['capabilityMatrix'];
 }
 
-async function readJsonIfExists(absolutePath: string): Promise<Record<string, unknown> | null> {
+async function readJsonIfExists(
+  absolutePath: string,
+  relativePath: string
+): Promise<{
+  payload: Record<string, unknown> | null;
+  exists: boolean;
+  validity: AgentReportIndexEntry['validity'];
+  validationError?: string;
+}> {
   try {
     if (!(await fsExtra.pathExists(absolutePath))) {
-      return null;
+      return { payload: null, exists: false, validity: 'missing' };
     }
     const raw = await fsExtra.readJson(absolutePath);
-    return asRecord(raw);
-  } catch {
-    return null;
+    const payload = asRecord(raw);
+    if (!payload) {
+      return {
+        payload: null,
+        exists: true,
+        validity: 'invalid',
+        validationError: 'Artifact root must be a JSON object',
+      };
+    }
+    if (!workspaceArtifactContractFor(relativePath)) {
+      return { payload, exists: true, validity: 'uncontracted' };
+    }
+    assertWorkspaceArtifactContract(relativePath, payload, absolutePath);
+    return { payload, exists: true, validity: 'valid' };
+  } catch (error) {
+    return {
+      payload: null,
+      exists: true,
+      validity: 'invalid',
+      validationError: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -570,16 +589,20 @@ export async function buildWorkspaceAgentReportsIndex(input: {
     const absolutePath =
       (await firstExistingWorkspaceArtifactPath(input.workspacePath, entry.relativePath)) ??
       path.join(input.workspacePath, entry.relativePath);
-    const raw = await readJsonIfExists(absolutePath);
-    const exists = raw !== null;
-    if (exists && raw) {
+    const read = await readJsonIfExists(absolutePath, entry.relativePath);
+    const raw = read.payload;
+    if (read.validity === 'invalid') {
+      blockers.push(`Invalid evidence contract: ${entry.relativePath}`);
+    } else if (raw) {
       blockers.push(...extractBlockersFromReport(raw));
     }
     reports.push({
       path: entry.relativePath,
       label: entry.label,
       required: entry.required,
-      exists,
+      exists: read.exists,
+      validity: read.validity,
+      validationError: read.validationError,
       generatedAt: raw ? reportGeneratedAt(raw) : undefined,
       commandId: typeof raw?.commandId === 'string' ? raw.commandId : undefined,
       exitCode: typeof raw?.exitCode === 'number' ? raw.exitCode : undefined,
@@ -1666,10 +1689,15 @@ export async function syncWorkspaceAgentGrounding(
   }
 
   if (preset === 'enterprise') {
+    const mcpDesignManifest = buildMcpDesignManifest({
+      workspacePath,
+      generatedAt: index.generatedAt,
+    });
+    assertWorkspaceArtifactContract(WORKSPAI_MCP_DESIGN_REPORT_PATH, JSON.parse(mcpDesignManifest));
     record(
       await writeTextFile(
         path.join(workspacePath, WORKSPAI_MCP_DESIGN_REPORT_PATH),
-        buildMcpDesignManifest({ workspacePath, generatedAt: index.generatedAt }),
+        mcpDesignManifest,
         write
       ),
       WORKSPAI_MCP_DESIGN_REPORT_PATH
@@ -1677,7 +1705,7 @@ export async function syncWorkspaceAgentGrounding(
     record(
       await writeTextFile(
         path.join(workspacePath, LEGACY_MCP_DESIGN_REPORT_PATH),
-        buildMcpDesignManifest({ workspacePath, generatedAt: index.generatedAt }),
+        mcpDesignManifest,
         write
       ),
       LEGACY_MCP_DESIGN_REPORT_PATH
@@ -1685,10 +1713,15 @@ export async function syncWorkspaceAgentGrounding(
   }
 
   if (preset === 'enterprise' && options.experimentalHooks === true) {
+    const hooksConfig = buildExperimentalHooksConfig({
+      workspacePath,
+      generatedAt: index.generatedAt,
+    });
+    assertWorkspaceArtifactContract(WORKSPAI_VSCODE_AGENT_HOOKS_PATH, JSON.parse(hooksConfig));
     record(
       await writeTextFile(
         path.join(workspacePath, WORKSPAI_VSCODE_AGENT_HOOKS_PATH),
-        buildExperimentalHooksConfig({ workspacePath, generatedAt: index.generatedAt }),
+        hooksConfig,
         write
       ),
       WORKSPAI_VSCODE_AGENT_HOOKS_PATH
@@ -1696,7 +1729,7 @@ export async function syncWorkspaceAgentGrounding(
     record(
       await writeTextFile(
         path.join(workspacePath, LEGACY_VSCODE_AGENT_HOOKS_PATH),
-        buildExperimentalHooksConfig({ workspacePath, generatedAt: index.generatedAt }),
+        hooksConfig,
         write
       ),
       LEGACY_VSCODE_AGENT_HOOKS_PATH

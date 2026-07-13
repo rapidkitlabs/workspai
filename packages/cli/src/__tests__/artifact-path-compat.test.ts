@@ -12,6 +12,7 @@ import {
   writeWorkspaceArtifactText,
   withWorkspaceArtifactLock,
 } from '../utils/artifact-path-compat';
+import { WORKSPACE_INTELLIGENCE_ARTIFACTS } from '../contracts/workspace-intelligence-runtime-registry';
 
 const temporaryRoots: string[] = [];
 
@@ -50,6 +51,17 @@ describe('workspace artifact path compatibility', () => {
     expect(await fsExtra.readFile(textPath, 'utf8')).toBe('first');
     expect(
       (await fsExtra.readdir(path.dirname(jsonPath))).some((name) => name.endsWith('.tmp'))
+    ).toBe(false);
+  });
+
+  it('rejects a registered artifact before writing when its schema is invalid', async () => {
+    const root = await temporaryWorkspace();
+
+    await expect(
+      writeWorkspaceArtifactJson(root, WORKSPACE_INTELLIGENCE_ARTIFACTS.analyze, {})
+    ).rejects.toThrow(/schemaVersion.*expected rapidkit-analyze-v1/i);
+    expect(
+      await fsExtra.pathExists(path.join(root, WORKSPACE_INTELLIGENCE_ARTIFACTS.analyze))
     ).toBe(false);
   });
 

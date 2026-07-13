@@ -18,6 +18,13 @@ import {
   buildWorkspaceArchiveManifestSchema,
   buildWorkspaceArchiveOperationResultSchema,
 } from '../../contracts/workspace-archive-contract';
+import { buildCliOperationResultSchema } from '../../contracts/cli-operation-result-contract';
+import {
+  buildCommandCapabilitiesSchema,
+  buildVersionContractSchema,
+} from '../../contracts/cli-discovery-contract';
+import { buildPublishedContractCatalog } from '../../contracts/published-contract-versions';
+import { buildOperationalJsonSchemas } from '../../contracts/operational-json-schemas';
 
 function readJsonContract(fileName: string): unknown {
   const contractPath = path.resolve(process.cwd(), 'contracts', fileName);
@@ -29,6 +36,22 @@ describe('generated shared contracts (Wave B + C)', () => {
     expect(readJsonContract('runtime-command-surface.v1.json')).toEqual(
       buildRuntimeCommandSurfaceContract()
     );
+  });
+
+  it('keeps CLI discovery and operation contracts aligned with their generators', () => {
+    expect(readJsonContract('cli-operation-result.v1.json')).toEqual(
+      buildCliOperationResultSchema()
+    );
+    expect(readJsonContract('command-capabilities.v1.json')).toEqual(
+      buildCommandCapabilitiesSchema()
+    );
+    expect(readJsonContract('version.v1.json')).toEqual(buildVersionContractSchema());
+    expect(readJsonContract('published-contract-catalog.v1.json')).toEqual(
+      buildPublishedContractCatalog()
+    );
+    for (const [fileName, schema] of Object.entries(buildOperationalJsonSchemas())) {
+      expect(readJsonContract(fileName)).toEqual(schema);
+    }
   });
 
   it('keeps committed workspace archive contracts aligned with their generators', () => {

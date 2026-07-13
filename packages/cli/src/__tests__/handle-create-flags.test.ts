@@ -248,9 +248,7 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
     expect(code).toBe(1);
     expect(resolveSpy).not.toHaveBeenCalled();
     expect(runSpy).not.toHaveBeenCalled();
-    expect(stderrSpy.mock.calls.map((call) => String(call[0])).join('')).toContain(
-      'official'
-    );
+    expect(stderrSpy.mock.calls.map((call) => String(call[0])).join('')).toContain('official');
     expect(stderrSpy.mock.calls.map((call) => String(call[0])).join('')).toContain(
       'npx workspai adopt <project-path>'
     );

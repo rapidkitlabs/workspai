@@ -21,6 +21,17 @@ import {
   WORKSPACE_ARCHIVE_CAPABILITIES_SCHEMA_VERSION,
   WORKSPACE_ARCHIVE_CLI_FLAGS,
 } from './workspace-archive-contract.js';
+import {
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS,
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+  WORKSPACE_INTELLIGENCE_ROOT_COMMANDS,
+  WORKSPACE_INTELLIGENCE_RUNTIME_STEPS,
+} from './workspace-intelligence-runtime-registry.js';
+import {
+  CLI_OPERATION_RESULT_CONTRACT_PATH,
+  CLI_OPERATION_RESULT_SCHEMA_VERSION,
+} from './cli-operation-result-contract.js';
 
 export const RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION = 'rapidkit-runtime-command-surface-v1';
 
@@ -33,6 +44,17 @@ export type RuntimeCommandSurfaceContract = {
   coreProjectCommands: string[];
   workspaceSubcommands: string[];
   workspaceIntelligenceSubcommands: string[];
+  workspaceIntelligenceRootCommands: string[];
+  workspaceIntelligenceExecution: Array<{
+    id: string;
+    argv: string[];
+    produces: Array<{
+      path: string;
+      schemaVersion: string | null;
+      contractPath: string | null;
+    }>;
+  }>;
+  jsonOperationResult: { schemaVersion: string; contractPath: string };
   workspaceArchive: {
     schemaVersion: string;
     contractPath: string;
@@ -150,6 +172,29 @@ export function buildRuntimeCommandSurfaceContract(): RuntimeCommandSurfaceContr
     coreProjectCommands: [...RUNTIME_SURFACE_CORE_PROJECT_COMMANDS],
     workspaceSubcommands: [...WORKSPACE_SUBCOMMANDS],
     workspaceIntelligenceSubcommands: [...WORKSPACE_INTELLIGENCE_SUBCOMMANDS],
+    workspaceIntelligenceRootCommands: [...WORKSPACE_INTELLIGENCE_ROOT_COMMANDS],
+    workspaceIntelligenceExecution: Object.entries(WORKSPACE_INTELLIGENCE_RUNTIME_STEPS).map(
+      ([id, step]) => ({
+        id,
+        argv: [...step.command],
+        produces: step.produces.map((artifactPath) => {
+          const matchedId = Object.entries(WORKSPACE_INTELLIGENCE_ARTIFACTS).find(
+            ([, candidatePath]) => candidatePath === artifactPath
+          )?.[0] as keyof typeof WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS | undefined;
+          return {
+            path: artifactPath,
+            schemaVersion: matchedId ? WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS[matchedId] : null,
+            contractPath: matchedId
+              ? WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS[matchedId]
+              : null,
+          };
+        }),
+      })
+    ),
+    jsonOperationResult: {
+      schemaVersion: CLI_OPERATION_RESULT_SCHEMA_VERSION,
+      contractPath: CLI_OPERATION_RESULT_CONTRACT_PATH,
+    },
     workspaceArchive: {
       schemaVersion: WORKSPACE_ARCHIVE_CAPABILITIES_SCHEMA_VERSION,
       contractPath: WORKSPACE_ARCHIVE_CAPABILITIES_CONTRACT_PATH,

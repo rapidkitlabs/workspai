@@ -63,6 +63,27 @@ function validateArtifact(relativePath) {
   }
 }
 
+function runCli(command, label, exitPolicy = 'stop-on-error') {
+  const result = spawnSync(process.execPath, [cliPath, ...command], {
+    cwd: workspacePath,
+    encoding: 'utf8',
+    timeout: 120_000,
+    env: {
+      ...process.env,
+      NO_COLOR: '1',
+      CI: '1',
+      RAPIDKIT_SKIP_LOCK_SYNC: '1',
+      WORKSPAI_NO_UPDATE_CHECK: '1',
+      WORKSPAI_DEBUG_ARGS: '1',
+    },
+  });
+  if (result.error) fail(`${label} could not execute: ${result.error.message}`);
+  if (result.status !== 0 && exitPolicy !== 'continue-on-structured-verdict') {
+    fail(`${label} exited ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  }
+  return result;
+}
+
 try {
   fs.writeFileSync(path.join(workspacePath, '.workspai-workspace'), '{}\n');
   writeJson('.workspai/workspace.json', {
@@ -86,27 +107,46 @@ try {
     kit_name: 'vite-react',
   });
 
+  // A diff baseline is a boundary input from an earlier state, never an artifact
+  // created immediately before diff in the same canonical execution chain.
+  runCli(['workspace', 'model', '--json', '--write'], 'baseline model');
+  runCli(['workspace', 'snapshot', '--json'], 'baseline snapshot');
+  validateArtifact('.workspai/reports/workspace-model-snapshot.json');
+  writeJson('app/package.json', {
+    name: '@workspai/runtime-contract-fixture',
+    version: '1.0.1',
+    scripts: { test: 'node --version', build: 'node --version' },
+  });
+  writeJson('.workspai/workspace.contract.json', {
+    kind: 'rapidkit.workspace.contract',
+    schemaVersion: 1,
+    workspace: { name: 'runtime-contract-fixture' },
+    projects: [
+      { slug: 'app', relativePath: 'app', contracts: {} },
+      { slug: 'worker', relativePath: 'worker', contracts: {} },
+    ],
+  });
+  writeJson('worker/package.json', {
+    name: '@workspai/runtime-contract-worker',
+    version: '1.0.0',
+    scripts: { test: 'node --version', build: 'node --version' },
+  });
+  writeJson('worker/.workspai/project.json', {
+    name: 'worker',
+    runtime: 'node',
+    kit_name: 'vite-react',
+  });
+
   for (const step of contract.steps) {
-    const result = spawnSync(process.execPath, [cliPath, ...step.command], {
-      cwd: workspacePath,
-      encoding: 'utf8',
-      timeout: 120_000,
-      env: {
-        ...process.env,
-        NO_COLOR: '1',
-        CI: '1',
-        RAPIDKIT_SKIP_LOCK_SYNC: '1',
-        WORKSPAI_NO_UPDATE_CHECK: '1',
-        WORKSPAI_DEBUG_ARGS: '1',
-      },
-    });
-    if (result.error) fail(`${step.id} could not execute: ${result.error.message}`);
-    if (result.status !== 0 && step.exitPolicy !== 'continue-on-structured-verdict') {
-      fail(
-        `${step.id} exited ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`
-      );
-    }
+    runCli(step.command, step.id, step.exitPolicy);
     for (const artifactPath of step.produces) validateArtifact(artifactPath);
+  }
+
+  const diff = readJson(
+    path.join(workspacePath, '.workspai/reports/workspace-model-diff-last-run.json')
+  );
+  if (diff.fromHash === diff.toHash || diff.summary?.changed !== true) {
+    fail('diff did not observe the fixture mutation against the explicit baseline');
   }
 
   console.log(

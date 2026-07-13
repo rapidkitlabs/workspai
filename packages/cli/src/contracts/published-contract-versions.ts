@@ -20,17 +20,27 @@ import { WORKSPACE_CONTEXT_SCHEMA_VERSION } from '../workspace-context.js';
 import { WORKSPACE_MODEL_SCHEMA_VERSION } from '../workspace-model.js';
 import { WORKSPACE_IMPACT_SCHEMA_VERSION } from '../workspace-intelligence.js';
 import { WORKSPACE_VERIFY_SCHEMA_VERSION } from '../workspace-verify.js';
-import { WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS } from './workspace-intelligence-runtime-registry.js';
+import {
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS,
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+} from './workspace-intelligence-runtime-registry.js';
 import {
   WORKSPACE_ARCHIVE_CAPABILITIES_SCHEMA_VERSION,
   WORKSPACE_ARCHIVE_MANIFEST_SCHEMA_VERSION,
   WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
 } from './workspace-archive-contract.js';
+import { CLI_OPERATION_RESULT_SCHEMA_VERSION } from './cli-operation-result-contract.js';
+
+export const PUBLISHED_CONTRACT_CATALOG_SCHEMA_VERSION =
+  'workspai-published-contract-catalog-v1' as const;
 
 /** Single source of truth for schema versions advertised to IDE/CI consumers. */
 export function getPublishedContractVersions() {
   return {
     runtimeCommandSurface: RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION,
+    cliOperationResult: CLI_OPERATION_RESULT_SCHEMA_VERSION,
+    publishedContractCatalog: PUBLISHED_CONTRACT_CATALOG_SCHEMA_VERSION,
     workspaceArchiveCapabilities: WORKSPACE_ARCHIVE_CAPABILITIES_SCHEMA_VERSION,
     workspaceArchiveManifest: WORKSPACE_ARCHIVE_MANIFEST_SCHEMA_VERSION,
     workspaceArchiveOperationResult: WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
@@ -58,6 +68,103 @@ export function getPublishedContractVersions() {
     doctorRemediationPlan: DOCTOR_REMEDIATION_PLAN_SCHEMA_VERSION,
     artifactRemediationPlan: ARTIFACT_REMEDIATION_PLAN_SCHEMA_VERSION,
     doctorFixResult: DOCTOR_FIX_RESULT_SCHEMA_VERSION,
+  };
+}
+
+export type PublishedContractDescriptor = {
+  schemaVersion: string | Record<string, string | null>;
+  contractPath: string | null;
+  publication: 'json-schema' | 'capability-contract' | 'embedded-type';
+  artifacts?: Record<
+    string,
+    { path: string; schemaVersion: string | null; contractPath: string | null }
+  >;
+};
+
+/** Discoverable paths for every version advertised by the CLI. */
+export function getPublishedContractCatalog() {
+  const versions = getPublishedContractVersions();
+  const paths: Record<keyof typeof versions, string | null> = {
+    runtimeCommandSurface: 'contracts/runtime-command-surface.v1.json',
+    cliOperationResult: 'contracts/cli-operation-result.v1.json',
+    publishedContractCatalog: 'contracts/published-contract-catalog.v1.json',
+    workspaceArchiveCapabilities: 'contracts/workspace-archive-capabilities.v1.json',
+    workspaceArchiveManifest: 'contracts/workspace-archive-manifest.v1.json',
+    workspaceArchiveOperationResult: 'contracts/workspace-archive-operation-result.v1.json',
+    projectEntryCapability: 'contracts/project-entry-capability.v1.json',
+    workspaceIntelligenceArchitecture: 'contracts/workspace-intelligence-architecture.v1.json',
+    workspaceIntelligenceChain: 'contracts/workspace-intelligence-chain.v1.json',
+    workspaceIntelligenceArtifacts: null,
+    cliLogEvent: 'contracts/cli-log-event.v1.json',
+    freshnessMetadata: null,
+    factFreshness: 'contracts/workspace-intelligence/fact-freshness.v1.json',
+    blockerResolution: 'contracts/workspace-intelligence/blocker-resolution.v1.json',
+    workspaceModel: 'contracts/workspace-intelligence/workspace-model.v1.json',
+    workspaceImpact: 'contracts/workspace-intelligence/workspace-impact.v1.json',
+    workspaceVerify: 'contracts/workspace-intelligence/workspace-verify.v1.json',
+    workspaceContext: 'contracts/workspace-intelligence/workspace-context.v1.json',
+    workspaceDependencyGraph: 'contracts/workspace-intelligence/workspace-dependency-graph.v1.json',
+    workspaceIntelligenceHistory:
+      'contracts/workspace-intelligence/workspace-intelligence-history.v1.json',
+    agentCustomizationPackCapabilities: 'contracts/agent-customization-pack.v1.json',
+    agentCustomizationPackReport:
+      'contracts/workspace-intelligence/agent-customization-pack-report.v1.json',
+    agentReportsIndex: 'contracts/workspace-intelligence/agent-reports-index.v1.json',
+    workspaceOperationalSkill:
+      'contracts/workspace-intelligence/workspace-operational-skill.v1.json',
+    workspaceSkillsIndex: 'contracts/workspace-intelligence/workspace-skills-index.v1.json',
+    workspaceExplain: 'contracts/workspace-intelligence/workspace-explain.v1.json',
+    agentActionOutcome: 'contracts/workspace-intelligence/agent-action-outcome.v1.json',
+    doctorRemediationPlan: 'contracts/doctor-remediation-plan.v1.json',
+    artifactRemediationPlan: 'contracts/artifact-remediation-plan.v1.json',
+    doctorFixResult: 'contracts/workspace-intelligence/doctor-fix-result.v1.json',
+  };
+
+  return Object.fromEntries(
+    Object.entries(versions).map(([id, schemaVersion]) => {
+      const contractPath = paths[id as keyof typeof versions];
+      return [
+        id,
+        {
+          schemaVersion,
+          contractPath,
+          publication: contractPath
+            ? id === 'runtimeCommandSurface' || id.endsWith('Capabilities')
+              ? 'capability-contract'
+              : 'json-schema'
+            : 'embedded-type',
+          ...(id === 'workspaceIntelligenceArtifacts'
+            ? {
+                artifacts: Object.fromEntries(
+                  Object.keys(WORKSPACE_INTELLIGENCE_ARTIFACTS).map((artifactId) => [
+                    artifactId,
+                    {
+                      path: WORKSPACE_INTELLIGENCE_ARTIFACTS[
+                        artifactId as keyof typeof WORKSPACE_INTELLIGENCE_ARTIFACTS
+                      ],
+                      schemaVersion:
+                        WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS[
+                          artifactId as keyof typeof WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS
+                        ],
+                      contractPath:
+                        WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS[
+                          artifactId as keyof typeof WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS
+                        ],
+                    },
+                  ])
+                ),
+              }
+            : {}),
+        } satisfies PublishedContractDescriptor,
+      ];
+    })
+  );
+}
+
+export function buildPublishedContractCatalog() {
+  return {
+    schemaVersion: PUBLISHED_CONTRACT_CATALOG_SCHEMA_VERSION,
+    contracts: getPublishedContractCatalog(),
   };
 }
 

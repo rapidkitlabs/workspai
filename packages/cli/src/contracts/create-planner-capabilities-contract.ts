@@ -52,17 +52,17 @@ export function buildCreatePlannerCapabilitiesContract(): CreatePlannerCapabilit
   return {
     schemaVersion: CREATE_PLANNER_CAPABILITIES_SCHEMA_VERSION,
     lanes: {
-      'native': {
+      native: {
         status: 'available',
         meaning:
           'Workspai owns the scaffold contract, marker, registry, doctor, bootstrap, and workspace model path.',
       },
-      'official': {
+      official: {
         status: 'available',
         meaning:
           'A stable ecosystem generator exists. Available entries run the official generator and then register the project; planned entries fall back to adopt/import.',
       },
-      'existing': {
+      existing: {
         status: 'available',
         meaning:
           'The project enters Workspace Intelligence through import/adopt, not native create.',

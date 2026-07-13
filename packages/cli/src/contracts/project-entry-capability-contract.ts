@@ -126,8 +126,7 @@ export function buildProjectEntryCapabilityContract(): ProjectEntryCapabilityCon
       purpose:
         'Help the planner and model recognize common existing-project requests and improve labels.',
       examples: ['php', 'ruby', 'rust', 'elixir', 'clojure', 'scala', 'kotlin'],
-      rule:
-        'Runtime signals are examples for detection and messaging, not a closed allowlist for adopt/import.',
+      rule: 'Runtime signals are examples for detection and messaging, not a closed allowlist for adopt/import.',
     },
     boundaries: {
       allowedClaims: [

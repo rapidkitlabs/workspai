@@ -23,6 +23,7 @@ import {
   WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
   WORKSPACE_INTELLIGENCE_ARTIFACTS,
 } from './contracts/workspace-intelligence-runtime-registry.js';
+import { assertWorkspaceArtifactContract } from './contracts/artifact-contract-registry.js';
 
 export const RELEASE_READINESS_REPORT_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.readiness;
 
@@ -257,7 +258,6 @@ function loadDoctorPayload(workspacePath: string): {
 
   try {
     const payload = JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as Record<string, unknown>;
-
     if (!isDoctorEvidencePayloadCompatible(payload, 'workspace')) {
       return { payload: null, path: reportPath };
     }
@@ -344,6 +344,7 @@ function buildAnalyzeGate(workspacePath: string): ReadinessGateResult {
 
   try {
     const payload = JSON.parse(fs.readFileSync(reportPath, 'utf-8')) as Record<string, unknown>;
+    assertWorkspaceArtifactContract(WORKSPACE_INTELLIGENCE_ARTIFACTS.analyze, payload, reportPath);
     const summary = toObjectRecord(payload.summary);
     const verdict = String(summary.verdict ?? '').toLowerCase();
     const score = Number(summary.score ?? 0);
@@ -381,7 +382,7 @@ function buildAnalyzeGate(workspacePath: string): ReadinessGateResult {
     return {
       gate: 'analyze',
       status: 'fail',
-      summary: 'Analyze evidence is invalid JSON',
+      summary: 'Analyze evidence is invalid or violates its contract',
       details: ['Re-run workspai analyze --json to regenerate evidence.'],
       evidencePath: reportPath,
     };

@@ -19,11 +19,11 @@ describe('workspace intelligence architecture contract', () => {
 
     expect(contract.architectureCore.loop.map((stage) => stage.id)).toEqual([
       'model',
-      'snapshot',
       'diff',
       'impact',
       'doctor-evidence',
       'contract-evidence',
+      'analyze-evidence',
       'readiness-evidence',
       'verify',
       'context',
@@ -41,6 +41,7 @@ describe('workspace intelligence architecture contract', () => {
       'runtime-dependencies',
       'workspace-rules',
       'changes',
+      'model-baseline',
       'existing-evidence',
     ]);
     expect(contract.outputFamilies.map((output) => output.id)).toEqual([

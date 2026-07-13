@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workspai.dev/schemas/version.v1.json",
+  "title": "Workspai Version Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "cli",
+    "version",
+    "node",
+    "platform",
+    "capabilitiesSchemaVersion",
+    "contracts",
+    "contractCatalog"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "rapidkit-version-v1"
+    },
+    "cli": {
+      "const": "workspai"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "node": {
+      "type": "string",
+      "minLength": 1
+    },
+    "platform": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capabilitiesSchemaVersion": {
+      "const": "rapidkit-command-capabilities-v1"
+    },
+    "contracts": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "contractCatalog": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

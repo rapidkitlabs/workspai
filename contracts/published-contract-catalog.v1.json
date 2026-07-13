@@ -1,0 +1,254 @@
+{
+  "schemaVersion": "workspai-published-contract-catalog-v1",
+  "contracts": {
+    "runtimeCommandSurface": {
+      "schemaVersion": "rapidkit-runtime-command-surface-v1",
+      "contractPath": "contracts/runtime-command-surface.v1.json",
+      "publication": "capability-contract"
+    },
+    "cliOperationResult": {
+      "schemaVersion": "workspai-cli-operation-result-v1",
+      "contractPath": "contracts/cli-operation-result.v1.json",
+      "publication": "json-schema"
+    },
+    "publishedContractCatalog": {
+      "schemaVersion": "workspai-published-contract-catalog-v1",
+      "contractPath": "contracts/published-contract-catalog.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceArchiveCapabilities": {
+      "schemaVersion": "workspai-workspace-archive-capabilities-v1",
+      "contractPath": "contracts/workspace-archive-capabilities.v1.json",
+      "publication": "capability-contract"
+    },
+    "workspaceArchiveManifest": {
+      "schemaVersion": "workspai-workspace-archive-manifest-v1",
+      "contractPath": "contracts/workspace-archive-manifest.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceArchiveOperationResult": {
+      "schemaVersion": "workspai-workspace-archive-operation-result-v1",
+      "contractPath": "contracts/workspace-archive-operation-result.v1.json",
+      "publication": "json-schema"
+    },
+    "projectEntryCapability": {
+      "schemaVersion": "workspai-project-entry-capability-v1",
+      "contractPath": "contracts/project-entry-capability.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceIntelligenceArchitecture": {
+      "schemaVersion": "workspai-workspace-intelligence-architecture-v1",
+      "contractPath": "contracts/workspace-intelligence-architecture.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceIntelligenceChain": {
+      "schemaVersion": "workspai-workspace-intelligence-chain-v1",
+      "contractPath": "contracts/workspace-intelligence-chain.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceIntelligenceArtifacts": {
+      "schemaVersion": {
+        "model": "workspace-model.v1",
+        "snapshot": "workspace-model-snapshot.v1",
+        "diff": "workspace-model-diff.v1",
+        "impact": "workspace-impact.v1",
+        "analyze": "rapidkit-analyze-v1",
+        "doctor": "doctor-workspace-evidence-v1",
+        "contractVerify": "workspace-contract-verify.v1",
+        "readiness": "release-readiness-v1",
+        "verify": "workspace-verify.v1",
+        "history": "workspace-intelligence-history.v1",
+        "agentContext": "workspace-context.v1",
+        "agentIndex": "rapidkit-agent-reports-index.v1",
+        "agentCustomizationPack": "rapidkit-agent-customization-pack.v1",
+        "skillsIndex": "workspace-skills-index.v1",
+        "agents": null,
+        "explain": "workspace-explain.v1"
+      },
+      "contractPath": null,
+      "publication": "embedded-type",
+      "artifacts": {
+        "model": {
+          "path": ".workspai/reports/workspace-model.json",
+          "schemaVersion": "workspace-model.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-model.v1.json"
+        },
+        "snapshot": {
+          "path": ".workspai/reports/workspace-model-snapshot.json",
+          "schemaVersion": "workspace-model-snapshot.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-model-snapshot.v1.json"
+        },
+        "diff": {
+          "path": ".workspai/reports/workspace-model-diff-last-run.json",
+          "schemaVersion": "workspace-model-diff.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-model-diff.v1.json"
+        },
+        "impact": {
+          "path": ".workspai/reports/workspace-impact-last-run.json",
+          "schemaVersion": "workspace-impact.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-impact.v1.json"
+        },
+        "analyze": {
+          "path": ".workspai/reports/analyze-last-run.json",
+          "schemaVersion": "rapidkit-analyze-v1",
+          "contractPath": "contracts/analyze-last-run.v1.json"
+        },
+        "doctor": {
+          "path": ".workspai/reports/doctor-last-run.json",
+          "schemaVersion": "doctor-workspace-evidence-v1",
+          "contractPath": "contracts/doctor-workspace-evidence.v1.json"
+        },
+        "contractVerify": {
+          "path": ".workspai/reports/workspace-contract-verify-last-run.json",
+          "schemaVersion": "workspace-contract-verify.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-contract-verify.v1.json"
+        },
+        "readiness": {
+          "path": ".workspai/reports/release-readiness-last-run.json",
+          "schemaVersion": "release-readiness-v1",
+          "contractPath": "contracts/release-readiness.v1.json"
+        },
+        "verify": {
+          "path": ".workspai/reports/workspace-verify-last-run.json",
+          "schemaVersion": "workspace-verify.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-verify.v1.json"
+        },
+        "history": {
+          "path": ".workspai/reports/workspace-intelligence-history.json",
+          "schemaVersion": "workspace-intelligence-history.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-intelligence-history.v1.json"
+        },
+        "agentContext": {
+          "path": ".workspai/reports/workspace-context-agent.json",
+          "schemaVersion": "workspace-context.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-context.v1.json"
+        },
+        "agentIndex": {
+          "path": ".workspai/reports/INDEX.json",
+          "schemaVersion": "rapidkit-agent-reports-index.v1",
+          "contractPath": "contracts/workspace-intelligence/agent-reports-index.v1.json"
+        },
+        "agentCustomizationPack": {
+          "path": ".workspai/reports/agent-customization-pack.json",
+          "schemaVersion": "rapidkit-agent-customization-pack.v1",
+          "contractPath": "contracts/workspace-intelligence/agent-customization-pack-report.v1.json"
+        },
+        "skillsIndex": {
+          "path": ".workspai/reports/workspace-skills-index.json",
+          "schemaVersion": "workspace-skills-index.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-skills-index.v1.json"
+        },
+        "agents": {
+          "path": "AGENTS.md",
+          "schemaVersion": null,
+          "contractPath": null
+        },
+        "explain": {
+          "path": ".workspai/reports/workspace-explain-last-run.json",
+          "schemaVersion": "workspace-explain.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-explain.v1.json"
+        }
+      }
+    },
+    "cliLogEvent": {
+      "schemaVersion": "cli-log-event-v1",
+      "contractPath": "contracts/cli-log-event.v1.json",
+      "publication": "json-schema"
+    },
+    "freshnessMetadata": {
+      "schemaVersion": "rapidkit-freshness-metadata-v1",
+      "contractPath": null,
+      "publication": "embedded-type"
+    },
+    "factFreshness": {
+      "schemaVersion": "rapidkit-fact-freshness-v1",
+      "contractPath": "contracts/workspace-intelligence/fact-freshness.v1.json",
+      "publication": "json-schema"
+    },
+    "blockerResolution": {
+      "schemaVersion": "rapidkit-blocker-resolution-v1",
+      "contractPath": "contracts/workspace-intelligence/blocker-resolution.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceModel": {
+      "schemaVersion": "workspace-model.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-model.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceImpact": {
+      "schemaVersion": "workspace-impact.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-impact.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceVerify": {
+      "schemaVersion": "workspace-verify.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-verify.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceContext": {
+      "schemaVersion": "workspace-context.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-context.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceDependencyGraph": {
+      "schemaVersion": "workspace-dependency-graph.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-dependency-graph.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceIntelligenceHistory": {
+      "schemaVersion": "workspace-intelligence-history.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-intelligence-history.v1.json",
+      "publication": "json-schema"
+    },
+    "agentCustomizationPackCapabilities": {
+      "schemaVersion": "workspai-agent-customization-pack-capabilities.v1",
+      "contractPath": "contracts/agent-customization-pack.v1.json",
+      "publication": "capability-contract"
+    },
+    "agentCustomizationPackReport": {
+      "schemaVersion": "rapidkit-agent-customization-pack.v1",
+      "contractPath": "contracts/workspace-intelligence/agent-customization-pack-report.v1.json",
+      "publication": "json-schema"
+    },
+    "agentReportsIndex": {
+      "schemaVersion": "rapidkit-agent-reports-index.v1",
+      "contractPath": "contracts/workspace-intelligence/agent-reports-index.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceOperationalSkill": {
+      "schemaVersion": "workspace-operational-skill.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-operational-skill.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceSkillsIndex": {
+      "schemaVersion": "workspace-skills-index.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-skills-index.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceExplain": {
+      "schemaVersion": "workspace-explain.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-explain.v1.json",
+      "publication": "json-schema"
+    },
+    "agentActionOutcome": {
+      "schemaVersion": "agent-action-outcome.v1",
+      "contractPath": "contracts/workspace-intelligence/agent-action-outcome.v1.json",
+      "publication": "json-schema"
+    },
+    "doctorRemediationPlan": {
+      "schemaVersion": "doctor-remediation-plan-v2",
+      "contractPath": "contracts/doctor-remediation-plan.v1.json",
+      "publication": "json-schema"
+    },
+    "artifactRemediationPlan": {
+      "schemaVersion": "artifact-remediation-plan-v1",
+      "contractPath": "contracts/artifact-remediation-plan.v1.json",
+      "publication": "json-schema"
+    },
+    "doctorFixResult": {
+      "schemaVersion": "rapidkit-doctor-fix-result-v1",
+      "contractPath": "contracts/workspace-intelligence/doctor-fix-result.v1.json",
+      "publication": "json-schema"
+    }
+  }
+}

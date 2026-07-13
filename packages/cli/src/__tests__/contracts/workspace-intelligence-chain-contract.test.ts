@@ -234,6 +234,7 @@ describe('workspace intelligence chain contract', () => {
       snapshot: WORKSPACE_MODEL_SNAPSHOT_REPORT_PATH,
       diff: WORKSPACE_MODEL_DIFF_REPORT_PATH,
       impact: WORKSPACE_IMPACT_REPORT_PATH,
+      analyze: WORKSPACE_INTELLIGENCE_ARTIFACTS.analyze,
       doctor: DOCTOR_WORKSPACE_REPORT_PATH,
       contractVerify: WORKSPACE_CONTRACT_VERIFY_REPORT_PATH,
       readiness: RELEASE_READINESS_REPORT_PATH,
@@ -254,6 +255,7 @@ describe('workspace intelligence chain contract', () => {
       snapshot: WORKSPACE_MODEL_SNAPSHOT_SCHEMA_VERSION,
       diff: WORKSPACE_MODEL_DIFF_SCHEMA_VERSION,
       impact: WORKSPACE_IMPACT_SCHEMA_VERSION,
+      analyze: WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.analyze,
       doctor: DOCTOR_WORKSPACE_EVIDENCE_SCHEMA,
       contractVerify: WORKSPACE_CONTRACT_VERIFY_SCHEMA_VERSION,
       readiness: RELEASE_READINESS_SCHEMA_VERSION,
@@ -273,11 +275,11 @@ describe('workspace intelligence chain contract', () => {
     expect(contract.schemaVersion).toBe('workspai-workspace-intelligence-chain-v1');
     expect(contract.steps.map((step) => step.id)).toEqual([
       'model',
-      'snapshot',
       'diff',
       'impact',
       'doctor-evidence',
       'contract-evidence',
+      'analyze-evidence',
       'readiness-evidence',
       'verify',
       'context',
@@ -307,6 +309,7 @@ describe('workspace intelligence chain contract', () => {
         'impact',
         'doctor-evidence',
         'contract-evidence',
+        'analyze-evidence',
         'readiness-evidence',
       ])
     );
@@ -338,6 +341,7 @@ describe('workspace intelligence chain contract', () => {
       'runtime-dependencies',
       'workspace-rules',
       'changes',
+      'model-baseline',
       'existing-evidence',
     ]);
     expect(contract.boundaries.outputs.flatMap((output) => output.producedBy)).toEqual(
@@ -420,6 +424,11 @@ describe('workspace intelligence chain contract', () => {
         step.produces.map((artifact) => [artifact, step.id] as const)
       )
     );
+    const boundaryArtifacts = new Set(
+      contract.boundaries.inputs.flatMap((input) =>
+        input.sources.filter((source) => source.startsWith('.workspai/'))
+      )
+    );
     const stepById = new Map(contract.steps.map((step) => [step.id, step] as const));
     const ancestorsOf = (stepId: string, seen = new Set<string>()): Set<string> => {
       const step = stepById.get(stepId);
@@ -435,6 +444,7 @@ describe('workspace intelligence chain contract', () => {
       const ancestors = ancestorsOf(step.id);
       for (const artifact of step.consumesArtifacts) {
         const producer = producerByArtifact.get(artifact);
+        if (!producer && boundaryArtifacts.has(artifact)) continue;
         expect(producer, `${step.id} consumes unregistered artifact ${artifact}`).toBeTruthy();
         expect(
           ancestors.has(producer as string),

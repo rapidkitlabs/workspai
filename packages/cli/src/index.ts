@@ -82,7 +82,18 @@ import {
   WORKSPACE_SUBCOMMANDS,
 } from './utils/workspace-command-surface.js';
 import { emitWorkspacePhase } from './observability/cli-progress.js';
-import { getPublishedContractVersions } from './contracts/published-contract-versions.js';
+import {
+  getPublishedContractCatalog,
+  getPublishedContractVersions,
+} from './contracts/published-contract-versions.js';
+import {
+  cliOperationError,
+  cliOperationSuccess,
+} from './contracts/cli-operation-result-contract.js';
+import {
+  COMMAND_CAPABILITIES_SCHEMA_VERSION,
+  VERSION_CONTRACT_SCHEMA_VERSION,
+} from './contracts/cli-discovery-contract.js';
 import {
   WORKSPACE_ARCHIVE_CLI_FLAGS,
   WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
@@ -1415,7 +1426,6 @@ const LOCAL_COMMANDS = [
 // Single source of truth for commands owned by the npm wrapper.
 // Any new workspace-level command must be added here to prevent accidental core forwarding.
 export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
-  'analyze',
   ...WORKSPACE_INTELLIGENCE_ROOT_COMMANDS,
   'autopilot',
   'pipeline',
@@ -1435,7 +1445,6 @@ export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
 ] as const;
 
 const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
-  'analyze',
   ...WORKSPACE_INTELLIGENCE_ROOT_COMMANDS,
   'autopilot',
   'pipeline',
@@ -1542,8 +1551,7 @@ function printProjectCommandCapabilities(options: { json?: boolean } = {}): void
   console.log(chalk.red(`Unsupported: ${capabilities.unsupportedCommands.join(', ') || 'none'}`));
 }
 
-export const COMMAND_CAPABILITIES_SCHEMA_VERSION = 'rapidkit-command-capabilities-v1';
-export const VERSION_CONTRACT_SCHEMA_VERSION = 'rapidkit-version-v1';
+export { COMMAND_CAPABILITIES_SCHEMA_VERSION, VERSION_CONTRACT_SCHEMA_VERSION };
 
 /**
  * Versioned downstream contracts this CLI publishes for IDE/CI consumers.
@@ -1552,7 +1560,10 @@ export const VERSION_CONTRACT_SCHEMA_VERSION = 'rapidkit-version-v1';
  * advertised versions can never drift between the two surfaces. The envelope schema
  * versions (command-capabilities, version) live on their own `schemaVersion` field.
  */
-export { getPublishedContractVersions } from './contracts/published-contract-versions.js';
+export {
+  getPublishedContractCatalog,
+  getPublishedContractVersions,
+} from './contracts/published-contract-versions.js';
 
 /**
  * Machine-readable version contract emitted by `workspai --version --json`.
@@ -1570,28 +1581,15 @@ export function getVersionContract() {
     platform: process.platform,
     capabilitiesSchemaVersion: COMMAND_CAPABILITIES_SCHEMA_VERSION,
     contracts: getPublishedContractVersions(),
+    contractCatalog: getPublishedContractCatalog(),
   };
 }
 
 export function getGlobalCommandCapabilities() {
   const npmOwned = [...NPM_ONLY_TOP_LEVEL_COMMANDS, 'create', 'project'];
-  const coreBacked = [
-    'version',
-    'add',
-    'list',
-    'info',
-    'upgrade',
-    'diff',
-    'merge',
-    'optimize',
-    'license',
-    'checkpoint',
-    'reconcile',
-    'rollback',
-    'uninstall',
-    'frameworks',
-    'modules',
-  ];
+  const coreBacked = [...BOOTSTRAP_CORE_COMMANDS_SET].filter(
+    (command) => !npmOwned.includes(command as (typeof npmOwned)[number])
+  );
   const projectScoped = ['init', 'dev', 'start', 'build', 'test', 'lint', 'format', 'help'];
   const workspaceSubcommands = [...WORKSPACE_SUBCOMMANDS];
   const workspaceIntelligenceSubcommands = [...WORKSPACE_INTELLIGENCE_SUBCOMMANDS];
@@ -1606,6 +1604,7 @@ export function getGlobalCommandCapabilities() {
     // machine-readable surfaces here instead of hard-coding versions, so capability
     // detection stays aligned with `runtime-command-surface.v1` and the log stream.
     contracts: getPublishedContractVersions(),
+    contractCatalog: getPublishedContractCatalog(),
     commands: {
       npmOwned,
       coreBacked,
@@ -6318,11 +6317,11 @@ program
         if (options.json) {
           console.log(
             JSON.stringify(
-              {
-                schemaVersion: 'rapidkit-analyze-error-v1',
-                ok: false,
-                error: { message },
-              },
+              cliOperationError({
+                operation: 'analyze',
+                code: 'analyze.failed',
+                message,
+              }),
               null,
               2
             )
@@ -7438,7 +7437,13 @@ program
         outputPath = await writeArtifactRemediationPlan(plan, workspacePath);
       }
       if (actionOptions.json === true || hasRawFlag('--json')) {
-        console.log(JSON.stringify({ ...plan, ...(outputPath ? { outputPath } : {}) }, null, 2));
+        console.log(
+          JSON.stringify(
+            cliOperationSuccess('workspace remediation-plan', plan, outputPath),
+            null,
+            2
+          )
+        );
         return;
       }
       console.log(chalk.green(`✔ Artifact remediation plan: ${plan.workspace.name}`));
@@ -7592,7 +7597,9 @@ program
       });
       const outputPath = await writeWorkspaceModelSnapshot(snapshot, workspacePath);
       if (actionOptions.json) {
-        console.log(JSON.stringify({ ...snapshot, outputPath }, null, 2));
+        console.log(
+          JSON.stringify(cliOperationSuccess('workspace snapshot', snapshot, outputPath), null, 2)
+        );
         return;
       }
       console.log(chalk.green(`✔ Workspace model snapshot: ${snapshot.model.workspace.name}`));
@@ -7607,21 +7614,17 @@ program
         if (actionOptions.json === true || hasRawFlag('--json')) {
           console.log(
             JSON.stringify(
-              {
-                schemaVersion: 'workspace-diff-error-v1',
-                command: 'workspace diff',
-                status: 'error',
-                workspacePath,
-                error: {
-                  code: 'workspace.diff.from.required',
-                  message: 'workspace diff requires --from <snapshot-or-model-report|git[:ref]>.',
-                },
+              cliOperationError({
+                operation: 'workspace diff',
+                code: 'workspace.diff.from.required',
+                message: 'workspace diff requires --from <snapshot-or-model-report|git[:ref]>.',
+                context: { workspacePath },
                 examples: [
                   'npx workspai workspace diff --from .workspai/reports/workspace-model-snapshot.json --json',
                   'npx workspai workspace diff --from .workspai/reports/workspace-model.json --json',
                   'npx workspai workspace diff --from git --json',
                 ],
-              },
+              }),
               null,
               2
             )
@@ -7670,21 +7673,16 @@ program
         if (actionOptions.json === true || hasRawFlag('--json')) {
           console.log(
             JSON.stringify(
-              {
-                schemaVersion: 'workspace-diff-error-v1',
-                command: 'workspace diff',
-                status: 'error',
-                workspacePath,
-                fromPath,
-                error: {
-                  code: 'workspace.diff.input_unreadable',
-                  message: (error as Error).message,
-                },
+              cliOperationError({
+                operation: 'workspace diff',
+                code: 'workspace.diff.input_unreadable',
+                message: (error as Error).message,
+                context: { workspacePath, fromPath },
                 nextActions: [
                   'npx workspai workspace snapshot create --json',
                   'npx workspai workspace diff --from .workspai/reports/workspace-model-snapshot.json --json',
                 ],
-              },
+              }),
               null,
               2
             )
@@ -7695,7 +7693,9 @@ program
       }
       const outputPath = await writeWorkspaceModelDiff(diff, workspacePath);
       if (actionOptions.json) {
-        console.log(JSON.stringify({ ...diff, outputPath }, null, 2));
+        console.log(
+          JSON.stringify(cliOperationSuccess('workspace diff', diff, outputPath), null, 2)
+        );
         return;
       }
       const statusColor = diff.summary.changed ? chalk.yellow : chalk.green;
@@ -7729,20 +7729,16 @@ program
         if (actionOptions.json === true || hasRawFlag('--json')) {
           console.log(
             JSON.stringify(
-              {
-                schemaVersion: 'workspace-impact-error-v1',
-                command: 'workspace impact',
-                status: 'error',
-                workspacePath,
-                error: {
-                  code: 'workspace.impact.from.required',
-                  message: 'workspace impact requires --from <workspace-diff-report>.',
-                },
+              cliOperationError({
+                operation: 'workspace impact',
+                code: 'workspace.impact.from.required',
+                message: 'workspace impact requires --from <workspace-diff-report>.',
+                context: { workspacePath },
                 examples: [
                   'npx workspai workspace diff --from .workspai/reports/workspace-model-snapshot.json --json',
                   'npx workspai workspace impact --from .workspai/reports/workspace-model-diff-last-run.json --json',
                 ],
-              },
+              }),
               null,
               2
             )
@@ -7777,22 +7773,17 @@ program
         if (actionOptions.json === true || hasRawFlag('--json')) {
           console.log(
             JSON.stringify(
-              {
-                schemaVersion: 'workspace-impact-error-v1',
-                command: 'workspace impact',
-                status: 'error',
-                workspacePath,
-                fromPath,
-                error: {
-                  code: 'workspace.impact.input_unreadable',
-                  message: (error as Error).message,
-                },
+              cliOperationError({
+                operation: 'workspace impact',
+                code: 'workspace.impact.input_unreadable',
+                message: (error as Error).message,
+                context: { workspacePath, fromPath },
                 nextActions: [
                   'npx workspai workspace snapshot create --json',
                   'npx workspai workspace diff --from .workspai/reports/workspace-model-snapshot.json --json',
                   'npx workspai workspace impact --from .workspai/reports/workspace-model-diff-last-run.json --json',
                 ],
-              },
+              }),
               null,
               2
             )
@@ -7803,7 +7794,9 @@ program
       }
       const outputPath = await writeWorkspaceImpact(impact, workspacePath);
       if (actionOptions.json) {
-        console.log(JSON.stringify({ ...impact, outputPath }, null, 2));
+        console.log(
+          JSON.stringify(cliOperationSuccess('workspace impact', impact, outputPath), null, 2)
+        );
         return;
       }
       const color =
@@ -7845,7 +7838,13 @@ program
         await import('./workspace-history.js');
       await recordWorkspaceHistory(workspacePath, historyEntryFromVerify(verify, gate.passed));
       if (actionOptions.json) {
-        console.log(JSON.stringify({ ...verify, gate, outputPath }, null, 2));
+        console.log(
+          JSON.stringify(
+            cliOperationSuccess('workspace verify', { ...verify, gate }, outputPath),
+            null,
+            2
+          )
+        );
         if (exitCode !== 0) {
           process.exit(exitCode);
         }
@@ -8770,7 +8769,9 @@ program
       }
 
       if (actionOptions.json) {
-        console.log(JSON.stringify({ ...report, outputPath }, null, 2));
+        console.log(
+          JSON.stringify(cliOperationSuccess(`workspace ${action}`, report, outputPath), null, 2)
+        );
         return;
       }
 
@@ -8820,7 +8821,9 @@ program
         outputPath = await writeWorkspaceExplainReport(report, workspacePath, 'trace');
       }
       if (actionOptions.json) {
-        console.log(JSON.stringify({ ...report, outputPath }, null, 2));
+        console.log(
+          JSON.stringify(cliOperationSuccess('workspace trace', report, outputPath), null, 2)
+        );
         return;
       }
       console.log(chalk.green(`✔ Workspace trace: ${report.summary}`));

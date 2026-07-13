@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { OFFICIAL_CREATE_CANDIDATES, resolveCreatePlannerCapability } from '../utils/create-planner-capabilities';
+import {
+  OFFICIAL_CREATE_CANDIDATES,
+  resolveCreatePlannerCapability,
+} from '../utils/create-planner-capabilities';
 import { listFrontendGenerators } from '../frontend-project';
 import { listInteractiveKits, resolveKitDefinition } from '../utils/kit-registry';
 

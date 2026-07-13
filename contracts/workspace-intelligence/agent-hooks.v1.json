@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "workspaceRoot",
+    "enabledByDefault",
+    "mode",
+    "hooks"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "workspai-agent-hooks.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "workspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "enabledByDefault": {
+      "type": "boolean"
+    },
+    "mode": {
+      "const": "advisory"
+    },
+    "hooks": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  },
+  "additionalProperties": true
+}

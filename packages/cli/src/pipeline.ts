@@ -16,6 +16,7 @@ import {
   writeWorkspaceArtifactJson,
 } from './utils/artifact-path-compat.js';
 import { WORKSPACE_INTELLIGENCE_ARTIFACTS } from './contracts/workspace-intelligence-runtime-registry.js';
+import { cliOperationError } from './contracts/cli-operation-result-contract.js';
 
 export type PipelineStageStatus = 'pass' | 'warn' | 'fail' | 'skipped';
 
@@ -413,11 +414,11 @@ export async function runPipelineCommand(options: PipelineOptions): Promise<void
     if (options.json) {
       console.log(
         JSON.stringify(
-          {
-            schemaVersion: 'rapidkit-pipeline-error-v1',
-            ok: false,
-            error: { message },
-          },
+          cliOperationError({
+            operation: 'pipeline',
+            code: 'pipeline.failed',
+            message,
+          }),
           null,
           2
         )

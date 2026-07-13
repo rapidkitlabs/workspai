@@ -30,6 +30,25 @@ const vscodeRoot = process.env.RAPIDKIT_VSCODE_REPO_PATH
 
 const GENERATED_FILES = [
   'runtime-command-surface.v1.json',
+  'cli-operation-result.v1.json',
+  'command-capabilities.v1.json',
+  'version.v1.json',
+  'published-contract-catalog.v1.json',
+  'autopilot-release.v1.json',
+  'workspace-list.v1.json',
+  'workspace-sync.v1.json',
+  'compatibility-matrix.v1.json',
+  'workspace-intelligence/mcp-design.v1.json',
+  'workspace-intelligence/agent-hooks.v1.json',
+  'project-archive.v1.json',
+  'workspace-snapshot.v1.json',
+  'infra-plan.v1.json',
+  'private-product-manifest.v1.json',
+  'product-factory-plan.v1.json',
+  'workspace-model-cache.v1.json',
+  'workspace-watch-event.v1.json',
+  'doctor-project-scan.v2.json',
+  'doctor-workspace-cache.v2.json',
   'workspace-archive-capabilities.v1.json',
   'workspace-archive-manifest.v1.json',
   'workspace-archive-operation-result.v1.json',
@@ -45,6 +64,10 @@ const GENERATED_FILES = [
 ];
 
 const VSCODE_SRC_CONTRACT_FILES = [
+  'cli-operation-result.v1.json',
+  'command-capabilities.v1.json',
+  'version.v1.json',
+  'published-contract-catalog.v1.json',
   'agent-customization-pack.v1.json',
   'create-planner-capabilities.v1.json',
   'release-readiness.v1.json',

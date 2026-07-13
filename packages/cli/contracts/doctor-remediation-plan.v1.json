@@ -142,7 +142,15 @@
     "repairIntent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode", "primaryAction", "requiresApproval"],
+      "required": [
+        "mode",
+        "confidence",
+        "primaryActionLabel",
+        "requiresApproval",
+        "requiresFreshEvidence",
+        "reason",
+        "relatedCommands"
+      ],
       "properties": {
         "mode": {
           "enum": [
@@ -155,7 +163,7 @@
             "manual-guidance"
           ]
         },
-        "primaryAction": {
+        "primaryActionLabel": {
           "type": "string"
         },
         "requiresApproval": {
@@ -164,7 +172,13 @@
         "confidence": {
           "enum": ["high", "medium", "low"]
         },
-        "notes": {
+        "requiresFreshEvidence": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "relatedCommands": {
           "type": "array",
           "items": {
             "type": "string"

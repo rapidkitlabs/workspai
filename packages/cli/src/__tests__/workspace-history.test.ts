@@ -56,8 +56,12 @@ describe('workspace intelligence history (1.21)', () => {
   });
 
   it('persists and reloads history across runs', async () => {
-    await recordWorkspaceHistory(workspacePath, entry('t1', 'ready'), { retention: 5 });
-    await recordWorkspaceHistory(workspacePath, entry('t2', 'blocked'), { retention: 5 });
+    await recordWorkspaceHistory(workspacePath, entry('2026-07-13T00:00:00.000Z', 'ready'), {
+      retention: 5,
+    });
+    await recordWorkspaceHistory(workspacePath, entry('2026-07-13T00:01:00.000Z', 'blocked'), {
+      retention: 5,
+    });
 
     const reloaded = await readWorkspaceHistory(workspacePath);
     expect(reloaded?.entries).toHaveLength(2);

@@ -9,6 +9,10 @@ const VSCODE_CONTRACTS_DIR = path.resolve(process.cwd(), '..', 'rapidkit-vscode'
 const CLI_EXTENSION_CONTRACT_FILES = [
   'extension-cli-compatibility.v1.json',
   'runtime-command-surface.v1.json',
+  'cli-operation-result.v1.json',
+  'command-capabilities.v1.json',
+  'version.v1.json',
+  'published-contract-catalog.v1.json',
   'workspace-archive-capabilities.v1.json',
   'workspace-archive-manifest.v1.json',
   'workspace-archive-operation-result.v1.json',

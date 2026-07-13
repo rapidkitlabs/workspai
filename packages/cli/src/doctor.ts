@@ -1766,7 +1766,10 @@ async function writeDoctorEvidence(
       )
     );
     return evidencePath;
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('violates contracts/')) {
+      throw error;
+    }
     return undefined;
   }
 }
@@ -4365,7 +4368,10 @@ async function writeDoctorRemediationPlanArtifact(
       );
     }
     return artifactPath;
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('violates contracts/')) {
+      throw error;
+    }
     return undefined;
   }
 }

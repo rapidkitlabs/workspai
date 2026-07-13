@@ -11,6 +11,7 @@ export const WORKSPACE_INTELLIGENCE_ARTIFACTS = {
   snapshot: '.workspai/reports/workspace-model-snapshot.json',
   diff: '.workspai/reports/workspace-model-diff-last-run.json',
   impact: '.workspai/reports/workspace-impact-last-run.json',
+  analyze: '.workspai/reports/analyze-last-run.json',
   doctor: '.workspai/reports/doctor-last-run.json',
   contractVerify: '.workspai/reports/workspace-contract-verify-last-run.json',
   readiness: '.workspai/reports/release-readiness-last-run.json',
@@ -33,6 +34,7 @@ export const WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS = {
   snapshot: 'workspace-model-snapshot.v1',
   diff: 'workspace-model-diff.v1',
   impact: 'workspace-impact.v1',
+  analyze: 'rapidkit-analyze-v1',
   doctor: 'doctor-workspace-evidence-v1',
   contractVerify: 'workspace-contract-verify.v1',
   readiness: 'release-readiness-v1',
@@ -51,6 +53,7 @@ export const WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS = {
   snapshot: 'contracts/workspace-intelligence/workspace-model-snapshot.v1.json',
   diff: 'contracts/workspace-intelligence/workspace-model-diff.v1.json',
   impact: 'contracts/workspace-intelligence/workspace-impact.v1.json',
+  analyze: 'contracts/analyze-last-run.v1.json',
   doctor: 'contracts/doctor-workspace-evidence.v1.json',
   contractVerify: 'contracts/workspace-intelligence/workspace-contract-verify.v1.json',
   readiness: 'contracts/release-readiness.v1.json',
@@ -66,12 +69,14 @@ export const WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS = {
 } as const satisfies Record<WorkspaceIntelligenceArtifactId, string | null>;
 
 export const WORKSPACE_INTELLIGENCE_COMMAND_SIGNATURES = {
+  analyze: 'analyze',
   workspace: 'workspace <action> [subaction] [key] [value]',
   doctor: 'doctor [scope]',
   readiness: 'readiness',
 } as const;
 
 export const WORKSPACE_INTELLIGENCE_ROOT_COMMANDS = [
+  'analyze',
   'readiness',
   'doctor',
   'workspace',
@@ -79,11 +84,11 @@ export const WORKSPACE_INTELLIGENCE_ROOT_COMMANDS = [
 
 export const WORKSPACE_INTELLIGENCE_STEP_IDS = [
   'model',
-  'snapshot',
   'diff',
   'impact',
   'doctor-evidence',
   'contract-evidence',
+  'analyze-evidence',
   'readiness-evidence',
   'verify',
   'context',
@@ -105,10 +110,6 @@ export const WORKSPACE_INTELLIGENCE_RUNTIME_STEPS = {
     command: ['workspace', 'model', '--json', '--write'],
     produces: [A.model],
   },
-  snapshot: {
-    command: ['workspace', 'snapshot', '--json'],
-    produces: [A.snapshot],
-  },
   diff: {
     command: ['workspace', 'diff', '--from', A.snapshot, '--json'],
     produces: [A.diff],
@@ -124,6 +125,10 @@ export const WORKSPACE_INTELLIGENCE_RUNTIME_STEPS = {
   'contract-evidence': {
     command: ['workspace', 'contract', 'verify', '--strict', '--json'],
     produces: [A.contractVerify],
+  },
+  'analyze-evidence': {
+    command: ['analyze', '--json'],
+    produces: [A.analyze],
   },
   'readiness-evidence': {
     command: ['readiness', '--json'],

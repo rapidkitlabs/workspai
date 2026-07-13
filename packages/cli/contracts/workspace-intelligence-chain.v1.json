@@ -121,6 +121,12 @@
         "schemaContract": "contracts/workspace-intelligence/workspace-impact.v1.json"
       },
       {
+        "id": "analyze",
+        "path": ".workspai/reports/analyze-last-run.json",
+        "schemaVersion": "rapidkit-analyze-v1",
+        "schemaContract": "contracts/analyze-last-run.v1.json"
+      },
+      {
         "id": "doctor",
         "path": ".workspai/reports/doctor-last-run.json",
         "schemaVersion": "doctor-workspace-evidence-v1",
@@ -241,6 +247,14 @@
         "entersAt": "diff"
       },
       {
+        "id": "model-baseline",
+        "label": "Explicit model baseline",
+        "sources": [
+          ".workspai/reports/workspace-model-snapshot.json"
+        ],
+        "entersAt": "diff"
+      },
+      {
         "id": "existing-evidence",
         "label": "Existing evidence",
         "sources": [
@@ -261,13 +275,11 @@
         "label": "System understanding",
         "artifacts": [
           ".workspai/reports/workspace-model.json",
-          ".workspai/reports/workspace-model-snapshot.json",
           ".workspai/reports/workspace-model-diff-last-run.json",
           ".workspai/reports/workspace-impact-last-run.json"
         ],
         "producedBy": [
           "model",
-          "snapshot",
           "diff",
           "impact"
         ],
@@ -279,6 +291,7 @@
         "artifacts": [
           ".workspai/reports/doctor-last-run.json",
           ".workspai/reports/workspace-contract-verify-last-run.json",
+          ".workspai/reports/analyze-last-run.json",
           ".workspai/reports/release-readiness-last-run.json",
           ".workspai/reports/workspace-verify-last-run.json",
           ".workspai/reports/workspace-intelligence-history.json"
@@ -286,6 +299,7 @@
         "producedBy": [
           "doctor-evidence",
           "contract-evidence",
+          "analyze-evidence",
           "readiness-evidence",
           "verify"
         ],
@@ -492,6 +506,7 @@
             "runtime-dependencies",
             "workspace-rules",
             "changes",
+            "model-baseline",
             "existing-evidence"
           ]
         },
@@ -502,11 +517,11 @@
           "summary": "Model · Graph · Impact · Verify",
           "contractRefs": [
             "model",
-            "snapshot",
             "diff",
             "impact",
             "doctor-evidence",
             "contract-evidence",
+            "analyze-evidence",
             "readiness-evidence",
             "verify",
             "context",
@@ -563,10 +578,9 @@
         {
           "id": "understand",
           "label": "Understand",
-          "question": "What exists, and what baseline should be preserved?",
+          "question": "What exists in the current workspace?",
           "stepRefs": [
-            "model",
-            "snapshot"
+            "model"
           ]
         },
         {
@@ -585,6 +599,7 @@
           "stepRefs": [
             "doctor-evidence",
             "contract-evidence",
+            "analyze-evidence",
             "readiness-evidence"
           ]
         },
@@ -626,11 +641,11 @@
     "advanced": {
       "steps": [
         "model",
-        "snapshot",
         "diff",
         "impact",
         "doctor-evidence",
         "contract-evidence",
+        "analyze-evidence",
         "readiness-evidence",
         "verify",
         "context",
@@ -683,34 +698,8 @@
       "purpose": "Build the canonical current model of the software system."
     },
     {
-      "id": "snapshot",
-      "ordinal": 2,
-      "phase": "understand",
-      "label": "Snapshot",
-      "command": [
-        "workspace",
-        "snapshot",
-        "--json"
-      ],
-      "consumes": [
-        ".workspai/reports/workspace-model.json"
-      ],
-      "inputRefs": [],
-      "consumesArtifacts": [
-        ".workspai/reports/workspace-model.json"
-      ],
-      "produces": [
-        ".workspai/reports/workspace-model-snapshot.json"
-      ],
-      "dependsOn": [
-        "model"
-      ],
-      "exitPolicy": "stop-on-error",
-      "purpose": "Persist a stable comparison baseline."
-    },
-    {
       "id": "diff",
-      "ordinal": 3,
+      "ordinal": 2,
       "phase": "change",
       "label": "Diff",
       "command": [
@@ -725,7 +714,8 @@
         ".workspai/reports/workspace-model-snapshot.json"
       ],
       "inputRefs": [
-        "changes"
+        "changes",
+        "model-baseline"
       ],
       "consumesArtifacts": [
         ".workspai/reports/workspace-model.json",
@@ -735,14 +725,14 @@
         ".workspai/reports/workspace-model-diff-last-run.json"
       ],
       "dependsOn": [
-        "snapshot"
+        "model"
       ],
       "exitPolicy": "stop-on-error",
       "purpose": "Describe structural change against the selected baseline."
     },
     {
       "id": "impact",
-      "ordinal": 4,
+      "ordinal": 3,
       "phase": "change",
       "label": "Impact",
       "command": [
@@ -772,7 +762,7 @@
     },
     {
       "id": "doctor-evidence",
-      "ordinal": 5,
+      "ordinal": 4,
       "phase": "evidence",
       "label": "Doctor Evidence",
       "command": [
@@ -800,7 +790,7 @@
     },
     {
       "id": "contract-evidence",
-      "ordinal": 6,
+      "ordinal": 5,
       "phase": "evidence",
       "label": "Contract Evidence",
       "command": [
@@ -827,6 +817,36 @@
       "purpose": "Refresh structural contract evidence without hiding failed verdicts."
     },
     {
+      "id": "analyze-evidence",
+      "ordinal": 6,
+      "phase": "evidence",
+      "label": "Analyze Evidence",
+      "command": [
+        "analyze",
+        "--json"
+      ],
+      "consumes": [
+        ".workspai/reports/workspace-model.json",
+        "workspace runtime and dependency signals"
+      ],
+      "inputRefs": [
+        "projects-repositories",
+        "runtime-dependencies",
+        "workspace-rules"
+      ],
+      "consumesArtifacts": [
+        ".workspai/reports/workspace-model.json"
+      ],
+      "produces": [
+        ".workspai/reports/analyze-last-run.json"
+      ],
+      "dependsOn": [
+        "impact"
+      ],
+      "exitPolicy": "continue-on-structured-verdict",
+      "purpose": "Refresh analysis evidence required by the release-readiness gate."
+    },
+    {
       "id": "readiness-evidence",
       "ordinal": 7,
       "phase": "evidence",
@@ -844,14 +864,16 @@
       ],
       "consumesArtifacts": [
         ".workspai/reports/doctor-last-run.json",
-        ".workspai/reports/workspace-contract-verify-last-run.json"
+        ".workspai/reports/workspace-contract-verify-last-run.json",
+        ".workspai/reports/analyze-last-run.json"
       ],
       "produces": [
         ".workspai/reports/release-readiness-last-run.json"
       ],
       "dependsOn": [
         "doctor-evidence",
-        "contract-evidence"
+        "contract-evidence",
+        "analyze-evidence"
       ],
       "exitPolicy": "continue-on-structured-verdict",
       "purpose": "Refresh release-readiness evidence before the definitive gate."
@@ -889,6 +911,7 @@
         "impact",
         "doctor-evidence",
         "contract-evidence",
+        "analyze-evidence",
         "readiness-evidence"
       ],
       "exitPolicy": "continue-on-structured-verdict",
@@ -1005,11 +1028,6 @@
         "phase": "understand"
       },
       {
-        "id": "snapshot",
-        "label": "Snapshot",
-        "phase": "understand"
-      },
-      {
         "id": "diff",
         "label": "Diff",
         "phase": "change"
@@ -1027,6 +1045,11 @@
       {
         "id": "contract-evidence",
         "label": "Contract Evidence",
+        "phase": "evidence"
+      },
+      {
+        "id": "analyze-evidence",
+        "label": "Analyze Evidence",
         "phase": "evidence"
       },
       {
@@ -1058,11 +1081,6 @@
     "edges": [
       {
         "from": "model",
-        "to": "snapshot",
-        "meaning": "required before"
-      },
-      {
-        "from": "snapshot",
         "to": "diff",
         "meaning": "required before"
       },
@@ -1082,12 +1100,22 @@
         "meaning": "required before"
       },
       {
+        "from": "impact",
+        "to": "analyze-evidence",
+        "meaning": "required before"
+      },
+      {
         "from": "doctor-evidence",
         "to": "readiness-evidence",
         "meaning": "required before"
       },
       {
         "from": "contract-evidence",
+        "to": "readiness-evidence",
+        "meaning": "required before"
+      },
+      {
+        "from": "analyze-evidence",
         "to": "readiness-evidence",
         "meaning": "required before"
       },
@@ -1103,6 +1131,11 @@
       },
       {
         "from": "contract-evidence",
+        "to": "verify",
+        "meaning": "required before"
+      },
+      {
+        "from": "analyze-evidence",
         "to": "verify",
         "meaning": "required before"
       },

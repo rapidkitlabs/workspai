@@ -16,17 +16,31 @@ import {
   buildWorkspaceArchiveManifestSchema,
   buildWorkspaceArchiveOperationResultSchema,
 } from '../src/contracts/workspace-archive-contract.js';
+import { buildCliOperationResultSchema } from '../src/contracts/cli-operation-result-contract.js';
+import {
+  buildCommandCapabilitiesSchema,
+  buildVersionContractSchema,
+} from '../src/contracts/cli-discovery-contract.js';
+import { buildPublishedContractCatalog } from '../src/contracts/published-contract-versions.js';
+import { buildOperationalJsonSchemas } from '../src/contracts/operational-json-schemas.js';
 
 const contractsDir = path.resolve(process.cwd(), 'contracts');
 
 function writeJson(fileName: string, value: unknown) {
   const targetPath = path.join(contractsDir, fileName);
-  fs.mkdirSync(contractsDir, { recursive: true });
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
   fs.writeFileSync(targetPath, `${JSON.stringify(value, null, 2)}\n`, 'utf-8');
   console.log(`- wrote ${targetPath}`);
 }
 
 writeJson('runtime-command-surface.v1.json', buildRuntimeCommandSurfaceContract());
+writeJson('cli-operation-result.v1.json', buildCliOperationResultSchema());
+writeJson('command-capabilities.v1.json', buildCommandCapabilitiesSchema());
+writeJson('version.v1.json', buildVersionContractSchema());
+writeJson('published-contract-catalog.v1.json', buildPublishedContractCatalog());
+for (const [fileName, schema] of Object.entries(buildOperationalJsonSchemas())) {
+  writeJson(fileName, schema);
+}
 writeJson('workspace-archive-capabilities.v1.json', buildWorkspaceArchiveCapabilitiesContract());
 writeJson('workspace-archive-manifest.v1.json', buildWorkspaceArchiveManifestSchema());
 writeJson(

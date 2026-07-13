@@ -37,12 +37,14 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["path", "label", "required", "exists"],
+        "required": ["path", "label", "required", "exists", "validity"],
         "properties": {
           "path": { "type": "string", "minLength": 1 },
           "label": { "type": "string", "minLength": 1 },
           "required": { "type": "boolean" },
           "exists": { "type": "boolean" },
+          "validity": { "enum": ["valid", "invalid", "uncontracted", "missing"] },
+          "validationError": { "type": "string" },
           "generatedAt": { "type": "string", "format": "date-time" },
           "commandId": { "type": "string" },
           "exitCode": { "type": "integer" }

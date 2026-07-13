@@ -13,6 +13,7 @@ import {
   resolveWorkspaceArtifactPath,
   writeWorkspaceArtifactJson,
 } from './utils/artifact-path-compat.js';
+import { WORKSPACE_INTELLIGENCE_ARTIFACTS } from './contracts/workspace-intelligence-runtime-registry.js';
 
 export type AutopilotReleaseMode = 'audit' | 'safe-fix' | 'enforce';
 export type AutopilotStageStatus = 'pass' | 'warn' | 'fail' | 'skipped';
@@ -314,8 +315,8 @@ export async function runAutopilotRelease(
     analyzeEvidencePath =
       (await firstExistingWorkspaceArtifactPath(
         workspacePath,
-        '.workspai/reports/analyze-last-run.json'
-      )) ?? resolveWorkspaceArtifactPath(workspacePath, '.workspai/reports/analyze-last-run.json');
+        WORKSPACE_INTELLIGENCE_ARTIFACTS.analyze
+      )) ?? resolveWorkspaceArtifactPath(workspacePath, WORKSPACE_INTELLIGENCE_ARTIFACTS.analyze);
 
     let analyzeStatus: AutopilotStageStatus = 'pass';
     if (analyzeRun.crashed) {

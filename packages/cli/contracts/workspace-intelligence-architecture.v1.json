@@ -131,6 +131,14 @@
       "entersAt": "diff"
     },
     {
+      "id": "model-baseline",
+      "label": "Explicit model baseline",
+      "sources": [
+        ".workspai/reports/workspace-model-snapshot.json"
+      ],
+      "entersAt": "diff"
+    },
+    {
       "id": "existing-evidence",
       "label": "Existing evidence",
       "sources": [
@@ -151,13 +159,11 @@
       "label": "System understanding",
       "artifacts": [
         ".workspai/reports/workspace-model.json",
-        ".workspai/reports/workspace-model-snapshot.json",
         ".workspai/reports/workspace-model-diff-last-run.json",
         ".workspai/reports/workspace-impact-last-run.json"
       ],
       "producedBy": [
         "model",
-        "snapshot",
         "diff",
         "impact"
       ],
@@ -169,6 +175,7 @@
       "artifacts": [
         ".workspai/reports/doctor-last-run.json",
         ".workspai/reports/workspace-contract-verify-last-run.json",
+        ".workspai/reports/analyze-last-run.json",
         ".workspai/reports/release-readiness-last-run.json",
         ".workspai/reports/workspace-verify-last-run.json",
         ".workspai/reports/workspace-intelligence-history.json"
@@ -176,6 +183,7 @@
       "producedBy": [
         "doctor-evidence",
         "contract-evidence",
+        "analyze-evidence",
         "readiness-evidence",
         "verify"
       ],
@@ -341,17 +349,6 @@
         ]
       },
       {
-        "id": "snapshot",
-        "status": "available",
-        "purpose": "Persist a stable comparison baseline.",
-        "commands": [
-          "workspace snapshot --json"
-        ],
-        "artifacts": [
-          ".workspai/reports/workspace-model-snapshot.json"
-        ]
-      },
-      {
         "id": "diff",
         "status": "available",
         "purpose": "Describe structural change against the selected baseline.",
@@ -393,6 +390,17 @@
         ],
         "artifacts": [
           ".workspai/reports/workspace-contract-verify-last-run.json"
+        ]
+      },
+      {
+        "id": "analyze-evidence",
+        "status": "available",
+        "purpose": "Refresh analysis evidence required by the release-readiness gate.",
+        "commands": [
+          "analyze --json"
+        ],
+        "artifacts": [
+          ".workspai/reports/analyze-last-run.json"
         ]
       },
       {

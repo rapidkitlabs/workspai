@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   getGlobalCommandCapabilities,
+  getPublishedContractCatalog,
   getPublishedContractVersions,
   getVersionContract,
 } from '../../index';
@@ -50,6 +51,7 @@ describe('rapidkit commands --json stability contract (1.1)', () => {
       'version',
       'cwd',
       'contracts',
+      'contractCatalog',
       'commands',
       'workspace',
       'commandMap',
@@ -72,6 +74,7 @@ describe('rapidkit commands --json stability contract (1.1)', () => {
     const capabilities = getGlobalCommandCapabilities();
 
     expect(capabilities.contracts).toEqual(getPublishedContractVersions());
+    expect(capabilities.contractCatalog).toEqual(getPublishedContractCatalog());
     // The advertised runtime-command-surface version must match the real one so
     // consumers can trust the capability surface aligns with the contract file.
     expect(capabilities.contracts.runtimeCommandSurface).toBe(
@@ -80,6 +83,24 @@ describe('rapidkit commands --json stability contract (1.1)', () => {
     expect(capabilities.contracts.workspaceIntelligenceArchitecture).toBe(
       'workspai-workspace-intelligence-architecture-v1'
     );
+  });
+
+  it('resolves every published standalone contract to a canonical file', () => {
+    for (const [id, descriptor] of Object.entries(getPublishedContractCatalog())) {
+      if (descriptor.contractPath) {
+        expect(
+          fs.existsSync(path.resolve(process.cwd(), descriptor.contractPath)),
+          `${id} -> ${descriptor.contractPath}`
+        ).toBe(true);
+      }
+      for (const [artifactId, artifact] of Object.entries(descriptor.artifacts ?? {})) {
+        if (!artifact.contractPath) continue;
+        expect(
+          fs.existsSync(path.resolve(process.cwd(), artifact.contractPath)),
+          `${id}.${artifactId} -> ${artifact.contractPath}`
+        ).toBe(true);
+      }
+    }
   });
 
   it('keeps the workspace capability surface aligned with runtime-command-surface.v1', () => {
@@ -141,6 +162,7 @@ describe('rapidkit --version --json contract (1.2)', () => {
       'platform',
       'capabilitiesSchemaVersion',
       'contracts',
+      'contractCatalog',
     ]) {
       expect(Object.keys(contract), key).toContain(key);
     }
@@ -157,5 +179,6 @@ describe('rapidkit --version --json contract (1.2)', () => {
     // Both top-level machine-readable surfaces must publish identical contract
     // versions so a consumer can trust either entry point.
     expect(versionContract.contracts).toEqual(capabilities.contracts);
+    expect(versionContract.contractCatalog).toEqual(capabilities.contractCatalog);
   });
 });

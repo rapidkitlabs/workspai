@@ -25,14 +25,27 @@ async function writeAnalyzeEvidence(
 ) {
   await fsExtra.writeJSON(path.join(workspace, '.workspai', 'reports', 'analyze-last-run.json'), {
     schemaVersion: 'rapidkit-analyze-v1',
+    generatedAt: '2026-07-13T00:00:00.000Z',
+    workspacePath: workspace,
+    workspaceDetected: true,
     summary: {
       score: verdict === 'ready' ? 92 : verdict === 'needs-attention' ? 72 : 40,
       verdict,
+      projectCount: 0,
+      runtimeCount: 0,
       findings: {
         fail: verdict === 'blocked' ? 1 : 0,
         warn: verdict === 'needs-attention' ? 1 : 0,
         info: 0,
       },
+    },
+    projects: [],
+    findings: [],
+    enterpriseControls: {
+      jsonReady: true,
+      ciGateCommand: 'workspai analyze --json',
+      releaseGateCommand: 'workspai readiness --json',
+      evidencePath: '.workspai/reports/analyze-last-run.json',
     },
   });
 }
@@ -47,6 +60,24 @@ afterEach(async () => {
 });
 
 describe('release readiness', () => {
+  it('fails closed when analyze evidence is valid JSON but violates its schema', async () => {
+    const workspace = await makeWorkspace();
+    await fsExtra.writeJSON(
+      path.join(workspace, '.workspai', 'reports', 'analyze-last-run.json'),
+      {}
+    );
+
+    const readiness = await evaluateReleaseReadiness({
+      startPath: workspace,
+      writeReport: false,
+      skipVerify: true,
+    });
+    const analyzeGate = readiness.gates.find((gate) => gate.gate === 'analyze');
+
+    expect(analyzeGate?.status).toBe('fail');
+    expect(analyzeGate?.summary).toContain('violates its contract');
+  });
+
   it('keeps workspace shell cwd scoped to the workspace for workspace release gates', async () => {
     const workspace = await makeWorkspace();
     const projectDir = path.join(workspace, 'admin-api');

@@ -1199,7 +1199,7 @@ export async function buildWorkspaceModel(
       ),
       analyze: await evidenceRef(
         workspacePath,
-        '.workspai/reports/analyze-last-run.json',
+        WORKSPACE_INTELLIGENCE_ARTIFACTS.analyze,
         includeEvidence
       ),
       readiness: await evidenceRef(

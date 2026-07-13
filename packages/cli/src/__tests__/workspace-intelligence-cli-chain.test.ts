@@ -139,7 +139,8 @@ describe('workspace intelligence CLI chain', () => {
       );
       expect(diff.status).toBe(0);
       expect(
-        parseJsonOutput<{ summary: { addedProjects: number } }>(diff.output).summary
+        parseJsonOutput<{ artifact: { summary: { addedProjects: number } } }>(diff.output).artifact
+          .summary
       ).toMatchObject({
         addedProjects: 1,
       });
@@ -151,12 +152,14 @@ describe('workspace intelligence CLI chain', () => {
       );
       expect(impact.status).toBe(0);
       const impactJson = parseJsonOutput<{
-        affectedProjects: Array<{
-          target: string;
-          project: { name: string; framework: string; kind: string };
-          verification: Array<{ display: string; execute: string; required: boolean }>;
-        }>;
-      }>(impact.output);
+        artifact: {
+          affectedProjects: Array<{
+            target: string;
+            project: { name: string; framework: string; kind: string };
+            verification: Array<{ display: string; execute: string; required: boolean }>;
+          }>;
+        };
+      }>(impact.output).artifact;
       expect(impactJson.affectedProjects).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -223,16 +226,18 @@ describe('workspace intelligence CLI chain', () => {
       const verify = runCli(dist, ['workspace', 'verify', '--json'], workspaceDir);
       expect(verify.status).toBe(2);
       const verifyJson = parseJsonOutput<{
-        schemaVersion: string;
-        summary: { verdict: string; exitCode: number };
-        steps: Array<{ id: string; status: string }>;
-        gate: { passed: boolean; mode: string; exitCode: number; reasons: string[] };
-        freshness: { verdict: string; baseline: string; projectHashes: Record<string, string> };
-        policyMode: string;
-        policyViolations: Array<{ source: string; severity: string; code: string }>;
-        graphIntegrity: { ok: boolean };
-        affectedSubgraph: { directlyChanged: string[]; transitiveDependents: string[] };
-      }>(verify.output);
+        artifact: {
+          schemaVersion: string;
+          summary: { verdict: string; exitCode: number };
+          steps: Array<{ id: string; status: string }>;
+          gate: { passed: boolean; mode: string; exitCode: number; reasons: string[] };
+          freshness: { verdict: string; baseline: string; projectHashes: Record<string, string> };
+          policyMode: string;
+          policyViolations: Array<{ source: string; severity: string; code: string }>;
+          graphIntegrity: { ok: boolean };
+          affectedSubgraph: { directlyChanged: string[]; transitiveDependents: string[] };
+        };
+      }>(verify.output).artifact;
       expect(verifyJson.schemaVersion).toBe('workspace-verify.v1');
       expect(verifyJson.summary.verdict).toBe('blocked');
       expect(verifyJson.steps).toEqual(
