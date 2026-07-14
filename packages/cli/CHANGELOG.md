@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed the artifact catalog mapping for `autopilot-release.v1.json`.
 - Fixed release-readiness workspace targeting parity with `analyze --workspace`
   and workspace-level command flows.
+- Fixed Windows artifact writes so `EPERM` from filesystem `fsync` does not
+  fail workspace init, contract sync, or Workspace Intelligence evidence writes
+  after the artifact payload has been written.
 - Increased timeout headroom for slower CLI process and HTTP retry integration
   tests under full-suite load.
 

@@ -63,6 +63,23 @@ async function assertExistingArtifactIsContained(
   }
 }
 
+function isIgnorableArtifactFsyncError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return (
+    process.platform === 'win32' && (code === 'EPERM' || code === 'EINVAL' || code === 'ENOSYS')
+  );
+}
+
+async function syncFileHandleForArtifact(handle: Awaited<ReturnType<typeof open>>): Promise<void> {
+  try {
+    await handle.sync();
+  } catch (error) {
+    if (!isIgnorableArtifactFsyncError(error)) {
+      throw error;
+    }
+  }
+}
+
 async function replaceArtifactAtomically(
   workspacePath: string,
   primaryPath: string,
@@ -85,7 +102,7 @@ async function replaceArtifactAtomically(
     await writeTemporary(temporaryPath);
     const temporaryHandle = await open(temporaryPath, 'r');
     try {
-      await temporaryHandle.sync();
+      await syncFileHandleForArtifact(temporaryHandle);
     } finally {
       await temporaryHandle.close();
     }
@@ -127,7 +144,7 @@ export async function withWorkspaceArtifactLock<T>(
       await handle.writeFile(
         `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`
       );
-      await handle.sync();
+      await syncFileHandleForArtifact(handle);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== 'EEXIST') {

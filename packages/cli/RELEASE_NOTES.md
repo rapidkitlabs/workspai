@@ -37,6 +37,9 @@ truth.
   - `pipeline --no-agent-sync` now correctly skips agent grounding writes.
   - `workspace impact` and `workspace verify` now accept
     `--include-paths`, `--include-evidence`, and `--scan-depth <count>`.
+  - Windows artifact writes now tolerate runner-level `fsync` `EPERM` so
+    workspace init, contract sync, and evidence writes do not fail after the
+    payload has already been written.
 
 - **Package alignment**
   - Bumped the monorepo root, `workspai`, and `wspai` to `0.44.0`.

@@ -1,8 +1,9 @@
 import path from 'node:path';
 import os from 'node:os';
+import { open } from 'node:fs/promises';
 
 import fsExtra from 'fs-extra';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   firstExistingWorkspaceArtifactPath,
@@ -53,6 +54,35 @@ describe('workspace artifact path compatibility', () => {
     expect(
       (await fsExtra.readdir(path.dirname(jsonPath))).some((name) => name.endsWith('.tmp'))
     ).toBe(false);
+  });
+
+  it('tolerates Windows EPERM fsync failures during atomic artifact writes', async () => {
+    const root = await temporaryWorkspace();
+    const probePath = path.join(root, 'probe.txt');
+    await fsExtra.outputFile(probePath, 'probe');
+    const probeHandle = await open(probePath, 'r');
+    const fileHandlePrototype = Object.getPrototypeOf(probeHandle) as {
+      sync: () => Promise<void>;
+    };
+    await probeHandle.close();
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    const syncSpy = vi
+      .spyOn(fileHandlePrototype, 'sync')
+      .mockRejectedValueOnce(Object.assign(new Error('EPERM'), { code: 'EPERM' }));
+
+    try {
+      const jsonPath = await writeWorkspaceArtifactJson(root, '.workspai/reports/example.json', {
+        value: 'windows-fsync-tolerated',
+      });
+
+      expect(await fsExtra.readJson(jsonPath)).toEqual({ value: 'windows-fsync-tolerated' });
+      expect(
+        (await fsExtra.readdir(path.dirname(jsonPath))).some((name) => name.endsWith('.tmp'))
+      ).toBe(false);
+    } finally {
+      syncSpy.mockRestore();
+      platformSpy.mockRestore();
+    }
   });
 
   it('rejects a registered artifact before writing when its schema is invalid', async () => {

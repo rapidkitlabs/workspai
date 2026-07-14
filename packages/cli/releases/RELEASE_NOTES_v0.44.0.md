@@ -93,6 +93,11 @@ The CLI now accepts the Workspace Intelligence evidence flags consistently on
 `readiness` now supports `--workspace <path>`, and `pipeline --no-agent-sync`
 correctly skips agent grounding writes at the CLI boundary.
 
+Windows artifact writes now tolerate runner-level `fsync` `EPERM` on temporary
+artifact files and lock files, preventing workspace init, contract sync, and
+Workspace Intelligence evidence writes from failing after the payload has
+already been written.
+
 ### Agent Customization Pack alignment
 
 Agent customization outputs now have stronger contracts and drift checks for:
