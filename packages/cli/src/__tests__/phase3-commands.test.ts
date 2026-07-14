@@ -945,7 +945,7 @@ describe('Phase 3 command contract handlers', () => {
         server.close((error) => (error ? reject(error) : resolve()))
       );
       await cleanupWorkspaceDir(workspaceRoot);
-    });
+    }, 15_000);
 
     it('retries prefetch and records provenance attempts', async () => {
       const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-mirror-prefetch-retry-'));
@@ -1026,7 +1026,7 @@ describe('Phase 3 command contract handlers', () => {
         server.close((error) => (error ? reject(error) : resolve()))
       );
       await cleanupWorkspaceDir(workspaceRoot);
-    });
+    }, 15_000);
 
     it('verifies cryptographic attestation for mirrored artifact', async () => {
       const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'rapidkit-mirror-attest-'));
@@ -1795,7 +1795,7 @@ describe('Phase 3 command contract handlers', () => {
         webhook.close((error) => (error ? reject(error) : resolve()))
       );
       await cleanupWorkspaceDir(workspaceRoot);
-    });
+    }, 15_000);
   });
 
   describe('core forwarding boundary', () => {

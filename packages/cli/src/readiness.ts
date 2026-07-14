@@ -62,6 +62,7 @@ interface EvaluateReleaseReadinessOptions {
 }
 
 interface ReadinessCommandOptions {
+  workspace?: string;
   json?: boolean;
   strict?: boolean;
   skipVerify?: boolean;
@@ -695,6 +696,7 @@ function overallIndicator(status: ReadinessOverallStatus): string {
 
 export async function runReleaseReadinessCommand(options: ReadinessCommandOptions): Promise<void> {
   const contract = await evaluateReleaseReadiness({
+    startPath: options.workspace,
     writeReport: true,
     skipVerify: options.skipVerify === true,
   });

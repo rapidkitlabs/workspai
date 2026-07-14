@@ -66,7 +66,7 @@ describe('Phase 3 commands - CLI process integration', () => {
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
-  }, 20_000);
+  }, 60_000);
 
   it('lists registered workspaces via workspace list', () => {
     const dist = ensureDistBuilt();

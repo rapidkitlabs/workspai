@@ -40,8 +40,8 @@ exclude the canonical marker.
 | `analyze`                            | `.workspai/reports/analyze-last-run.json`                   | `rapidkit-analyze-v1`           | `contracts/analyze-last-run.v1.json`                         |
 | `readiness`                          | `.workspai/reports/release-readiness-last-run.json`         | `release-readiness-v1`          | `contracts/release-readiness.v1.json`                        |
 | `pipeline`                           | `.workspai/reports/pipeline-last-run.json`                  | `rapidkit-pipeline-v1`          | `contracts/pipeline-last-run.v1.json`                        |
-| `autopilot release`                  | `.workspai/reports/autopilot-release-last-run.json`         | `autopilot-release-v1`          | —                                                            |
-|                                      | `.workspai/reports/autopilot-release.json`                  | (alias, same payload)           | —                                                            |
+| `autopilot release`                  | `.workspai/reports/autopilot-release-last-run.json`         | `autopilot-release-v1`          | `contracts/autopilot-release.v1.json`                        |
+|                                      | `.workspai/reports/autopilot-release.json`                  | (alias, same payload)           | `contracts/autopilot-release.v1.json`                        |
 
 Side/cache (not gates): `.workspai/reports/doctor-workspace-cache.json` (`doctor-workspace-cache-v2`).
 

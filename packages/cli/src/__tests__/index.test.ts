@@ -1139,6 +1139,87 @@ describe('CLI Entry Point', () => {
       });
     });
 
+    it('allows workspace intelligence evidence flags on impact and verify actions', async () => {
+      const workspaceRoot = await fs.mkdtemp(
+        path.join(TEST_DIR, 'workspace-intelligence-flag-capability-')
+      );
+      await fs.writeFile(path.join(workspaceRoot, '.workspai-workspace'), '');
+
+      const impact = await execa(
+        'node',
+        [
+          CLI_PATH,
+          'workspace',
+          'impact',
+          '--include-paths',
+          '--include-evidence',
+          '--scan-depth',
+          '2',
+          '--json',
+        ],
+        { cwd: workspaceRoot, reject: false }
+      );
+      expect(impact.exitCode).toBe(1);
+      expect(JSON.parse(impact.stdout)).toMatchObject({
+        operation: 'workspace impact',
+        error: { code: 'workspace.impact.from.required' },
+      });
+
+      const verify = await execa(
+        'node',
+        [
+          CLI_PATH,
+          'workspace',
+          'verify',
+          '--include-paths',
+          '--include-evidence',
+          '--scan-depth',
+          '2',
+          '--json',
+        ],
+        { cwd: workspaceRoot, reject: false }
+      );
+      expect(verify.exitCode).not.toBe(2);
+      expect(verify.stdout).not.toContain('workspace.option.unsupported');
+    });
+
+    it('honors pipeline --no-agent-sync at the CLI boundary', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'pipeline-no-agent-sync-'));
+      await fs.writeFile(path.join(workspaceRoot, '.workspai-workspace'), '');
+
+      const result = await execa(
+        'node',
+        [CLI_PATH, 'pipeline', '--json', '--skip-analyze', '--skip-autopilot', '--no-agent-sync'],
+        { cwd: workspaceRoot, reject: false }
+      );
+
+      expect([0, 1, 2]).toContain(result.exitCode);
+      const payload = JSON.parse(result.stdout);
+      expect(payload.agentGrounding).toBeUndefined();
+      expect(await fs.pathExists(path.join(workspaceRoot, 'AGENTS.md'))).toBe(false);
+      expect(await fs.pathExists(path.join(workspaceRoot, '.workspai/reports/INDEX.json'))).toBe(
+        false
+      );
+    }, 30000);
+
+    it('accepts --workspace on release readiness checks', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'readiness-workspace-option-'));
+      await fs.writeFile(path.join(workspaceRoot, '.workspai-workspace'), '');
+
+      const result = await execa(
+        'node',
+        [CLI_PATH, 'readiness', '--workspace', workspaceRoot, '--json', '--skip-verify'],
+        { reject: false }
+      );
+
+      expect([0, 1, 2]).toContain(result.exitCode);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        schemaVersion: 'release-readiness-v1',
+        workspacePath: workspaceRoot,
+      });
+      expect(await fs.pathExists(path.join(workspaceRoot, '.workspai/reports'))).toBe(true);
+    }, 30000);
+
     it('should list workspace init in unknown workspace action help', async () => {
       try {
         await execa('node', [CLI_PATH, 'workspace', 'unknown-action']);

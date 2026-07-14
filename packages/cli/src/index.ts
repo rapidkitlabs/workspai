@@ -6479,19 +6479,28 @@ program
   .description(
     '🚦 Generate machine-readable release readiness summary (env + doctor + analyze + verify + dependency)'
   )
+  .option('--workspace <path>', 'Workspace root to evaluate instead of the current directory')
   .option('--json', 'Output readiness result in JSON format')
   .option('--strict', 'Exit with code 1 unless overall readiness is pass')
   .option(
     '--skip-verify',
     'Skip verify gate (use for workspaces without extension verify artifacts)'
   )
-  .action(async (options: { json?: boolean; strict?: boolean; skipVerify?: boolean }) => {
-    await runReleaseReadinessCommand({
-      json: options.json,
-      strict: options.strict,
-      skipVerify: options.skipVerify,
-    });
-  });
+  .action(
+    async (options: {
+      workspace?: string;
+      json?: boolean;
+      strict?: boolean;
+      skipVerify?: boolean;
+    }) => {
+      await runReleaseReadinessCommand({
+        workspace: options.workspace,
+        json: options.json,
+        strict: options.strict,
+        skipVerify: options.skipVerify,
+      });
+    }
+  );
 
 program
   .command('pipeline')
@@ -6521,7 +6530,6 @@ program
       skipAnalyze?: boolean;
       skipAutopilot?: boolean;
       autopilotMode?: string;
-      noAgentSync?: boolean;
       agentSync?: boolean;
     }) => {
       const autopilotMode = String(options.autopilotMode || 'audit')
@@ -6540,8 +6548,8 @@ program
         skipAnalyze: options.skipAnalyze === true,
         skipAutopilot: options.skipAutopilot === true,
         autopilotMode: autopilotMode as 'audit' | 'safe-fix' | 'enforce',
-        noAgentSync: options.noAgentSync === true,
-        agentSync: options.agentSync === true ? true : options.noAgentSync ? false : undefined,
+        noAgentSync: options.agentSync === false,
+        agentSync: options.agentSync,
       });
     }
   );
@@ -7463,8 +7471,26 @@ program
         '--scan-depth',
         '--strict',
       ],
-      impact: ['--workspace', '--json', '--from', '--scope', '--strict'],
-      verify: ['--workspace', '--json', '--from-impact', '--scope', '--strict'],
+      impact: [
+        '--workspace',
+        '--json',
+        '--from',
+        '--scope',
+        '--include-paths',
+        '--include-evidence',
+        '--scan-depth',
+        '--strict',
+      ],
+      verify: [
+        '--workspace',
+        '--json',
+        '--from-impact',
+        '--scope',
+        '--include-paths',
+        '--include-evidence',
+        '--scan-depth',
+        '--strict',
+      ],
       graph: [
         '--workspace',
         '--json',

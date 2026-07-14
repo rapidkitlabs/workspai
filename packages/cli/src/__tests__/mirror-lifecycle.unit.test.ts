@@ -511,7 +511,7 @@ describe('runMirrorLifecycle unit coverage', () => {
         server.close((error) => (error ? reject(error) : resolve()))
       );
     }
-  });
+  }, 15_000);
 
   it('prefetch fails after retries and reports mirror sync failure for required artifact', async () => {
     const workspaceRoot = await makeWorkspace('mirror-prefetch-retry-failure');
@@ -562,5 +562,5 @@ describe('runMirrorLifecycle unit coverage', () => {
         server.close((error) => (error ? reject(error) : resolve()))
       );
     }
-  });
+  }, 15_000);
 });

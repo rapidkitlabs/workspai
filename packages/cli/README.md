@@ -171,7 +171,7 @@ For the visual experience, install the [Workspai VS Code extension](https://mark
 | --------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | What projects exist in this workspace?        | `workspace model --json`                                                                     |
 | What context should AI agents receive?        | `workspace context --for-agent --json --write`                                               |
-| What breaks if I change this?                 | `workspace impact --from <snapshot>`                                                         |
+| What breaks if I change this?                 | `workspace impact --from .workspai/reports/workspace-model-diff-last-run.json`                |
 | Why is release blocked?                       | `workspace explain release-blocked --json --write`                                           |
 | Trace a diff through blast radius and gates?  | `workspace trace --from .workspai/reports/workspace-model-diff-last-run.json --json --write` |
 | What should Studio do for blocked artifacts?  | `workspace remediation-plan --ci --json --write`                                             |

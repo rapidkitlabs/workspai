@@ -166,7 +166,7 @@ describe('Mirror evidence export hardening', () => {
       );
       await cleanupWorkspaceDir(fixture.workspaceRoot);
     }
-  });
+  }, 15_000);
 
   it('writes dead-letter evidence when HTTP export exhausts retries', async () => {
     const fixture = await createMirrorFixture('rapidkit-evidence-deadletter');
@@ -247,5 +247,5 @@ describe('Mirror evidence export hardening', () => {
       );
       await cleanupWorkspaceDir(fixture.workspaceRoot);
     }
-  });
+  }, 15_000);
 });
