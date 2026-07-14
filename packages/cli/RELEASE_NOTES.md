@@ -1,6 +1,72 @@
 # Release Notes
 
-## Latest Release: v0.43.1 (July 9, 2026)
+## Latest Release: v0.44.0 (July 14, 2026)
+
+### Workspace Intelligence Contract Architecture and Stable CLI Gates
+
+This minor release hardens Workspai's Workspace Intelligence foundation:
+canonical contracts, command discovery, runtime conformance, archive safety,
+agent grounding, and CLI gate behavior now align around the same source of
+truth.
+
+**What's New:**
+
+- **Workspace Intelligence contracts**
+  - Added first-class architecture and chain contracts for model, snapshot,
+    diff, impact, contract verify, readiness, verify, context, agent sync, and
+    explainability.
+  - Published generated contracts for runtime command surfaces, command
+    capabilities, operation result envelopes, version discovery, and contract
+    catalogs.
+
+- **Runtime and artifact conformance**
+  - Added runtime conformance and adversarial validation checks for Workspace
+    Intelligence command/artifact alignment.
+  - Expanded generated schema coverage across autopilot, doctor, infra,
+    product, workspace list/sync/watch/cache, archive, and Workspace
+    Intelligence evidence.
+
+- **Archive and recovery hardening**
+  - Added ZIP64/streaming archive capability contracts and stable archive
+    operation result schemas.
+  - Hardened snapshot, archive inspect, verify, doctor, hydrate, and failure
+    envelopes for large workspace workflows.
+
+- **CLI gate stability**
+  - `readiness` now supports `--workspace <path>`.
+  - `pipeline --no-agent-sync` now correctly skips agent grounding writes.
+  - `workspace impact` and `workspace verify` now accept
+    `--include-paths`, `--include-evidence`, and `--scan-depth <count>`.
+
+- **Package alignment**
+  - Bumped the monorepo root, `workspai`, and `wspai` to `0.44.0`.
+  - Updated the `wspai` alias dependency to `workspai@0.44.0`.
+
+**Breaking changes:** None.
+
+**Verification:**
+
+- `corepack npm run check`
+- `corepack npm --workspace workspai run contracts:check`
+- `corepack npm --workspace workspai run check:workspace-intelligence-runtime`
+- `corepack npm --workspace workspai run check:workspace-intelligence-adversarial`
+- `corepack npm --workspace workspai run docs:validate`
+- `corepack npm test`
+- Real workspace smoke tests across `my-new-wsp`, `my-works`, `my-workspace`,
+  and `my-workspoly`
+
+**Upgrade:**
+
+```bash
+npm install -g workspai@0.44.0
+npx wspai --help
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.44.0.md)
+
+---
+
+## Previous Release: v0.43.1 (July 9, 2026)
 
 ### Workspai Debug Alias, Doctor Repair, and Workspace Intelligence Chain Alignment
 

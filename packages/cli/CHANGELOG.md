@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-07-14
+
+### Added
+
+- Added Workspace Intelligence architecture and chain contracts to make the
+  model → snapshot → diff → impact → verify → context → agent-sync flow
+  explicit and runtime-verifiable.
+- Added generated contract coverage for runtime command discovery, CLI operation
+  results, published contract catalogs, command capabilities, and version
+  discovery.
+- Added runtime conformance and adversarial validation scripts for Workspace
+  Intelligence command/artifact alignment.
+- Added archive capability, manifest, and operation result contracts for ZIP64,
+  streaming workspace archives, hydrate, inspect, verify, doctor, and failure
+  envelopes.
+- Added `readiness --workspace <path>` for release-readiness checks outside the
+  workspace current working directory.
+
+### Changed
+
+- Bumped the monorepo root, `workspai`, and `wspai` packages to `0.44.0`, and
+  aligned the `wspai` dependency on `workspai@0.44.0`.
+- Expanded operational JSON schemas for autopilot, doctor, infra, product,
+  workspace list/sync/watch/cache, and Workspace Intelligence artifacts.
+- Hardened workspace snapshot, archive, contract verify, graph freshness,
+  workspace history, explain, MCP, and agent-grounding outputs.
+- Updated CLI and docs so Workspace Intelligence evidence flags are documented
+  consistently for model, snapshot, diff, impact, verify, graph, and context
+  workflows.
+- Updated npm release workflow behavior so reruns can tolerate already-published
+  versions.
+
+### Fixed
+
+- Fixed `pipeline --no-agent-sync` so it no longer writes agent-grounding
+  artifacts when the flag is passed through the CLI.
+- Fixed Workspace Intelligence option validation so `workspace impact` and
+  `workspace verify` accept `--include-paths`, `--include-evidence`, and
+  `--scan-depth <count>`.
+- Fixed the artifact catalog mapping for `autopilot-release.v1.json`.
+- Fixed release-readiness workspace targeting parity with `analyze --workspace`
+  and workspace-level command flows.
+- Increased timeout headroom for slower CLI process and HTTP retry integration
+  tests under full-suite load.
+
+### Verification
+
+- `corepack npm run check`
+- `corepack npm --workspace workspai run contracts:check`
+- `corepack npm --workspace workspai run check:workspace-intelligence-runtime`
+- `corepack npm --workspace workspai run check:workspace-intelligence-adversarial`
+- `corepack npm --workspace workspai run docs:validate`
+- `corepack npm test`
+- Real workspace smoke tests across `my-new-wsp`, `my-works`, `my-workspace`,
+  and `my-workspoly`.
+
 ## [0.43.1] - 2026-07-09
 
 ### Added
