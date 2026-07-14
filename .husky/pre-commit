@@ -7,6 +7,9 @@ run_without_git_hook_env() {
 }
 
 # Type checking
+echo "🪟 Checking Windows workspace registry invariants..."
+corepack npm --workspace workspai run check:windows-registry || exit 1
+
 echo "🔍 Running type check..."
 corepack npm --workspace workspai run typecheck || exit 1
 
