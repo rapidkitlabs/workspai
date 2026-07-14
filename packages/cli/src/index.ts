@@ -5905,7 +5905,7 @@ const quickStartInitDevNpx = isWindowsPlatform()
   ? `${primaryNpxCommand} init; ${primaryNpxCommand} dev`
   : `${primaryNpxCommand} init && ${primaryNpxCommand} dev`;
 
-const managedWorkspaceQuickStartPath = path.join(getCanonicalWorkspacesDirectory(), 'my-workspace');
+const managedWorkspaceQuickStartPath = '~/.workspai/workspaces/my-workspace';
 
 // Add consistent help headings expected by the tests and UX consumers.
 program.addHelpText(
@@ -5922,7 +5922,7 @@ program.addHelpText(
 Workspace Setup Commands
   ${primaryCliName} bootstrap         Bootstrap projects in workspace (--profile java-only|python-only|node-only|go-only|dotnet-only|polyglot|enterprise)
   ${primaryCliName} analyze           Analyze workspace/project health and generate enterprise evidence
-  ${primaryCliName} setup <runtime>   Set up runtime toolchain  (runtime: python | node | go | java)
+  ${primaryCliName} setup <runtime>   Set up runtime toolchain  (runtime: python | node | go | java | dotnet)
   ${primaryCliName} readiness         Build release-readiness evidence (use --json for CI)
   ${primaryCliName} autopilot release Run end-to-end release gate orchestration (audit|safe-fix|enforce)
   ${primaryCliName} workspace list    List registered workspaces on this system
@@ -6627,9 +6627,7 @@ program
 // Doctor command - health check for Workspai environment
 program
   .command('import <source>')
-  .description(
-    'Import a local backend project folder or clone a git repository into the current workspace'
-  )
+  .description('Import a local project folder or clone a git repository into the current workspace')
   .option('--workspace <path>', 'Workspace root path (defaults to nearest Workspai workspace)')
   .option('--name <projectName>', 'Override imported project folder name')
   .option(
@@ -8068,9 +8066,7 @@ program
           );
           process.exit(1);
         }
-        console.log(
-          chalk.red('❌ workspace impact requires --from <snapshot-model-or-diff-report>')
-        );
+        console.log(chalk.red('❌ workspace impact requires --from <workspace-diff-report>'));
         console.log(
           chalk.gray(
             '   npx workspai workspace impact --from .workspai/reports/workspace-model-diff-last-run.json --json'
@@ -9455,7 +9451,7 @@ function printHelp() {
       chalk.gray('# Create workspace (interactive profile picker)')
   );
   console.log(
-    chalk.cyan(`  cd ${path.join(getCanonicalWorkspacesDirectory(), 'my-workspace')}`) +
+    chalk.cyan('  cd ~/.workspai/workspaces/my-workspace') +
       chalk.gray('  # default managed location')
   );
   console.log(
@@ -9473,7 +9469,7 @@ function printHelp() {
     cyanCmd('  npx workspai create project fastapi.standard api ') +
       chalk.gray('# Backend (FastAPI)')
   );
-  console.log(chalk.cyan('  cd my-api'));
+  console.log(chalk.cyan('  cd api'));
   console.log(chalk.cyan(`  ${quickStartInitDev}\n`));
 
   console.log(chalk.bold('Installed command:'));
@@ -9509,12 +9505,12 @@ function printHelp() {
   );
   console.log(
     grayCmd(
-      '  npx workspai pipeline [--json --strict]    Governance loop: sync → doctor → analyze → readiness → autopilot'
+      '  npx workspai pipeline [--json --strict --no-agent-sync]  Governance loop: sync → doctor → analyze → readiness → autopilot'
     )
   );
   console.log(
     grayCmd(
-      '  npx workspai readiness [--json --strict]   Release readiness gates (env/doctor/analyze/verify/deps)'
+      '  npx workspai readiness [--workspace <path>] [--json --strict]  Release readiness gates (env/doctor/analyze/verify/deps)'
     )
   );
   console.log(
@@ -9544,7 +9540,7 @@ function printHelp() {
   );
   console.log(
     grayCmd(
-      '  npx workspai workspace impact --from <file> --json  Build blast radius from model diff'
+      '  npx workspai workspace impact --from <diff> --json  Build blast radius from model diff'
     )
   );
   console.log(
@@ -9597,7 +9593,7 @@ function printHelp() {
   );
   console.log(
     grayCmd(
-      '  npx workspai import <path|git-url>        Copy or clone a backend project into this workspace'
+      '  npx workspai import <path|git-url>        Copy or clone a project into this workspace'
     )
   );
   console.log(
@@ -9689,7 +9685,7 @@ function printHelp() {
 
   console.log(chalk.bold('Project commands (inside a project):'));
   console.log(grayCmd('  npx workspai create project     Scaffold a new project'));
-  console.log(chalk.gray('  cd my-api                   Change directory to the new project'));
+  console.log(chalk.gray('  cd my-project                Change directory to the new project'));
   console.log(grayCmd('  npx workspai init               Install project dependencies'));
   console.log(grayCmd('  npx workspai dev                Start dev server'));
   console.log(grayCmd('  npx workspai build              Build for production'));

@@ -159,6 +159,25 @@ async function readWorkspaceRegistryCandidates(): Promise<WorkspaceRegistry> {
   return merged;
 }
 
+function isIgnorableWorkspaceRegistryFsyncError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return (
+    process.platform === 'win32' && (code === 'EPERM' || code === 'EINVAL' || code === 'ENOSYS')
+  );
+}
+
+async function syncWorkspaceRegistryHandle(
+  handle: Awaited<ReturnType<typeof fs.open>>
+): Promise<void> {
+  try {
+    await handle.sync();
+  } catch (error) {
+    if (!isIgnorableWorkspaceRegistryFsyncError(error)) {
+      throw error;
+    }
+  }
+}
+
 async function writeWorkspaceRegistryFileAtomically(
   registryFile: string,
   registry: WorkspaceRegistry
@@ -196,7 +215,7 @@ async function writeWorkspaceRegistryFileAtomically(
     await fs.writeFile(temporaryPath, `${JSON.stringify(normalizeRegistry(registry), null, 2)}\n`);
     const handle = await fs.open(temporaryPath, 'r');
     try {
-      await handle.sync();
+      await syncWorkspaceRegistryHandle(handle);
     } finally {
       await handle.close();
     }
@@ -225,7 +244,7 @@ async function withWorkspaceRegistryLock<T>(operation: () => Promise<T>): Promis
       await lockHandle.writeFile(
         `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`
       );
-      await lockHandle.sync();
+      await syncWorkspaceRegistryHandle(lockHandle);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       const stat = await fs.stat(lockPath).catch(() => null);

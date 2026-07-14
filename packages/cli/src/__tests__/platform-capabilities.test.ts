@@ -13,6 +13,7 @@ import {
   getVenvRapidkitPath,
   getVenvActivateScriptPath,
   getRapidkitLocalScriptCandidates,
+  getWorkspaceRegistryFileCandidates,
   getWorkspaceRegistryDirectory,
   getUserLocalBinCandidates,
 } from '../utils/platform-capabilities.js';
@@ -151,17 +152,30 @@ describe('platform-capabilities', () => {
   });
 
   describe('getWorkspaceRegistryDirectory', () => {
-    it('returns config-based path on windows using APPDATA', () => {
+    it('returns home-based canonical path on windows using USERPROFILE', () => {
       const dir = getWorkspaceRegistryDirectory(
-        { APPDATA: 'C:\\Users\\user\\AppData\\Roaming' },
+        { USERPROFILE: 'C:\\Users\\user', APPDATA: 'C:\\Users\\user\\AppData\\Roaming' },
         'win32'
       );
-      expect(dir).toBe(path.join('C:\\Users\\user\\AppData\\Roaming', 'workspai'));
+      expect(dir).toBe(path.join('C:\\Users\\user', '.workspai'));
     });
 
-    it('returns XDG_CONFIG_HOME on windows when set', () => {
-      const dir = getWorkspaceRegistryDirectory({ XDG_CONFIG_HOME: '/custom/config' }, 'win32');
-      expect(dir).toBe(path.join('/custom/config', 'workspai'));
+    it('keeps APPDATA registry files as windows compatibility candidates', () => {
+      const candidates = getWorkspaceRegistryFileCandidates(
+        {
+          USERPROFILE: 'C:\\Users\\user',
+          APPDATA: 'C:\\Users\\user\\AppData\\Roaming',
+        },
+        'win32'
+      );
+      expect(candidates).toEqual(
+        expect.arrayContaining([
+          path.join('C:\\Users\\user', '.workspai', 'workspaces.json'),
+          path.join('C:\\Users\\user', '.rapidkit', 'workspaces.json'),
+          path.join('C:\\Users\\user\\AppData\\Roaming', 'workspai', 'workspaces.json'),
+          path.join('C:\\Users\\user\\AppData\\Roaming', 'rapidkit', 'workspaces.json'),
+        ])
+      );
     });
 
     it('returns .workspai under home on linux', () => {

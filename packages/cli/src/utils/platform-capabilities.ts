@@ -249,30 +249,38 @@ export function getWorkspaceRegistryDirectory(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform
 ): string {
-  const configHome = env.XDG_CONFIG_HOME || env.APPDATA || path.join(os.homedir(), '.config');
-  return isWindowsPlatform(platform)
-    ? path.join(configHome, 'workspai')
-    : path.join(os.homedir(), '.workspai');
+  void platform;
+  const homeDir = env.HOME || env.USERPROFILE || os.homedir();
+  return path.join(homeDir, '.workspai');
 }
 
 export function getLegacyWorkspaceRegistryDirectory(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform
 ): string {
-  const configHome = env.XDG_CONFIG_HOME || env.APPDATA || path.join(os.homedir(), '.config');
-  return isWindowsPlatform(platform)
-    ? path.join(configHome, 'rapidkit')
-    : path.join(os.homedir(), '.rapidkit');
+  void platform;
+  const homeDir = env.HOME || env.USERPROFILE || os.homedir();
+  return path.join(homeDir, '.rapidkit');
 }
 
 export function getWorkspaceRegistryFileCandidates(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform
 ): string[] {
-  return [
+  const candidates = [
     path.join(getWorkspaceRegistryDirectory(env, platform), 'workspaces.json'),
     path.join(getLegacyWorkspaceRegistryDirectory(env, platform), 'workspaces.json'),
   ];
+
+  if (isWindowsPlatform(platform)) {
+    const configHome = env.XDG_CONFIG_HOME || env.APPDATA;
+    if (configHome) {
+      candidates.push(path.join(configHome, 'workspai', 'workspaces.json'));
+      candidates.push(path.join(configHome, 'rapidkit', 'workspaces.json'));
+    }
+  }
+
+  return [...new Set(candidates)];
 }
 
 export function getUserLocalBinCandidates(

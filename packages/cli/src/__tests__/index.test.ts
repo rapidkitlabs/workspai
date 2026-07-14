@@ -180,8 +180,8 @@ describe('CLI Entry Point', () => {
         "Workspace commands (inside a workspace):
           npx workspai bootstrap [--profile <p>]   Re-bootstrap toolchains
           npx workspai analyze [--json --strict]   Analyze workspace health and gaps
-          npx workspai pipeline [--json --strict]    Governance loop: sync → doctor → analyze → readiness → autopilot
-          npx workspai readiness [--json --strict]   Release readiness gates (env/doctor/analyze/verify/deps)
+          npx workspai pipeline [--json --strict --no-agent-sync]  Governance loop: sync → doctor → analyze → readiness → autopilot
+          npx workspai readiness [--workspace <path>] [--json --strict]  Release readiness gates (env/doctor/analyze/verify/deps)
           npx workspai doctor workspace [--ci]     Workspace health with CI exit codes
           npx workspai workspace list               List registered workspaces
           npx workspai workspace model --json      Build workspace intelligence model
@@ -189,7 +189,7 @@ describe('CLI Entry Point', () => {
           npx workspai workspace agent-sync --write --refresh-context  Sync the Agent Customization Pack
           npx workspai workspace snapshot --json   Persist workspace intelligence snapshot
           npx workspai workspace diff --from <file|git[:ref]> --json  Diff current model against a snapshot
-          npx workspai workspace impact --from <file> --json  Build blast radius from model diff
+          npx workspai workspace impact --from <diff> --json  Build blast radius from model diff
           npx workspai workspace verify [--strict] --json  Evaluate impact verification evidence
           npx workspai workspace explain <target> [--write] --json  Narrative for blockers/projects (alias: why)
           npx workspai workspace trace --from <diff> [--write] --json  Diff → blast radius → gates narrative
@@ -200,7 +200,7 @@ describe('CLI Entry Point', () => {
           npx workspai workspace run <stage> [--scope project:<name>] [--reuse-passed]  Fleet init/test/build/start or custom stage
           npx workspai workspace sync [--json]      Sync registry + contract from projects
           npx workspai workspace registry status [--refresh] [--json]  Canonical project registry summary
-          npx workspai import <path|git-url>        Copy or clone a backend project into this workspace
+          npx workspai import <path|git-url>        Copy or clone a project into this workspace
           npx workspai adopt [path]                Link an existing local project to a workspace
           npx workspai snapshot create [name]      Create a recoverable workspace snapshot
           npx workspai snapshot restore <name>     Restore snapshot metadata with safety guard
