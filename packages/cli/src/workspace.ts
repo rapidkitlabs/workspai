@@ -365,7 +365,7 @@ export async function syncWorkspaceProjects(
     // registry entry. `workspace sync` is the reconciliation command, so repair that
     // missing link before scanning projects instead of leaving a permanent warning.
     if (!workspace) {
-      await registerWorkspace(normalizedWorkspacePath, path.basename(normalizedWorkspacePath));
+      await registerWorkspace(normalizedWorkspacePath, path.basename(path.resolve(workspacePath)));
       registry = await readWorkspaceRegistryCandidates();
       workspace = registry.workspaces.find((w) => w.path === normalizedWorkspacePath);
       if (!workspace) {
