@@ -39,6 +39,937 @@
   "coreProjectCommands": [
     "docs"
   ],
+  "npmOwnedTopLevelCommands": [
+    "analyze",
+    "readiness",
+    "doctor",
+    "workspace",
+    "autopilot",
+    "pipeline",
+    "import",
+    "adopt",
+    "snapshot",
+    "bootstrap",
+    "setup",
+    "cache",
+    "mirror",
+    "ai",
+    "config",
+    "product",
+    "infra",
+    "shell",
+    "commands",
+    "create",
+    "project"
+  ],
+  "npmOwnedScopedCommands": [
+    [
+      "ai",
+      "generate-embeddings"
+    ],
+    [
+      "ai",
+      "info"
+    ],
+    [
+      "ai",
+      "recommend"
+    ],
+    [
+      "ai",
+      "update-embeddings"
+    ],
+    [
+      "config",
+      "ai"
+    ],
+    [
+      "config",
+      "remove-api-key"
+    ],
+    [
+      "config",
+      "set-api-key"
+    ],
+    [
+      "config",
+      "show"
+    ],
+    [
+      "infra",
+      "down"
+    ],
+    [
+      "infra",
+      "plan"
+    ],
+    [
+      "infra",
+      "status"
+    ],
+    [
+      "infra",
+      "up"
+    ],
+    [
+      "product",
+      "manifest"
+    ],
+    [
+      "product",
+      "manifest",
+      "create"
+    ],
+    [
+      "product",
+      "plan"
+    ],
+    [
+      "project",
+      "commands"
+    ],
+    [
+      "project",
+      "archives"
+    ],
+    [
+      "project",
+      "archive"
+    ],
+    [
+      "project",
+      "restore"
+    ],
+    [
+      "project",
+      "delete"
+    ],
+    [
+      "snapshot",
+      "create"
+    ],
+    [
+      "snapshot",
+      "inspect"
+    ],
+    [
+      "snapshot",
+      "list"
+    ],
+    [
+      "snapshot",
+      "restore"
+    ]
+  ],
+  "commandDocumentation": [
+    {
+      "invocation": "add",
+      "summary": "Expose the supported add capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "adopt",
+      "summary": "Expose the supported adopt capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "ai",
+      "summary": "Expose the supported ai capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "ai generate-embeddings",
+      "summary": "Expose the supported ai generate-embeddings capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "ai info",
+      "summary": "Report the active AI provider, model, and embedding configuration."
+    },
+    {
+      "invocation": "ai recommend",
+      "summary": "Expose the supported ai recommend capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "ai update-embeddings",
+      "summary": "Expose the supported ai update-embeddings capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "analyze",
+      "summary": "Expose the supported analyze capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "analyze --json",
+      "summary": "Expose the supported analyze --json capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "autopilot",
+      "summary": "Expose the supported autopilot capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "autopilot release",
+      "summary": "Expose the supported autopilot release capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "bootstrap",
+      "summary": "Expose the supported bootstrap capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "build",
+      "summary": "Expose the supported build capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "cache",
+      "summary": "Expose the supported cache capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "checkpoint",
+      "summary": "Expose the supported checkpoint capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "commands",
+      "summary": "Expose the supported commands capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "config",
+      "summary": "Expose the supported config capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "config ai",
+      "summary": "Expose the supported config ai capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "config remove-api-key",
+      "summary": "Expose the supported config remove-api-key capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "config set-api-key",
+      "summary": "Expose the supported config set-api-key capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "config show",
+      "summary": "Expose the supported config show capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "create",
+      "summary": "Expose the supported create capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "dev",
+      "summary": "Expose the supported dev capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "diff",
+      "summary": "Expose the supported diff capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "docs",
+      "summary": "Expose the supported docs capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "doctor",
+      "summary": "Expose the supported doctor capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "doctor project",
+      "summary": "Diagnose the current project and emit structured project evidence."
+    },
+    {
+      "invocation": "doctor workspace",
+      "summary": "Expose the supported doctor workspace capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "doctor workspace --json",
+      "summary": "Expose the supported doctor workspace --json capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "format",
+      "summary": "Expose the supported format capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "frameworks",
+      "summary": "Expose the supported frameworks capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "help",
+      "summary": "Expose the supported help capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "import",
+      "summary": "Expose the supported import capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "info",
+      "summary": "Expose the supported info capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "infra",
+      "summary": "Expose the supported infra capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "infra down",
+      "summary": "Expose the supported infra down capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "infra plan",
+      "summary": "Generate a versioned infrastructure plan without applying infrastructure changes."
+    },
+    {
+      "invocation": "infra status",
+      "summary": "Expose the supported infra status capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "infra up",
+      "summary": "Expose the supported infra up capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "init",
+      "summary": "Expose the supported init capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "license",
+      "summary": "Expose the supported license capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "lint",
+      "summary": "Expose the supported lint capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "list",
+      "summary": "Expose the supported list capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "merge",
+      "summary": "Expose the supported merge capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "mirror",
+      "summary": "Expose the supported mirror capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "modules",
+      "summary": "Expose the supported modules capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "optimize",
+      "summary": "Expose the supported optimize capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "pipeline",
+      "summary": "Expose the supported pipeline capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "product",
+      "summary": "Expose the supported product capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "product manifest",
+      "summary": "Expose the supported product manifest capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "product manifest create",
+      "summary": "Create a governed product manifest for product planning operations."
+    },
+    {
+      "invocation": "product plan",
+      "summary": "Generate a product factory plan from the current product definition."
+    },
+    {
+      "invocation": "project",
+      "summary": "Expose project-scoped command discovery, archive, restore, and deletion operations."
+    },
+    {
+      "invocation": "project archive",
+      "summary": "Expose the supported project archive capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "project archives",
+      "summary": "Expose the supported project archives capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "project commands",
+      "summary": "Expose the supported project commands capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "project delete",
+      "summary": "Expose the supported project delete capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "project restore",
+      "summary": "Expose the supported project restore capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "readiness",
+      "summary": "Expose the supported readiness capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "readiness --json",
+      "summary": "Expose the supported readiness --json capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "reconcile",
+      "summary": "Expose the supported reconcile capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "rollback",
+      "summary": "Expose the supported rollback capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "setup",
+      "summary": "Expose the supported setup capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "shell",
+      "summary": "Expose the supported shell capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "snapshot",
+      "summary": "Expose the supported snapshot capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "snapshot create",
+      "summary": "Create a governed workspace snapshot for comparison or recovery."
+    },
+    {
+      "invocation": "snapshot inspect",
+      "summary": "Expose the supported snapshot inspect capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "snapshot list",
+      "summary": "List governed workspace snapshots available for inspection or recovery."
+    },
+    {
+      "invocation": "snapshot restore",
+      "summary": "Expose the supported snapshot restore capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "start",
+      "summary": "Expose the supported start capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "test",
+      "summary": "Expose the supported test capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "uninstall",
+      "summary": "Expose the supported uninstall capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "upgrade",
+      "summary": "Expose the supported upgrade capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "version",
+      "summary": "Expose the supported version capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace",
+      "summary": "Expose the supported workspace capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace agent-sync",
+      "summary": "Expose the supported workspace agent-sync capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace agent-sync --write --json --preset enterprise",
+      "summary": "Expose the supported workspace agent-sync --write --json --preset enterprise capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace archive",
+      "summary": "Create or inspect a governed workspace archive."
+    },
+    {
+      "invocation": "workspace context",
+      "summary": "Expose the supported workspace context capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace context --for-agent --json --write --no-agent-sync",
+      "summary": "Expose the supported workspace context --for-agent --json --write --no-agent-sync capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace contract",
+      "summary": "Inspect and verify explicit workspace contracts."
+    },
+    {
+      "invocation": "workspace contract verify --strict --json",
+      "summary": "Expose the supported workspace contract verify --strict --json capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace diff",
+      "summary": "Expose the supported workspace diff capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace diff --from .workspai/reports/workspace-model-snapshot.json --json",
+      "summary": "Expose the supported workspace diff --from .workspai/reports/workspace-model-snapshot.json --json capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace explain",
+      "summary": "Expose the supported workspace explain capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace explain release-blocked --json --write",
+      "summary": "Expose the supported workspace explain release-blocked --json --write capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace export",
+      "summary": "Export workspace intelligence into a portable consumer representation."
+    },
+    {
+      "invocation": "workspace feedback",
+      "summary": "Record structured feedback about Workspace Intelligence output."
+    },
+    {
+      "invocation": "workspace foundation",
+      "summary": "Inspect or establish the foundational metadata required by workspace operations."
+    },
+    {
+      "invocation": "workspace graph",
+      "summary": "Render the current workspace dependency graph in a supported representation."
+    },
+    {
+      "invocation": "workspace hydrate",
+      "summary": "Restore or materialize workspace state from a portable representation."
+    },
+    {
+      "invocation": "workspace impact",
+      "summary": "Expose the supported workspace impact capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace impact --from .workspai/reports/workspace-model-diff-last-run.json --json",
+      "summary": "Expose the supported workspace impact --from .workspai/reports/workspace-model-diff-last-run.json --json capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace import",
+      "summary": "Attach an existing project or repository to the workspace inventory."
+    },
+    {
+      "invocation": "workspace init",
+      "summary": "Initialize workspace and project dependencies through the shared init flow."
+    },
+    {
+      "invocation": "workspace list",
+      "summary": "List registered workspaces through the canonical workspace discovery boundary."
+    },
+    {
+      "invocation": "workspace mcp",
+      "summary": "Expose Workspace Intelligence through the MCP integration boundary."
+    },
+    {
+      "invocation": "workspace model",
+      "summary": "Expose the supported workspace model capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace model --json --write",
+      "summary": "Expose the supported workspace model --json --write capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace policy",
+      "summary": "Inspect or update workspace governance policy."
+    },
+    {
+      "invocation": "workspace registry",
+      "summary": "Inspect and maintain the canonical workspace registry boundary."
+    },
+    {
+      "invocation": "workspace remediation-plan",
+      "summary": "Generate a structured remediation plan from current workspace evidence."
+    },
+    {
+      "invocation": "workspace run",
+      "summary": "Run a supported lifecycle command across registered workspace projects."
+    },
+    {
+      "invocation": "workspace share",
+      "summary": "Prepare a governed workspace sharing surface."
+    },
+    {
+      "invocation": "workspace snapshot",
+      "summary": "Capture a versioned workspace or model baseline for comparison and recovery."
+    },
+    {
+      "invocation": "workspace sync",
+      "summary": "Reconcile registered projects and workspace identity with the current filesystem state."
+    },
+    {
+      "invocation": "workspace trace",
+      "summary": "Trace a change or finding through its evidence and dependency relationships."
+    },
+    {
+      "invocation": "workspace verify",
+      "summary": "Expose the supported workspace verify capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace verify --from-impact .workspai/reports/workspace-impact-last-run.json --json",
+      "summary": "Expose the supported workspace verify --from-impact .workspai/reports/workspace-impact-last-run.json --json capability through the canonical Workspai CLI boundary."
+    },
+    {
+      "invocation": "workspace watch",
+      "summary": "Observe relevant workspace changes and publish versioned watch events."
+    },
+    {
+      "invocation": "workspace why",
+      "summary": "Explain why a relationship, verdict, or workspace fact exists."
+    }
+  ],
+  "artifactContracts": [
+    {
+      "artifactPath": ".workspai/reports/workspace-model.json",
+      "schemaVersion": "workspace-model.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-model.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "model",
+          "--json",
+          "--write"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-model-snapshot.json",
+      "schemaVersion": "workspace-model-snapshot.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-model-snapshot.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "snapshot"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-model-diff-last-run.json",
+      "schemaVersion": "workspace-model-diff.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-model-diff.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "diff",
+          "--from",
+          ".workspai/reports/workspace-model-snapshot.json",
+          "--json"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-impact-last-run.json",
+      "schemaVersion": "workspace-impact.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-impact.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "impact",
+          "--from",
+          ".workspai/reports/workspace-model-diff-last-run.json",
+          "--json"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/analyze-last-run.json",
+      "schemaVersion": "rapidkit-analyze-v1",
+      "contractPath": "contracts/analyze-last-run.v1.json",
+      "producerCommands": [
+        [
+          "analyze",
+          "--json"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/doctor-last-run.json",
+      "schemaVersion": "doctor-workspace-evidence-v1",
+      "contractPath": "contracts/doctor-workspace-evidence.v1.json",
+      "producerCommands": [
+        [
+          "doctor",
+          "workspace",
+          "--json"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-contract-verify-last-run.json",
+      "schemaVersion": "workspace-contract-verify.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-contract-verify.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "contract",
+          "verify",
+          "--strict",
+          "--json"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/release-readiness-last-run.json",
+      "schemaVersion": "release-readiness-v1",
+      "contractPath": "contracts/release-readiness.v1.json",
+      "producerCommands": [
+        [
+          "readiness",
+          "--json"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-verify-last-run.json",
+      "schemaVersion": "workspace-verify.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-verify.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "verify",
+          "--from-impact",
+          ".workspai/reports/workspace-impact-last-run.json",
+          "--json"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-intelligence-history.json",
+      "schemaVersion": "workspace-intelligence-history.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-intelligence-history.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "verify",
+          "--from-impact",
+          ".workspai/reports/workspace-impact-last-run.json",
+          "--json"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-context-agent.json",
+      "schemaVersion": "workspace-context.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-context.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "context",
+          "--for-agent",
+          "--json",
+          "--write",
+          "--no-agent-sync"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/INDEX.json",
+      "schemaVersion": "rapidkit-agent-reports-index.v1",
+      "contractPath": "contracts/workspace-intelligence/agent-reports-index.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "agent-sync",
+          "--write",
+          "--json",
+          "--preset",
+          "enterprise"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/agent-customization-pack.json",
+      "schemaVersion": "rapidkit-agent-customization-pack.v1",
+      "contractPath": "contracts/workspace-intelligence/agent-customization-pack-report.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "agent-sync",
+          "--write",
+          "--json",
+          "--preset",
+          "enterprise"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-skills-index.json",
+      "schemaVersion": "workspace-skills-index.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-skills-index.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "agent-sync",
+          "--write",
+          "--json",
+          "--preset",
+          "enterprise"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-explain-last-run.json",
+      "schemaVersion": "workspace-explain.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-explain.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "explain",
+          "release-blocked",
+          "--json",
+          "--write"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/cache/workspace-model.v1.json",
+      "schemaVersion": "workspace-model-cache.v1",
+      "contractPath": "contracts/workspace-model-cache.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "model"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/workspace-registry.v1.json",
+      "schemaVersion": "workspace-registry.v1",
+      "contractPath": "contracts/workspace-registry.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "sync"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/doctor-project-last-run.json",
+      "schemaVersion": "doctor-project-evidence-v1",
+      "contractPath": "contracts/doctor-project-evidence.v1.json",
+      "producerCommands": [
+        [
+          "doctor",
+          "project"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/doctor-remediation-plan-last-run.json",
+      "schemaVersion": "doctor-remediation-plan-v2",
+      "contractPath": "contracts/doctor-remediation-plan.v2.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "remediation-plan"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/artifact-remediation-plan-last-run.json",
+      "schemaVersion": "artifact-remediation-plan-v1",
+      "contractPath": "contracts/artifact-remediation-plan.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "remediation-plan"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/doctor-fix-result-last-run.json",
+      "schemaVersion": "rapidkit-doctor-fix-result-v1",
+      "contractPath": "contracts/workspace-intelligence/doctor-fix-result.v1.json",
+      "producerCommands": [
+        [
+          "doctor",
+          "workspace"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/pipeline-last-run.json",
+      "schemaVersion": "rapidkit-pipeline-v1",
+      "contractPath": "contracts/pipeline-last-run.v1.json",
+      "producerCommands": [
+        [
+          "pipeline"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/autopilot-release-last-run.json",
+      "schemaVersion": "autopilot-release-v1",
+      "contractPath": "contracts/autopilot-release.v1.json",
+      "producerCommands": [
+        [
+          "autopilot",
+          "release"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/autopilot-release.json",
+      "schemaVersion": "autopilot-release-v1",
+      "contractPath": "contracts/autopilot-release.v1.json",
+      "producerCommands": [
+        [
+          "autopilot",
+          "release"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-run-last.json",
+      "schemaVersion": "workspace-run-v1",
+      "contractPath": "contracts/workspace-run-last.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "run"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspai-mcp-design.json",
+      "schemaVersion": "workspai-mcp-design.v1",
+      "contractPath": "contracts/workspace-intelligence/mcp-design.v1.json",
+      "producerCommands": []
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-why-last-run.json",
+      "schemaVersion": "workspace-explain.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-explain.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "why"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-trace-last-run.json",
+      "schemaVersion": "workspace-explain.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-explain.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "trace"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".vscode/workspai-agent-hooks.json",
+      "schemaVersion": "workspai-agent-hooks.v1",
+      "contractPath": "contracts/workspace-intelligence/agent-hooks.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "agent-sync"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/infra-plan.json",
+      "schemaVersion": "rapidkit.infra-plan.v1",
+      "contractPath": "contracts/infra-plan.v1.json",
+      "producerCommands": [
+        [
+          "infra",
+          "plan"
+        ]
+      ]
+    }
+  ],
   "workspaceSubcommands": [
     "list",
     "sync",

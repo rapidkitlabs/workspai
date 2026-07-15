@@ -6,6 +6,11 @@
       "contractPath": "contracts/runtime-command-surface.v1.json",
       "publication": "capability-contract"
     },
+    "cliRuntimeCommandInventory": {
+      "schemaVersion": "workspai-cli-runtime-command-inventory-v1",
+      "contractPath": "contracts/cli-runtime-command-inventory.v1.snapshot.json",
+      "publication": "capability-contract"
+    },
     "cliOperationResult": {
       "schemaVersion": "workspai-cli-operation-result-v1",
       "contractPath": "contracts/cli-operation-result.v1.json",

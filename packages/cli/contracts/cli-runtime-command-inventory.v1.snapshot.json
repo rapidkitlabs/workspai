@@ -1,0 +1,1368 @@
+{
+  "schemaVersion": "workspai-cli-runtime-command-inventory-v1",
+  "commands": [
+    {
+      "path": [
+        "adopt"
+      ],
+      "command": "adopt",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Adopt an existing local project into a Workspai workspace without moving or copying source",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "source",
+          "required": false,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--name <projectName>",
+          "attributeName": "name"
+        },
+        {
+          "flags": "--enable-modules",
+          "attributeName": "enableModules"
+        },
+        {
+          "flags": "--dry-run",
+          "attributeName": "dryRun"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "ai"
+      ],
+      "command": "ai",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "AI-powered features",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "ai",
+        "generate-embeddings"
+      ],
+      "command": "generate-embeddings",
+      "parent": "ai",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Generate AI embeddings for all modules (one-time setup)",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--force",
+          "attributeName": "force"
+        }
+      ]
+    },
+    {
+      "path": [
+        "ai",
+        "info"
+      ],
+      "command": "info",
+      "parent": "ai",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Show AI features information",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "ai",
+        "recommend"
+      ],
+      "command": "recommend",
+      "parent": "ai",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Get AI-powered module recommendations",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "query",
+          "required": false,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "-n, --number <count>",
+          "attributeName": "number"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "ai",
+        "update-embeddings"
+      ],
+      "command": "update-embeddings",
+      "parent": "ai",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Update existing embeddings with latest modules",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "analyze"
+      ],
+      "command": "analyze",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Analyze workspace/project health and generate enterprise-ready evidence",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        },
+        {
+          "flags": "--output <file>",
+          "attributeName": "output"
+        },
+        {
+          "flags": "--strict",
+          "attributeName": "strict"
+        }
+      ]
+    },
+    {
+      "path": [
+        "autopilot"
+      ],
+      "command": "autopilot",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Run end-to-end release autopilot workflows",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "action",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--mode <mode>",
+          "attributeName": "mode"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        },
+        {
+          "flags": "--output <file>",
+          "attributeName": "output"
+        },
+        {
+          "flags": "--since <ref>",
+          "attributeName": "since"
+        },
+        {
+          "flags": "--parallel",
+          "attributeName": "parallel"
+        },
+        {
+          "flags": "--max-workers <count>",
+          "attributeName": "maxWorkers"
+        }
+      ]
+    },
+    {
+      "path": [
+        "bootstrap"
+      ],
+      "command": "bootstrap",
+      "parent": null,
+      "registrationKind": "manual-handler",
+      "aliases": [],
+      "description": "Bootstrap project or workspace dependencies through runtime-aware setup rules.",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "cache"
+      ],
+      "command": "cache",
+      "parent": null,
+      "registrationKind": "manual-handler",
+      "aliases": [],
+      "description": "Inspect or clear Workspai cache state through the managed cache boundary.",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "commands"
+      ],
+      "command": "commands",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Show effective Workspai command ownership and runtime support",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "config"
+      ],
+      "command": "config",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Configure Workspai settings",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "config",
+        "ai"
+      ],
+      "command": "ai",
+      "parent": "config",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Enable or disable AI features (enable|disable)",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "action",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": []
+    },
+    {
+      "path": [
+        "config",
+        "remove-api-key"
+      ],
+      "command": "remove-api-key",
+      "parent": "config",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Remove stored OpenAI API key",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--yes",
+          "attributeName": "yes"
+        }
+      ]
+    },
+    {
+      "path": [
+        "config",
+        "set-api-key"
+      ],
+      "command": "set-api-key",
+      "parent": "config",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Set OpenAI API key for AI features",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--key <key>",
+          "attributeName": "key"
+        }
+      ]
+    },
+    {
+      "path": [
+        "config",
+        "show"
+      ],
+      "command": "show",
+      "parent": "config",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Show current configuration",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "create"
+      ],
+      "command": "create",
+      "parent": null,
+      "registrationKind": "manual-handler",
+      "aliases": [],
+      "description": "Create a supported workspace or project through the canonical planner boundary.",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "doctor"
+      ],
+      "command": "doctor",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "🩺 Check Workspai system health by default; use workspace or project for scoped checks",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "scope",
+          "required": false,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--workspace [path]",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--project",
+          "attributeName": "project"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        },
+        {
+          "flags": "--strict",
+          "attributeName": "strict"
+        },
+        {
+          "flags": "--ci",
+          "attributeName": "ci"
+        },
+        {
+          "flags": "--profile <profile>",
+          "attributeName": "profile"
+        },
+        {
+          "flags": "--fix",
+          "attributeName": "fix"
+        },
+        {
+          "flags": "--plan",
+          "attributeName": "plan"
+        },
+        {
+          "flags": "--apply",
+          "attributeName": "apply"
+        }
+      ]
+    },
+    {
+      "path": [
+        "import"
+      ],
+      "command": "import",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Import a local project folder or clone a git repository into the current workspace",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "source",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--name <projectName>",
+          "attributeName": "name"
+        },
+        {
+          "flags": "--enable-modules",
+          "attributeName": "enableModules"
+        },
+        {
+          "flags": "--git",
+          "attributeName": "git"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "infra"
+      ],
+      "command": "infra",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Plan and manage workspace infrastructure (Docker sidecar stack)",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "infra",
+        "down"
+      ],
+      "command": "down",
+      "parent": "infra",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Stop planned infrastructure services",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--volumes",
+          "attributeName": "volumes"
+        }
+      ]
+    },
+    {
+      "path": [
+        "infra",
+        "plan"
+      ],
+      "command": "plan",
+      "parent": "infra",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Discover infra needs and generate compose plan artifacts",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        },
+        {
+          "flags": "--dry-run",
+          "attributeName": "dryRun"
+        },
+        {
+          "flags": "--verbose",
+          "attributeName": "verbose"
+        }
+      ]
+    },
+    {
+      "path": [
+        "infra",
+        "status"
+      ],
+      "command": "status",
+      "parent": "infra",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Show Docker Compose status for planned infrastructure",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        },
+        {
+          "flags": "--strict",
+          "attributeName": "strict"
+        }
+      ]
+    },
+    {
+      "path": [
+        "infra",
+        "up"
+      ],
+      "command": "up",
+      "parent": "infra",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Start planned infrastructure services via Docker Compose",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--detach",
+          "attributeName": "detach"
+        },
+        {
+          "flags": "--build",
+          "attributeName": "build"
+        },
+        {
+          "flags": "--no-plan",
+          "attributeName": "plan"
+        }
+      ]
+    },
+    {
+      "path": [
+        "mirror"
+      ],
+      "command": "mirror",
+      "parent": null,
+      "registrationKind": "manual-handler",
+      "aliases": [],
+      "description": "Coordinate supported mirror lifecycle operations for the current project.",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "pipeline"
+      ],
+      "command": "pipeline",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "🔗 Run governance pipeline: sync → doctor → analyze → readiness → autopilot (writes pipeline-last-run.json)",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        },
+        {
+          "flags": "--strict",
+          "attributeName": "strict"
+        },
+        {
+          "flags": "--skip-verify",
+          "attributeName": "skipVerify"
+        },
+        {
+          "flags": "--skip-analyze",
+          "attributeName": "skipAnalyze"
+        },
+        {
+          "flags": "--skip-autopilot",
+          "attributeName": "skipAutopilot"
+        },
+        {
+          "flags": "--autopilot-mode <mode>",
+          "attributeName": "autopilotMode"
+        },
+        {
+          "flags": "--no-agent-sync",
+          "attributeName": "agentSync"
+        },
+        {
+          "flags": "--agent-sync",
+          "attributeName": "agentSync"
+        }
+      ]
+    },
+    {
+      "path": [
+        "product"
+      ],
+      "command": "product",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Product Factory commands for private workspace product manifests",
+      "hidden": true,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "product",
+        "manifest"
+      ],
+      "command": "manifest",
+      "parent": "product",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Create or inspect private product manifests",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "product",
+        "manifest",
+        "create"
+      ],
+      "command": "create",
+      "parent": "product manifest",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Create a private product manifest from a backlog product slug",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "slug",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--from-backlog <file>",
+          "attributeName": "fromBacklog"
+        },
+        {
+          "flags": "--output <fileOrDir>",
+          "attributeName": "output"
+        },
+        {
+          "flags": "--kit <kit>",
+          "attributeName": "kit"
+        },
+        {
+          "flags": "--workspace-output <dir>",
+          "attributeName": "workspaceOutput"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        },
+        {
+          "flags": "--force",
+          "attributeName": "force"
+        }
+      ]
+    },
+    {
+      "path": [
+        "product",
+        "plan"
+      ],
+      "command": "plan",
+      "parent": "product",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Build a deterministic Product Factory plan from a workspace backlog JSON",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "backlog",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--output <file>",
+          "attributeName": "output"
+        },
+        {
+          "flags": "--kit <kit>",
+          "attributeName": "kit"
+        },
+        {
+          "flags": "--tier <tier>",
+          "attributeName": "tier"
+        },
+        {
+          "flags": "--category <category>",
+          "attributeName": "category"
+        },
+        {
+          "flags": "--limit <count>",
+          "attributeName": "limit"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "project"
+      ],
+      "command": "project",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Safe workspace project lifecycle operations",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "project",
+        "archive"
+      ],
+      "command": "archive",
+      "parent": "project",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Move a project into .workspai/archive with a safety snapshot",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "project",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--reason <text>",
+          "attributeName": "reason"
+        },
+        {
+          "flags": "--dry-run",
+          "attributeName": "dryRun"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "project",
+        "archives"
+      ],
+      "command": "archives",
+      "parent": "project",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "List archived workspace projects",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "project",
+        "commands"
+      ],
+      "command": "commands",
+      "parent": "project",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Show effective commands supported by the current Workspai project",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "project",
+        "delete"
+      ],
+      "command": "delete",
+      "parent": "project",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Archive by default; permanently delete only with --permanent and exact --confirm",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "project",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--reason <text>",
+          "attributeName": "reason"
+        },
+        {
+          "flags": "--permanent",
+          "attributeName": "permanent"
+        },
+        {
+          "flags": "--confirm <projectName>",
+          "attributeName": "confirm"
+        },
+        {
+          "flags": "--dry-run",
+          "attributeName": "dryRun"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "project",
+        "restore"
+      ],
+      "command": "restore",
+      "parent": "project",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Restore an archived project back into the workspace",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "archive",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--name <projectName>",
+          "attributeName": "name"
+        },
+        {
+          "flags": "--reason <text>",
+          "attributeName": "reason"
+        },
+        {
+          "flags": "--force",
+          "attributeName": "force"
+        },
+        {
+          "flags": "--dry-run",
+          "attributeName": "dryRun"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "readiness"
+      ],
+      "command": "readiness",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "🚦 Generate machine-readable release readiness summary (env + doctor + analyze + verify + dependency)",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        },
+        {
+          "flags": "--strict",
+          "attributeName": "strict"
+        },
+        {
+          "flags": "--skip-verify",
+          "attributeName": "skipVerify"
+        }
+      ]
+    },
+    {
+      "path": [
+        "setup"
+      ],
+      "command": "setup",
+      "parent": null,
+      "registrationKind": "manual-handler",
+      "aliases": [],
+      "description": "Prepare a selected runtime toolchain through the supported adapter boundary.",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "shell"
+      ],
+      "command": "shell",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Shell helpers (activate virtualenv in current shell)",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "action",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": []
+    },
+    {
+      "path": [
+        "snapshot"
+      ],
+      "command": "snapshot",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Create, list, and restore Workspai workspace snapshots",
+      "hidden": false,
+      "arguments": [],
+      "options": []
+    },
+    {
+      "path": [
+        "snapshot",
+        "create"
+      ],
+      "command": "create",
+      "parent": "snapshot",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Create a recoverable workspace snapshot",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "name",
+          "required": false,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--reason <text>",
+          "attributeName": "reason"
+        },
+        {
+          "flags": "--include-projects",
+          "attributeName": "includeProjects"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "snapshot",
+        "inspect"
+      ],
+      "command": "inspect",
+      "parent": "snapshot",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Inspect snapshot manifest and estimated payload size",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "name",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "snapshot",
+        "list"
+      ],
+      "command": "list",
+      "parent": "snapshot",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "List workspace snapshots",
+      "hidden": false,
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "snapshot",
+        "restore"
+      ],
+      "command": "restore",
+      "parent": "snapshot",
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Restore a workspace snapshot",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "name",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--reason <text>",
+          "attributeName": "reason"
+        },
+        {
+          "flags": "--dry-run",
+          "attributeName": "dryRun"
+        },
+        {
+          "flags": "--force",
+          "attributeName": "force"
+        },
+        {
+          "flags": "--no-safety-snapshot",
+          "attributeName": "safetySnapshot"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        }
+      ]
+    },
+    {
+      "path": [
+        "workspace"
+      ],
+      "command": "workspace",
+      "parent": null,
+      "registrationKind": "commander",
+      "aliases": [],
+      "description": "Manage Workspai workspaces (list, sync, policy, share, export, run, intelligence)\n  workspace run <stage>   — fleet stage execution across discovered projects\n                            stages: init | test | build | start | <custom-from-context>\n  workspace explain|why   — blocker/project narrative (--write for artifact)\n  workspace trace         — diff → blast radius → gates narrative (--from <diff>)\n  workspace mcp serve     — read-mostly stdio MCP bridge over workspace evidence",
+      "hidden": false,
+      "arguments": [
+        {
+          "name": "action",
+          "required": true,
+          "variadic": false
+        },
+        {
+          "name": "subaction",
+          "required": false,
+          "variadic": false
+        },
+        {
+          "name": "key",
+          "required": false,
+          "variadic": false
+        },
+        {
+          "name": "value",
+          "required": false,
+          "variadic": false
+        }
+      ],
+      "options": [
+        {
+          "flags": "--workspace <path>",
+          "attributeName": "workspace"
+        },
+        {
+          "flags": "--output <file>",
+          "attributeName": "output"
+        },
+        {
+          "flags": "--from <file>",
+          "attributeName": "from"
+        },
+        {
+          "flags": "--from-impact <file>",
+          "attributeName": "fromImpact"
+        },
+        {
+          "flags": "--include-paths",
+          "attributeName": "includePaths"
+        },
+        {
+          "flags": "--write",
+          "attributeName": "write"
+        },
+        {
+          "flags": "--include-evidence",
+          "attributeName": "includeEvidence"
+        },
+        {
+          "flags": "--scan-depth <count>",
+          "attributeName": "scanDepth"
+        },
+        {
+          "flags": "--cache",
+          "attributeName": "cache"
+        },
+        {
+          "flags": "--incremental",
+          "attributeName": "incremental"
+        },
+        {
+          "flags": "--once",
+          "attributeName": "once"
+        },
+        {
+          "flags": "--for-agent [agent]",
+          "attributeName": "forAgent"
+        },
+        {
+          "flags": "--agent-sync",
+          "attributeName": "agentSync"
+        },
+        {
+          "flags": "--no-agent-sync",
+          "attributeName": "agentSync"
+        },
+        {
+          "flags": "--target <targets>",
+          "attributeName": "target"
+        },
+        {
+          "flags": "--preset <preset>",
+          "attributeName": "preset"
+        },
+        {
+          "flags": "--refresh-context",
+          "attributeName": "refreshContext"
+        },
+        {
+          "flags": "--experimental-hooks",
+          "attributeName": "experimentalHooks"
+        },
+        {
+          "flags": "--hydrate-prompts",
+          "attributeName": "hydratePrompts"
+        },
+        {
+          "flags": "--scope <scope>",
+          "attributeName": "scope"
+        },
+        {
+          "flags": "--no-doctor",
+          "attributeName": "doctor"
+        },
+        {
+          "flags": "--no-blueprint",
+          "attributeName": "blueprint"
+        },
+        {
+          "flags": "--include-env",
+          "attributeName": "includeEnv"
+        },
+        {
+          "flags": "--archive-compression <mode>",
+          "attributeName": "archiveCompression"
+        },
+        {
+          "flags": "--max-download-size <size>",
+          "attributeName": "maxDownloadSize"
+        },
+        {
+          "flags": "--max-expanded-size <size>",
+          "attributeName": "maxExpandedSize"
+        },
+        {
+          "flags": "--download-timeout-ms <ms>",
+          "attributeName": "downloadTimeoutMs"
+        },
+        {
+          "flags": "--force",
+          "attributeName": "force"
+        },
+        {
+          "flags": "--refresh",
+          "attributeName": "refresh"
+        },
+        {
+          "flags": "--dry-run",
+          "attributeName": "dryRun"
+        },
+        {
+          "flags": "--affected",
+          "attributeName": "affected"
+        },
+        {
+          "flags": "--blast-radius",
+          "attributeName": "blastRadius"
+        },
+        {
+          "flags": "--since <ref>",
+          "attributeName": "since"
+        },
+        {
+          "flags": "--parallel",
+          "attributeName": "parallel"
+        },
+        {
+          "flags": "--max-workers <count>",
+          "attributeName": "maxWorkers"
+        },
+        {
+          "flags": "--continue-on-error",
+          "attributeName": "continueOnError"
+        },
+        {
+          "flags": "--reuse-passed",
+          "attributeName": "reusePassed"
+        },
+        {
+          "flags": "--json",
+          "attributeName": "json"
+        },
+        {
+          "flags": "--ci",
+          "attributeName": "ci"
+        },
+        {
+          "flags": "--strict",
+          "attributeName": "strict"
+        },
+        {
+          "flags": "--no-gates",
+          "attributeName": "gates"
+        }
+      ]
+    }
+  ],
+  "topLevelCommands": [
+    "adopt",
+    "ai",
+    "analyze",
+    "autopilot",
+    "bootstrap",
+    "cache",
+    "commands",
+    "config",
+    "create",
+    "doctor",
+    "import",
+    "infra",
+    "mirror",
+    "pipeline",
+    "product",
+    "project",
+    "readiness",
+    "setup",
+    "shell",
+    "snapshot",
+    "workspace"
+  ],
+  "integrity": {
+    "ok": true,
+    "registeredButUndeclared": [],
+    "declaredButUnregistered": [],
+    "registeredScopedButUndeclared": [],
+    "declaredScopedButUnregistered": []
+  }
+}

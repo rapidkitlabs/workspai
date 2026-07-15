@@ -11,6 +11,10 @@ import {
   RUNTIME_SURFACE_MODULE_MUTATION_COMMANDS,
   RUNTIME_SURFACE_UNIVERSAL_COMMANDS,
 } from '../utils/project-command-capabilities.js';
+import {
+  NPM_ONLY_SCOPED_COMMANDS,
+  NPM_ONLY_TOP_LEVEL_COMMANDS,
+} from '../utils/cli-command-surface.js';
 import { RUNTIME_SUPPORT_MATRIX } from '../utils/support-matrix.js';
 import {
   WORKSPACE_INTELLIGENCE_SUBCOMMANDS,
@@ -32,6 +36,7 @@ import {
   CLI_OPERATION_RESULT_CONTRACT_PATH,
   CLI_OPERATION_RESULT_SCHEMA_VERSION,
 } from './cli-operation-result-contract.js';
+import { WORKSPACE_ARTIFACT_CONTRACTS } from './artifact-contract-registry.js';
 
 export const RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION = 'rapidkit-runtime-command-surface-v1';
 
@@ -42,6 +47,18 @@ export type RuntimeCommandSurfaceContract = {
   globalCommands: string[];
   universalCommands: string[];
   coreProjectCommands: string[];
+  npmOwnedTopLevelCommands: string[];
+  npmOwnedScopedCommands: string[][];
+  commandDocumentation: Array<{
+    invocation: string;
+    summary: string;
+  }>;
+  artifactContracts: Array<{
+    artifactPath: string;
+    schemaVersion: string;
+    contractPath: string;
+    producerCommands: string[][];
+  }>;
   workspaceSubcommands: string[];
   workspaceIntelligenceSubcommands: string[];
   workspaceIntelligenceRootCommands: string[];
@@ -82,6 +99,57 @@ export type RuntimeCommandSurfaceContract = {
     }
   >;
 };
+
+const COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
+  'workspace list':
+    'List registered workspaces through the canonical workspace discovery boundary.',
+  'workspace sync':
+    'Reconcile registered projects and workspace identity with the current filesystem state.',
+  'workspace registry': 'Inspect and maintain the canonical workspace registry boundary.',
+  'workspace foundation':
+    'Inspect or establish the foundational metadata required by workspace operations.',
+  'workspace snapshot':
+    'Capture a versioned workspace or model baseline for comparison and recovery.',
+  'workspace graph': 'Render the current workspace dependency graph in a supported representation.',
+  'workspace watch': 'Observe relevant workspace changes and publish versioned watch events.',
+  'workspace remediation-plan':
+    'Generate a structured remediation plan from current workspace evidence.',
+  'workspace why': 'Explain why a relationship, verdict, or workspace fact exists.',
+  'workspace trace': 'Trace a change or finding through its evidence and dependency relationships.',
+  'workspace feedback': 'Record structured feedback about Workspace Intelligence output.',
+  'workspace mcp': 'Expose Workspace Intelligence through the MCP integration boundary.',
+  'workspace policy': 'Inspect or update workspace governance policy.',
+  'workspace contract': 'Inspect and verify explicit workspace contracts.',
+  'workspace share': 'Prepare a governed workspace sharing surface.',
+  'workspace export': 'Export workspace intelligence into a portable consumer representation.',
+  'workspace archive': 'Create or inspect a governed workspace archive.',
+  'workspace hydrate': 'Restore or materialize workspace state from a portable representation.',
+  'workspace import': 'Attach an existing project or repository to the workspace inventory.',
+  'workspace run': 'Run a supported lifecycle command across registered workspace projects.',
+  'workspace init': 'Initialize workspace and project dependencies through the shared init flow.',
+  'ai info': 'Report the active AI provider, model, and embedding configuration.',
+  'snapshot list': 'List governed workspace snapshots available for inspection or recovery.',
+  'doctor project': 'Diagnose the current project and emit structured project evidence.',
+  project: 'Expose project-scoped command discovery, archive, restore, and deletion operations.',
+  'infra plan': 'Generate a versioned infrastructure plan without applying infrastructure changes.',
+  'product plan': 'Generate a product factory plan from the current product definition.',
+  'product manifest create': 'Create a governed product manifest for product planning operations.',
+  'snapshot create': 'Create a governed workspace snapshot for comparison or recovery.',
+};
+
+function commandSummary(invocation: string): string {
+  const curated = COMMAND_SUMMARIES[invocation];
+  if (curated) return curated;
+  return `Expose the supported ${invocation} capability through the canonical Workspai CLI boundary.`;
+}
+
+function buildCommandDocumentation(
+  invocations: readonly string[]
+): RuntimeCommandSurfaceContract['commandDocumentation'] {
+  return [...new Set(invocations)]
+    .sort((left, right) => left.localeCompare(right))
+    .map((invocation) => ({ invocation, summary: commandSummary(invocation) }));
+}
 
 const MODULE_UNSUPPORTED_BACKEND_FRAMEWORKS = ['go', 'springboot', 'dotnet'] as const;
 
@@ -163,6 +231,25 @@ function buildRuntimeMatrix(): RuntimeCommandSurfaceContract['runtimeMatrix'] {
 
 export function buildRuntimeCommandSurfaceContract(): RuntimeCommandSurfaceContract {
   const createPlanner = buildCreatePlannerCapabilitiesContract();
+  const intelligenceExecutions = Object.entries(WORKSPACE_INTELLIGENCE_RUNTIME_STEPS).map(
+    ([id, step]) => ({ id, step })
+  );
+  const commandInvocations = [
+    ...RUNTIME_SURFACE_LIFECYCLE_COMMANDS,
+    ...RUNTIME_SURFACE_MODULE_MUTATION_COMMANDS,
+    ...RUNTIME_SURFACE_GLOBAL_COMMANDS,
+    ...RUNTIME_SURFACE_UNIVERSAL_COMMANDS,
+    ...RUNTIME_SURFACE_CORE_PROJECT_COMMANDS,
+    ...NPM_ONLY_TOP_LEVEL_COMMANDS,
+    ...NPM_ONLY_SCOPED_COMMANDS.map((command) => command.join(' ')),
+    'workspace',
+    ...WORKSPACE_SUBCOMMANDS.map((command) => `workspace ${command}`),
+    ...WORKSPACE_INTELLIGENCE_ROOT_COMMANDS,
+    ...intelligenceExecutions.map(({ step }) => step.command.join(' ')),
+    ...Object.values(WORKSPACE_ARTIFACT_CONTRACTS).flatMap((descriptor) =>
+      descriptor.producerCommands.map((command) => command.join(' '))
+    ),
+  ];
   return {
     schemaVersion: RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION,
     lifecycleCommands: [...RUNTIME_SURFACE_LIFECYCLE_COMMANDS],
@@ -170,27 +257,34 @@ export function buildRuntimeCommandSurfaceContract(): RuntimeCommandSurfaceContr
     globalCommands: [...RUNTIME_SURFACE_GLOBAL_COMMANDS],
     universalCommands: [...RUNTIME_SURFACE_UNIVERSAL_COMMANDS],
     coreProjectCommands: [...RUNTIME_SURFACE_CORE_PROJECT_COMMANDS],
+    npmOwnedTopLevelCommands: [...NPM_ONLY_TOP_LEVEL_COMMANDS],
+    npmOwnedScopedCommands: NPM_ONLY_SCOPED_COMMANDS.map((command) => [...command]),
+    commandDocumentation: buildCommandDocumentation(commandInvocations),
+    artifactContracts: Object.values(WORKSPACE_ARTIFACT_CONTRACTS).map((descriptor) => ({
+      artifactPath: descriptor.artifactPath,
+      schemaVersion: descriptor.schemaVersion,
+      contractPath: descriptor.contractPath,
+      producerCommands: descriptor.producerCommands.map((command) => [...command]),
+    })),
     workspaceSubcommands: [...WORKSPACE_SUBCOMMANDS],
     workspaceIntelligenceSubcommands: [...WORKSPACE_INTELLIGENCE_SUBCOMMANDS],
     workspaceIntelligenceRootCommands: [...WORKSPACE_INTELLIGENCE_ROOT_COMMANDS],
-    workspaceIntelligenceExecution: Object.entries(WORKSPACE_INTELLIGENCE_RUNTIME_STEPS).map(
-      ([id, step]) => ({
-        id,
-        argv: [...step.command],
-        produces: step.produces.map((artifactPath) => {
-          const matchedId = Object.entries(WORKSPACE_INTELLIGENCE_ARTIFACTS).find(
-            ([, candidatePath]) => candidatePath === artifactPath
-          )?.[0] as keyof typeof WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS | undefined;
-          return {
-            path: artifactPath,
-            schemaVersion: matchedId ? WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS[matchedId] : null,
-            contractPath: matchedId
-              ? WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS[matchedId]
-              : null,
-          };
-        }),
-      })
-    ),
+    workspaceIntelligenceExecution: intelligenceExecutions.map(({ id, step }) => ({
+      id,
+      argv: [...step.command],
+      produces: step.produces.map((artifactPath) => {
+        const matchedId = Object.entries(WORKSPACE_INTELLIGENCE_ARTIFACTS).find(
+          ([, candidatePath]) => candidatePath === artifactPath
+        )?.[0] as keyof typeof WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS | undefined;
+        return {
+          path: artifactPath,
+          schemaVersion: matchedId ? WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS[matchedId] : null,
+          contractPath: matchedId
+            ? WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS[matchedId]
+            : null,
+        };
+      }),
+    })),
     jsonOperationResult: {
       schemaVersion: CLI_OPERATION_RESULT_SCHEMA_VERSION,
       contractPath: CLI_OPERATION_RESULT_CONTRACT_PATH,

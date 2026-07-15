@@ -16,6 +16,14 @@ type RuntimeSurfaceContract = {
   schemaVersion: string;
   lifecycleCommands: string[];
   coreProjectCommands: string[];
+  npmOwnedTopLevelCommands: string[];
+  npmOwnedScopedCommands: string[][];
+  artifactContracts: Array<{
+    artifactPath: string;
+    schemaVersion: string;
+    contractPath: string;
+    producerCommands: string[][];
+  }>;
   workspaceSubcommands: string[];
   workspaceIntelligenceSubcommands: string[];
   moduleMutationCommands: string[];
@@ -100,6 +108,38 @@ describe('shared runtime command surface contract (npm)', () => {
     }
     expect(contract.workspaceIntelligenceSubcommands).toEqual(
       expect.arrayContaining(['explain', 'why', 'trace'])
+    );
+  });
+
+  it('publishes the complete npm-owned root and scoped command surface', async () => {
+    const contract = readContract();
+    const { NPM_ONLY_SCOPED_COMMANDS, NPM_ONLY_TOP_LEVEL_COMMANDS } =
+      await import('../../utils/cli-command-surface');
+
+    expect(contract.npmOwnedTopLevelCommands).toEqual([...NPM_ONLY_TOP_LEVEL_COMMANDS]);
+    expect(contract.npmOwnedScopedCommands).toEqual(
+      NPM_ONLY_SCOPED_COMMANDS.map((command) => [...command])
+    );
+    expect(contract.npmOwnedTopLevelCommands).toEqual(
+      expect.arrayContaining(['pipeline', 'adopt', 'import', 'bootstrap', 'setup'])
+    );
+  });
+
+  it('publishes artifact-to-command-to-contract relationships', () => {
+    const contract = readContract();
+    expect(contract.artifactContracts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          artifactPath: '.workspai/reports/pipeline-last-run.json',
+          contractPath: 'contracts/pipeline-last-run.v1.json',
+          producerCommands: [['pipeline']],
+        }),
+        expect.objectContaining({
+          artifactPath: '.workspai/reports/workspace-model.json',
+          contractPath: 'contracts/workspace-intelligence/workspace-model.v1.json',
+          producerCommands: [expect.arrayContaining(['workspace', 'model'])],
+        }),
+      ])
     );
   });
 

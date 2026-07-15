@@ -14,7 +14,8 @@
     "contractCatalog",
     "commands",
     "workspace",
-    "commandMap"
+    "commandMap",
+    "runtimeInventory"
   ],
   "properties": {
     "schemaVersion": {
@@ -130,6 +131,170 @@
           "scope": {
             "type": "string",
             "minLength": 1
+          }
+        }
+      }
+    },
+    "runtimeInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "commands",
+        "topLevelCommands",
+        "integrity"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "workspai-cli-runtime-command-inventory-v1"
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "command",
+              "parent",
+              "registrationKind",
+              "aliases",
+              "description",
+              "hidden",
+              "arguments",
+              "options"
+            ],
+            "properties": {
+              "path": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1
+              },
+              "parent": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "registrationKind": {
+                "enum": [
+                  "commander",
+                  "manual-handler"
+                ]
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string"
+              },
+              "hidden": {
+                "type": "boolean"
+              },
+              "arguments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "required",
+                    "variadic"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "variadic": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "flags",
+                    "attributeName"
+                  ],
+                  "properties": {
+                    "flags": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "attributeName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "topLevelCommands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "integrity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ok",
+            "registeredButUndeclared",
+            "declaredButUnregistered",
+            "registeredScopedButUndeclared",
+            "declaredScopedButUnregistered"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean"
+            },
+            "registeredButUndeclared": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "declaredButUnregistered": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "registeredScopedButUndeclared": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "declaredScopedButUnregistered": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         }
       }

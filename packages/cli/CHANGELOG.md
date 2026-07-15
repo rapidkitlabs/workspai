@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-07-15
+
+### Added
+
+- Added the versioned `workspai-cli-runtime-command-inventory-v1` contract,
+  generated directly from the live Commander tree and published through
+  `commands --json`.
+- Added command-surface verification that fails on registered/declared drift
+  across top-level, scoped, manual workspace, and Core-backed commands.
+- Added producer-command ownership to artifact contract descriptors, including
+  supplemental governance, recovery, infra, and Workspace Intelligence
+  artifacts.
+- Added complete workspace action discovery to `workspace --help`.
+
+### Changed
+
+- Expanded the runtime command surface and published contract catalog with
+  command documentation, npm ownership, artifact schemas, and producer links.
+- Included the runtime inventory in generated shared contracts and enterprise
+  prepack verification.
+- Documented the required stdin contract for `workspace feedback record` and
+  the raw renderer behavior of graph DOT/Mermaid output.
+- Bumped the monorepo root, `workspai`, and `wspai` packages to `0.45.0`, and
+  aligned the `wspai` dependency on `workspai@0.45.0`.
+
+### Fixed
+
+- Fixed `pipeline --strict` semantics so warning-only pipelines remain advisory
+  by default and become process-blocking only in strict mode; failed stages
+  remain blocking in every mode.
+- Hardened concurrent dist-test build locking so waiting processes re-check
+  freshness only after the active builder releases the lock.
+- Kept live command inventory generation deterministic across test and package
+  builds.
+
 ## [0.44.0] - 2026-07-14
 
 ### Added

@@ -93,7 +93,10 @@ describe('Phase 3 commands - CLI process integration', () => {
         }
       );
       expect(createWorkspace.status).toBe(0);
-      expect(fs.existsSync(workspaceDir)).toBe(true);
+      expect(
+        fs.existsSync(workspaceDir),
+        `workspace was not created at ${workspaceDir}\nstdout:\n${createWorkspace.stdout}\nstderr:\n${createWorkspace.stderr}`
+      ).toBe(true);
 
       const list = spawnSync(process.execPath, [dist, 'workspace', 'list'], {
         cwd: tempDir,
@@ -247,7 +250,10 @@ describe('Phase 3 commands - CLI process integration', () => {
         encoding: 'utf8',
         env,
       });
-      expect(sync.status).toBe(0);
+      expect(
+        sync.status,
+        `workspace sync failed\nstdout:\n${sync.stdout}\nstderr:\n${sync.stderr}`
+      ).toBe(0);
 
       const list = spawnSync(process.execPath, [dist, 'workspace', 'list'], {
         cwd: tempDir,

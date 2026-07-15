@@ -1,6 +1,66 @@
 # Release Notes
 
-## Latest Release: v0.44.0 (July 14, 2026)
+## Latest Release: v0.45.0 (July 15, 2026)
+
+### Contract-Backed Live Command Inventory and Release-Gate Consistency
+
+This minor release makes the installed CLI command tree a verifiable source of
+truth. Command discovery, published contracts, artifact producers, help output,
+documentation, and Workspace Intelligence runtime behavior are now checked
+against the same live inventory.
+
+**What's New:**
+
+- **Live command inventory**
+  - Added `workspai-cli-runtime-command-inventory-v1`, generated from the live
+    Commander tree and exposed by `workspai commands --json`.
+  - Added drift gates for all registered and declared top-level/scoped command
+    paths, including manual workspace dispatch and Core-backed ownership.
+
+- **Command, artifact, and contract linkage**
+  - Runtime command-surface contracts now include command documentation,
+    package ownership, artifact schemas, and producer command mappings.
+  - Shared-contract generation and enterprise prepack now verify and publish the
+    runtime inventory snapshot.
+
+- **Workspace Intelligence usability**
+  - `workspace --help` now enumerates every action family instead of hiding the
+    manual dispatcher surface.
+  - Feedback documentation now includes the required stdin JSON payload and
+    history artifact behavior.
+  - DOT and Mermaid graph renderers are explicitly documented as raw-text
+    outputs; structured consumers use graph emit/explain JSON.
+
+- **Gate correctness**
+  - Warning-only pipelines exit successfully by default and become blocking
+    when `--strict` is supplied.
+  - Failed pipeline stages remain blocking in both modes.
+
+**Breaking changes:** None.
+
+**Verification:**
+
+- 45/45 installed command paths passed help smoke tests.
+- Three real workspaces completed the Workspace Intelligence and governance
+  loops; 66 generated artifact/schema validations passed.
+- Workspace archives passed export, inspect, verify, doctor, hydrate, and
+  project archive/restore checksum round trips.
+- 1,776 tests were covered across two shards; 11 runtime steps, 15 artifacts,
+  and 12 adversarial groups passed.
+- Windows registry invariants passed and npm audit reported zero vulnerabilities.
+
+**Upgrade:**
+
+```bash
+npm install -g workspai@0.45.0
+npx wspai commands --json
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.45.0.md)
+
+---
+
+## Previous Release: v0.44.0 (July 14, 2026)
 
 ### Workspace Intelligence Contract Architecture and Stable CLI Gates
 

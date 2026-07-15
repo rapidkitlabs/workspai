@@ -10,6 +10,7 @@ const contractsDir = path.resolve(cliRoot, 'contracts');
 
 const GENERATED_FILES = [
   'runtime-command-surface.v1.json',
+  'cli-runtime-command-inventory.v1.snapshot.json',
   'cli-operation-result.v1.json',
   'command-capabilities.v1.json',
   'version.v1.json',

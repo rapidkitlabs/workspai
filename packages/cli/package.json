@@ -1,6 +1,6 @@
 {
   "name": "workspai",
-  "version": "0.44.0",
+  "version": "0.45.0",
   "type": "module",
   "description": "Open-source workspace intelligence CLI for software systems: create, adopt, govern, verify, and align polyglot workspaces for humans, CI, IDEs, and AI agents.",
   "keywords": [
@@ -94,6 +94,7 @@
     "test:prepare-embeddings": "node scripts/prepare-mock-embeddings.mjs",
     "generate-embeddings": "npx tsx src/ai/generate-embeddings.ts",
     "verify:package-cli": "node scripts/verify-package-cli.mjs",
+    "verify:cli-command-surface": "node scripts/verify-cli-command-surface.mjs",
     "check:workspace-intelligence-runtime": "node scripts/check-workspace-intelligence-runtime-conformance.mjs",
     "check:workspace-intelligence-adversarial": "node scripts/check-workspace-intelligence-adversarial.mjs",
     "check:windows-registry": "node scripts/check-windows-registry-invariants.mjs",

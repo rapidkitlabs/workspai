@@ -5,17 +5,11 @@ import path from 'path';
 const BUILD_LOCK_PATH = path.resolve(__dirname, '..', '..', '..', '.rapidkit-test-build.lock');
 
 function waitForBuildLockRelease(distPath: string, sourcePaths: string[]): string | undefined {
-  for (;;) {
-    if (!fs.existsSync(BUILD_LOCK_PATH)) {
-      return undefined;
-    }
-
-    if (!shouldBuildDist(distPath, sourcePaths)) {
-      return distPath;
-    }
-
+  while (fs.existsSync(BUILD_LOCK_PATH)) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
   }
+
+  return shouldBuildDist(distPath, sourcePaths) ? undefined : distPath;
 }
 
 function shouldBuildDist(distPath: string, sourcePaths: string[]): boolean {

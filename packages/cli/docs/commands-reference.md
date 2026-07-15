@@ -61,7 +61,7 @@ npx workspai workspace graph [emit|explain|dot|mermaid] [key] [--workspace <path
 npx workspai workspace watch [--workspace <path>] [--json] [--once] [--scan-depth <count>]
 npx workspai workspace explain|why <target> [--workspace <path>] [--json] [--write]
 npx workspai workspace trace --from <workspace-diff-report> [--workspace <path>] [--json] [--write]
-npx workspai workspace feedback record [--workspace <path>] [--json]
+printf '%s\n' '{"actionId":"fix-api","summary":"API tests passed","outcome":"ok"}' | npx workspai workspace feedback record [--workspace <path>] --json
 npx workspai workspace mcp serve [--workspace <path>] [--json]
 npx workspai workspace export --output team-workspace.workspai-archive.zip [--archive-compression store|deflate]
 npx workspai workspace archive inspect team-workspace.workspai-archive.zip [--max-download-size <size>] [--max-expanded-size <size>] [--download-timeout-ms <ms>] [--json]
@@ -85,6 +85,19 @@ npx workspai infra up [--workspace <path>] [--no-plan] [--build]
 npx workspai infra down [--workspace <path>] [--volumes]
 npx workspai infra status [--workspace <path>] [--json] [--strict]
 ```
+
+`workspace feedback record` is a non-interactive machine interface. It requires
+exactly one JSON object on stdin and `--json`; an empty stdin or interactive TTY
+is rejected. Required fields are `actionId`, `summary`, and `outcome`. The
+accepted outcome values and optional scope/evidence fields are governed by
+`contracts/workspace-intelligence/agent-action-outcome.v1.json`. Successful
+records are appended to
+`.workspai/reports/workspace-intelligence-history.json`; no separate feedback
+artifact is created.
+
+`workspace graph dot` and `workspace graph mermaid` intentionally emit raw DOT
+and Mermaid text for direct piping to renderers. Use `workspace graph emit
+--json` or `workspace graph explain <project> --json` for structured JSON.
 
 See [workspace-run.md](./workspace-run.md) for fleet orchestration semantics.
 

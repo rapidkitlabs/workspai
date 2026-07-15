@@ -21,6 +21,7 @@ export function buildCommandCapabilitiesSchema() {
       'commands',
       'workspace',
       'commandMap',
+      'runtimeInventory',
     ],
     properties: {
       schemaVersion: { const: COMMAND_CAPABILITIES_SCHEMA_VERSION },
@@ -57,6 +58,85 @@ export function buildCommandCapabilitiesSchema() {
             owner: { enum: ['npm-wrapper', 'python-core', 'runtime-adapter'] },
             status: { enum: ['supported', 'delegated', 'runtime-dependent'] },
             scope: { type: 'string', minLength: 1 },
+          },
+        },
+      },
+      runtimeInventory: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['schemaVersion', 'commands', 'topLevelCommands', 'integrity'],
+        properties: {
+          schemaVersion: { const: 'workspai-cli-runtime-command-inventory-v1' },
+          commands: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: [
+                'path',
+                'command',
+                'parent',
+                'registrationKind',
+                'aliases',
+                'description',
+                'hidden',
+                'arguments',
+                'options',
+              ],
+              properties: {
+                path: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } },
+                command: { type: 'string', minLength: 1 },
+                parent: { type: ['string', 'null'] },
+                registrationKind: { enum: ['commander', 'manual-handler'] },
+                aliases: stringArray,
+                description: { type: 'string' },
+                hidden: { type: 'boolean' },
+                arguments: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['name', 'required', 'variadic'],
+                    properties: {
+                      name: { type: 'string', minLength: 1 },
+                      required: { type: 'boolean' },
+                      variadic: { type: 'boolean' },
+                    },
+                  },
+                },
+                options: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['flags', 'attributeName'],
+                    properties: {
+                      flags: { type: 'string', minLength: 1 },
+                      attributeName: { type: ['string', 'null'] },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          topLevelCommands: stringArray,
+          integrity: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+              'ok',
+              'registeredButUndeclared',
+              'declaredButUnregistered',
+              'registeredScopedButUndeclared',
+              'declaredScopedButUnregistered',
+            ],
+            properties: {
+              ok: { type: 'boolean' },
+              registeredButUndeclared: stringArray,
+              declaredButUnregistered: stringArray,
+              registeredScopedButUndeclared: stringArray,
+              declaredScopedButUnregistered: stringArray,
+            },
           },
         },
       },

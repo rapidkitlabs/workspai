@@ -37,6 +37,10 @@ runNode([tsupCli], 'building dist');
 runNode(['scripts/prepare-mock-embeddings.mjs'], 'preparing packaged embeddings');
 runNode(['scripts/verify-package-cli.mjs'], 'verifying bundled CLI command ownership');
 runNode(
+  ['scripts/verify-cli-command-surface.mjs'],
+  'verifying live packaged CLI command surface against the published contract'
+);
+runNode(
   ['scripts/check-workspace-intelligence-runtime-conformance.mjs'],
   'validating Workspace Intelligence runtime artifacts against canonical schemas'
 );

@@ -5,6 +5,7 @@ import {
   WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS,
   WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
   WORKSPACE_INTELLIGENCE_ARTIFACTS,
+  WORKSPACE_INTELLIGENCE_RUNTIME_STEPS,
   type WorkspaceIntelligenceArtifactId,
 } from './workspace-intelligence-runtime-registry.js';
 
@@ -12,7 +13,10 @@ export type WorkspaceArtifactContractDescriptor = {
   artifactPath: string;
   schemaVersion: string;
   contractPath: string;
+  producerCommands: string[][];
 };
+
+type WorkspaceArtifactContractInput = Omit<WorkspaceArtifactContractDescriptor, 'producerCommands'>;
 
 const descriptors = Object.keys(WORKSPACE_INTELLIGENCE_ARTIFACTS).flatMap((id) => {
   const artifactId = id as WorkspaceIntelligenceArtifactId;
@@ -28,7 +32,7 @@ const descriptors = Object.keys(WORKSPACE_INTELLIGENCE_ARTIFACTS).flatMap((id) =
   ];
 });
 
-const supplementalDescriptors: WorkspaceArtifactContractDescriptor[] = [
+const supplementalDescriptors: WorkspaceArtifactContractInput[] = [
   {
     artifactPath: '.workspai/cache/workspace-model.v1.json',
     schemaVersion: 'workspace-model-cache.v1',
@@ -99,13 +103,47 @@ const supplementalDescriptors: WorkspaceArtifactContractDescriptor[] = [
     schemaVersion: 'workspai-agent-hooks.v1',
     contractPath: 'contracts/workspace-intelligence/agent-hooks.v1.json',
   },
+  {
+    artifactPath: '.workspai/reports/infra-plan.json',
+    schemaVersion: 'rapidkit.infra-plan.v1',
+    contractPath: 'contracts/infra-plan.v1.json',
+  },
 ];
+
+const SUPPLEMENTAL_ARTIFACT_PRODUCERS: Readonly<Record<string, readonly string[][]>> = {
+  [WORKSPACE_INTELLIGENCE_ARTIFACTS.snapshot]: [['workspace', 'snapshot']],
+  '.workspai/cache/workspace-model.v1.json': [['workspace', 'model']],
+  '.workspai/workspace-registry.v1.json': [['workspace', 'sync']],
+  '.workspai/reports/doctor-project-last-run.json': [['doctor', 'project']],
+  '.workspai/reports/doctor-remediation-plan-last-run.json': [['workspace', 'remediation-plan']],
+  '.workspai/reports/artifact-remediation-plan-last-run.json': [['workspace', 'remediation-plan']],
+  '.workspai/reports/doctor-fix-result-last-run.json': [['doctor', 'workspace']],
+  '.workspai/reports/pipeline-last-run.json': [['pipeline']],
+  '.workspai/reports/autopilot-release-last-run.json': [['autopilot', 'release']],
+  '.workspai/reports/autopilot-release.json': [['autopilot', 'release']],
+  '.workspai/reports/workspace-run-last.json': [['workspace', 'run']],
+  '.workspai/reports/workspace-why-last-run.json': [['workspace', 'why']],
+  '.workspai/reports/workspace-trace-last-run.json': [['workspace', 'trace']],
+  '.vscode/workspai-agent-hooks.json': [['workspace', 'agent-sync']],
+  '.workspai/reports/infra-plan.json': [['infra', 'plan']],
+};
+
+function producerCommandsFor(artifactPath: string): string[][] {
+  const intelligenceProducers = Object.values(WORKSPACE_INTELLIGENCE_RUNTIME_STEPS)
+    .filter((step) => (step.produces as readonly string[]).includes(artifactPath))
+    .map((step) => [...step.command]);
+  const supplemental = SUPPLEMENTAL_ARTIFACT_PRODUCERS[artifactPath] ?? [];
+  return [...intelligenceProducers, ...supplemental.map((command) => [...command])];
+}
 
 export const WORKSPACE_ARTIFACT_CONTRACTS = Object.freeze(
   Object.fromEntries(
     [...descriptors, ...supplementalDescriptors].map((descriptor) => [
       descriptor.artifactPath,
-      descriptor,
+      {
+        ...descriptor,
+        producerCommands: producerCommandsFor(descriptor.artifactPath),
+      },
     ])
   )
 ) as Readonly<Record<string, WorkspaceArtifactContractDescriptor>>;

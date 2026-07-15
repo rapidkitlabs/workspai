@@ -360,9 +360,13 @@ read-only tool access:
 ```bash
 npx workspai workspace explain release-blocked --json --write
 npx workspai workspace trace --from .workspai/reports/workspace-model-diff-last-run.json --json --write
-npx workspai workspace feedback record --json
+printf '%s\n' '{"actionId":"fix-api","summary":"API tests passed","outcome":"ok"}' | npx workspai workspace feedback record --json
 npx workspai workspace mcp serve
 ```
+
+`workspace feedback record` requires a single JSON object on stdin. Its
+`actionId`, `summary`, and `outcome` fields are validated before the outcome is
+appended to `workspace-intelligence-history.json`.
 
 Fleet runs support scoped execution and result reuse:
 

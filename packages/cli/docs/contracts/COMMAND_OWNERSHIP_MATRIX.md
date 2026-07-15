@@ -32,23 +32,44 @@ These commands are implemented and orchestrated by Workspai CLI:
 - `product`
 - `infra`
 - `commands`
+- `create`
+- `project`
 - `shell activate`
 
 Reason: workspace-level policy, registry, and platform orchestration live in npm wrapper.
 
 ### 1.1) Wrapper-owned scoped commands
 
-These scoped commands are implemented and orchestrated by Workspai CLI:
+These nested Commander commands are implemented and orchestrated by Workspai CLI:
 
+- `ai generate-embeddings`
+- `ai info`
+- `ai recommend`
+- `ai update-embeddings`
+- `config ai`
+- `config remove-api-key`
+- `config set-api-key`
+- `config show`
+- `infra down`
+- `infra plan`
+- `infra status`
+- `infra up`
+- `product manifest`
+- `product manifest create`
+- `product plan`
 - `project commands`
 - `project archives`
 - `project archive`
 - `project restore`
 - `project delete`
+- `snapshot create`
+- `snapshot inspect`
+- `snapshot list`
+- `snapshot restore`
 
-Reason: these are workspace project lifecycle and capability operations with
-archive manifests, safety snapshots, workspace registry side effects, and
-runtime-aware command discovery.
+Reason: these routes are registered directly in the npm wrapper's live
+Commander tree. Their completeness is verified against `commands --json` and
+the generated runtime command surface during tests and prepack.
 
 `project detect` remains Core-owned because it is the stable machine-readable
 contract used by wrappers to detect Python RapidKit projects.

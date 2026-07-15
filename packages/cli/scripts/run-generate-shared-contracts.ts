@@ -34,6 +34,9 @@ function writeJson(fileName: string, value: unknown) {
 }
 
 writeJson('runtime-command-surface.v1.json', buildRuntimeCommandSurfaceContract());
+process.env.VITEST = '1';
+const { getGlobalCommandCapabilities } = await import('../src/index.js');
+writeJson('cli-runtime-command-inventory.v1.snapshot.json', getGlobalCommandCapabilities().runtimeInventory);
 writeJson('cli-operation-result.v1.json', buildCliOperationResultSchema());
 writeJson('command-capabilities.v1.json', buildCommandCapabilitiesSchema());
 writeJson('version.v1.json', buildVersionContractSchema());

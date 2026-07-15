@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { runPipeline } from '../pipeline';
+import { pipelineProcessExitCode, runPipeline } from '../pipeline';
 
 const tempDirs: string[] = [];
 
@@ -27,6 +27,13 @@ afterEach(async () => {
 });
 
 describe('pipeline governance chain', () => {
+  it('keeps warning-only reports advisory unless strict mode is enabled', () => {
+    expect(pipelineProcessExitCode(2, false)).toBe(0);
+    expect(pipelineProcessExitCode(2, true)).toBe(2);
+    expect(pipelineProcessExitCode(1, false)).toBe(1);
+    expect(pipelineProcessExitCode(3, false)).toBe(3);
+  });
+
   it('resolves workspace root from nested cwd and writes stage names', async () => {
     const workspacePath = await makeWorkspace();
     const nestedPath = path.join(workspacePath, 'apps', 'api');

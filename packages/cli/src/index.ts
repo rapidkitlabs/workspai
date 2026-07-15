@@ -103,6 +103,18 @@ import {
   WORKSPACE_INTELLIGENCE_ROOT_COMMANDS,
 } from './contracts/workspace-intelligence-runtime-registry.js';
 import {
+  buildCliRuntimeCommandInventory,
+  formatCliCommandSurfaceIntegrityError,
+  NPM_ONLY_CREATE_HANDLER_COMMAND,
+  NPM_ONLY_MANUAL_HANDLER_COMMANDS,
+  NPM_ONLY_SCOPED_COMMANDS as NPM_ONLY_SCOPED_COMMANDS_SOURCE,
+  NPM_ONLY_TOP_LEVEL_COMMANDS as NPM_ONLY_TOP_LEVEL_COMMANDS_SOURCE,
+} from './utils/cli-command-surface.js';
+
+export const NPM_ONLY_SCOPED_COMMANDS: readonly (readonly string[])[] =
+  NPM_ONLY_SCOPED_COMMANDS_SOURCE;
+export const NPM_ONLY_TOP_LEVEL_COMMANDS: readonly string[] = NPM_ONLY_TOP_LEVEL_COMMANDS_SOURCE;
+import {
   isNpmBackedKit,
   normalizeKitId,
   resolveKitDefinition,
@@ -1467,27 +1479,6 @@ const LOCAL_COMMANDS = [
   '-h',
 ];
 
-// Single source of truth for commands owned by the npm wrapper.
-// Any new workspace-level command must be added here to prevent accidental core forwarding.
-export const NPM_ONLY_TOP_LEVEL_COMMANDS = [
-  ...WORKSPACE_INTELLIGENCE_ROOT_COMMANDS,
-  'autopilot',
-  'pipeline',
-  'import',
-  'adopt',
-  'snapshot',
-  'bootstrap',
-  'setup',
-  'cache',
-  'mirror',
-  'ai',
-  'config',
-  'product',
-  'infra',
-  'shell',
-  'commands',
-] as const;
-
 const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
   ...WORKSPACE_INTELLIGENCE_ROOT_COMMANDS,
   'autopilot',
@@ -1501,16 +1492,6 @@ const NPM_ONLY_PARSE_DIRECT_COMMANDS = [
   'infra',
   'shell',
   'commands',
-] as const;
-
-const NPM_ONLY_MANUAL_HANDLER_COMMANDS = ['bootstrap', 'setup', 'cache', 'mirror'] as const;
-
-export const NPM_ONLY_SCOPED_COMMANDS = [
-  ['project', 'commands'],
-  ['project', 'archives'],
-  ['project', 'archive'],
-  ['project', 'restore'],
-  ['project', 'delete'],
 ] as const;
 
 // Project-scoped commands that should never fall through to the workspace
@@ -1545,6 +1526,9 @@ function isNpmOnlyScopedCommand(args: readonly string[]): boolean {
 }
 
 function isNpmOnlyInvocation(args: readonly string[]): boolean {
+  if (args[0] === 'project' && args[1] && !args[1].startsWith('-') && args[1] !== 'help') {
+    return isNpmOnlyScopedCommand(args);
+  }
   return isNpmOnlyTopLevelCommand(args[0]) || isNpmOnlyScopedCommand(args);
 }
 
@@ -1556,8 +1540,30 @@ function isNpmOnlyParseDirectInvocation(args: readonly string[]): boolean {
   return isNpmOnlyParseDirectCommand(args[0]) || isNpmOnlyScopedCommand(args);
 }
 
-function isNpmOnlyManualHandlerCommand(command: string | undefined): boolean {
+function isNpmOnlyManualHandlerCommand(
+  command: string | undefined
+): command is (typeof NPM_ONLY_MANUAL_HANDLER_COMMANDS)[number] {
   return !!command && (NPM_ONLY_MANUAL_HANDLER_COMMANDS as readonly string[]).includes(command);
+}
+
+async function runNpmOnlyManualHandler(
+  command: (typeof NPM_ONLY_MANUAL_HANDLER_COMMANDS)[number],
+  args: string[]
+): Promise<number> {
+  switch (command) {
+    case 'bootstrap':
+      return handleBootstrapCommand(args);
+    case 'setup':
+      return handleSetupCommand(args);
+    case 'cache':
+      return handleCacheCommand(args);
+    case 'mirror':
+      return handleMirrorCommand(args);
+    default: {
+      const unreachable: never = command;
+      throw new Error(`Unreachable npm-only manual command: ${String(unreachable)}`);
+    }
+  }
 }
 
 export function isNpmExecInvocation(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -1566,13 +1572,10 @@ export function isNpmExecInvocation(env: NodeJS.ProcessEnv = process.env): boole
   const npmCommand = env.npm_command || '';
 
   return (
-    userAgent.startsWith('npm/') ||
     userAgent.includes(' npx/') ||
     /(?:^|[/\\])npx(?:\.cmd)?$/i.test(execPath) ||
-    /(?:^|[/\\])npm(?:\.cmd)?$/i.test(execPath) ||
     npmCommand === 'exec' ||
-    npmCommand === 'x' ||
-    npmCommand === 'run-script'
+    npmCommand === 'x'
   );
 }
 
@@ -1632,8 +1635,32 @@ export function getVersionContract() {
   };
 }
 
+type RuntimeCommandInventoryPayload = {
+  schemaVersion: string;
+  commands: Array<{
+    path: string[];
+    command: string;
+    parent: string | null;
+    registrationKind: 'commander' | 'manual-handler';
+    aliases: string[];
+    description: string;
+    hidden: boolean;
+    arguments: Array<{ name: string; required: boolean; variadic: boolean }>;
+    options: Array<{ flags: string; attributeName: string | null }>;
+  }>;
+  topLevelCommands: string[];
+  integrity: {
+    ok: boolean;
+    registeredButUndeclared: string[];
+    declaredButUnregistered: string[];
+    registeredScopedButUndeclared: string[];
+    declaredScopedButUnregistered: string[];
+  };
+};
+
 export function getGlobalCommandCapabilities() {
-  const npmOwned = [...NPM_ONLY_TOP_LEVEL_COMMANDS, 'create', 'project'];
+  const runtimeInventory: RuntimeCommandInventoryPayload = buildCliRuntimeCommandInventory(program);
+  const npmOwned = [...runtimeInventory.topLevelCommands];
   const coreBacked = [...BOOTSTRAP_CORE_COMMANDS_SET].filter(
     (command) => !npmOwned.includes(command as (typeof npmOwned)[number])
   );
@@ -1691,6 +1718,7 @@ export function getGlobalCommandCapabilities() {
         },
       ]),
     ]),
+    runtimeInventory,
   };
 }
 
@@ -1698,6 +1726,11 @@ function printGlobalCommandCapabilities(options: { json?: boolean } = {}): void 
   const capabilities = getGlobalCommandCapabilities();
 
   if (options.json) {
+    if (!capabilities.runtimeInventory.integrity.ok) {
+      throw new Error(
+        formatCliCommandSurfaceIntegrityError(capabilities.runtimeInventory.integrity)
+      );
+    }
     console.log(JSON.stringify(capabilities, null, 2));
     return;
   }
@@ -7269,6 +7302,21 @@ program
   .option('--ci', 'Build CI-oriented command plans where supported')
   .option('--strict', 'Return non-zero exit on warn/fail gate outcomes')
   .option('--no-gates', 'Skip doctor/readiness pre-run gates')
+  .addHelpText(
+    'after',
+    `
+Workspace Actions:
+  Discovery & registry     list | sync | registry | foundation
+  Intelligence loop       model | snapshot | diff | impact | verify | context
+  Intelligence consumers  agent-sync | remediation-plan | explain | why | trace | feedback | mcp
+  Graph & observation      graph | watch
+  Contracts & policy      contract | policy
+  Portability             share | export | archive | hydrate | import
+  Fleet lifecycle         run | init
+
+Use "workspai commands --json" for the contract-backed runtime inventory.
+See the command reference for action-specific required inputs and output artifacts.`
+  )
   .action(async function (
     this: Command,
     action: string,
@@ -9926,16 +9974,7 @@ if (shouldBootstrapCli) {
 
   if (shouldKeepNpmOwnedCommandLocal && isNpmOnlyManualHandlerCommand(preFirst)) {
     (async () => {
-      if (preFirst === 'bootstrap') {
-        await exitAfterOutputFlush(await handleBootstrapCommand(preArgs));
-      }
-      if (preFirst === 'setup') {
-        await exitAfterOutputFlush(await handleSetupCommand(preArgs));
-      }
-      if (preFirst === 'cache') {
-        await exitAfterOutputFlush(await handleCacheCommand(preArgs));
-      }
-      await exitAfterOutputFlush(await handleMirrorCommand(preArgs));
+      await exitAfterOutputFlush(await runNpmOnlyManualHandler(preFirst, preArgs));
     })().catch((error) => {
       process.stderr.write(
         `Workspai CLI failed to run ${preFirst}: ${(error as Error)?.message ?? error}\n`
@@ -9987,7 +10026,7 @@ if (shouldBootstrapCli) {
         // Special-case `create` to preserve canonical Core UX while allowing a
         // last-resort offline fallback (fastapi/nestjs scaffolds) when Python/Core
         // cannot run.
-        if (args[0] === 'create') {
+        if (args[0] === NPM_ONLY_CREATE_HANDLER_COMMAND) {
           const code = await handleCreateOrFallback(args);
           await exitAfterOutputFlush(code);
         }
@@ -9998,22 +10037,7 @@ if (shouldBootstrapCli) {
         }
 
         if (isNpmOnlyManualHandlerCommand(args[0])) {
-          if (args[0] === 'bootstrap') {
-            const code = await handleBootstrapCommand(args);
-            await exitAfterOutputFlush(code);
-          }
-
-          if (args[0] === 'setup') {
-            const code = await handleSetupCommand(args);
-            await exitAfterOutputFlush(code);
-          }
-
-          if (args[0] === 'cache') {
-            const code = await handleCacheCommand(args);
-            await exitAfterOutputFlush(code);
-          }
-
-          const code = await handleMirrorCommand(args);
+          const code = await runNpmOnlyManualHandler(args[0], args);
           await exitAfterOutputFlush(code);
         }
 

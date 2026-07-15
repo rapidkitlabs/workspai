@@ -1,4 +1,4 @@
-export { showCancel, showIntro, showOutro, resetIntroStateForTests } from './brand.js';
+export { showCancel, showIntro, resetIntroStateForTests } from './brand.js';
 export { buildKitPickerChoices, assertUniqueKitPickerLabels } from './kit-picker-choices.js';
 export { ui } from './messages.js';
 export { createUiSpinner, type CliSpinnerHandle } from './spinner.js';

@@ -95,6 +95,18 @@ function computePipelineExitCode(
   return 0;
 }
 
+/**
+ * Keep advisory pipeline warnings non-blocking unless strict mode is enabled.
+ * Execution failures and failed stages remain blocking in every mode.
+ */
+export function pipelineProcessExitCode(
+  reportExitCode: PipelineReport['summary']['exitCode'],
+  strict: boolean
+): PipelineReport['summary']['exitCode'] {
+  if (reportExitCode === 2 && !strict) return 0;
+  return reportExitCode;
+}
+
 async function syncWorkspaceRegistryAndContract(
   workspacePath: string
 ): Promise<{ sync: SyncWorkspaceResult; contractSynced: boolean }> {
@@ -467,7 +479,11 @@ export async function runPipelineCommand(options: PipelineOptions): Promise<void
     }
   }
 
-  if (report.summary.exitCode !== 0) {
-    process.exit(report.summary.exitCode);
+  const processExitCode = pipelineProcessExitCode(
+    report.summary.exitCode,
+    options.strict === true
+  );
+  if (processExitCode !== 0) {
+    process.exit(processExitCode);
   }
 }

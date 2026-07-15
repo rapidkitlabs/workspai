@@ -1,4 +1,4 @@
-import { cancel, intro, outro } from '@clack/prompts';
+import { cancel, intro } from '@clack/prompts';
 
 import { isCliJsonLogFormat } from '../observability/cli-log-format.js';
 import { rk } from './theme.js';
@@ -12,14 +12,6 @@ export function showIntro(subtitle?: string): void {
   introShown = true;
   const title = `${rk.brand('◆')} ${rk.white('Workspai')}${subtitle ? rk.dim(`  ${subtitle}`) : ''}`;
   intro(title);
-}
-
-export function showOutro(message = 'Done'): void {
-  if (isCliJsonLogFormat()) {
-    return;
-  }
-  outro(rk.success(message));
-  introShown = false;
 }
 
 export function showCancel(message = 'Cancelled'): void {

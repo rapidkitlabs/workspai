@@ -32,6 +32,7 @@ import {
 } from './workspace-archive-contract.js';
 import { CLI_OPERATION_RESULT_SCHEMA_VERSION } from './cli-operation-result-contract.js';
 import { OPERATIONAL_JSON_SCHEMA_VERSIONS } from './operational-json-schemas.js';
+import { CLI_RUNTIME_COMMAND_INVENTORY_SCHEMA_VERSION } from '../utils/cli-command-surface.js';
 
 export const PUBLISHED_CONTRACT_CATALOG_SCHEMA_VERSION =
   'workspai-published-contract-catalog-v1' as const;
@@ -40,6 +41,7 @@ export const PUBLISHED_CONTRACT_CATALOG_SCHEMA_VERSION =
 export function getPublishedContractVersions() {
   return {
     runtimeCommandSurface: RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION,
+    cliRuntimeCommandInventory: CLI_RUNTIME_COMMAND_INVENTORY_SCHEMA_VERSION,
     cliOperationResult: CLI_OPERATION_RESULT_SCHEMA_VERSION,
     publishedContractCatalog: PUBLISHED_CONTRACT_CATALOG_SCHEMA_VERSION,
     workspaceArchiveCapabilities: WORKSPACE_ARCHIVE_CAPABILITIES_SCHEMA_VERSION,
@@ -88,6 +90,7 @@ export function getPublishedContractCatalog() {
   const versions = getPublishedContractVersions();
   const paths: Record<keyof typeof versions, string | null> = {
     runtimeCommandSurface: 'contracts/runtime-command-surface.v1.json',
+    cliRuntimeCommandInventory: 'contracts/cli-runtime-command-inventory.v1.snapshot.json',
     cliOperationResult: 'contracts/cli-operation-result.v1.json',
     publishedContractCatalog: 'contracts/published-contract-catalog.v1.json',
     workspaceArchiveCapabilities: 'contracts/workspace-archive-capabilities.v1.json',
@@ -147,7 +150,9 @@ export function getPublishedContractCatalog() {
           schemaVersion,
           contractPath,
           publication: contractPath
-            ? id === 'runtimeCommandSurface' || id.endsWith('Capabilities')
+            ? id === 'runtimeCommandSurface' ||
+              id === 'cliRuntimeCommandInventory' ||
+              id.endsWith('Capabilities')
               ? 'capability-contract'
               : 'json-schema'
             : 'embedded-type',
