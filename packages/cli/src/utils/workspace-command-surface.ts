@@ -44,7 +44,8 @@ export const WORKSPACE_SUBCOMMANDS = [
 export type WorkspaceSubcommand = (typeof WORKSPACE_SUBCOMMANDS)[number];
 
 /**
- * Deterministic Workspace Intelligence chain plus agent grounding subcommands.
+ * Complete Workspace Intelligence command family: canonical chain stages,
+ * evidence gates, observation/rendering, feedback, and consumer bridges.
  *
  * These are the capabilities the extension gates on before running the
  * intelligence chain, advisor, or agent context pack. Order follows the
@@ -56,13 +57,18 @@ export const WORKSPACE_INTELLIGENCE_SUBCOMMANDS = [
   'snapshot',
   'diff',
   'impact',
+  'contract',
   'verify',
+  'graph',
+  'watch',
   'context',
   'agent-sync',
   'remediation-plan',
   'explain',
   'why',
   'trace',
+  'feedback',
+  'mcp',
 ] as const;
 
 export type WorkspaceIntelligenceSubcommand = (typeof WORKSPACE_INTELLIGENCE_SUBCOMMANDS)[number];

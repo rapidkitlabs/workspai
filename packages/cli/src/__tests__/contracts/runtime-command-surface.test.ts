@@ -18,6 +18,23 @@ type RuntimeSurfaceContract = {
   coreProjectCommands: string[];
   npmOwnedTopLevelCommands: string[];
   npmOwnedScopedCommands: string[][];
+  commandDocumentation: Array<{
+    invocation: string;
+    summary: string;
+    canonicalArgv: string[];
+    input?: {
+      transport: string;
+      mediaType: string;
+      required: boolean;
+      schemaVersion: string;
+      contractPath: string;
+    };
+    output?: {
+      defaultFormat: string;
+      modes?: Array<{ selector: string; format: string; mediaType: string }>;
+    };
+    exitSemantics?: { default: string; strict: string; failure: string };
+  }>;
   artifactContracts: Array<{
     artifactPath: string;
     schemaVersion: string;
@@ -107,7 +124,16 @@ describe('shared runtime command surface contract (npm)', () => {
       expect(contract.workspaceSubcommands).toContain(subcommand);
     }
     expect(contract.workspaceIntelligenceSubcommands).toEqual(
-      expect.arrayContaining(['explain', 'why', 'trace'])
+      expect.arrayContaining([
+        'contract',
+        'graph',
+        'watch',
+        'explain',
+        'why',
+        'trace',
+        'feedback',
+        'mcp',
+      ])
     );
   });
 
@@ -139,8 +165,60 @@ describe('shared runtime command surface contract (npm)', () => {
           contractPath: 'contracts/workspace-intelligence/workspace-model.v1.json',
           producerCommands: [expect.arrayContaining(['workspace', 'model'])],
         }),
+        expect.objectContaining({
+          artifactPath: '.workspai/reports/workspace-intelligence-history.json',
+          contractPath: 'contracts/workspace-intelligence/workspace-intelligence-history.v1.json',
+          producerCommands: expect.arrayContaining([['workspace', 'feedback', 'record', '--json']]),
+        }),
       ])
     );
+  });
+
+  it('publishes machine-readable operational semantics for non-trivial commands', () => {
+    const contract = readContract();
+    const documentation = new Map(
+      contract.commandDocumentation.map((entry) => [entry.invocation, entry])
+    );
+
+    expect(documentation.get('workspace feedback')).toEqual(
+      expect.objectContaining({
+        canonicalArgv: ['workspace', 'feedback', 'record', '--json'],
+        input: expect.objectContaining({
+          transport: 'stdin',
+          mediaType: 'application/json',
+          required: true,
+          schemaVersion: 'agent-action-outcome.v1',
+          contractPath: 'contracts/workspace-intelligence/agent-action-outcome.v1.json',
+        }),
+      })
+    );
+    expect(documentation.get('workspace graph')?.output?.modes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ selector: 'dot', format: 'raw-text' }),
+        expect.objectContaining({ selector: 'mermaid', format: 'raw-text' }),
+      ])
+    );
+    expect(documentation.get('pipeline')?.exitSemantics).toEqual(
+      expect.objectContaining({
+        default: expect.stringContaining('exit code 0'),
+        strict: expect.stringContaining('--strict'),
+        failure: expect.stringContaining('every mode'),
+      })
+    );
+  });
+
+  it('requires a distinct command-specific operational summary for every command', () => {
+    const contract = readContract();
+    const genericSummary =
+      /^Expose the supported .+ capability through the canonical Workspai CLI boundary\.$/;
+    const summaries = new Set<string>();
+
+    for (const descriptor of contract.commandDocumentation) {
+      expect(descriptor.summary, descriptor.invocation).not.toMatch(genericSummary);
+      expect(descriptor.summary.trim().length, descriptor.invocation).toBeGreaterThanOrEqual(45);
+      expect(summaries.has(descriptor.summary), descriptor.invocation).toBe(false);
+      summaries.add(descriptor.summary);
+    }
   });
 
   it('matches npm runtime support matrix exactly', () => {

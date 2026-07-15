@@ -479,10 +479,7 @@ export async function runPipelineCommand(options: PipelineOptions): Promise<void
     }
   }
 
-  const processExitCode = pipelineProcessExitCode(
-    report.summary.exitCode,
-    options.strict === true
-  );
+  const processExitCode = pipelineProcessExitCode(report.summary.exitCode, options.strict === true);
   if (processExitCode !== 0) {
     process.exit(processExitCode);
   }

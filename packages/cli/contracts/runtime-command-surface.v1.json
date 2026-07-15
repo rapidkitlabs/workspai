@@ -164,447 +164,945 @@
   "commandDocumentation": [
     {
       "invocation": "add",
-      "summary": "Expose the supported add capability through the canonical Workspai CLI boundary."
+      "summary": "Add a supported module or capability to the active project through its runtime adapter.",
+      "canonicalArgv": [
+        "add"
+      ]
     },
     {
       "invocation": "adopt",
-      "summary": "Expose the supported adopt capability through the canonical Workspai CLI boundary."
+      "summary": "Register an existing local repository as a governed Workspai project without recreating its source.",
+      "canonicalArgv": [
+        "adopt"
+      ]
     },
     {
       "invocation": "ai",
-      "summary": "Expose the supported ai capability through the canonical Workspai CLI boundary."
+      "summary": "Manage AI configuration, recommendations, and embedding operations for the active workspace.",
+      "canonicalArgv": [
+        "ai"
+      ]
     },
     {
       "invocation": "ai generate-embeddings",
-      "summary": "Expose the supported ai generate-embeddings capability through the canonical Workspai CLI boundary."
+      "summary": "Generate the initial semantic embedding index from the current project or workspace sources.",
+      "canonicalArgv": [
+        "ai",
+        "generate-embeddings"
+      ]
     },
     {
       "invocation": "ai info",
-      "summary": "Report the active AI provider, model, and embedding configuration."
+      "summary": "Report the active AI provider, model, and embedding configuration.",
+      "canonicalArgv": [
+        "ai",
+        "info"
+      ]
     },
     {
       "invocation": "ai recommend",
-      "summary": "Expose the supported ai recommend capability through the canonical Workspai CLI boundary."
+      "summary": "Recommend relevant modules or actions from the detected project context and configured AI provider.",
+      "canonicalArgv": [
+        "ai",
+        "recommend"
+      ]
     },
     {
       "invocation": "ai update-embeddings",
-      "summary": "Expose the supported ai update-embeddings capability through the canonical Workspai CLI boundary."
+      "summary": "Refresh the semantic embedding index after source or workspace context changes.",
+      "canonicalArgv": [
+        "ai",
+        "update-embeddings"
+      ]
     },
     {
       "invocation": "analyze",
-      "summary": "Expose the supported analyze capability through the canonical Workspai CLI boundary."
+      "summary": "Evaluate workspace evidence and produce governance findings for downstream readiness and release decisions.",
+      "canonicalArgv": [
+        "analyze"
+      ]
     },
     {
       "invocation": "analyze --json",
-      "summary": "Expose the supported analyze --json capability through the canonical Workspai CLI boundary."
+      "summary": "Emit the workspace analysis result as structured JSON for CI and contract-aware consumers.",
+      "canonicalArgv": [
+        "analyze",
+        "--json"
+      ]
     },
     {
       "invocation": "autopilot",
-      "summary": "Expose the supported autopilot capability through the canonical Workspai CLI boundary."
+      "summary": "Coordinate supported automated governance actions while preserving explicit evidence and release gates.",
+      "canonicalArgv": [
+        "autopilot"
+      ]
     },
     {
       "invocation": "autopilot release",
-      "summary": "Expose the supported autopilot release capability through the canonical Workspai CLI boundary."
+      "summary": "Build a governed release proposal from current analysis, readiness, and verification evidence.",
+      "canonicalArgv": [
+        "autopilot",
+        "release"
+      ]
     },
     {
       "invocation": "bootstrap",
-      "summary": "Expose the supported bootstrap capability through the canonical Workspai CLI boundary."
+      "summary": "Establish the selected workspace profile, toolchain, and dependency baseline before project execution.",
+      "canonicalArgv": [
+        "bootstrap"
+      ]
     },
     {
       "invocation": "build",
-      "summary": "Expose the supported build capability through the canonical Workspai CLI boundary."
+      "summary": "Run the detected project build lifecycle through the owning runtime adapter.",
+      "canonicalArgv": [
+        "build"
+      ]
     },
     {
       "invocation": "cache",
-      "summary": "Expose the supported cache capability through the canonical Workspai CLI boundary."
+      "summary": "Inspect or clear Workspai cache entries used by workspace and project operations.",
+      "canonicalArgv": [
+        "cache"
+      ]
     },
     {
       "invocation": "checkpoint",
-      "summary": "Expose the supported checkpoint capability through the canonical Workspai CLI boundary."
+      "summary": "Capture a named project or workspace checkpoint that can anchor later comparison or recovery.",
+      "canonicalArgv": [
+        "checkpoint"
+      ]
     },
     {
       "invocation": "commands",
-      "summary": "Expose the supported commands capability through the canonical Workspai CLI boundary."
+      "summary": "Publish the installed CLI command inventory, ownership boundaries, aliases, options, and integrity verdict.",
+      "canonicalArgv": [
+        "commands"
+      ]
     },
     {
       "invocation": "config",
-      "summary": "Expose the supported config capability through the canonical Workspai CLI boundary."
+      "summary": "Manage persisted Workspai CLI and provider configuration for the current user environment.",
+      "canonicalArgv": [
+        "config"
+      ]
     },
     {
       "invocation": "config ai",
-      "summary": "Expose the supported config ai capability through the canonical Workspai CLI boundary."
+      "summary": "Inspect or update the active AI provider, model, and embedding configuration.",
+      "canonicalArgv": [
+        "config",
+        "ai"
+      ]
     },
     {
       "invocation": "config remove-api-key",
-      "summary": "Expose the supported config remove-api-key capability through the canonical Workspai CLI boundary."
+      "summary": "Remove a persisted provider API key from Workspai configuration.",
+      "canonicalArgv": [
+        "config",
+        "remove-api-key"
+      ]
     },
     {
       "invocation": "config set-api-key",
-      "summary": "Expose the supported config set-api-key capability through the canonical Workspai CLI boundary."
+      "summary": "Store a provider API key for authenticated AI operations.",
+      "canonicalArgv": [
+        "config",
+        "set-api-key"
+      ]
     },
     {
       "invocation": "config show",
-      "summary": "Expose the supported config show capability through the canonical Workspai CLI boundary."
+      "summary": "Display the effective Workspai configuration with secret values protected.",
+      "canonicalArgv": [
+        "config",
+        "show"
+      ]
     },
     {
       "invocation": "create",
-      "summary": "Expose the supported create capability through the canonical Workspai CLI boundary."
+      "summary": "Create a supported workspace, project, or module through the canonical planner and generator boundary.",
+      "canonicalArgv": [
+        "create"
+      ]
     },
     {
       "invocation": "dev",
-      "summary": "Expose the supported dev capability through the canonical Workspai CLI boundary."
+      "summary": "Run the detected project development lifecycle with its runtime-specific development command.",
+      "canonicalArgv": [
+        "dev"
+      ]
     },
     {
       "invocation": "diff",
-      "summary": "Expose the supported diff capability through the canonical Workspai CLI boundary."
+      "summary": "Compare governed project state against a selected baseline and report the observed changes.",
+      "canonicalArgv": [
+        "diff"
+      ]
     },
     {
       "invocation": "docs",
-      "summary": "Expose the supported docs capability through the canonical Workspai CLI boundary."
+      "summary": "Generate or validate documentation through the detected project documentation lifecycle.",
+      "canonicalArgv": [
+        "docs"
+      ]
     },
     {
       "invocation": "doctor",
-      "summary": "Expose the supported doctor capability through the canonical Workspai CLI boundary."
+      "summary": "Diagnose the active project or workspace and produce actionable findings with evidence-backed remediation guidance.",
+      "canonicalArgv": [
+        "doctor"
+      ]
     },
     {
       "invocation": "doctor project",
-      "summary": "Diagnose the current project and emit structured project evidence."
+      "summary": "Diagnose the current project and emit structured project evidence.",
+      "canonicalArgv": [
+        "doctor",
+        "project"
+      ]
     },
     {
       "invocation": "doctor workspace",
-      "summary": "Expose the supported doctor workspace capability through the canonical Workspai CLI boundary."
+      "summary": "Diagnose cross-project workspace health, contracts, policies, toolchains, and operational evidence.",
+      "canonicalArgv": [
+        "doctor",
+        "workspace"
+      ]
     },
     {
       "invocation": "doctor workspace --json",
-      "summary": "Expose the supported doctor workspace --json capability through the canonical Workspai CLI boundary."
+      "summary": "Emit workspace Doctor findings as structured evidence for verification and automation consumers.",
+      "canonicalArgv": [
+        "doctor",
+        "workspace",
+        "--json"
+      ]
     },
     {
       "invocation": "format",
-      "summary": "Expose the supported format capability through the canonical Workspai CLI boundary."
+      "summary": "Run the detected project formatter while respecting workspace policy and runtime ownership.",
+      "canonicalArgv": [
+        "format"
+      ]
     },
     {
       "invocation": "frameworks",
-      "summary": "Expose the supported frameworks capability through the canonical Workspai CLI boundary."
+      "summary": "List scaffold frameworks and kits currently supported by the installed CLI.",
+      "canonicalArgv": [
+        "frameworks"
+      ]
     },
     {
       "invocation": "help",
-      "summary": "Expose the supported help capability through the canonical Workspai CLI boundary."
+      "summary": "Display contextual CLI usage, arguments, options, and command discovery guidance.",
+      "canonicalArgv": [
+        "help"
+      ]
     },
     {
       "invocation": "import",
-      "summary": "Expose the supported import capability through the canonical Workspai CLI boundary."
+      "summary": "Copy or clone an existing project into the workspace and register its detected runtime capabilities.",
+      "canonicalArgv": [
+        "import"
+      ]
     },
     {
       "invocation": "info",
-      "summary": "Expose the supported info capability through the canonical Workspai CLI boundary."
+      "summary": "Report detected project, runtime, workspace, and toolchain information for the current scope.",
+      "canonicalArgv": [
+        "info"
+      ]
     },
     {
       "invocation": "infra",
-      "summary": "Expose the supported infra capability through the canonical Workspai CLI boundary."
+      "summary": "Manage governed infrastructure planning and lifecycle operations for the active workspace.",
+      "canonicalArgv": [
+        "infra"
+      ]
     },
     {
       "invocation": "infra down",
-      "summary": "Expose the supported infra down capability through the canonical Workspai CLI boundary."
+      "summary": "Stop the workspace infrastructure stack and optionally remove governed volumes.",
+      "canonicalArgv": [
+        "infra",
+        "down"
+      ]
     },
     {
       "invocation": "infra plan",
-      "summary": "Generate a versioned infrastructure plan without applying infrastructure changes."
+      "summary": "Generate a versioned infrastructure plan without applying infrastructure changes.",
+      "canonicalArgv": [
+        "infra",
+        "plan"
+      ]
     },
     {
       "invocation": "infra status",
-      "summary": "Expose the supported infra status capability through the canonical Workspai CLI boundary."
+      "summary": "Inspect infrastructure service state and expose a strict machine-checkable status verdict.",
+      "canonicalArgv": [
+        "infra",
+        "status"
+      ]
     },
     {
       "invocation": "infra up",
-      "summary": "Expose the supported infra up capability through the canonical Workspai CLI boundary."
+      "summary": "Start the workspace infrastructure stack from its governed configuration.",
+      "canonicalArgv": [
+        "infra",
+        "up"
+      ]
     },
     {
       "invocation": "init",
-      "summary": "Expose the supported init capability through the canonical Workspai CLI boundary."
+      "summary": "Initialize dependencies and required setup for the active project or complete workspace scope.",
+      "canonicalArgv": [
+        "init"
+      ]
     },
     {
       "invocation": "license",
-      "summary": "Expose the supported license capability through the canonical Workspai CLI boundary."
+      "summary": "Inspect or validate the effective Workspai license and feature entitlement state.",
+      "canonicalArgv": [
+        "license"
+      ]
     },
     {
       "invocation": "lint",
-      "summary": "Expose the supported lint capability through the canonical Workspai CLI boundary."
+      "summary": "Run the detected project lint lifecycle under workspace compatibility and policy gates.",
+      "canonicalArgv": [
+        "lint"
+      ]
     },
     {
       "invocation": "list",
-      "summary": "Expose the supported list capability through the canonical Workspai CLI boundary."
+      "summary": "List detected or registered resources for the current command scope.",
+      "canonicalArgv": [
+        "list"
+      ]
     },
     {
       "invocation": "merge",
-      "summary": "Expose the supported merge capability through the canonical Workspai CLI boundary."
+      "summary": "Combine supported governed configuration or project state through the owning runtime operation.",
+      "canonicalArgv": [
+        "merge"
+      ]
     },
     {
       "invocation": "mirror",
-      "summary": "Expose the supported mirror capability through the canonical Workspai CLI boundary."
+      "summary": "Manage local package or dependency mirrors used by offline and controlled development workflows.",
+      "canonicalArgv": [
+        "mirror"
+      ]
     },
     {
       "invocation": "modules",
-      "summary": "Expose the supported modules capability through the canonical Workspai CLI boundary."
+      "summary": "List supported project modules and their runtime-specific capability state.",
+      "canonicalArgv": [
+        "modules"
+      ]
     },
     {
       "invocation": "optimize",
-      "summary": "Expose the supported optimize capability through the canonical Workspai CLI boundary."
+      "summary": "Apply supported project optimization operations through the detected runtime adapter.",
+      "canonicalArgv": [
+        "optimize"
+      ]
     },
     {
       "invocation": "pipeline",
-      "summary": "Expose the supported pipeline capability through the canonical Workspai CLI boundary."
+      "summary": "Run the governance pipeline from sync and diagnostics through analysis, readiness, verification, and optional release automation.",
+      "canonicalArgv": [
+        "pipeline",
+        "--json"
+      ],
+      "output": {
+        "defaultFormat": "human-or-json",
+        "modes": [
+          {
+            "selector": "--json",
+            "format": "json",
+            "mediaType": "application/json"
+          }
+        ]
+      },
+      "exitSemantics": {
+        "default": "Warning-only pipeline reports are advisory and return exit code 0.",
+        "strict": "With --strict, warning-only pipeline reports return a non-zero exit code.",
+        "failure": "Execution failures and failed stages return a non-zero exit code in every mode."
+      }
     },
     {
       "invocation": "product",
-      "summary": "Expose the supported product capability through the canonical Workspai CLI boundary."
+      "summary": "Manage governed product manifests and factory planning operations.",
+      "canonicalArgv": [
+        "product"
+      ]
     },
     {
       "invocation": "product manifest",
-      "summary": "Expose the supported product manifest capability through the canonical Workspai CLI boundary."
+      "summary": "Inspect or create the product manifest that defines product factory inputs.",
+      "canonicalArgv": [
+        "product",
+        "manifest"
+      ]
     },
     {
       "invocation": "product manifest create",
-      "summary": "Create a governed product manifest for product planning operations."
+      "summary": "Create a governed product manifest for product planning operations.",
+      "canonicalArgv": [
+        "product",
+        "manifest",
+        "create"
+      ]
     },
     {
       "invocation": "product plan",
-      "summary": "Generate a product factory plan from the current product definition."
+      "summary": "Generate a product factory plan from the current product definition.",
+      "canonicalArgv": [
+        "product",
+        "plan"
+      ]
     },
     {
       "invocation": "project",
-      "summary": "Expose project-scoped command discovery, archive, restore, and deletion operations."
+      "summary": "Expose project-scoped command discovery, archive, restore, and deletion operations.",
+      "canonicalArgv": [
+        "project"
+      ]
     },
     {
       "invocation": "project archive",
-      "summary": "Expose the supported project archive capability through the canonical Workspai CLI boundary."
+      "summary": "Move a project into governed archive storage while preserving registry metadata and recovery evidence.",
+      "canonicalArgv": [
+        "project",
+        "archive"
+      ]
     },
     {
       "invocation": "project archives",
-      "summary": "Expose the supported project archives capability through the canonical Workspai CLI boundary."
+      "summary": "List governed project archives and their available restoration metadata.",
+      "canonicalArgv": [
+        "project",
+        "archives"
+      ]
     },
     {
       "invocation": "project commands",
-      "summary": "Expose the supported project commands capability through the canonical Workspai CLI boundary."
+      "summary": "Discover commands supported by the selected project runtime and its current capability tier.",
+      "canonicalArgv": [
+        "project",
+        "commands"
+      ]
     },
     {
       "invocation": "project delete",
-      "summary": "Expose the supported project delete capability through the canonical Workspai CLI boundary."
+      "summary": "Delete a registered project through guarded workspace safety and recovery checks.",
+      "canonicalArgv": [
+        "project",
+        "delete"
+      ]
     },
     {
       "invocation": "project restore",
-      "summary": "Expose the supported project restore capability through the canonical Workspai CLI boundary."
+      "summary": "Restore an archived project to its workspace path and reconcile registry ownership.",
+      "canonicalArgv": [
+        "project",
+        "restore"
+      ]
     },
     {
       "invocation": "readiness",
-      "summary": "Expose the supported readiness capability through the canonical Workspai CLI boundary."
+      "summary": "Evaluate whether current workspace evidence satisfies release-readiness requirements and blockers.",
+      "canonicalArgv": [
+        "readiness"
+      ]
     },
     {
       "invocation": "readiness --json",
-      "summary": "Expose the supported readiness --json capability through the canonical Workspai CLI boundary."
+      "summary": "Emit the release-readiness verdict, blockers, and evidence references as structured JSON.",
+      "canonicalArgv": [
+        "readiness",
+        "--json"
+      ]
     },
     {
       "invocation": "reconcile",
-      "summary": "Expose the supported reconcile capability through the canonical Workspai CLI boundary."
+      "summary": "Reconcile detected project or workspace state with its governed metadata and registered configuration.",
+      "canonicalArgv": [
+        "reconcile"
+      ]
     },
     {
       "invocation": "rollback",
-      "summary": "Expose the supported rollback capability through the canonical Workspai CLI boundary."
+      "summary": "Restore supported generated or governed state to the previous recorded operation boundary.",
+      "canonicalArgv": [
+        "rollback"
+      ]
     },
     {
       "invocation": "setup",
-      "summary": "Expose the supported setup capability through the canonical Workspai CLI boundary."
+      "summary": "Install or validate runtime-specific prerequisites required by the selected workspace profile.",
+      "canonicalArgv": [
+        "setup"
+      ]
     },
     {
       "invocation": "shell",
-      "summary": "Expose the supported shell capability through the canonical Workspai CLI boundary."
+      "summary": "Open a workspace-aware shell with resolved project, runtime, and toolchain context.",
+      "canonicalArgv": [
+        "shell"
+      ]
     },
     {
       "invocation": "snapshot",
-      "summary": "Expose the supported snapshot capability through the canonical Workspai CLI boundary."
+      "summary": "Manage governed workspace recovery snapshots independently from Workspace Intelligence model baselines.",
+      "canonicalArgv": [
+        "snapshot"
+      ]
     },
     {
       "invocation": "snapshot create",
-      "summary": "Create a governed workspace snapshot for comparison or recovery."
+      "summary": "Create a governed workspace snapshot for comparison or recovery.",
+      "canonicalArgv": [
+        "snapshot",
+        "create"
+      ]
     },
     {
       "invocation": "snapshot inspect",
-      "summary": "Expose the supported snapshot inspect capability through the canonical Workspai CLI boundary."
+      "summary": "Inspect snapshot metadata, contents, and recovery compatibility without restoring it.",
+      "canonicalArgv": [
+        "snapshot",
+        "inspect"
+      ]
     },
     {
       "invocation": "snapshot list",
-      "summary": "List governed workspace snapshots available for inspection or recovery."
+      "summary": "List governed workspace snapshots available for inspection or recovery.",
+      "canonicalArgv": [
+        "snapshot",
+        "list"
+      ]
     },
     {
       "invocation": "snapshot restore",
-      "summary": "Expose the supported snapshot restore capability through the canonical Workspai CLI boundary."
+      "summary": "Restore a governed snapshot through the workspace recovery boundary.",
+      "canonicalArgv": [
+        "snapshot",
+        "restore"
+      ]
     },
     {
       "invocation": "start",
-      "summary": "Expose the supported start capability through the canonical Workspai CLI boundary."
+      "summary": "Run the detected project production or service-start lifecycle command.",
+      "canonicalArgv": [
+        "start"
+      ]
     },
     {
       "invocation": "test",
-      "summary": "Expose the supported test capability through the canonical Workspai CLI boundary."
+      "summary": "Run the detected project test lifecycle under workspace compatibility and policy gates.",
+      "canonicalArgv": [
+        "test"
+      ]
     },
     {
       "invocation": "uninstall",
-      "summary": "Expose the supported uninstall capability through the canonical Workspai CLI boundary."
+      "summary": "Remove a supported module, tool, or generated integration through its owning operation.",
+      "canonicalArgv": [
+        "uninstall"
+      ]
     },
     {
       "invocation": "upgrade",
-      "summary": "Expose the supported upgrade capability through the canonical Workspai CLI boundary."
+      "summary": "Upgrade supported Workspai-managed dependencies or generated project capabilities.",
+      "canonicalArgv": [
+        "upgrade"
+      ]
     },
     {
       "invocation": "version",
-      "summary": "Expose the supported version capability through the canonical Workspai CLI boundary."
+      "summary": "Report the installed CLI version and published contract compatibility metadata.",
+      "canonicalArgv": [
+        "version"
+      ]
     },
     {
       "invocation": "workspace",
-      "summary": "Expose the supported workspace capability through the canonical Workspai CLI boundary."
+      "summary": "Dispatch workspace discovery, intelligence, governance, portability, and fleet lifecycle operations.",
+      "canonicalArgv": [
+        "workspace"
+      ]
     },
     {
       "invocation": "workspace agent-sync",
-      "summary": "Expose the supported workspace agent-sync capability through the canonical Workspai CLI boundary."
+      "summary": "Project current workspace context into governed agent instructions, reports, skills, and integration files.",
+      "canonicalArgv": [
+        "workspace",
+        "agent-sync"
+      ]
     },
     {
       "invocation": "workspace agent-sync --write --json --preset enterprise",
-      "summary": "Expose the supported workspace agent-sync --write --json --preset enterprise capability through the canonical Workspai CLI boundary."
+      "summary": "Generate the enterprise agent-grounding pack, persist every governed artifact, and emit a structured result.",
+      "canonicalArgv": [
+        "workspace",
+        "agent-sync",
+        "--write",
+        "--json",
+        "--preset",
+        "enterprise"
+      ]
     },
     {
       "invocation": "workspace archive",
-      "summary": "Create or inspect a governed workspace archive."
+      "summary": "Create or inspect a governed workspace archive.",
+      "canonicalArgv": [
+        "workspace",
+        "archive"
+      ]
     },
     {
       "invocation": "workspace context",
-      "summary": "Expose the supported workspace context capability through the canonical Workspai CLI boundary."
+      "summary": "Build a scoped workspace context projection from the current model and evidence for human or agent consumption.",
+      "canonicalArgv": [
+        "workspace",
+        "context"
+      ]
     },
     {
       "invocation": "workspace context --for-agent --json --write --no-agent-sync",
-      "summary": "Expose the supported workspace context --for-agent --json --write --no-agent-sync capability through the canonical Workspai CLI boundary."
+      "summary": "Persist structured agent context without mutating downstream agent instruction surfaces.",
+      "canonicalArgv": [
+        "workspace",
+        "context",
+        "--for-agent",
+        "--json",
+        "--write",
+        "--no-agent-sync"
+      ]
     },
     {
       "invocation": "workspace contract",
-      "summary": "Inspect and verify explicit workspace contracts."
+      "summary": "Inspect and verify explicit workspace contracts.",
+      "canonicalArgv": [
+        "workspace",
+        "contract"
+      ]
     },
     {
       "invocation": "workspace contract verify --strict --json",
-      "summary": "Expose the supported workspace contract verify --strict --json capability through the canonical Workspai CLI boundary."
+      "summary": "Strictly validate workspace contracts and emit a structured evidence artifact that blocks on violations.",
+      "canonicalArgv": [
+        "workspace",
+        "contract",
+        "verify",
+        "--strict",
+        "--json"
+      ]
     },
     {
       "invocation": "workspace diff",
-      "summary": "Expose the supported workspace diff capability through the canonical Workspai CLI boundary."
+      "summary": "Compare the current canonical workspace model with a snapshot or source-control baseline.",
+      "canonicalArgv": [
+        "workspace",
+        "diff"
+      ]
     },
     {
       "invocation": "workspace diff --from .workspai/reports/workspace-model-snapshot.json --json",
-      "summary": "Expose the supported workspace diff --from .workspai/reports/workspace-model-snapshot.json --json capability through the canonical Workspai CLI boundary."
+      "summary": "Compute structured model changes from the canonical snapshot artifact for downstream impact analysis.",
+      "canonicalArgv": [
+        "workspace",
+        "diff",
+        "--from",
+        ".workspai/reports/workspace-model-snapshot.json",
+        "--json"
+      ]
     },
     {
       "invocation": "workspace explain",
-      "summary": "Expose the supported workspace explain capability through the canonical Workspai CLI boundary."
+      "summary": "Explain a workspace relationship, project, or blocker from traceable model and evidence references.",
+      "canonicalArgv": [
+        "workspace",
+        "explain"
+      ]
     },
     {
       "invocation": "workspace explain release-blocked --json --write",
-      "summary": "Expose the supported workspace explain release-blocked --json --write capability through the canonical Workspai CLI boundary."
+      "summary": "Persist a structured explanation of release blockers and the evidence that caused the verdict.",
+      "canonicalArgv": [
+        "workspace",
+        "explain",
+        "release-blocked",
+        "--json",
+        "--write"
+      ]
     },
     {
       "invocation": "workspace export",
-      "summary": "Export workspace intelligence into a portable consumer representation."
+      "summary": "Export workspace intelligence into a portable consumer representation.",
+      "canonicalArgv": [
+        "workspace",
+        "export"
+      ]
     },
     {
       "invocation": "workspace feedback",
-      "summary": "Record structured feedback about Workspace Intelligence output."
+      "summary": "Record structured feedback about Workspace Intelligence output.",
+      "canonicalArgv": [
+        "workspace",
+        "feedback",
+        "record",
+        "--json"
+      ],
+      "input": {
+        "transport": "stdin",
+        "mediaType": "application/json",
+        "required": true,
+        "schemaVersion": "agent-action-outcome.v1",
+        "contractPath": "contracts/workspace-intelligence/agent-action-outcome.v1.json"
+      },
+      "output": {
+        "defaultFormat": "human-or-json",
+        "modes": [
+          {
+            "selector": "--json",
+            "format": "json",
+            "mediaType": "application/json"
+          }
+        ]
+      }
+    },
+    {
+      "invocation": "workspace feedback record --json",
+      "summary": "Validate an agent action outcome from stdin and append it to governed Workspace Intelligence history.",
+      "canonicalArgv": [
+        "workspace",
+        "feedback",
+        "record",
+        "--json"
+      ]
     },
     {
       "invocation": "workspace foundation",
-      "summary": "Inspect or establish the foundational metadata required by workspace operations."
+      "summary": "Inspect or establish the foundational metadata required by workspace operations.",
+      "canonicalArgv": [
+        "workspace",
+        "foundation"
+      ]
     },
     {
       "invocation": "workspace graph",
-      "summary": "Render the current workspace dependency graph in a supported representation."
+      "summary": "Render the current workspace dependency graph in a supported representation.",
+      "canonicalArgv": [
+        "workspace",
+        "graph",
+        "emit",
+        "--json"
+      ],
+      "output": {
+        "defaultFormat": "human-or-json",
+        "modes": [
+          {
+            "selector": "emit --json",
+            "format": "json",
+            "mediaType": "application/json"
+          },
+          {
+            "selector": "explain <project> --json",
+            "format": "json",
+            "mediaType": "application/json"
+          },
+          {
+            "selector": "dot",
+            "format": "raw-text",
+            "mediaType": "text/vnd.graphviz"
+          },
+          {
+            "selector": "mermaid",
+            "format": "raw-text",
+            "mediaType": "text/vnd.mermaid"
+          }
+        ]
+      }
     },
     {
       "invocation": "workspace hydrate",
-      "summary": "Restore or materialize workspace state from a portable representation."
+      "summary": "Restore or materialize workspace state from a portable representation.",
+      "canonicalArgv": [
+        "workspace",
+        "hydrate"
+      ]
     },
     {
       "invocation": "workspace impact",
-      "summary": "Expose the supported workspace impact capability through the canonical Workspai CLI boundary."
+      "summary": "Calculate the blast radius of a workspace diff across projects, dependencies, tests, policies, and gates.",
+      "canonicalArgv": [
+        "workspace",
+        "impact"
+      ]
     },
     {
       "invocation": "workspace impact --from .workspai/reports/workspace-model-diff-last-run.json --json",
-      "summary": "Expose the supported workspace impact --from .workspai/reports/workspace-model-diff-last-run.json --json capability through the canonical Workspai CLI boundary."
+      "summary": "Compute structured impact evidence from the latest canonical workspace model diff artifact.",
+      "canonicalArgv": [
+        "workspace",
+        "impact",
+        "--from",
+        ".workspai/reports/workspace-model-diff-last-run.json",
+        "--json"
+      ]
     },
     {
       "invocation": "workspace import",
-      "summary": "Attach an existing project or repository to the workspace inventory."
+      "summary": "Attach an existing project or repository to the workspace inventory.",
+      "canonicalArgv": [
+        "workspace",
+        "import"
+      ]
     },
     {
       "invocation": "workspace init",
-      "summary": "Initialize workspace and project dependencies through the shared init flow."
+      "summary": "Initialize workspace and project dependencies through the shared init flow.",
+      "canonicalArgv": [
+        "workspace",
+        "init"
+      ]
     },
     {
       "invocation": "workspace list",
-      "summary": "List registered workspaces through the canonical workspace discovery boundary."
+      "summary": "List registered workspaces through the canonical workspace discovery boundary.",
+      "canonicalArgv": [
+        "workspace",
+        "list"
+      ]
     },
     {
       "invocation": "workspace mcp",
-      "summary": "Expose Workspace Intelligence through the MCP integration boundary."
+      "summary": "Expose Workspace Intelligence through the MCP integration boundary.",
+      "canonicalArgv": [
+        "workspace",
+        "mcp"
+      ]
     },
     {
       "invocation": "workspace model",
-      "summary": "Expose the supported workspace model capability through the canonical Workspai CLI boundary."
+      "summary": "Discover and normalize workspace entities, relationships, ownership, runtime, contract, and evidence state.",
+      "canonicalArgv": [
+        "workspace",
+        "model"
+      ]
     },
     {
       "invocation": "workspace model --json --write",
-      "summary": "Expose the supported workspace model --json --write capability through the canonical Workspai CLI boundary."
+      "summary": "Persist the canonical workspace model and emit the same versioned representation as JSON.",
+      "canonicalArgv": [
+        "workspace",
+        "model",
+        "--json",
+        "--write"
+      ]
     },
     {
       "invocation": "workspace policy",
-      "summary": "Inspect or update workspace governance policy."
+      "summary": "Inspect or update workspace governance policy.",
+      "canonicalArgv": [
+        "workspace",
+        "policy"
+      ]
     },
     {
       "invocation": "workspace registry",
-      "summary": "Inspect and maintain the canonical workspace registry boundary."
+      "summary": "Inspect and maintain the canonical workspace registry boundary.",
+      "canonicalArgv": [
+        "workspace",
+        "registry"
+      ]
     },
     {
       "invocation": "workspace remediation-plan",
-      "summary": "Generate a structured remediation plan from current workspace evidence."
+      "summary": "Generate a structured remediation plan from current workspace evidence.",
+      "canonicalArgv": [
+        "workspace",
+        "remediation-plan"
+      ]
     },
     {
       "invocation": "workspace run",
-      "summary": "Run a supported lifecycle command across registered workspace projects."
+      "summary": "Run a supported lifecycle command across registered workspace projects.",
+      "canonicalArgv": [
+        "workspace",
+        "run"
+      ]
     },
     {
       "invocation": "workspace share",
-      "summary": "Prepare a governed workspace sharing surface."
+      "summary": "Prepare a governed workspace sharing surface.",
+      "canonicalArgv": [
+        "workspace",
+        "share"
+      ]
     },
     {
       "invocation": "workspace snapshot",
-      "summary": "Capture a versioned workspace or model baseline for comparison and recovery."
+      "summary": "Capture a versioned workspace or model baseline for comparison and recovery.",
+      "canonicalArgv": [
+        "workspace",
+        "snapshot"
+      ]
     },
     {
       "invocation": "workspace sync",
-      "summary": "Reconcile registered projects and workspace identity with the current filesystem state."
+      "summary": "Reconcile registered projects and workspace identity with the current filesystem state.",
+      "canonicalArgv": [
+        "workspace",
+        "sync"
+      ]
     },
     {
       "invocation": "workspace trace",
-      "summary": "Trace a change or finding through its evidence and dependency relationships."
+      "summary": "Trace a change or finding through its evidence and dependency relationships.",
+      "canonicalArgv": [
+        "workspace",
+        "trace"
+      ]
     },
     {
       "invocation": "workspace verify",
-      "summary": "Expose the supported workspace verify capability through the canonical Workspai CLI boundary."
+      "summary": "Combine impact, diagnostics, contracts, analysis, and readiness evidence into a governed verification verdict.",
+      "canonicalArgv": [
+        "workspace",
+        "verify"
+      ]
     },
     {
       "invocation": "workspace verify --from-impact .workspai/reports/workspace-impact-last-run.json --json",
-      "summary": "Expose the supported workspace verify --from-impact .workspai/reports/workspace-impact-last-run.json --json capability through the canonical Workspai CLI boundary."
+      "summary": "Verify the latest impact artifact and append the structured outcome to Workspace Intelligence history.",
+      "canonicalArgv": [
+        "workspace",
+        "verify",
+        "--from-impact",
+        ".workspai/reports/workspace-impact-last-run.json",
+        "--json"
+      ]
     },
     {
       "invocation": "workspace watch",
-      "summary": "Observe relevant workspace changes and publish versioned watch events."
+      "summary": "Observe relevant workspace changes and publish versioned watch events.",
+      "canonicalArgv": [
+        "workspace",
+        "watch"
+      ]
     },
     {
       "invocation": "workspace why",
-      "summary": "Explain why a relationship, verdict, or workspace fact exists."
+      "summary": "Explain why a relationship, verdict, or workspace fact exists.",
+      "canonicalArgv": [
+        "workspace",
+        "why"
+      ]
     }
   ],
   "artifactContracts": [
@@ -732,6 +1230,12 @@
           "verify",
           "--from-impact",
           ".workspai/reports/workspace-impact-last-run.json",
+          "--json"
+        ],
+        [
+          "workspace",
+          "feedback",
+          "record",
           "--json"
         ]
       ]
@@ -1005,13 +1509,18 @@
     "snapshot",
     "diff",
     "impact",
+    "contract",
     "verify",
+    "graph",
+    "watch",
     "context",
     "agent-sync",
     "remediation-plan",
     "explain",
     "why",
-    "trace"
+    "trace",
+    "feedback",
+    "mcp"
   ],
   "workspaceIntelligenceRootCommands": [
     "analyze",

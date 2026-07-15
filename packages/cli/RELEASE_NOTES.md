@@ -20,6 +20,10 @@ against the same live inventory.
 - **Command, artifact, and contract linkage**
   - Runtime command-surface contracts now include command documentation,
     package ownership, artifact schemas, and producer command mappings.
+  - Command documentation publishes canonical argv and structured stdin,
+    output-media, and exit-semantics metadata where the command requires it.
+  - Workspace feedback is registered as a producer of the governed
+    Workspace Intelligence history artifact.
   - Shared-contract generation and enterprise prepack now verify and publish the
     runtime inventory snapshot.
 
@@ -30,6 +34,8 @@ against the same live inventory.
     history artifact behavior.
   - DOT and Mermaid graph renderers are explicitly documented as raw-text
     outputs; structured consumers use graph emit/explain JSON.
+  - Contract verification, graph, watch, feedback, and MCP are now classified
+    consistently as Workspace Intelligence capabilities for portal and IDE use.
 
 - **Gate correctness**
   - Warning-only pipelines exit successfully by default and become blocking

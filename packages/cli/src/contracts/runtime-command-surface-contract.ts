@@ -37,8 +37,35 @@ import {
   CLI_OPERATION_RESULT_SCHEMA_VERSION,
 } from './cli-operation-result-contract.js';
 import { WORKSPACE_ARTIFACT_CONTRACTS } from './artifact-contract-registry.js';
+import { AGENT_ACTION_OUTCOME_SCHEMA_VERSION } from './agent-action-outcome-contract.js';
 
 export const RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION = 'rapidkit-runtime-command-surface-v1';
+
+export type RuntimeCommandDocumentation = {
+  invocation: string;
+  summary: string;
+  canonicalArgv: string[];
+  input?: {
+    transport: 'stdin';
+    mediaType: 'application/json';
+    required: true;
+    schemaVersion: string;
+    contractPath: string;
+  };
+  output?: {
+    defaultFormat: 'human-or-json' | 'raw-text';
+    modes?: Array<{
+      selector: string;
+      format: 'json' | 'raw-text';
+      mediaType: 'application/json' | 'text/vnd.graphviz' | 'text/vnd.mermaid';
+    }>;
+  };
+  exitSemantics?: {
+    default: string;
+    strict: string;
+    failure: string;
+  };
+};
 
 export type RuntimeCommandSurfaceContract = {
   schemaVersion: string;
@@ -49,10 +76,7 @@ export type RuntimeCommandSurfaceContract = {
   coreProjectCommands: string[];
   npmOwnedTopLevelCommands: string[];
   npmOwnedScopedCommands: string[][];
-  commandDocumentation: Array<{
-    invocation: string;
-    summary: string;
-  }>;
+  commandDocumentation: RuntimeCommandDocumentation[];
   artifactContracts: Array<{
     artifactPath: string;
     schemaVersion: string;
@@ -101,6 +125,141 @@ export type RuntimeCommandSurfaceContract = {
 };
 
 const COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
+  add: 'Add a supported module or capability to the active project through its runtime adapter.',
+  adopt:
+    'Register an existing local repository as a governed Workspai project without recreating its source.',
+  ai: 'Manage AI configuration, recommendations, and embedding operations for the active workspace.',
+  'ai generate-embeddings':
+    'Generate the initial semantic embedding index from the current project or workspace sources.',
+  'ai recommend':
+    'Recommend relevant modules or actions from the detected project context and configured AI provider.',
+  'ai update-embeddings':
+    'Refresh the semantic embedding index after source or workspace context changes.',
+  analyze:
+    'Evaluate workspace evidence and produce governance findings for downstream readiness and release decisions.',
+  'analyze --json':
+    'Emit the workspace analysis result as structured JSON for CI and contract-aware consumers.',
+  autopilot:
+    'Coordinate supported automated governance actions while preserving explicit evidence and release gates.',
+  'autopilot release':
+    'Build a governed release proposal from current analysis, readiness, and verification evidence.',
+  bootstrap:
+    'Establish the selected workspace profile, toolchain, and dependency baseline before project execution.',
+  build: 'Run the detected project build lifecycle through the owning runtime adapter.',
+  cache: 'Inspect or clear Workspai cache entries used by workspace and project operations.',
+  checkpoint:
+    'Capture a named project or workspace checkpoint that can anchor later comparison or recovery.',
+  commands:
+    'Publish the installed CLI command inventory, ownership boundaries, aliases, options, and integrity verdict.',
+  config:
+    'Manage persisted Workspai CLI and provider configuration for the current user environment.',
+  'config ai': 'Inspect or update the active AI provider, model, and embedding configuration.',
+  'config remove-api-key': 'Remove a persisted provider API key from Workspai configuration.',
+  'config set-api-key': 'Store a provider API key for authenticated AI operations.',
+  'config show': 'Display the effective Workspai configuration with secret values protected.',
+  create:
+    'Create a supported workspace, project, or module through the canonical planner and generator boundary.',
+  dev: 'Run the detected project development lifecycle with its runtime-specific development command.',
+  diff: 'Compare governed project state against a selected baseline and report the observed changes.',
+  docs: 'Generate or validate documentation through the detected project documentation lifecycle.',
+  doctor:
+    'Diagnose the active project or workspace and produce actionable findings with evidence-backed remediation guidance.',
+  'doctor workspace':
+    'Diagnose cross-project workspace health, contracts, policies, toolchains, and operational evidence.',
+  'doctor workspace --json':
+    'Emit workspace Doctor findings as structured evidence for verification and automation consumers.',
+  format:
+    'Run the detected project formatter while respecting workspace policy and runtime ownership.',
+  frameworks: 'List scaffold frameworks and kits currently supported by the installed CLI.',
+  help: 'Display contextual CLI usage, arguments, options, and command discovery guidance.',
+  import:
+    'Copy or clone an existing project into the workspace and register its detected runtime capabilities.',
+  info: 'Report detected project, runtime, workspace, and toolchain information for the current scope.',
+  infra:
+    'Manage governed infrastructure planning and lifecycle operations for the active workspace.',
+  'infra down': 'Stop the workspace infrastructure stack and optionally remove governed volumes.',
+  'infra status':
+    'Inspect infrastructure service state and expose a strict machine-checkable status verdict.',
+  'infra up': 'Start the workspace infrastructure stack from its governed configuration.',
+  init: 'Initialize dependencies and required setup for the active project or complete workspace scope.',
+  license: 'Inspect or validate the effective Workspai license and feature entitlement state.',
+  lint: 'Run the detected project lint lifecycle under workspace compatibility and policy gates.',
+  list: 'List detected or registered resources for the current command scope.',
+  merge:
+    'Combine supported governed configuration or project state through the owning runtime operation.',
+  mirror:
+    'Manage local package or dependency mirrors used by offline and controlled development workflows.',
+  modules: 'List supported project modules and their runtime-specific capability state.',
+  optimize: 'Apply supported project optimization operations through the detected runtime adapter.',
+  pipeline:
+    'Run the governance pipeline from sync and diagnostics through analysis, readiness, verification, and optional release automation.',
+  product: 'Manage governed product manifests and factory planning operations.',
+  'product manifest': 'Inspect or create the product manifest that defines product factory inputs.',
+  'project archive':
+    'Move a project into governed archive storage while preserving registry metadata and recovery evidence.',
+  'project archives': 'List governed project archives and their available restoration metadata.',
+  'project commands':
+    'Discover commands supported by the selected project runtime and its current capability tier.',
+  'project delete':
+    'Delete a registered project through guarded workspace safety and recovery checks.',
+  'project restore':
+    'Restore an archived project to its workspace path and reconcile registry ownership.',
+  readiness:
+    'Evaluate whether current workspace evidence satisfies release-readiness requirements and blockers.',
+  'readiness --json':
+    'Emit the release-readiness verdict, blockers, and evidence references as structured JSON.',
+  reconcile:
+    'Reconcile detected project or workspace state with its governed metadata and registered configuration.',
+  rollback:
+    'Restore supported generated or governed state to the previous recorded operation boundary.',
+  setup:
+    'Install or validate runtime-specific prerequisites required by the selected workspace profile.',
+  shell: 'Open a workspace-aware shell with resolved project, runtime, and toolchain context.',
+  snapshot:
+    'Manage governed workspace recovery snapshots independently from Workspace Intelligence model baselines.',
+  'snapshot inspect':
+    'Inspect snapshot metadata, contents, and recovery compatibility without restoring it.',
+  'snapshot restore': 'Restore a governed snapshot through the workspace recovery boundary.',
+  start: 'Run the detected project production or service-start lifecycle command.',
+  test: 'Run the detected project test lifecycle under workspace compatibility and policy gates.',
+  uninstall:
+    'Remove a supported module, tool, or generated integration through its owning operation.',
+  upgrade: 'Upgrade supported Workspai-managed dependencies or generated project capabilities.',
+  version: 'Report the installed CLI version and published contract compatibility metadata.',
+  workspace:
+    'Dispatch workspace discovery, intelligence, governance, portability, and fleet lifecycle operations.',
+  'workspace agent-sync':
+    'Project current workspace context into governed agent instructions, reports, skills, and integration files.',
+  'workspace agent-sync --write --json --preset enterprise':
+    'Generate the enterprise agent-grounding pack, persist every governed artifact, and emit a structured result.',
+  'workspace context':
+    'Build a scoped workspace context projection from the current model and evidence for human or agent consumption.',
+  'workspace context --for-agent --json --write --no-agent-sync':
+    'Persist structured agent context without mutating downstream agent instruction surfaces.',
+  'workspace contract verify --strict --json':
+    'Strictly validate workspace contracts and emit a structured evidence artifact that blocks on violations.',
+  'workspace diff':
+    'Compare the current canonical workspace model with a snapshot or source-control baseline.',
+  'workspace diff --from .workspai/reports/workspace-model-snapshot.json --json':
+    'Compute structured model changes from the canonical snapshot artifact for downstream impact analysis.',
+  'workspace explain':
+    'Explain a workspace relationship, project, or blocker from traceable model and evidence references.',
+  'workspace explain release-blocked --json --write':
+    'Persist a structured explanation of release blockers and the evidence that caused the verdict.',
+  'workspace feedback record --json':
+    'Validate an agent action outcome from stdin and append it to governed Workspace Intelligence history.',
+  'workspace impact':
+    'Calculate the blast radius of a workspace diff across projects, dependencies, tests, policies, and gates.',
+  'workspace impact --from .workspai/reports/workspace-model-diff-last-run.json --json':
+    'Compute structured impact evidence from the latest canonical workspace model diff artifact.',
+  'workspace model':
+    'Discover and normalize workspace entities, relationships, ownership, runtime, contract, and evidence state.',
+  'workspace model --json --write':
+    'Persist the canonical workspace model and emit the same versioned representation as JSON.',
+  'workspace verify':
+    'Combine impact, diagnostics, contracts, analysis, and readiness evidence into a governed verification verdict.',
+  'workspace verify --from-impact .workspai/reports/workspace-impact-last-run.json --json':
+    'Verify the latest impact artifact and append the structured outcome to Workspace Intelligence history.',
   'workspace list':
     'List registered workspaces through the canonical workspace discovery boundary.',
   'workspace sync':
@@ -137,10 +296,56 @@ const COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
   'snapshot create': 'Create a governed workspace snapshot for comparison or recovery.',
 };
 
+const COMMAND_DOCUMENTATION_OVERRIDES: Readonly<
+  Record<string, Omit<RuntimeCommandDocumentation, 'invocation' | 'summary'>>
+> = {
+  'workspace feedback': {
+    canonicalArgv: ['workspace', 'feedback', 'record', '--json'],
+    input: {
+      transport: 'stdin',
+      mediaType: 'application/json',
+      required: true,
+      schemaVersion: AGENT_ACTION_OUTCOME_SCHEMA_VERSION,
+      contractPath: 'contracts/workspace-intelligence/agent-action-outcome.v1.json',
+    },
+    output: {
+      defaultFormat: 'human-or-json',
+      modes: [{ selector: '--json', format: 'json', mediaType: 'application/json' }],
+    },
+  },
+  'workspace graph': {
+    canonicalArgv: ['workspace', 'graph', 'emit', '--json'],
+    output: {
+      defaultFormat: 'human-or-json',
+      modes: [
+        { selector: 'emit --json', format: 'json', mediaType: 'application/json' },
+        { selector: 'explain <project> --json', format: 'json', mediaType: 'application/json' },
+        { selector: 'dot', format: 'raw-text', mediaType: 'text/vnd.graphviz' },
+        { selector: 'mermaid', format: 'raw-text', mediaType: 'text/vnd.mermaid' },
+      ],
+    },
+  },
+  pipeline: {
+    canonicalArgv: ['pipeline', '--json'],
+    output: {
+      defaultFormat: 'human-or-json',
+      modes: [{ selector: '--json', format: 'json', mediaType: 'application/json' }],
+    },
+    exitSemantics: {
+      default: 'Warning-only pipeline reports are advisory and return exit code 0.',
+      strict: 'With --strict, warning-only pipeline reports return a non-zero exit code.',
+      failure: 'Execution failures and failed stages return a non-zero exit code in every mode.',
+    },
+  },
+};
+
 function commandSummary(invocation: string): string {
   const curated = COMMAND_SUMMARIES[invocation];
   if (curated) return curated;
-  return `Expose the supported ${invocation} capability through the canonical Workspai CLI boundary.`;
+  throw new Error(
+    `Runtime command ${invocation} is missing a command-specific summary. ` +
+      'Every published command must explain its own operational role.'
+  );
 }
 
 function buildCommandDocumentation(
@@ -148,7 +353,13 @@ function buildCommandDocumentation(
 ): RuntimeCommandSurfaceContract['commandDocumentation'] {
   return [...new Set(invocations)]
     .sort((left, right) => left.localeCompare(right))
-    .map((invocation) => ({ invocation, summary: commandSummary(invocation) }));
+    .map((invocation) => ({
+      invocation,
+      summary: commandSummary(invocation),
+      ...COMMAND_DOCUMENTATION_OVERRIDES[invocation],
+      canonicalArgv:
+        COMMAND_DOCUMENTATION_OVERRIDES[invocation]?.canonicalArgv ?? invocation.split(/\s+/),
+    }));
 }
 
 const MODULE_UNSUPPORTED_BACKEND_FRAMEWORKS = ['go', 'springboot', 'dotnet'] as const;

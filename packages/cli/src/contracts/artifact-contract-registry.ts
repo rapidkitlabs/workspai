@@ -112,6 +112,7 @@ const supplementalDescriptors: WorkspaceArtifactContractInput[] = [
 
 const SUPPLEMENTAL_ARTIFACT_PRODUCERS: Readonly<Record<string, readonly string[][]>> = {
   [WORKSPACE_INTELLIGENCE_ARTIFACTS.snapshot]: [['workspace', 'snapshot']],
+  [WORKSPACE_INTELLIGENCE_ARTIFACTS.history]: [['workspace', 'feedback', 'record', '--json']],
   '.workspai/cache/workspace-model.v1.json': [['workspace', 'model']],
   '.workspai/workspace-registry.v1.json': [['workspace', 'sync']],
   '.workspai/reports/doctor-project-last-run.json': [['doctor', 'project']],

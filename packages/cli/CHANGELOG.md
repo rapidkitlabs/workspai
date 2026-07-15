@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added producer-command ownership to artifact contract descriptors, including
   supplemental governance, recovery, infra, and Workspace Intelligence
   artifacts.
+- Added machine-readable command documentation for canonical argv, stdin input
+  contracts, output media modes, and process exit semantics.
 - Added complete workspace action discovery to `workspace --help`.
 
 ### Changed
@@ -29,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prepack verification.
 - Documented the required stdin contract for `workspace feedback record` and
   the raw renderer behavior of graph DOT/Mermaid output.
+- Registered `workspace feedback record --json` as a producer of the governed
+  Workspace Intelligence history artifact.
+- Completed the Workspace Intelligence subcommand classification with contract,
+  graph, watch, feedback, and MCP capabilities for downstream consumers.
 - Bumped the monorepo root, `workspai`, and `wspai` packages to `0.45.0`, and
   aligned the `wspai` dependency on `workspai@0.45.0`.
 
