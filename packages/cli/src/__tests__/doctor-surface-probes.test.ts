@@ -165,7 +165,10 @@ describe('doctor enterprise surface probes', () => {
       {
         runtimeFamily: 'java',
         files: { 'pom.xml': '<project></project>\n', mvnw: '#!/bin/sh\n' },
-        expectedCommand: './mvnw -B -DskipTests dependency:go-offline',
+        expectedCommand:
+          process.platform === 'win32'
+            ? '.\\mvnw.cmd -B -DskipTests dependency:go-offline'
+            : './mvnw -B -DskipTests dependency:go-offline',
         expectedFiles: ['pom.xml', 'gradle.lockfile'],
       },
       {

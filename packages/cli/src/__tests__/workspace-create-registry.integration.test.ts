@@ -216,7 +216,9 @@ describe('workspace create registry integration', () => {
     ).rejects.toThrow('Injected workspace registry summary publication failure');
 
     expect(await fs.readFile(readmePath)).toEqual(readmePreimage);
-    expect((await fs.stat(readmePath)).mode & 0o777).toBe(0o751);
+    if (process.platform !== 'win32') {
+      expect((await fs.stat(readmePath)).mode & 0o777).toBe(0o751);
+    }
     expect(await fs.readFile(gitignorePath)).toEqual(gitignorePreimage);
     expect(await fs.readFile(manifestPath)).toEqual(manifestPreimage);
     expect(await fs.readFile(unrelatedPath)).toEqual(Buffer.from([9, 8, 7]));

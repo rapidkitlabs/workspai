@@ -123,9 +123,18 @@ describe('platform-capabilities package runners', () => {
 
   it('does not duplicate an existing Node bin and supports Windows delimiters', () => {
     const nodeBin = path.dirname(process.execPath);
-    expect(augmentPathWithNodeBin(`${nodeBin}:/usr/bin`, 'linux')).toBe(`${nodeBin}:/usr/bin`);
-    expect(augmentPathWithNodeBin('C:\\Windows;C:\\Tools', 'win32')).toBe(
-      `${nodeBin};C:\\Windows;C:\\Tools`
+    const nativeDelimiter = process.platform === 'win32' ? ';' : ':';
+    expect(
+      augmentPathWithNodeBin(
+        `${nodeBin}${nativeDelimiter}/usr/bin`,
+        process.platform,
+        process.execPath
+      )
+    ).toBe(`${nodeBin}${nativeDelimiter}/usr/bin`);
+
+    const windowsNode = 'C:\\Program Files\\nodejs\\node.exe';
+    expect(augmentPathWithNodeBin('C:\\Windows;C:\\Tools', 'win32', windowsNode)).toBe(
+      'C:\\Program Files\\nodejs;C:\\Windows;C:\\Tools'
     );
   });
 

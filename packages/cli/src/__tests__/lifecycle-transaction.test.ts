@@ -61,7 +61,9 @@ describe('lifecycle transaction', () => {
     await transaction.rollback();
 
     expect(await fs.readFile(existing)).toEqual(original);
-    expect((await fs.stat(existing)).mode & 0o777).toBe(0o751);
+    if (process.platform !== 'win32') {
+      expect((await fs.stat(existing)).mode & 0o777).toBe(0o751);
+    }
     await expect(fs.access(created)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
@@ -203,7 +205,9 @@ describe('lifecycle transaction', () => {
 
     expect(recovered).toHaveLength(1);
     expect(await fs.readFile(existing)).toEqual(original);
-    expect((await fs.stat(existing)).mode & 0o777).toBe(0o740);
+    if (process.platform !== 'win32') {
+      expect((await fs.stat(existing)).mode & 0o777).toBe(0o740);
+    }
     await expect(fs.access(created)).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(fs.access(owned)).rejects.toMatchObject({ code: 'ENOENT' });
   });

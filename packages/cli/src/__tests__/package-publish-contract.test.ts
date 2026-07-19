@@ -134,8 +134,11 @@ describe('npm publish contract', () => {
       ['yarn/1.22.22 npm/? node/v20.19.0 linux x64', 1],
       ['pnpm/9.15.0 npm/? node/v20.19.0 linux x64', 1],
     ] as const) {
+      const env = Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => key.toLowerCase() !== 'npm_config_user_agent')
+      );
       const result = spawnSync(process.execPath, [policyScript], {
-        env: { ...process.env, npm_config_user_agent: userAgent },
+        env: { ...env, npm_config_user_agent: userAgent },
       });
       expect(result.status, userAgent).toBe(expectedStatus);
     }

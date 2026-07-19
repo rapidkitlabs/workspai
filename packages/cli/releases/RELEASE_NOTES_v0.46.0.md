@@ -42,7 +42,7 @@ blocking outcomes behind a successful aggregate result.
   Workspace Intelligence execution and evidence, semantic contracts, Doctor
   remediation, lifecycle rollback, archives, runtime adapters, platform
   boundaries, and previously under-covered utilities.
-- Verified 81.68% statement, 71.28% branch, 91.98% function, and 82.40% line
+- Verified 81.66% statement, 71.27% branch, 91.95% function, and 82.38% line
   coverage. The `workspace-run.ts` orchestration surface now reaches 81.07%
   statements and 82.30% lines.
 - Added a machine-readable Vitest report to `test:coverage` and made `metrics`
@@ -52,6 +52,10 @@ blocking outcomes behind a successful aggregate result.
 - Excluded type-only declarations and compatibility-only re-export barrels from
   executable coverage calculations while preserving compile-time checks and
   explicit compatibility export tests.
+- Hardened cross-platform execution and test fixtures for Python venv/Poetry/pip
+  orchestration, Windows-layout interpreter metadata, PowerShell Doctor
+  remediation guards, Go Makefile routing, npm runner path resolution and
+  case-insensitive environment keys, and POSIX-only file mode guarantees.
 
 ## Documentation and contract alignment
 

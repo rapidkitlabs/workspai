@@ -72,6 +72,7 @@ describe('Runtime Adapters', () => {
     });
 
     it('uses make run when Makefile exists', async () => {
+      vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
       const run = vi.fn().mockResolvedValue(0);
       const adapter = new GoRuntimeAdapter(run);
       vi.spyOn(fs, 'existsSync').mockReturnValue(true);

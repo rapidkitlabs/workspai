@@ -2322,6 +2322,9 @@ describe('Doctor Command', () => {
   });
 
   it('should skip go mod tidy fix when go toolchain is missing', async () => {
+    // Exercise the PowerShell Set-Location remediation command even on the
+    // Linux developer gate so Windows parser drift cannot wait for CI.
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
     const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rapidkit-doctor-go-skip-'));
     const workspacePath = path.join(tempRoot, 'workspace');
     const goApiPath = path.join(workspacePath, 'go-api');
@@ -2387,6 +2390,7 @@ describe('Doctor Command', () => {
     } finally {
       process.chdir(originalCwd);
       logSpy.mockRestore();
+      platformSpy.mockRestore();
       await fsExtra.remove(tempRoot);
     }
   });
@@ -3971,7 +3975,6 @@ describe('Doctor Command', () => {
     });
     await fsExtra.writeFile(path.join(tempRoot, 'pyproject.toml'), '[project]\nname = "api"\n');
 
-    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
     mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'py' && args?.[0] === '-3' && args?.[1] === '--version') {
         return { stdout: 'Python 3.12.4', stderr: '', exitCode: 0 } as any;
@@ -4002,7 +4005,6 @@ describe('Doctor Command', () => {
     } finally {
       process.chdir(originalCwd);
       logSpy.mockRestore();
-      platformSpy.mockRestore();
       await fsExtra.remove(tempRoot);
     }
   });

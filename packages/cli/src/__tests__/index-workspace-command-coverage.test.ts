@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { syncWorkspaceFoundationFiles } from '../create.js';
 import { runDoctor } from '../doctor.js';
+import { getVenvPythonPath } from '../utils/platform-capabilities.js';
 import {
   bootstrapCli,
   bridgeFailureCode,
@@ -701,40 +702,46 @@ describe.sequential('in-process workspace Commander coverage', () => {
   it('executes Python venv and pip fallback orchestration against deterministic tool shims', async () => {
     const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'workspai-python-orchestration-'));
     temporaryDirectories.push(fixture);
-    const bin = path.join(fixture, 'bin');
     const project = path.join(fixture, 'project');
-    await fs.mkdir(bin, { recursive: true });
     await fs.mkdir(project, { recursive: true });
-    const pythonShim = path.join(bin, 'python3');
-    await fs.writeFile(
-      pythonShim,
-      '#!/bin/sh\nif [ "$1" = "-m" ] && [ "$2" = "venv" ]; then mkdir -p .venv/bin; cp "$0" .venv/bin/python; chmod +x .venv/bin/python; fi\nexit 0\n'
+    let poetryAvailable = false;
+    const runCommand = vi.fn(
+      async (command: string, args: string[], cwd: string): Promise<number> => {
+        if (args.includes('venv')) {
+          const interpreter = getVenvPythonPath(path.join(cwd, '.venv'));
+          await fs.mkdir(path.dirname(interpreter), { recursive: true });
+          await fs.writeFile(interpreter, 'deterministic test interpreter');
+          return 0;
+        }
+        if (command === 'poetry' && args[0] === '--version') {
+          return poetryAvailable ? 0 : 1;
+        }
+        return 0;
+      }
     );
-    await fs.chmod(pythonShim, 0o755);
-    const originalPath = process.env.PATH;
-    process.env.PATH = `${bin}${path.delimiter}${originalPath ?? ''}`;
-    try {
-      expect(hostPythonCandidates().length).toBeGreaterThan(0);
-      expect(await commandAvailable('python3', project)).toBe(true);
-      expect(await commandAvailable('missing-workspai-command', project)).toBe(false);
-      expect(await createWorkspaceVenv(project)).toBe(0);
-      await fs.rm(path.join(project, '.venv'), { recursive: true, force: true });
-      expect(await createProjectVenv(project)).toBe(0);
-      expect(await ensurePythonProjectUsesLocalVenv(project)).toBe(0);
+    const dependencies = { runCommand, pythonCandidates: ['fixture-python'] };
 
-      await fs.writeFile(path.join(project, 'requirements.txt'), 'fixture==1.0\n');
-      expect(await installPythonDependenciesWithPipFallback(project)).toBe(0);
-      await fs.rm(path.join(project, 'requirements.txt'));
-      await fs.writeFile(path.join(project, 'pyproject.toml'), '[project]\nname="fixture"\n');
-      expect(await installPythonDependenciesWithPipFallback(project)).toBe(0);
+    expect(hostPythonCandidates().length).toBeGreaterThan(0);
+    expect(await commandAvailable(process.execPath, project)).toBe(true);
+    expect(await commandAvailable('missing-workspai-command', project)).toBe(false);
+    expect(await createWorkspaceVenv(project, dependencies)).toBe(0);
+    await fs.rm(path.join(project, '.venv'), { recursive: true, force: true });
+    expect(await createProjectVenv(project, dependencies)).toBe(0);
+    expect(await ensurePythonProjectUsesLocalVenv(project, dependencies)).toBe(0);
 
-      const poetryShim = path.join(bin, 'poetry');
-      await fs.writeFile(poetryShim, '#!/bin/sh\nexit 0\n');
-      await fs.chmod(poetryShim, 0o755);
-      expect(await ensurePythonProjectUsesLocalVenv(project)).toBe(0);
-    } finally {
-      process.env.PATH = originalPath;
-    }
+    await fs.writeFile(path.join(project, 'requirements.txt'), 'fixture==1.0\n');
+    expect(await installPythonDependenciesWithPipFallback(project, dependencies)).toBe(0);
+    await fs.rm(path.join(project, 'requirements.txt'));
+    await fs.writeFile(path.join(project, 'pyproject.toml'), '[project]\nname="fixture"\n');
+    expect(await installPythonDependenciesWithPipFallback(project, dependencies)).toBe(0);
+
+    poetryAvailable = true;
+    expect(await ensurePythonProjectUsesLocalVenv(project, dependencies)).toBe(0);
+    expect(runCommand).toHaveBeenCalledWith(
+      'poetry',
+      ['env', 'use', getVenvPythonPath(path.join(project, '.venv'))],
+      project
+    );
   }, 30_000);
 
   it('covers npm ownership and upward workspace discovery routing', async () => {

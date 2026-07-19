@@ -40,8 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coverage for Workspace Intelligence runner ordering and evidence, semantic
   contract boundaries, Doctor remediation, workspace lifecycle recovery,
   runtime adapters, archives, platform behavior, and low-coverage utilities.
-- Raised the verified CLI coverage to 81.68% statements, 71.28% branches,
-  91.98% functions, and 82.40% lines; `workspace-run.ts` now reaches 81.07%
+- Raised the verified CLI coverage to 81.66% statements, 71.27% branches,
+  91.95% functions, and 82.38% lines; `workspace-run.ts` now reaches 81.07%
   statements and 82.30% lines.
 
 ### Fixed
@@ -74,6 +74,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed type-only declarations and compatibility-only re-export barrels from
   the executable coverage denominator while retaining TypeScript enforcement
   and explicit public-export contract tests.
+- Fixed cross-platform test and runtime drift across Python venv orchestration,
+  Windows-layout pip metadata, PowerShell Doctor remediation parsing, Go
+  Makefile selection, npm environment-key casing, package-runner path flavor,
+  and POSIX-only file-mode assertions.
+- Made Python project orchestration dependency-injectable so venv, Poetry, and
+  pip fallback tests use deterministic platform-native fixtures without leaking
+  host tools or Unix shell scripts into macOS and Windows jobs.
 
 ### Verification
 

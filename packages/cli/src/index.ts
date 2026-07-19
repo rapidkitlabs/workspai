@@ -457,60 +457,79 @@ export async function inferRuntimeByFiles(targetPath: string): Promise<InferredR
   return null;
 }
 
-export async function createWorkspaceVenv(workspacePath: string): Promise<number> {
-  for (const candidate of hostPythonCandidates()) {
+export interface PythonProjectOrchestrationDependencies {
+  runCommand?: typeof runCommandInCwd;
+  pythonCandidates?: readonly string[];
+}
+
+export async function createWorkspaceVenv(
+  workspacePath: string,
+  dependencies: PythonProjectOrchestrationDependencies = {}
+): Promise<number> {
+  const runCommand = dependencies.runCommand ?? runCommandInCwd;
+  for (const candidate of dependencies.pythonCandidates ?? hostPythonCandidates()) {
     const args = candidate === 'py' ? ['-3', '-m', 'venv', '.venv'] : ['-m', 'venv', '.venv'];
-    const code = await runCommandInCwd(candidate, args, workspacePath);
+    const code = await runCommand(candidate, args, workspacePath);
     if (code === 0) return 0;
   }
   return 1;
 }
 
-export async function createProjectVenv(projectPath: string): Promise<number> {
-  for (const candidate of hostPythonCandidates()) {
+export async function createProjectVenv(
+  projectPath: string,
+  dependencies: PythonProjectOrchestrationDependencies = {}
+): Promise<number> {
+  const runCommand = dependencies.runCommand ?? runCommandInCwd;
+  for (const candidate of dependencies.pythonCandidates ?? hostPythonCandidates()) {
     const args = candidate === 'py' ? ['-3', '-m', 'venv', '.venv'] : ['-m', 'venv', '.venv'];
-    const code = await runCommandInCwd(candidate, args, projectPath);
+    const code = await runCommand(candidate, args, projectPath);
     if (code === 0) return 0;
   }
   return 1;
 }
 
-export async function ensurePythonProjectUsesLocalVenv(projectPath: string): Promise<number> {
+export async function ensurePythonProjectUsesLocalVenv(
+  projectPath: string,
+  dependencies: PythonProjectOrchestrationDependencies = {}
+): Promise<number> {
+  const runCommand = dependencies.runCommand ?? runCommandInCwd;
   const localVenvPython = getVenvPythonPath(path.join(projectPath, '.venv'));
 
   if (!(await fsExtra.pathExists(localVenvPython))) {
-    const venvCode = await createProjectVenv(projectPath);
+    const venvCode = await createProjectVenv(projectPath, dependencies);
     if (venvCode !== 0) return venvCode;
   }
 
-  const hasPoetry = await commandAvailable('poetry', projectPath);
+  const hasPoetry = (await runCommand('poetry', ['--version'], projectPath)) === 0;
   if (!hasPoetry) {
     return 0;
   }
 
-  const configCode = await runCommandInCwd(
+  const configCode = await runCommand(
     'poetry',
     ['config', 'virtualenvs.in-project', 'true', '--local'],
     projectPath
   );
   if (configCode !== 0) return configCode;
 
-  const envUseCode = await runCommandInCwd('poetry', ['env', 'use', localVenvPython], projectPath);
+  const envUseCode = await runCommand('poetry', ['env', 'use', localVenvPython], projectPath);
   if (envUseCode !== 0) return envUseCode;
 
   return 0;
 }
 
 export async function installPythonDependenciesWithPipFallback(
-  projectPath: string
+  projectPath: string,
+  dependencies: PythonProjectOrchestrationDependencies = {}
 ): Promise<number> {
+  const runCommand = dependencies.runCommand ?? runCommandInCwd;
   const localVenvPython = getVenvPythonPath(path.join(projectPath, '.venv'));
   if (!(await fsExtra.pathExists(localVenvPython))) {
-    const venvCode = await createProjectVenv(projectPath);
+    const venvCode = await createProjectVenv(projectPath, dependencies);
     if (venvCode !== 0) return venvCode;
   }
 
-  await runCommandInCwd(
+  await runCommand(
     localVenvPython,
     ['-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel'],
     projectPath
@@ -518,7 +537,7 @@ export async function installPythonDependenciesWithPipFallback(
 
   const requirementsTxt = path.join(projectPath, 'requirements.txt');
   if (await fsExtra.pathExists(requirementsTxt)) {
-    const reqCode = await runCommandInCwd(
+    const reqCode = await runCommand(
       localVenvPython,
       ['-m', 'pip', 'install', '-r', 'requirements.txt'],
       projectPath
@@ -528,18 +547,14 @@ export async function installPythonDependenciesWithPipFallback(
 
   const pyproject = path.join(projectPath, 'pyproject.toml');
   if (await fsExtra.pathExists(pyproject)) {
-    const editableCode = await runCommandInCwd(
+    const editableCode = await runCommand(
       localVenvPython,
       ['-m', 'pip', 'install', '-e', '.'],
       projectPath
     );
     if (editableCode === 0) return 0;
 
-    const plainCode = await runCommandInCwd(
-      localVenvPython,
-      ['-m', 'pip', 'install', '.'],
-      projectPath
-    );
+    const plainCode = await runCommand(localVenvPython, ['-m', 'pip', 'install', '.'], projectPath);
     if (plainCode === 0) return 0;
   }
 

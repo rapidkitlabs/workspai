@@ -45,11 +45,14 @@ same canonical source of truth.
   - Expanded the suite to 2,042 passing tests, including targeted contract,
     Workspace Intelligence, Doctor, recovery, archive, runtime adapter, and
     platform-boundary coverage.
-  - Verified 81.68% statement, 71.28% branch, 91.98% function, and 82.40% line
+  - Verified 81.66% statement, 71.27% branch, 91.95% function, and 82.38% line
     coverage; the official metrics gate reports 82%.
   - Made `test:coverage` publish a machine-readable Vitest result for `metrics`,
     removing the duplicate suite execution and fragile console parsing that
     could report a passing run as invalid.
+  - Hardened Linux, macOS, and Windows parity for project-local Python venvs,
+    pip metadata, Doctor PowerShell remediation guards, Go adapter Makefile
+    routing, npm runner paths and environment keys, and filesystem mode tests.
 
 - **Documentation and runtime alignment**
   - Aligned CLI documentation, help, contracts, artifact catalogs, CI examples,

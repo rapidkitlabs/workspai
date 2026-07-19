@@ -35,36 +35,50 @@ function packageRunnerCliBasename(command: string): string {
   return command === 'npx' ? 'npx-cli.js' : 'npm-cli.js';
 }
 
-function npmExecPathCandidate(command: string, env: NodeJS.ProcessEnv): string | null {
+function pathApiForPlatform(platform: NodeJS.Platform): typeof path.posix | typeof path.win32 {
+  return isWindowsPlatform(platform) ? path.win32 : path.posix;
+}
+
+function npmExecPathCandidate(
+  command: string,
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform
+): string | null {
   const execPath = env.npm_execpath;
   if (!execPath) return null;
 
-  const basename = path.basename(execPath).toLowerCase();
+  const pathApi = pathApiForPlatform(platform);
+  const basename = pathApi.basename(execPath).toLowerCase();
   if (command === 'npx' && basename !== 'npx-cli.js') {
-    const sibling = path.join(path.dirname(execPath), 'npx-cli.js');
+    const sibling = pathApi.join(pathApi.dirname(execPath), 'npx-cli.js');
     return fs.existsSync(sibling) ? sibling : null;
   }
   if (command === 'npm' && basename === 'npx-cli.js') {
-    const sibling = path.join(path.dirname(execPath), 'npm-cli.js');
+    const sibling = pathApi.join(pathApi.dirname(execPath), 'npm-cli.js');
     return fs.existsSync(sibling) ? sibling : null;
   }
   return fs.existsSync(execPath) ? execPath : null;
 }
 
-function wellKnownPackageRunnerCliCandidates(command: string, nodeExecPath: string): string[] {
+function wellKnownPackageRunnerCliCandidates(
+  command: string,
+  nodeExecPath: string,
+  platform: NodeJS.Platform
+): string[] {
   if (command !== 'npm' && command !== 'npx') return [];
 
   const cli = packageRunnerCliBasename(command);
-  const nodeBinDir = path.dirname(nodeExecPath);
-  const prefix = path.dirname(nodeBinDir);
+  const pathApi = pathApiForPlatform(platform);
+  const nodeBinDir = pathApi.dirname(nodeExecPath);
+  const prefix = pathApi.dirname(nodeBinDir);
 
   return [
-    path.join(nodeBinDir, 'node_modules', 'npm', 'bin', cli),
-    path.join(prefix, 'lib', 'node_modules', 'npm', 'bin', cli),
-    path.join(prefix, 'lib64', 'node_modules', 'npm', 'bin', cli),
-    path.join('/usr', 'lib', 'node_modules', 'npm', 'bin', cli),
-    path.join('/usr', 'local', 'lib', 'node_modules', 'npm', 'bin', cli),
-    path.join('/usr', 'share', 'nodejs', 'npm', 'bin', cli),
+    pathApi.join(nodeBinDir, 'node_modules', 'npm', 'bin', cli),
+    pathApi.join(prefix, 'lib', 'node_modules', 'npm', 'bin', cli),
+    pathApi.join(prefix, 'lib64', 'node_modules', 'npm', 'bin', cli),
+    pathApi.join('/usr', 'lib', 'node_modules', 'npm', 'bin', cli),
+    pathApi.join('/usr', 'local', 'lib', 'node_modules', 'npm', 'bin', cli),
+    pathApi.join('/usr', 'share', 'nodejs', 'npm', 'bin', cli),
   ];
 }
 
@@ -95,19 +109,24 @@ export function resolvePackageRunnerInvocation(
   }
 
   if (normalized === 'npm' || normalized === 'npx') {
-    const npmExecPath = npmExecPathCandidate(normalized, env);
+    const npmExecPath = npmExecPathCandidate(normalized, env, platform);
     if (npmExecPath) {
       return { command: nodeExecPath, prefixArgs: [npmExecPath] };
     }
 
-    for (const candidate of wellKnownPackageRunnerCliCandidates(normalized, nodeExecPath)) {
+    for (const candidate of wellKnownPackageRunnerCliCandidates(
+      normalized,
+      nodeExecPath,
+      platform
+    )) {
       if (fs.existsSync(candidate)) {
         return { command: nodeExecPath, prefixArgs: [candidate] };
       }
     }
   }
 
-  const nodeBinDir = path.dirname(nodeExecPath);
+  const pathApi = pathApiForPlatform(platform);
+  const nodeBinDir = pathApi.dirname(nodeExecPath);
   const extension = isWindowsPlatform(platform) ? '.cmd' : '';
   const candidates = [
     path.join(nodeBinDir, `${normalized}${extension}`),
@@ -129,10 +148,11 @@ export function resolvePackageRunnerInvocation(
 
 export function augmentPathWithNodeBin(
   pathEnv?: string,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  nodeExecPath: string = process.execPath
 ): string {
   const delimiter = isWindowsPlatform(platform) ? ';' : ':';
-  const nodeBin = path.dirname(process.execPath);
+  const nodeBin = pathApiForPlatform(platform).dirname(nodeExecPath);
   const parts = (pathEnv ?? process.env.PATH ?? '').split(delimiter).filter(Boolean);
   if (!parts.includes(nodeBin)) {
     parts.unshift(nodeBin);

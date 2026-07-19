@@ -4971,6 +4971,10 @@ function parseProjectCommandFix(
   expectedTailPattern: string
 ): { projectPath: string } | null {
   const patterns = [
+    new RegExp(
+      `^Set-Location\\s+-LiteralPath\\s+"([^"]+)"\\s*;\\s*${expectedTailPattern}\\s*$`,
+      'i'
+    ),
     new RegExp(`^cd\\s+"([^"]+)"\\s*(?:&&|;)\\s*${expectedTailPattern}\\s*$`, 'i'),
     new RegExp(`^cd\\s+'([^']+)'\\s*(?:&&|;)\\s*${expectedTailPattern}\\s*$`, 'i'),
     new RegExp(`^cd\\s+(.+?)\\s*(?:&&|;)\\s*${expectedTailPattern}\\s*$`, 'i'),
