@@ -30,6 +30,14 @@ blocking outcomes behind a successful aggregate result.
 - Hardened Python-engine discovery and metadata propagation. Python 3.10 remains
   the minimum supported version; newer installed interpreters can be detected,
   while explicit version pins remain available for reproducible CI.
+- Hardened lifecycle journals for Windows filesystems that reject durability
+  sync calls after successful writes, while retaining atomic replacement and
+  fail-closed handling for all other I/O errors.
+- Repaired the npm dependency topology so `npm sbom --sbom-format cyclonedx`
+  produces a valid CycloneDX document without invalid `minimatch` or `chokidar`
+  nodes.
+- Aligned metrics with the authoritative Vitest coverage thresholds and made
+  test, lint, and security collection fail closed on execution or parse errors.
 
 ## Documentation and contract alignment
 

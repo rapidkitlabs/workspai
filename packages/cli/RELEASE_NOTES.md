@@ -34,6 +34,14 @@ same canonical source of truth.
     operations.
   - Hardened metadata path safety, registry consistency, archives, platform
     probes, runtime adapters, and polyglot project generators.
+  - Added Windows-safe lifecycle journal durability handling and concurrent
+    journal initialization recovery without weakening atomic writes.
+
+- **Release-gate integrity**
+  - Repaired the npm tree used by CycloneDX SBOM generation so Nunjucks, Tsup,
+    ESLint, `chokidar`, and `minimatch` resolve without invalid nodes.
+  - Aligned aggregate metrics with Vitest's authoritative thresholds and made
+    test, lint, and audit collection fail closed.
 
 - **Documentation and runtime alignment**
   - Aligned CLI documentation, help, contracts, artifact catalogs, CI examples,

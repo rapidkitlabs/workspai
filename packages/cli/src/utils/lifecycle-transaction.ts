@@ -40,6 +40,24 @@ async function lstatOrNull(targetPath: string) {
   }
 }
 
+function isIgnorableWindowsDurabilityError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return (
+    process.platform === 'win32' && (code === 'EPERM' || code === 'EINVAL' || code === 'ENOSYS')
+  );
+}
+
+async function syncHandle(handle: Awaited<ReturnType<typeof fs.open>>): Promise<void> {
+  try {
+    await handle.sync();
+  } catch (error) {
+    // Windows filesystems and the GitHub-hosted runner can reject fsync even
+    // after the bytes were written successfully. Atomic rename still protects
+    // readers; durability sync remains mandatory on platforms that support it.
+    if (!isIgnorableWindowsDurabilityError(error)) throw error;
+  }
+}
+
 function assertAbsoluteTarget(targetPath: unknown): asserts targetPath is string {
   if (typeof targetPath !== 'string' || !path.isAbsolute(targetPath)) {
     throw new Error('Lifecycle transaction journal contains a non-absolute target path.');
@@ -102,9 +120,15 @@ function parseManifest(input: unknown): LifecycleJournalManifest {
 }
 
 async function syncDirectory(directoryPath: string): Promise<void> {
-  const handle = await fs.open(directoryPath, constants.O_RDONLY);
+  let handle: Awaited<ReturnType<typeof fs.open>>;
   try {
-    await handle.sync();
+    handle = await fs.open(directoryPath, constants.O_RDONLY);
+  } catch (error) {
+    if (isIgnorableWindowsDurabilityError(error)) return;
+    throw error;
+  }
+  try {
+    await syncHandle(handle);
   } finally {
     await handle.close();
   }
@@ -123,7 +147,7 @@ async function writeFileAtomically(targetPath: string, data: Uint8Array): Promis
     );
     try {
       await handle.writeFile(data);
-      await handle.sync();
+      await syncHandle(handle);
     } finally {
       await handle.close();
     }
@@ -189,7 +213,7 @@ async function restoreFile(snapshot: FileSnapshot, transactionDirectory?: string
   try {
     await handle.writeFile(bytes);
     await handle.chmod(snapshot.mode);
-    await handle.sync();
+    await syncHandle(handle);
   } finally {
     await handle.close();
   }
@@ -447,9 +471,19 @@ export async function recoverActiveLifecycleTransactions(
     if (!entry.isDirectory() || !entry.name.startsWith(JOURNAL_DIRECTORY_PREFIX)) continue;
     const transactionDirectory = path.join(journalRoot, entry.name);
     try {
-      const manifest = parseManifest(
-        JSON.parse(await fs.readFile(path.join(transactionDirectory, JOURNAL_FILE), 'utf8'))
-      );
+      let manifestText: string;
+      try {
+        manifestText = await fs.readFile(path.join(transactionDirectory, JOURNAL_FILE), 'utf8');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          // Another process may observe the mkdtemp directory before its first
+          // manifest is atomically published, or after its owner committed and
+          // removed it. Neither state contains recoverable operations.
+          continue;
+        }
+        throw error;
+      }
+      const manifest = parseManifest(JSON.parse(manifestText));
       if (manifest.phase === 'committed') {
         await fs.rm(transactionDirectory, { recursive: true });
         continue;

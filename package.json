@@ -9,7 +9,6 @@
     "packages/*"
   ],
   "overrides": {
-    "minimatch": "^10.2.1",
     "esbuild": "^0.28.1"
   },
   "scripts": {
@@ -40,6 +39,7 @@
     "prepush:check": "corepack npm run check && corepack npm run ci && corepack npm --workspace workspai run contracts:validate"
   },
   "devDependencies": {
+    "chokidar": "^3.6.0",
     "husky": "^9.1.7"
   }
 }

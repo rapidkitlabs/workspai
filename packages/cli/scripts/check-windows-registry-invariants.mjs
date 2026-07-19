@@ -10,14 +10,10 @@ const packageRoot = path.resolve(scriptDir, '..');
 const files = {
   platformCapabilities: path.join(packageRoot, 'src', 'utils', 'platform-capabilities.ts'),
   registryPath: path.join(packageRoot, 'src', 'utils', 'registry-path.ts'),
+  lifecycleTransaction: path.join(packageRoot, 'src', 'utils', 'lifecycle-transaction.ts'),
   workspace: path.join(packageRoot, 'src', 'workspace.ts'),
   workspacePaths: path.join(packageRoot, 'src', 'utils', 'workspace-paths.ts'),
-  workspaceRegistrySummary: path.join(
-    packageRoot,
-    'src',
-    'utils',
-    'workspace-registry-summary.ts'
-  ),
+  workspaceRegistrySummary: path.join(packageRoot, 'src', 'utils', 'workspace-registry-summary.ts'),
 };
 
 const source = Object.fromEntries(
@@ -117,10 +113,12 @@ const readWorkspaceRegistryCandidates = extractFunctionBody(
 const mutateWorkspaceRegistry = extractFunctionBody(source.workspace, 'mutateWorkspaceRegistry');
 const syncWorkspaceProjects = extractFunctionBody(source.workspace, 'syncWorkspaceProjects');
 const listWorkspaces = extractFunctionBody(source.workspace, 'listWorkspaces');
+const lifecycleSyncHandle = extractFunctionBody(source.lifecycleTransaction, 'syncHandle');
+const lifecycleSyncDirectory = extractFunctionBody(source.lifecycleTransaction, 'syncDirectory');
 
 assertIncludes(
   canonicalRegistryDirectory,
-  "env.HOME || env.USERPROFILE || os.homedir()",
+  'env.HOME || env.USERPROFILE || os.homedir()',
   'Canonical workspace registry must resolve from HOME/USERPROFILE/os.homedir().'
 );
 assertIncludes(
@@ -146,7 +144,7 @@ assertNotIncludes(
 
 assertIncludes(
   legacyRegistryDirectory,
-  "env.HOME || env.USERPROFILE || os.homedir()",
+  'env.HOME || env.USERPROFILE || os.homedir()',
   'Legacy workspace registry mirror must resolve from HOME/USERPROFILE/os.homedir().'
 );
 assertIncludes(
@@ -313,7 +311,7 @@ assertIncludes(
 );
 assertIncludes(
   source.workspace,
-  "await fs.copyFile(registryFile, corruptBackup)",
+  'await fs.copyFile(registryFile, corruptBackup)',
   'Corrupt registry backup must copy the original file before overwriting.'
 );
 assertIncludes(
@@ -323,7 +321,7 @@ assertIncludes(
 );
 assertIncludes(
   source.workspace,
-  "await fs.rm(lockPath, { force: true }).catch(() => undefined)",
+  'await fs.rm(lockPath, { force: true }).catch(() => undefined)',
   'Registry lock must be removed after mutations.'
 );
 
@@ -333,6 +331,48 @@ const rawSyncOccurrences = [...source.workspace.matchAll(/await\s+[\w.]+\.sync\(
 if (rawSyncOccurrences.length > 1) {
   fail(
     `Workspace registry has raw FileHandle.sync calls outside the compatibility helper: ${rawSyncOccurrences.join(
+      ', '
+    )}`
+  );
+}
+
+assertIncludes(
+  source.lifecycleTransaction,
+  'function isIgnorableWindowsDurabilityError',
+  'Lifecycle transaction journals must keep a Windows fsync compatibility guard.'
+);
+assertIncludes(
+  source.lifecycleTransaction,
+  "code === 'EPERM' || code === 'EINVAL' || code === 'ENOSYS'",
+  'Lifecycle transaction fsync tolerance must be limited to EPERM/EINVAL/ENOSYS.'
+);
+assertIncludes(
+  source.lifecycleTransaction,
+  "process.platform === 'win32'",
+  'Lifecycle transaction fsync tolerance must remain Windows-only.'
+);
+assertIncludes(
+  lifecycleSyncHandle,
+  'isIgnorableWindowsDurabilityError(error)',
+  'Lifecycle FileHandle.sync must use the Windows durability compatibility guard.'
+);
+assertIncludes(
+  lifecycleSyncDirectory,
+  'await syncHandle(handle)',
+  'Lifecycle directory sync must use the guarded sync helper.'
+);
+assertIncludes(
+  source.lifecycleTransaction,
+  "if ((error as NodeJS.ErrnoException).code === 'ENOENT')",
+  'Lifecycle recovery must tolerate journals removed or not yet published by concurrent owners.'
+);
+
+const rawLifecycleSyncOccurrences = [
+  ...source.lifecycleTransaction.matchAll(/await\s+(?!syncHandle\b)[\w.]+\.sync\(\)/g),
+].map((match) => match[0]);
+if (rawLifecycleSyncOccurrences.length > 1) {
+  fail(
+    `Lifecycle transactions have raw FileHandle.sync calls outside the compatibility helper: ${rawLifecycleSyncOccurrences.join(
       ', '
     )}`
   );

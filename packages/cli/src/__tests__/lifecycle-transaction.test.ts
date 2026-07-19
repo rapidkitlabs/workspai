@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
-import fs from 'node:fs/promises';
-import { afterEach, describe, expect, it } from 'vitest';
+import fs, { open } from 'node:fs/promises';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createLifecycleTransaction,
@@ -182,5 +182,45 @@ describe('lifecycle transaction', () => {
     expect(await recoverActiveLifecycleTransactions(journals)).toEqual([]);
     expect(await fs.readFile(existing, 'utf8')).toBe('during');
     await transaction.rollback();
+  });
+
+  it('tolerates Windows EPERM fsync failures while preserving journal semantics', async () => {
+    const root = await temporaryDirectory();
+    const journals = path.join(root, 'journals');
+    const created = path.join(root, 'created.txt');
+    const probe = path.join(root, 'probe.txt');
+    await fs.writeFile(probe, 'probe');
+    const probeHandle = await open(probe, 'r');
+    const fileHandlePrototype = Object.getPrototypeOf(probeHandle) as {
+      sync: () => Promise<void>;
+    };
+    await probeHandle.close();
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    const syncSpy = vi
+      .spyOn(fileHandlePrototype, 'sync')
+      .mockRejectedValue(Object.assign(new Error('EPERM'), { code: 'EPERM' }));
+
+    try {
+      const transaction = await createLifecycleTransaction({ journalDirectory: journals });
+      await transaction.captureFile(created);
+      await fs.writeFile(created, 'created');
+      await transaction.rollback();
+
+      await expect(fs.access(created)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(syncSpy).toHaveBeenCalled();
+    } finally {
+      syncSpy.mockRestore();
+      platformSpy.mockRestore();
+    }
+  });
+
+  it('ignores a concurrently removed or not-yet-published journal directory', async () => {
+    const root = await temporaryDirectory();
+    const journals = path.join(root, 'journals');
+    await fs.mkdir(path.join(journals, 'lifecycle-transaction-initializing'), {
+      recursive: true,
+    });
+
+    await expect(recoverActiveLifecycleTransactions(journals)).resolves.toEqual([]);
   });
 });

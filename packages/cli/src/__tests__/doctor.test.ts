@@ -3978,8 +3978,8 @@ describe('Doctor Command', () => {
       }
       if (cmd === interpreter && args?.[0] === '-m' && args?.[1] === 'pip') {
         return {
-          stdout: '',
-          stderr: '[{"name":"fastapi","version":"0.115.0"}]',
+          stdout: '[{"name":"fastapi","version":"0.115.0"}]',
+          stderr: '',
           exitCode: 0,
         } as any;
       }

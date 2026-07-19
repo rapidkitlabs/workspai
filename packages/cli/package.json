@@ -115,7 +115,7 @@
     "validate": "corepack npm run check:package-manager && corepack npm run typecheck && corepack npm run lint && corepack npm run format:check && corepack npm test",
     "security": "corepack npm audit --audit-level=moderate",
     "security:fix": "corepack npm audit fix",
-    "metrics": "npx tsx scripts/metrics.ts",
+    "metrics": "tsx scripts/metrics.ts",
     "validate:docs-examples": "node scripts/validate-doc-examples.mjs",
     "check:markdown-links": "node scripts/check-markdown-links.mjs",
     "check:docs-drift": "node scripts/docs-drift-guard.mjs",

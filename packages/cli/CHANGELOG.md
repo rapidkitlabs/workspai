@@ -47,6 +47,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Java, and .NET environments.
 - Fixed documentation and config-example drift, including removal of an
   accidental Python-version pin from the canonical and legacy examples.
+- Fixed Windows lifecycle journal writes so GitHub-hosted filesystems may reject
+  `fsync` with `EPERM`, `EINVAL`, or `ENOSYS` without discarding an otherwise
+  atomic workspace transaction; concurrent journal initialization is now
+  recovery-safe.
+- Fixed macOS path assertions to compare canonical real paths and corrected the
+  Windows-layout Doctor fixture to model `pip --format=json` stdout accurately.
+- Fixed the npm dependency tree used by CycloneDX SBOM generation by removing an
+  unsafe global `minimatch` override and resolving the Nunjucks/Tsup `chokidar`
+  peer versions without invalid packages.
+- Aligned the metrics coverage gate with Vitest's authoritative granular
+  thresholds and made test, lint, and audit collection fail closed instead of
+  reporting command failures as zero errors or vulnerabilities.
 
 ### Verification
 

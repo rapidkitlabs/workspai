@@ -183,13 +183,14 @@ describe('Phase 3 commands - CLI process integration', () => {
           result.status,
           `adopt failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`
         ).toBe(0);
+        const canonicalProjectDir = fs.realpathSync(projectDir);
         expect(JSON.parse(result.stdout)).toMatchObject({
           workspacePath: managedWorkspace,
           workspaceResolution: 'default-auto',
           defaultWorkspaceCreated: true,
           dryRun: false,
           adoptedProject: {
-            path: projectDir,
+            path: canonicalProjectDir,
             relationship: 'adopted',
             wroteFiles: true,
           },
