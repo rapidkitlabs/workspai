@@ -375,20 +375,35 @@ async function fetchModulesFromPythonCore(): Promise<ModuleMetadata[]> {
       throw new Error(result.stderr.trim() || 'Python Core modules command failed');
     }
 
-    // Python Core may output emojis/colors before JSON, extract only JSON part
-    const jsonMatch = result.stdout.match(/\{[\s\S]*\}/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : result.stdout;
-
-    const payload = JSON.parse(jsonStr);
+    // Python Core may output progress text before either an object or a
+    // top-level array. Preserve arrays instead of extracting their first object.
+    const stdout = result.stdout.trim();
+    let payload: unknown;
+    try {
+      payload = JSON.parse(stdout);
+    } catch {
+      const objectStart = stdout.indexOf('{');
+      const arrayStart = stdout.indexOf('[');
+      const starts = [objectStart, arrayStart].filter((index) => index >= 0);
+      if (starts.length === 0) throw new Error('Python Core modules response did not contain JSON');
+      const start = Math.min(...starts);
+      const closing = stdout[start] === '[' ? ']' : '}';
+      const end = stdout.lastIndexOf(closing);
+      if (end < start) throw new Error('Python Core modules response contained incomplete JSON');
+      payload = JSON.parse(stdout.slice(start, end + 1));
+    }
 
     // Handle different response formats
     let modules: unknown[] = [];
     if (Array.isArray(payload)) {
       modules = payload;
-    } else if (payload.modules && Array.isArray(payload.modules)) {
-      modules = payload.modules;
-    } else if (payload.data && Array.isArray(payload.data)) {
-      modules = payload.data;
+    } else if (payload && typeof payload === 'object') {
+      const record = payload as Record<string, unknown>;
+      if (Array.isArray(record.modules)) {
+        modules = record.modules;
+      } else if (Array.isArray(record.data)) {
+        modules = record.data;
+      }
     }
 
     return modules.map(parsePythonModule).filter((m) => m.id && m.name);

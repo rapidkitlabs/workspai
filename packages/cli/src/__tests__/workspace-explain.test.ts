@@ -165,6 +165,184 @@ describe('workspace explain (Phase 4.B)', () => {
     expect(report.blockingReasons).toContain('doctor workspace failed');
   });
 
+  it('renders structured resolution hints and blocker-specific guidance', async () => {
+    const verify = verifyFixture({
+      risk: 'high',
+      affectedProjects: 1,
+      blockers: ['doctor.workspace: evidence is stale'],
+    });
+    verify.resolutionHints = [
+      {
+        blockerId: 'doctor.workspace',
+        resolutionClass: 'command',
+        commandRetryHint: 'npx workspai doctor workspace --json',
+        fixHints: [{ detail: 'Refresh doctor evidence' }],
+      },
+    ] as never;
+    const model = { summary: { projectCount: 1 }, projects: [] } as never;
+
+    const release = await buildWorkspaceExplain({
+      workspacePath,
+      target: { kind: 'release-blocked' },
+      model,
+      contract: null,
+      verify,
+      impact: null,
+      now: new Date('2026-07-19T00:00:00.000Z'),
+    });
+    const blocker = await buildWorkspaceExplain({
+      workspacePath,
+      target: { kind: 'blocker', blockerId: 'doctor.workspace' },
+      model,
+      contract: null,
+      verify,
+      impact: null,
+    });
+    const unknown = await buildWorkspaceExplain({
+      workspacePath,
+      target: { kind: 'blocker', blockerId: 'unknown.blocker' },
+      model,
+      contract: null,
+      verify,
+      impact: null,
+    });
+
+    expect(release.generatedAt).toBe('2026-07-19T00:00:00.000Z');
+    expect(release.sections.find((section) => section.id === 'resolution')?.body).toContain(
+      'npx workspai doctor workspace --json'
+    );
+    expect(blocker.summary).toBe('Blocker doctor.workspace: command');
+    expect(blocker.resolutionHints).toHaveLength(1);
+    expect(unknown.summary).toContain('no structured hint');
+    expect(unknown.sections[1].body).toContain('Run workspace verify');
+  });
+
+  it('explains a project across graph, contracts, consumers, verification, and impact', async () => {
+    const graph = {
+      schemaVersion: 'workspace-dependency-graph.v1',
+      generatedAt: '2026-07-19T00:00:00.000Z',
+      nodes: [
+        { id: 'api', path: 'services/api' },
+        { id: 'web', path: 'apps/web' },
+      ],
+      edges: [
+        {
+          from: 'web',
+          to: 'api',
+          kind: 'service-dependsOn',
+          source: 'contract',
+          confidence: 'high',
+          evidence: [],
+        },
+      ],
+      stats: {
+        nodeCount: 2,
+        edgeCount: 1,
+        inferredEdges: 0,
+        contractEdges: 1,
+        manualEdges: 0,
+        hasCycle: false,
+      },
+    };
+    const model = {
+      summary: { projectCount: 2 },
+      projects: [
+        {
+          name: 'api',
+          path: 'services/api',
+          frameworkDisplayName: 'FastAPI',
+          runtime: 'python',
+        },
+        { name: 'web', path: 'apps/web', frameworkDisplayName: 'Next.js', runtime: 'node' },
+      ],
+      graph,
+    } as never;
+    const contract = {
+      projects: [
+        {
+          slug: 'api',
+          relativePath: 'services/api',
+          contracts: {
+            owns: ['users'],
+            publishes: ['user.created'],
+            consumes: [],
+            dependsOn: [],
+            apis: [{ name: 'users-api' }],
+          },
+        },
+        {
+          slug: 'web',
+          relativePath: 'apps/web',
+          contracts: {
+            owns: [],
+            publishes: [],
+            consumes: ['user.created'],
+            dependsOn: ['api'],
+            apis: [],
+          },
+        },
+      ],
+    } as never;
+    const verify = verifyFixture({ risk: 'high', affectedProjects: 1, blockers: [] });
+    verify.steps = [
+      {
+        scope: 'project',
+        project: 'api',
+        command: { display: 'pytest -q' },
+      },
+      { scope: 'workspace', command: { display: 'ignored' } },
+    ] as never;
+    const impact = {
+      affectedProjects: [{ target: 'api', risk: 'critical' }],
+      transitiveImpact: [],
+      summary: { risk: 'high' },
+    } as never;
+
+    const report = await buildWorkspaceExplain({
+      workspacePath,
+      target: { kind: 'project', project: 'api' },
+      model,
+      contract,
+      verify,
+      impact,
+    });
+
+    expect(report.summary).toContain('1 consumer(s)');
+    expect(report.releaseRisk).toBe('critical');
+    expect(report.sections.find((section) => section.id === 'consumers')?.body).toContain('web');
+    expect(report.sections.find((section) => section.id === 'contracts')?.body).toContain(
+      'users-api'
+    );
+    expect(report.sections.find((section) => section.id === 'verification')?.body).toContain(
+      'pytest -q'
+    );
+    expect(report.sections.find((section) => section.id === 'centrality')?.body).toContain(
+      'fanIn 1'
+    );
+  });
+
+  it('renders trace fallbacks when diff, impact, and verify artifacts are absent', async () => {
+    const report = await buildWorkspaceExplain({
+      workspacePath,
+      target: { kind: 'trace', diffRef: 'missing-diff.json' },
+      model: { summary: { projectCount: 0 }, projects: [] } as never,
+      contract: null,
+      verify: null,
+      impact: null,
+    });
+
+    expect(report.summary).toContain('workspace scaffold baseline');
+    expect(report.sections.find((section) => section.id === 'origin')?.body).toContain(
+      'No changed projects'
+    );
+    expect(report.sections.find((section) => section.id === 'blast-radius')?.body).toContain(
+      'No transitive impact'
+    );
+    expect(report.sections.find((section) => section.id === 'gate')?.body).toContain(
+      'No verify subgraph'
+    );
+  });
+
   it('rejects malformed verify evidence instead of narrating unvalidated data', async () => {
     await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_VERIFY_REPORT_PATH), {
       schemaVersion: 'workspace-verify.v1',

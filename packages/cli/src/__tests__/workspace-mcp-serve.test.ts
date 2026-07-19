@@ -1,12 +1,17 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 
 import fsExtra from 'fs-extra';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { parseWorkspaceExplainTarget } from '../contracts/workspace-explain-contract.js';
-import { WORKSPACE_MCP_READ_TOOLS } from '../workspace-mcp-serve.js';
+import {
+  invokeMcpToolForTest,
+  runWorkspaceMcpServe,
+  WORKSPACE_MCP_READ_TOOLS,
+} from '../workspace-mcp-serve.js';
 import { WORKSPACE_CONTRACT_VERIFY_REPORT_PATH } from '../utils/workspace-contract.js';
 import { WORKSPACE_EXPLAIN_REPORT_PATH } from '../contracts/workspace-explain-contract.js';
 import { buildWorkspaceVerify, WORKSPACE_VERIFY_REPORT_PATH } from '../workspace-verify.js';
@@ -64,7 +69,7 @@ describe('workspace mcp blockers aggregation', () => {
       sections: [],
       blockingReasons: ['explain blocker', 'shared blocker'],
     });
-    await fsExtra.writeJson(path.join(workspacePath, WORKSPACE_CONTRACT_VERIFY_REPORT_PATH), {
+    await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_CONTRACT_VERIFY_REPORT_PATH), {
       schemaVersion: 'workspace-contract-verify.v1',
       generatedAt: new Date().toISOString(),
       status: 'failed',
@@ -95,6 +100,145 @@ describe('workspace mcp blockers aggregation', () => {
         WORKSPACE_EXPLAIN_REPORT_PATH,
         WORKSPACE_CONTRACT_VERIFY_REPORT_PATH,
       ])
+    );
+  });
+
+  it('uses the canonical fallback reason when contract verification failed without violations', async () => {
+    await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_CONTRACT_VERIFY_REPORT_PATH), {
+      schemaVersion: 'workspace-contract-verify.v1',
+      generatedAt: new Date().toISOString(),
+      status: 'failed',
+      contractPath: '.workspai/workspace.contract.json',
+      projectCount: 0,
+      checks: [],
+      violations: [],
+    });
+
+    await expect(invokeMcpToolForTest(workspacePath, 'getBlockers')).resolves.toMatchObject({
+      blockingReasons: ['Workspace contract verification failed'],
+    });
+  });
+
+  it('reads only workspace-contained artifacts and returns null for missing safe paths', async () => {
+    await fsExtra.outputJson(path.join(workspacePath, '.workspai', 'custom.json'), {
+      source: 'custom',
+    });
+
+    await expect(
+      invokeMcpToolForTest(workspacePath, 'getArtifact', {
+        relativePath: '.workspai/custom.json',
+      })
+    ).resolves.toEqual({ source: 'custom' });
+    await expect(
+      invokeMcpToolForTest(workspacePath, 'getArtifact', {
+        relativePath: '.workspai/missing.json',
+      })
+    ).resolves.toBeNull();
+    for (const unsafe of ['', '../secret.json', '/tmp/secret.json', '.workspai/../secret.json']) {
+      await expect(
+        invokeMcpToolForTest(workspacePath, 'getArtifact', { relativePath: unsafe })
+      ).rejects.toThrow(/Unsafe artifact path/);
+    }
+    await expect(invokeMcpToolForTest(workspacePath, 'unknownTool')).rejects.toThrow(
+      'Unknown tool: unknownTool'
+    );
+  });
+
+  it('reuses cached explain reports only when their typed target matches', async () => {
+    const reportPath = path.join(workspacePath, WORKSPACE_EXPLAIN_REPORT_PATH);
+    const base = {
+      schemaVersion: 'workspace-explain.v1',
+      generatedAt: '2026-07-19T00:00:00.000Z',
+      workspacePath,
+      summary: 'cached explanation',
+      sections: [{ id: 'summary', title: 'Summary', body: 'cached' }],
+    };
+    const cases = [
+      { target: { kind: 'release-blocked' }, request: 'release-blocked' },
+      { target: { kind: 'project', project: 'API' }, request: 'project:api' },
+      {
+        target: { kind: 'blocker', blockerId: 'doctor.workspace' },
+        request: 'blocker:doctor.workspace',
+      },
+      { target: { kind: 'trace', diffRef: 'diff.json' }, request: 'trace:diff.json' },
+    ];
+
+    for (const testCase of cases) {
+      await fsExtra.outputJson(reportPath, { ...base, target: testCase.target });
+      await expect(
+        invokeMcpToolForTest(workspacePath, 'getWorkspaceExplain', {
+          target: testCase.request,
+        })
+      ).resolves.toMatchObject({ summary: 'cached explanation', target: testCase.target });
+    }
+    await expect(
+      invokeMcpToolForTest(workspacePath, 'getWorkspaceExplain', { target: 'trace:' })
+    ).rejects.toThrow(/Invalid explain target/);
+  });
+
+  it('serves JSON-RPC initialization, discovery, tool calls, and fail-closed errors over stdio', async () => {
+    await fsExtra.outputJson(path.join(workspacePath, '.workspai', 'custom.json'), {
+      source: 'rpc',
+    });
+    const requests = [
+      '',
+      '{invalid-json',
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }),
+      JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+      JSON.stringify({ jsonrpc: '2.0', id: 'tools', method: 'tools/list' }),
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: {
+          name: 'getArtifact',
+          arguments: { relativePath: '.workspai/custom.json' },
+        },
+      }),
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'tools/call',
+        params: { name: 'getArtifact', arguments: { relativePath: '.workspai/missing.json' } },
+      }),
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 4,
+        method: 'tools/call',
+        params: { name: 'unknownTool', arguments: 'invalid' },
+      }),
+      JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'unsupported/method' }),
+    ];
+    const stdin = Readable.from(`${requests.join('\n')}\n`);
+    const stdinSpy = vi.spyOn(process, 'stdin', 'get').mockReturnValue(stdin as never);
+    const writes: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+
+    try {
+      await runWorkspaceMcpServe({ workspacePath });
+    } finally {
+      stdoutSpy.mockRestore();
+      stdinSpy.mockRestore();
+    }
+
+    const responses = writes.map((line) => JSON.parse(line) as Record<string, any>);
+    expect(responses[0].error.message).toBe('Invalid JSON-RPC request');
+    expect(responses.find((response) => response.id === 1)?.result.serverInfo.name).toBe(
+      'workspai-workspace-mcp'
+    );
+    expect(responses.find((response) => response.id === 'tools')?.result.tools).toHaveLength(
+      WORKSPACE_MCP_READ_TOOLS.length
+    );
+    expect(responses.find((response) => response.id === 2)?.result.isError).toBe(false);
+    expect(responses.find((response) => response.id === 3)?.result.isError).toBe(true);
+    expect(responses.find((response) => response.id === 4)?.error.message).toBe(
+      'Unknown tool: unknownTool'
+    );
+    expect(responses.find((response) => response.id === 5)?.error.message).toBe(
+      'Unsupported method: unsupported/method'
     );
   });
 });

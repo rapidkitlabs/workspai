@@ -302,6 +302,77 @@ describe('Runtime Adapters', () => {
       expect(runCore).toHaveBeenCalledWith(['build'], '/tmp/project');
       expect(runCore).toHaveBeenCalledWith(['start'], '/tmp/project');
     });
+
+    it('discovers workspace policy and uses its shared python cache mode', async () => {
+      delete process.env.RAPIDKIT_DEP_SHARING_MODE;
+      delete process.env.RAPIDKIT_WORKSPACE_PATH;
+      vi.spyOn(fs, 'existsSync').mockImplementation((candidate: fs.PathLike) => {
+        const normalized = normalizePath(String(candidate));
+        return (
+          normalized === '/tmp/workspace/.workspai-workspace' ||
+          normalized.endsWith('/.workspai/policies.yml')
+        );
+      });
+      vi.spyOn(fs, 'readFileSync').mockReturnValue(
+        'mode: strict\ndependency_sharing_mode: shared-runtime-caches # enterprise\n'
+      );
+      const runCore = vi.fn().mockImplementation(async () => {
+        expect(normalizePath(process.env.PIP_CACHE_DIR)).toBe(
+          '/tmp/workspace/.workspai/cache/python/pip'
+        );
+        return 0;
+      });
+      const adapter = new PythonRuntimeAdapter(runCore);
+      await adapter.initProject('/tmp/workspace/projects/api');
+    });
+
+    it('falls back to isolated caches for absent, unreadable, or invalid workspace policy', async () => {
+      delete process.env.RAPIDKIT_DEP_SHARING_MODE;
+      delete process.env.RAPIDKIT_WORKSPACE_PATH;
+      const exists = vi.spyOn(fs, 'existsSync');
+      exists.mockReturnValueOnce(false).mockReturnValueOnce(false).mockReturnValueOnce(false);
+      const runCore = vi.fn().mockImplementation(async () => {
+        expect(normalizePath(process.env.PIP_CACHE_DIR)).toContain(
+          '/tmp/no-workspace/project/.workspai/cache/python/pip'
+        );
+        return 0;
+      });
+      await new PythonRuntimeAdapter(runCore).initProject('/tmp/no-workspace/project');
+
+      vi.restoreAllMocks();
+      vi.spyOn(fs, 'existsSync').mockImplementation((candidate: fs.PathLike) => {
+        const normalized = normalizePath(String(candidate));
+        return (
+          normalized === '/tmp/workspace/.workspai-workspace' ||
+          normalized.endsWith('/policies.yml')
+        );
+      });
+      vi.spyOn(fs, 'readFileSync').mockImplementation(() => {
+        throw new Error('unreadable');
+      });
+      const unreadableRun = vi.fn().mockImplementation(async () => {
+        expect(normalizePath(process.env.PIP_CACHE_DIR)).toContain(
+          '/tmp/workspace/project/.workspai/cache/python/pip'
+        );
+        return 0;
+      });
+      await new PythonRuntimeAdapter(unreadableRun).initProject('/tmp/workspace/project');
+    });
+
+    it('restores pre-existing cache variables even when the core runner rejects', async () => {
+      process.env.PIP_CACHE_DIR = '/original/pip';
+      process.env.POETRY_CACHE_DIR = '/original/poetry';
+      const adapter = new PythonRuntimeAdapter(vi.fn().mockRejectedValue(new Error('core failed')));
+      await expect(adapter.runTest('/tmp/project')).rejects.toThrow('core failed');
+      expect(process.env.PIP_CACHE_DIR).toBe('/original/pip');
+      expect(process.env.POETRY_CACHE_DIR).toBe('/original/poetry');
+    });
+
+    it('returns actionable doctor hints', async () => {
+      const hints = await new PythonRuntimeAdapter(vi.fn()).doctorHints('/tmp/project');
+      expect(hints).toHaveLength(3);
+      expect(hints.join(' ')).toContain('doctor workspace');
+    });
   });
 
   describe('JavaRuntimeAdapter', () => {

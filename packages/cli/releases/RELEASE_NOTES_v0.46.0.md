@@ -36,8 +36,21 @@ blocking outcomes behind a successful aggregate result.
 - Repaired the npm dependency topology so `npm sbom --sbom-format cyclonedx`
   produces a valid CycloneDX document without invalid `minimatch` or `chokidar`
   nodes.
-- Aligned metrics with the authoritative Vitest coverage thresholds and made
-  test, lint, and security collection fail closed on execution or parse errors.
+- Preserved the 80% aggregate metrics coverage target and made test, lint, and
+  security collection fail closed on execution or parse errors.
+- Expanded the release suite to 2,040 passing tests with focused coverage for
+  Workspace Intelligence execution and evidence, semantic contracts, Doctor
+  remediation, lifecycle rollback, archives, runtime adapters, platform
+  boundaries, and previously under-covered utilities.
+- Verified 81.68% statement, 71.28% branch, 91.98% function, and 82.40% line
+  coverage. The `workspace-run.ts` orchestration surface now reaches 81.07%
+  statements and 82.30% lines.
+- Increased the metrics subprocess output budget and added Vitest-summary
+  parsing tests so the expanded suite cannot be mistaken for an invalid test
+  result after exceeding Node's default child-process buffer.
+- Excluded type-only declarations and compatibility-only re-export barrels from
+  executable coverage calculations while preserving compile-time checks and
+  explicit compatibility export tests.
 
 ## Documentation and contract alignment
 
@@ -56,6 +69,9 @@ accidental Python version pin when automatic interpreter selection is desired.
 - Lifecycle transaction, frontend execution, Python-engine state, workspace
   registry, archive, mirror, and package-publish suites cover the surrounding
   operational paths.
+- The final release gate passed 2,040 tests with 8 explicit skips, 82% aggregate
+  metrics coverage, zero ESLint errors or warnings, and zero npm audit
+  vulnerabilities.
 
 ## Upgrade
 

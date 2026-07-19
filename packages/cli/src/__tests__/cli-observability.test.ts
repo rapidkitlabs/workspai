@@ -7,9 +7,13 @@ import {
   resetCliRunIdForTests,
   setCliRunId,
 } from '../observability/cli-log-event.js';
-import { resolveCliLogFormat } from '../observability/cli-log-format.js';
+import { isCliJsonLogFormat, resolveCliLogFormat } from '../observability/cli-log-format.js';
 import { emitWorkspacePhase } from '../observability/cli-progress.js';
-import { isWorkspaceIntelligenceSubcommand } from '../utils/workspace-command-surface.js';
+import {
+  isWorkspaceIntelligenceSubcommand,
+  isWorkspaceSubcommand,
+  WORKSPACE_SUBCOMMANDS,
+} from '../utils/workspace-command-surface.js';
 import {
   finalizeCliRunContext,
   initializeCliRunContext,
@@ -27,11 +31,13 @@ describe('cli observability', () => {
     resetCliRunContextForTests();
     resetCliProcessExitHookForTests();
     resetCliRunIdForTests();
+    delete process.env.WORKSPAI_LOG_FORMAT;
     delete process.env.RAPIDKIT_LOG_FORMAT;
   });
 
   afterEach(() => {
     stderrWrite.mockRestore();
+    delete process.env.WORKSPAI_LOG_FORMAT;
     delete process.env.RAPIDKIT_LOG_FORMAT;
     resetCliRunContextForTests();
     resetCliProcessExitHookForTests();
@@ -51,6 +57,29 @@ describe('cli observability', () => {
       'json'
     );
     expect(resolveCliLogFormat(['node', 'rapidkit', '--log-json', 'create'])).toBe('json');
+  });
+
+  it('normalizes every text/json form and gives canonical env precedence', () => {
+    process.env.WORKSPAI_LOG_FORMAT = ' TEXT ';
+    process.env.RAPIDKIT_LOG_FORMAT = 'json';
+    expect(resolveCliLogFormat(['node', 'workspai', '--log-json'])).toBe('text');
+
+    process.env.WORKSPAI_LOG_FORMAT = 'invalid';
+    delete process.env.RAPIDKIT_LOG_FORMAT;
+    expect(resolveCliLogFormat(['node', 'workspai', '--log-format=text'])).toBe('text');
+    expect(resolveCliLogFormat(['node', 'workspai', '--log-format=json'])).toBe('json');
+    expect(resolveCliLogFormat(['node', 'workspai', '--log-format', ' TEXT '])).toBe('text');
+    expect(resolveCliLogFormat(['node', 'workspai', '--log-format', 'invalid'])).toBe('text');
+    expect(isCliJsonLogFormat(['node', 'workspai', '--log-format=json'])).toBe(true);
+    expect(isCliJsonLogFormat(['node', 'workspai'])).toBe(false);
+  });
+
+  it('recognizes the complete workspace command surface and rejects unknown actions', () => {
+    for (const action of WORKSPACE_SUBCOMMANDS) {
+      expect(isWorkspaceSubcommand(action), action).toBe(true);
+    }
+    expect(isWorkspaceSubcommand('unknown')).toBe(false);
+    expect(isWorkspaceIntelligenceSubcommand('unknown')).toBe(false);
   });
 
   it('builds schema-compliant log events', () => {

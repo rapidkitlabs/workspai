@@ -197,13 +197,13 @@ import {
 import { WORKSPACE_CONTRACT_PATH } from './utils/workspace-contract.js';
 import { WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH } from './utils/workspace-registry-summary.js';
 
-type BridgeFailureCode =
+export type BridgeFailureCode =
   | 'PYTHON_NOT_FOUND'
   | 'BRIDGE_VENV_BOOTSTRAP_FAILED'
   | 'BRIDGE_VENV_CREATE_FAILED'
   | 'BRIDGE_PIP_BOOTSTRAP_FAILED';
 
-function bridgeFailureCode(err: unknown): BridgeFailureCode | null {
+export function bridgeFailureCode(err: unknown): BridgeFailureCode | null {
   if (!err || typeof err !== 'object') return null;
   const code = (err as { code?: unknown }).code;
   if (
@@ -216,7 +216,7 @@ function bridgeFailureCode(err: unknown): BridgeFailureCode | null {
   return null;
 }
 
-function resolveInvokedCliName(argv = process.argv): 'workspai' | 'rapidkit' {
+export function resolveInvokedCliName(argv = process.argv): 'workspai' | 'rapidkit' {
   const entry = path
     .basename(argv[1] ?? '')
     .toLowerCase()
@@ -228,7 +228,7 @@ function shouldDebugWorkspaiArgs(): boolean {
   return process.env.WORKSPAI_DEBUG_ARGS === '1' || process.env.RAPIDKIT_NPM_DEBUG_ARGS === '1';
 }
 
-function normalizeFallbackTemplate(kit: string): 'fastapi' | 'nestjs' | null {
+export function normalizeFallbackTemplate(kit: string): 'fastapi' | 'nestjs' | null {
   const k = kit.trim().toLowerCase();
   if (!k) return null;
   if (k.startsWith('fastapi')) return 'fastapi';
@@ -236,7 +236,7 @@ function normalizeFallbackTemplate(kit: string): 'fastapi' | 'nestjs' | null {
   return null;
 }
 
-function readFlagValue(argv: string[], flag: string): string | undefined {
+export function readFlagValue(argv: string[], flag: string): string | undefined {
   const idx = argv.indexOf(flag);
   if (idx >= 0 && idx + 1 < argv.length) return argv[idx + 1];
   const eq = argv.find((a) => a.startsWith(`${flag}=`));
@@ -244,7 +244,7 @@ function readFlagValue(argv: string[], flag: string): string | undefined {
   return undefined;
 }
 
-function parseMaxWorkersOption(raw: string | undefined): number | undefined {
+export function parseMaxWorkersOption(raw: string | undefined): number | undefined {
   if (raw === undefined || raw.trim() === '') {
     return undefined;
   }
@@ -366,11 +366,11 @@ async function enforceWorkspaceProfileForRequestedKit(kitName: string): Promise<
   return true;
 }
 
-function hostPythonCandidates(): string[] {
+export function hostPythonCandidates(): string[] {
   return getPythonCommandCandidates();
 }
 
-function buildDelegationEnvForInit(): NodeJS.ProcessEnv {
+export function buildDelegationEnvForInit(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   const rawPath = env.PATH || '';
   if (rawPath) {
@@ -402,14 +402,14 @@ function workspaceVenvPythonBin(workspacePath: string): string {
   return getVenvPythonPath(path.join(workspacePath, '.venv'));
 }
 
-async function commandAvailable(command: string, cwd: string): Promise<boolean> {
+export async function commandAvailable(command: string, cwd: string): Promise<boolean> {
   const code = await runCommandInCwd(command, ['--version'], cwd);
   return code === 0;
 }
 
 type InferredRuntime = 'python' | 'node' | 'go' | 'java' | 'dotnet' | null;
 
-async function inferRuntimeByFiles(targetPath: string): Promise<InferredRuntime> {
+export async function inferRuntimeByFiles(targetPath: string): Promise<InferredRuntime> {
   const goMod = path.join(targetPath, 'go.mod');
   if (await fsExtra.pathExists(goMod)) return 'go';
 
@@ -457,7 +457,7 @@ async function inferRuntimeByFiles(targetPath: string): Promise<InferredRuntime>
   return null;
 }
 
-async function createWorkspaceVenv(workspacePath: string): Promise<number> {
+export async function createWorkspaceVenv(workspacePath: string): Promise<number> {
   for (const candidate of hostPythonCandidates()) {
     const args = candidate === 'py' ? ['-3', '-m', 'venv', '.venv'] : ['-m', 'venv', '.venv'];
     const code = await runCommandInCwd(candidate, args, workspacePath);
@@ -466,7 +466,7 @@ async function createWorkspaceVenv(workspacePath: string): Promise<number> {
   return 1;
 }
 
-async function createProjectVenv(projectPath: string): Promise<number> {
+export async function createProjectVenv(projectPath: string): Promise<number> {
   for (const candidate of hostPythonCandidates()) {
     const args = candidate === 'py' ? ['-3', '-m', 'venv', '.venv'] : ['-m', 'venv', '.venv'];
     const code = await runCommandInCwd(candidate, args, projectPath);
@@ -475,7 +475,7 @@ async function createProjectVenv(projectPath: string): Promise<number> {
   return 1;
 }
 
-async function ensurePythonProjectUsesLocalVenv(projectPath: string): Promise<number> {
+export async function ensurePythonProjectUsesLocalVenv(projectPath: string): Promise<number> {
   const localVenvPython = getVenvPythonPath(path.join(projectPath, '.venv'));
 
   if (!(await fsExtra.pathExists(localVenvPython))) {
@@ -501,7 +501,9 @@ async function ensurePythonProjectUsesLocalVenv(projectPath: string): Promise<nu
   return 0;
 }
 
-async function installPythonDependenciesWithPipFallback(projectPath: string): Promise<number> {
+export async function installPythonDependenciesWithPipFallback(
+  projectPath: string
+): Promise<number> {
   const localVenvPython = getVenvPythonPath(path.join(projectPath, '.venv'));
   if (!(await fsExtra.pathExists(localVenvPython))) {
     const venvCode = await createProjectVenv(projectPath);
@@ -584,7 +586,7 @@ async function handleNodeInitSmart(projectPath: string): Promise<number> {
   return primary;
 }
 
-function validateNpmKitFlags(kitId: string, args: readonly string[]): string | null {
+export function validateNpmKitFlags(kitId: string, args: readonly string[]): string | null {
   const isSemverLike = (value: string): boolean =>
     /^\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?$/.test(value);
 
@@ -988,7 +990,10 @@ async function runFrontendProjectCreate(args: string[]): Promise<number> {
   }
 }
 
-async function runCreateFallback(args: string[], reasonCode: BridgeFailureCode): Promise<number> {
+export async function runCreateFallback(
+  args: string[],
+  reasonCode: BridgeFailureCode
+): Promise<number> {
   // Supported offline fallback:
   //   workspai create project <kit> <name> [--output <dir>]
   // for kits that have embedded templates (fastapi*, nestjs*).
@@ -1701,11 +1706,11 @@ const STRICT_POLICY_PROJECT_COMMANDS = [
   ...PROJECT_COMMANDS_CORE_FALLBACK,
 ] as const;
 
-function isNpmOnlyTopLevelCommand(command: string | undefined): boolean {
+export function isNpmOnlyTopLevelCommand(command: string | undefined): boolean {
   return !!command && (NPM_ONLY_TOP_LEVEL_COMMANDS as readonly string[]).includes(command);
 }
 
-function isNpmOnlyScopedCommand(args: readonly string[]): boolean {
+export function isNpmOnlyScopedCommand(args: readonly string[]): boolean {
   const first = args[0];
   const second = args[1];
   if (first === 'project' && (second === '--help' || second === '-h' || second === 'help')) {
@@ -1718,22 +1723,22 @@ function isNpmOnlyScopedCommand(args: readonly string[]): boolean {
   });
 }
 
-function isNpmOnlyInvocation(args: readonly string[]): boolean {
+export function isNpmOnlyInvocation(args: readonly string[]): boolean {
   if (args[0] === 'project' && args[1] && !args[1].startsWith('-') && args[1] !== 'help') {
     return isNpmOnlyScopedCommand(args);
   }
   return isNpmOnlyTopLevelCommand(args[0]) || isNpmOnlyScopedCommand(args);
 }
 
-function isNpmOnlyParseDirectCommand(command: string | undefined): boolean {
+export function isNpmOnlyParseDirectCommand(command: string | undefined): boolean {
   return !!command && (NPM_ONLY_PARSE_DIRECT_COMMANDS as readonly string[]).includes(command);
 }
 
-function isNpmOnlyParseDirectInvocation(args: readonly string[]): boolean {
+export function isNpmOnlyParseDirectInvocation(args: readonly string[]): boolean {
   return isNpmOnlyParseDirectCommand(args[0]) || isNpmOnlyScopedCommand(args);
 }
 
-function isNpmOnlyManualHandlerCommand(
+export function isNpmOnlyManualHandlerCommand(
   command: string | undefined
 ): command is (typeof NPM_ONLY_MANUAL_HANDLER_COMMANDS)[number] {
   return !!command && (NPM_ONLY_MANUAL_HANDLER_COMMANDS as readonly string[]).includes(command);
@@ -1960,7 +1965,7 @@ function blockUnsupportedProjectCommandIfNeeded(args: readonly string[]): boolea
   process.exit(1);
 }
 
-function hasWorkspaceRootMarkers(targetDir: string): boolean {
+export function hasWorkspaceRootMarkers(targetDir: string): boolean {
   return (
     fs.existsSync(path.join(targetDir, '.workspai-workspace')) ||
     fs.existsSync(path.join(targetDir, '.workspai', 'workspace.json')) ||
@@ -1976,7 +1981,7 @@ function hasWorkspaceRootMarkers(targetDir: string): boolean {
  * Check if we're inside a RapidKit project and delegate to local CLI if needed
  * If .rapidkit/context.json exists and engine is Python-core backed, delegate module/core commands.
  */
-function findContextFileUp(start: string): string | null {
+export function findContextFileUp(start: string): string | null {
   let p = start;
 
   while (true) {
@@ -1991,7 +1996,7 @@ function findContextFileUp(start: string): string | null {
   return null;
 }
 
-function findWorkspaceMarkerUp(start: string): string | null {
+export function findWorkspaceMarkerUp(start: string): string | null {
   let p = start;
   const tempRoot = path.resolve(tmpdir());
 
@@ -2012,7 +2017,7 @@ function findWorkspaceMarkerUp(start: string): string | null {
  * Find workspace directory (not just marker file)
  * Returns the directory containing a Workspai workspace marker.
  */
-function findWorkspaceUp(start: string): string | null {
+export function findWorkspaceUp(start: string): string | null {
   let p = start;
   const tempRoot = path.resolve(tmpdir());
 
@@ -2099,7 +2104,7 @@ export async function detectWindowsDoctorWorkspaceShadow(
  * Legacy roots are identified by `.rapidkit/workspace.json` while missing the
  * root marker file. Bootstrap can then auto-sync the modern foundation layout.
  */
-function findLegacyWorkspaceUp(start: string): string | null {
+export function findLegacyWorkspaceUp(start: string): string | null {
   let p = start;
 
   while (true) {
@@ -2164,7 +2169,11 @@ function parseWorkspacePolicy(content: string | null | undefined): {
   };
 }
 
-function replaceOrInsertTopLevelPolicyLine(content: string, key: string, value: string): string {
+export function replaceOrInsertTopLevelPolicyLine(
+  content: string,
+  key: string,
+  value: string
+): string {
   const line = `${key}: ${value}`;
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const topLevelRegex = new RegExp(`^[\\t ]*${escaped}:\\s*.*$`, 'm');
@@ -2182,7 +2191,7 @@ function replaceOrInsertTopLevelPolicyLine(content: string, key: string, value: 
   return `${normalized}${line}\n`;
 }
 
-function replaceOrInsertRulePolicyLine(
+export function replaceOrInsertRulePolicyLine(
   content: string,
   key: WorkspacePolicyRuleKey,
   value: boolean
@@ -2203,7 +2212,7 @@ function replaceOrInsertRulePolicyLine(
   return `${normalized}rules:\n${line}\n`;
 }
 
-function defaultWorkspacePolicyYaml(): string {
+export function defaultWorkspacePolicyYaml(): string {
   return [
     'version: "1.0"',
     'mode: warn # "warn" or "strict"',
@@ -2237,7 +2246,7 @@ async function writeWorkspacePolicyFile(workspacePath: string, content: string):
   await fs.promises.writeFile(policyPath, normalized, 'utf-8');
 }
 
-function parsePolicyBooleanLiteral(value: string): boolean | null {
+export function parsePolicyBooleanLiteral(value: string): boolean | null {
   const normalized = value.trim().toLowerCase();
   if (normalized === 'true' || normalized === '1' || normalized === 'on') return true;
   if (normalized === 'false' || normalized === '0' || normalized === 'off') return false;
@@ -2347,7 +2356,7 @@ async function withWorkspaceDependencyPolicyContext<T>(
   }
 }
 
-async function runCommandInCwd(
+export async function runCommandInCwd(
   command: string,
   commandArgs: string[],
   cwd: string,
@@ -2591,7 +2600,7 @@ function resolveDirectNodeEvalScript(
   }
 }
 
-function parseNodeEvalScript(script: string): string | null {
+export function parseNodeEvalScript(script: string): string | null {
   const trimmed = script.trim();
   const doubleQuoted = trimmed.match(/^node\s+(?:-e|--eval)\s+"((?:\\.|[^"\\])*)"$/);
   if (doubleQuoted) {
@@ -3332,7 +3341,7 @@ async function ensureManagedDefaultImportWorkspace(options: { silent?: boolean }
 /**
  * `rapidkit init` inside a Go project — runs `go mod tidy` to fetch deps.
  */
-async function handleGoInit(projectPath: string): Promise<number> {
+export async function handleGoInit(projectPath: string): Promise<number> {
   const adapter = getRuntimeAdapter('go', { runCommandInCwd, runCoreRapidkit });
   const result = await adapter.initProject(projectPath);
 
@@ -3351,7 +3360,7 @@ function reportRuntimeCommandResult(result: { exitCode: number; message?: string
  * `rapidkit dev` inside a Go project — runs `make run` (if Makefile present)
  * or falls back to `go run ./main.go`.
  */
-async function handleNodeCommand(
+export async function handleNodeCommand(
   action: 'init' | 'dev' | 'test' | 'build' | 'start' | 'lint' | 'format',
   projectPath: string
 ): Promise<number> {
@@ -3388,7 +3397,7 @@ async function handleNodeCommand(
   return reportRuntimeCommandResult(result);
 }
 
-async function handleJavaCommand(
+export async function handleJavaCommand(
   action: 'init' | 'dev' | 'test' | 'build' | 'start' | 'lint' | 'format',
   projectPath: string
 ): Promise<number> {
@@ -4882,7 +4891,7 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
   return prereq.exitCode;
 }
 
-function parseCacheConfig(content: string): {
+export function parseCacheConfig(content: string): {
   strategy: string;
   prune_on_bootstrap: boolean;
   self_heal: boolean;
@@ -4897,7 +4906,7 @@ function parseCacheConfig(content: string): {
   for (const line of content.split('\n')) {
     const t = line.trim();
     const stratMatch = t.match(/^strategy:\s*(\S+)/);
-    if (stratMatch) cfg.strategy = stratMatch[1].replace(/['"]]/g, '');
+    if (stratMatch) cfg.strategy = stratMatch[1].replace(/['"]/g, '');
     const pruneMatch = t.match(/^prune_on_bootstrap:\s*(true|false)/);
     if (pruneMatch) cfg.prune_on_bootstrap = pruneMatch[1] === 'true';
     const healMatch = t.match(/^self_heal:\s*(true|false)/);
@@ -5818,7 +5827,7 @@ export async function handleInitCommand(args: string[]): Promise<number> {
   }
 }
 
-async function checkStrictPolicyPreflightForDelegation(cwd: string): Promise<string[]> {
+export async function checkStrictPolicyPreflightForDelegation(cwd: string): Promise<string[]> {
   const workspacePath = findWorkspaceUp(cwd);
   if (!workspacePath) return [];
 
@@ -6205,7 +6214,7 @@ let cleanupInProgress = false;
 const invokedCliName = resolveInvokedCliName();
 const primaryCliName = 'workspai';
 const primaryNpxCommand = 'npx workspai';
-const program = new Command();
+export const program = new Command();
 
 // Legacy flags are intentionally hidden by default. Tests and current UX
 // expect legacy template-related flags to remain out of the primary help
@@ -9774,7 +9783,7 @@ function printHelpSectionDivider(title: string): void {
   console.log(chalk.gray(rule));
 }
 
-function printHelp() {
+export function printHelp() {
   const cmd = (text: string): string =>
     text.replace(/\bnpx (?:rapidkit|workspai)\b/g, primaryNpxCommand);
   const grayCmd = (text: string): string => chalk.gray(cmd(text));
@@ -10337,8 +10346,10 @@ async function writeStdoutAndExit(text: string, code = 0): Promise<never> {
   return exitAfterOutputFlush(code);
 }
 
-// Delegate to local CLI if inside a RapidKit project
-if (shouldBootstrapCli) {
+// Delegate to local CLI if inside a RapidKit project. Exported so entrypoint
+// routing can be exercised in-process with the same implementation used by
+// the executable, including output flushing and ownership decisions.
+export async function bootstrapCli(): Promise<void> {
   forceBlockingCliOutput();
   installSynchronousPipeWrites();
   installCliProcessExitHook();
@@ -10776,4 +10787,8 @@ if (shouldBootstrapCli) {
       }
     });
   }
+}
+
+if (shouldBootstrapCli) {
+  await bootstrapCli();
 }

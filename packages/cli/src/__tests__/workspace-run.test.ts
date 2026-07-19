@@ -129,6 +129,68 @@ describe('workspace-run', { timeout: 30_000 }, () => {
     await fsExtra.remove(workspacePath);
   });
 
+  it('reuses a previously passed project result without executing the stage again', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-reuse-'));
+    await createProject(workspacePath, 'apps/api');
+    const execaMock = noGateMock({ build: { exitCode: 0, stdout: 'built' } });
+
+    const initial = await runWorkspaceStage({
+      workspacePath,
+      stage: 'build',
+      enforceGates: false,
+      json: true,
+    });
+    expect(initial.summary.passed).toBe(1);
+
+    execaMock.mockClear();
+    const reused = await runWorkspaceStage({
+      workspacePath,
+      stage: 'build',
+      reusePassed: true,
+      enforceGates: false,
+      json: true,
+    });
+
+    expect(reused.projects[0]).toMatchObject({
+      status: 'passed',
+      exitCode: 0,
+      reason: 'reused passed result from workspace-run-last.json',
+    });
+    expect(execaMock).not.toHaveBeenCalled();
+
+    await fsExtra.remove(workspacePath);
+  });
+
+  it('stops sequential execution after the first project failure', async () => {
+    const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-workspace-run-stop-'));
+    await createProject(workspacePath, 'apps/a');
+    await createProject(workspacePath, 'apps/b');
+    const execaMock = noGateMock({ build: { exitCode: 1, stdout: 'build failed' } });
+
+    const report = await runWorkspaceStage({
+      workspacePath,
+      stage: 'build',
+      enforceGates: false,
+      json: true,
+    });
+
+    expect(
+      report.projects.map(({ relativePath, status, reason }) => ({
+        relativePath,
+        status,
+        reason,
+      }))
+    ).toEqual([
+      expect.objectContaining({ relativePath: 'apps/a', status: 'failed' }),
+      { relativePath: 'apps/b', status: 'skipped', reason: 'stopped after failure' },
+    ]);
+    // One preflight probe and one stage execution; the second project never
+    // reaches either path.
+    expect(execaMock).toHaveBeenCalledTimes(2);
+
+    await fsExtra.remove(workspacePath);
+  });
+
   it('does not fail strict empty workspace runs when gates are skipped', async () => {
     const workspacePath = await fsExtra.mkdtemp(
       path.join(os.tmpdir(), 'rk-workspace-run-strict-empty-')

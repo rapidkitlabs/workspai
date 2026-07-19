@@ -1,11 +1,16 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 
 import fsExtra from 'fs-extra';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { recordWorkspaceFeedback } from '../workspace-feedback.js';
+import {
+  parseFeedbackStdinPayload,
+  readStdinAll,
+  recordWorkspaceFeedback,
+} from '../workspace-feedback.js';
 import { readWorkspaceHistory, WORKSPACE_HISTORY_PATH } from '../workspace-history.js';
 
 let workspacePath: string;
@@ -45,5 +50,23 @@ describe('workspace feedback (Phase 4.C)', () => {
       payload: { actionId: 'x' },
     });
     expect(result.ok).toBe(false);
+    expect(result.error).toBe('Invalid agent-action-outcome payload');
+    expect(result.historyPath).toBe(path.join(workspacePath, WORKSPACE_HISTORY_PATH));
+  });
+
+  it('parses valid stdin JSON and fails closed for blank or malformed input', () => {
+    expect(parseFeedbackStdinPayload('  {"outcome":"ok"}\n')).toEqual({ outcome: 'ok' });
+    expect(parseFeedbackStdinPayload('  ')).toBeNull();
+    expect(parseFeedbackStdinPayload('{broken')).toBeNull();
+  });
+
+  it('reads string and buffer stdin chunks without changing their byte order', async () => {
+    const stdin = Readable.from(['{"actionId":', Buffer.from('"agent-1"}')]);
+    const stdinSpy = vi.spyOn(process, 'stdin', 'get').mockReturnValue(stdin as never);
+    try {
+      await expect(readStdinAll()).resolves.toBe('{"actionId":"agent-1"}');
+    } finally {
+      stdinSpy.mockRestore();
+    }
   });
 });

@@ -1,4 +1,5 @@
 import path from 'path';
+import os from 'node:os';
 import fs from 'fs-extra';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -52,11 +53,80 @@ describe('platform-capabilities package runners', () => {
     expect(invocation).toEqual({ command: node, prefixArgs: [npmCli] });
   });
 
+  it('resolves npm and npx sibling CLI files from npm_execpath', () => {
+    const node = '/opt/node/bin/node';
+    vi.spyOn(fs, 'existsSync').mockImplementation((candidate) =>
+      ['/opt/npm/bin/npm-cli.js', '/opt/npm/bin/npx-cli.js'].includes(String(candidate))
+    );
+
+    expect(
+      resolvePackageRunnerInvocation(
+        'npx',
+        'linux',
+        {
+          npm_execpath: '/opt/npm/bin/npm-cli.js',
+        },
+        node
+      )
+    ).toEqual({ command: node, prefixArgs: ['/opt/npm/bin/npx-cli.js'] });
+    expect(
+      resolvePackageRunnerInvocation(
+        'npm',
+        'linux',
+        {
+          npm_execpath: '/opt/npm/bin/npx-cli.js',
+        },
+        node
+      )
+    ).toEqual({ command: node, prefixArgs: ['/opt/npm/bin/npm-cli.js'] });
+  });
+
+  it('uses well-known CLI locations, adjacent shims, and safe fallbacks in priority order', () => {
+    const node = '/opt/node/bin/node';
+    const existsSpy = vi.spyOn(fs, 'existsSync');
+
+    existsSpy.mockImplementation((candidate) =>
+      String(candidate).endsWith('/lib/node_modules/npm/bin/npm-cli.js')
+    );
+    expect(resolvePackageRunnerInvocation('npm', 'linux', {}, node)).toEqual({
+      command: node,
+      prefixArgs: ['/opt/node/lib/node_modules/npm/bin/npm-cli.js'],
+    });
+
+    existsSpy.mockImplementation((candidate) => String(candidate) === '/opt/node/bin/yarn');
+    expect(resolvePackageRunnerInvocation('yarn', 'linux', {}, node)).toEqual({
+      command: '/opt/node/bin/yarn',
+      prefixArgs: [],
+    });
+
+    existsSpy.mockReturnValue(false);
+    expect(resolvePackageRunnerInvocation('npm', 'linux', {}, node)).toEqual({
+      command: 'corepack',
+      prefixArgs: ['npm'],
+    });
+    expect(resolvePackageRunnerInvocation('pnpm', 'linux', {}, node)).toEqual({
+      command: 'pnpm',
+      prefixArgs: [],
+    });
+    expect(resolvePackageRunnerInvocation(' custom ', 'linux', {}, node)).toEqual({
+      command: 'custom',
+      prefixArgs: [],
+    });
+  });
+
   it('prepends the Node bin directory to PATH', () => {
     const delimiter = process.platform === 'win32' ? ';' : ':';
     const augmented = augmentPathWithNodeBin(['/usr/bin', '/bin'].join(delimiter));
     expect(augmented.startsWith(`${path.dirname(process.execPath)}${delimiter}`)).toBe(true);
     expect(augmented).toContain('/usr/bin');
+  });
+
+  it('does not duplicate an existing Node bin and supports Windows delimiters', () => {
+    const nodeBin = path.dirname(process.execPath);
+    expect(augmentPathWithNodeBin(`${nodeBin}:/usr/bin`, 'linux')).toBe(`${nodeBin}:/usr/bin`);
+    expect(augmentPathWithNodeBin('C:\\Windows;C:\\Tools', 'win32')).toBe(
+      `${nodeBin};C:\\Windows;C:\\Tools`
+    );
   });
 
   it('strips parent npx --package pins from nested runner env', () => {
@@ -72,6 +142,16 @@ describe('platform-capabilities package runners', () => {
     expect(env.HOME).toBe('/home/dev');
     expect(env.PATH?.split(process.platform === 'win32' ? ';' : ':')).toContain(
       path.dirname(process.execPath)
+    );
+  });
+
+  it('preserves an explicit corepack cache and otherwise provisions a temporary one', () => {
+    expect(
+      buildPackageRunnerSubprocessEnv({ PATH: '', COREPACK_HOME: '/cache/corepack' }, 'linux')
+        .COREPACK_HOME
+    ).toBe('/cache/corepack');
+    expect(buildPackageRunnerSubprocessEnv({ PATH: '' }, 'linux').COREPACK_HOME).toBe(
+      path.join(os.tmpdir(), 'rapidkit-corepack')
     );
   });
 });

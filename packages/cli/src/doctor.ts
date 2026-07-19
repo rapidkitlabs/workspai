@@ -5049,7 +5049,7 @@ function getDoctorFixCommandTimeoutMs(): number {
   return 60_000;
 }
 
-function parsePackageScriptFix(
+export function parsePackageScriptFix(
   cmd: string
 ): { projectPath: string; scriptName: string; scriptValue: string } | null {
   const patterns = [
@@ -5073,7 +5073,7 @@ function parsePackageScriptFix(
   return null;
 }
 
-function parseInternalRepairCommand(cmd: string): DoctorRepairOperation | null {
+export function parseInternalRepairCommand(cmd: string): DoctorRepairOperation | null {
   const match = cmd.trim().match(/^rapidkit:doctor:repair\s+([A-Za-z0-9_-]+)$/);
   if (!match?.[1]) return null;
 
@@ -5188,7 +5188,7 @@ function buildRemediationStepId(input: {
   return `${input.projectName}:${input.kind}:${digest}`;
 }
 
-function buildRepairOperationIdentity(operation: DoctorRepairOperation): string {
+export function buildRepairOperationIdentity(operation: DoctorRepairOperation): string {
   switch (operation.type) {
     case 'file-create':
       return `file-create:${operation.path}:${operation.overwrite}:${operation.content}`;
@@ -5213,7 +5213,7 @@ function buildRepairOperationIdentity(operation: DoctorRepairOperation): string 
   }
 }
 
-function assertOperationPathInsideProject(projectPath: string, targetPath: string): string {
+export function assertOperationPathInsideProject(projectPath: string, targetPath: string): string {
   const resolvedProjectPath = path.resolve(projectPath);
   const resolvedTargetPath = path.resolve(targetPath);
   const relative = path.relative(resolvedProjectPath, resolvedTargetPath);
@@ -5223,7 +5223,7 @@ function assertOperationPathInsideProject(projectPath: string, targetPath: strin
   return resolvedTargetPath;
 }
 
-async function applyPackageScriptFix(input: {
+export async function applyPackageScriptFix(input: {
   projectPath: string;
   scriptName: string;
   scriptValue: string;
@@ -5258,7 +5258,7 @@ async function applyPackageScriptFix(input: {
   await fsExtra.writeJSON(packageJsonPath, packageJson, { spaces: 2 });
 }
 
-async function applyFileCreateFix(input: {
+export async function applyFileCreateFix(input: {
   projectPath: string;
   operation: Extract<DoctorRepairOperation, { type: 'file-create' }>;
 }): Promise<void> {
@@ -5270,7 +5270,7 @@ async function applyFileCreateFix(input: {
   await fsExtra.writeFile(targetPath, input.operation.content, 'utf8');
 }
 
-async function applyFileAppendFix(input: {
+export async function applyFileAppendFix(input: {
   projectPath: string;
   operation: Extract<DoctorRepairOperation, { type: 'file-append' }>;
 }): Promise<void> {
@@ -5289,7 +5289,7 @@ async function applyFileAppendFix(input: {
   await fsExtra.appendFile(targetPath, `${prefix}${missingLines.join('\n')}\n`, 'utf8');
 }
 
-async function applyFileCopyFix(input: {
+export async function applyFileCopyFix(input: {
   projectPath: string;
   operation: Extract<DoctorRepairOperation, { type: 'file-copy' }>;
 }): Promise<void> {
@@ -5313,11 +5313,11 @@ async function applyFileCopyFix(input: {
   });
 }
 
-function decodeJsonPointerSegment(segment: string): string {
+export function decodeJsonPointerSegment(segment: string): string {
   return segment.replace(/~1/g, '/').replace(/~0/g, '~');
 }
 
-async function applyJsonEditFix(input: {
+export async function applyJsonEditFix(input: {
   projectPath: string;
   operation: Extract<DoctorRepairOperation, { type: 'json-edit' }>;
 }): Promise<void> {
@@ -5346,7 +5346,7 @@ async function applyJsonEditFix(input: {
   await fsExtra.writeJSON(targetPath, document, { spaces: 2 });
 }
 
-async function applyEnvKeyAddFix(input: {
+export async function applyEnvKeyAddFix(input: {
   projectPath: string;
   operation: Extract<DoctorRepairOperation, { type: 'env-key-add' }>;
 }): Promise<void> {
@@ -5370,7 +5370,7 @@ async function applyEnvKeyAddFix(input: {
   await fsExtra.appendFile(targetPath, `${prefix}${additions.join('\n')}\n`, 'utf8');
 }
 
-async function applyMakefileTargetFix(input: {
+export async function applyMakefileTargetFix(input: {
   projectPath: string;
   operation: Extract<DoctorRepairOperation, { type: 'makefile-target' }>;
 }): Promise<void> {

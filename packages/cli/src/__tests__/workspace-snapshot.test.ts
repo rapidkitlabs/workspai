@@ -79,6 +79,27 @@ describe('workspace-snapshot lifecycle', () => {
     expect(inspected.estimatedBytes).toBeGreaterThan(0);
   });
 
+  it('fails closed for duplicate or missing snapshots and ignores unrelated snapshot entries', async () => {
+    expect(await listWorkspaceSnapshots({ workspacePath })).toEqual([]);
+    await expect(inspectWorkspaceSnapshot({ workspacePath, name: 'missing' })).rejects.toThrow(
+      'Snapshot not found: missing'
+    );
+    await expect(
+      restoreWorkspaceSnapshot({ workspacePath, name: 'missing', dryRun: true })
+    ).rejects.toThrow('Snapshot not found: missing');
+
+    await createWorkspaceSnapshot({ workspacePath, name: 'duplicate' });
+    await expect(createWorkspaceSnapshot({ workspacePath, name: 'duplicate' })).rejects.toThrow(
+      'Snapshot already exists: duplicate'
+    );
+    const root = path.join(workspacePath, '.workspai', 'snapshots');
+    await fsExtra.outputFile(path.join(root, 'README.txt'), 'manual notes');
+    await fsExtra.ensureDir(path.join(root, 'manual-folder'));
+    expect((await listWorkspaceSnapshots({ workspacePath })).map((entry) => entry.name)).toEqual([
+      'duplicate',
+    ]);
+  });
+
   it('creates full snapshots without copying RapidKit operational history', async () => {
     await fsExtra.outputFile(
       path.join(workspacePath, '.rapidkit', 'snapshots', 'old', 'snapshot.json'),
@@ -183,6 +204,30 @@ describe('workspace-snapshot lifecycle', () => {
     const archives = await listArchivedProjects({ workspacePath });
     expect(archives).toHaveLength(1);
     expect(archives[0].projectName).toBe('orders');
+  });
+
+  it('supports archive and restore planning without moving project bytes', async () => {
+    expect(await listArchivedProjects({ workspacePath })).toEqual([]);
+    const plannedArchive = await archiveWorkspaceProject({
+      workspacePath,
+      project: 'orders',
+      dryRun: true,
+      reason: 'planning',
+    });
+    expect(plannedArchive).toMatchObject({ action: 'archive', dryRun: true });
+    expect(await fsExtra.pathExists(path.join(workspacePath, 'orders', 'package.json'))).toBe(true);
+
+    const archived = await archiveWorkspaceProject({ workspacePath, project: 'orders' });
+    const plannedRestore = await restoreArchivedProject({
+      workspacePath,
+      archive: archived.archivePath!,
+      dryRun: true,
+    });
+    expect(plannedRestore).toMatchObject({ action: 'restore', dryRun: true });
+    expect(await fsExtra.pathExists(archived.archivePath!)).toBe(true);
+    await expect(
+      restoreArchivedProject({ workspacePath, archive: 'missing-archive', dryRun: true })
+    ).rejects.toThrow('Archived project not found');
   });
 
   it('refuses reserved archive manifest collisions without moving project data', async () => {

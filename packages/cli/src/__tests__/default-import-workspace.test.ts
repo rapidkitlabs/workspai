@@ -4,10 +4,13 @@ import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_IMPORT_WORKSPACE_LABEL,
+  DEFAULT_IMPORT_WORKSPACE_NAME,
   MANAGED_DEFAULT_WORKSPACE_NAME,
+  MANAGED_DEFAULT_WORKSPACE_LABEL,
   getLegacyWorkspacesDirectory,
   resolveManagedDefaultImportWorkspacePath,
-} from '../utils/workspace-paths.js';
+} from '../utils/default-import-workspace.js';
 
 const tempDirs: string[] = [];
 
@@ -21,6 +24,11 @@ afterEach(async () => {
 });
 
 describe('default-import-workspace', () => {
+  it('keeps the deprecated compatibility exports aligned with the canonical workspace API', () => {
+    expect(DEFAULT_IMPORT_WORKSPACE_NAME).toBe(MANAGED_DEFAULT_WORKSPACE_NAME);
+    expect(DEFAULT_IMPORT_WORKSPACE_LABEL).toBe(MANAGED_DEFAULT_WORKSPACE_LABEL);
+  });
+
   it('reuses workspai when it already exists under the legacy parent', async () => {
     const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'rk-default-ws-legacy-workspai-'));
     tempDirs.push(homeDir);

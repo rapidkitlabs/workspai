@@ -16,6 +16,24 @@ async function temporaryDirectory(): Promise<string> {
   return directory;
 }
 
+async function writeJournal(journalRoot: string, name: string, manifest: unknown): Promise<string> {
+  const directory = path.join(journalRoot, `lifecycle-transaction-${name}`);
+  await fs.mkdir(directory, { recursive: true });
+  await fs.writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify(manifest)}\n`);
+  return directory;
+}
+
+function journalManifest(overrides: Record<string, unknown> = {}) {
+  return {
+    kind: 'workspai.lifecycle-transaction',
+    version: 1,
+    ownerPid: 2_147_483_647,
+    phase: 'active',
+    operations: [],
+    ...overrides,
+  };
+}
+
 afterEach(async () => {
   await Promise.all(
     temporaryDirectories
@@ -134,6 +152,26 @@ describe('lifecycle transaction', () => {
     expect(compensated).toBe(false);
   });
 
+  it('makes terminal operations idempotent and rejects new work after completion', async () => {
+    const root = await temporaryDirectory();
+    const committed = await createLifecycleTransaction();
+    await committed.commit();
+    await committed.commit();
+    await committed.rollback();
+
+    await expect(committed.captureFile(path.join(root, 'late.txt'))).rejects.toThrow(
+      /no longer active/
+    );
+    await expect(committed.captureOwnedTree(path.join(root, 'late-tree'))).rejects.toThrow(
+      /no longer active/
+    );
+    expect(() => committed.registerCompensation(() => undefined)).toThrow(/no longer active/);
+
+    const rolledBack = await createLifecycleTransaction();
+    await rolledBack.rollback();
+    await rolledBack.rollback();
+  });
+
   it('recovers exact file and tree preimages from an active durable journal', async () => {
     const root = await temporaryDirectory();
     const journals = path.join(root, 'journals');
@@ -222,5 +260,86 @@ describe('lifecycle transaction', () => {
     });
 
     await expect(recoverActiveLifecycleTransactions(journals)).resolves.toEqual([]);
+  });
+
+  it('removes committed journals and resumes an interrupted rollback', async () => {
+    const root = await temporaryDirectory();
+    const journals = path.join(root, 'journals');
+    const committed = await writeJournal(
+      journals,
+      'committed',
+      journalManifest({ phase: 'committed' })
+    );
+    const interrupted = await writeJournal(
+      journals,
+      'interrupted',
+      journalManifest({ phase: 'rolling-back' })
+    );
+    await fs.writeFile(path.join(journals, 'unrelated.txt'), 'ignored');
+
+    const recovered = await recoverActiveLifecycleTransactions(journals);
+
+    expect(recovered).toEqual([interrupted]);
+    await expect(fs.access(committed)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.access(interrupted)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(recoverActiveLifecycleTransactions(path.join(root, 'missing'))).resolves.toEqual(
+      []
+    );
+  });
+
+  it('treats an EPERM owner probe as a live transaction', async () => {
+    const root = await temporaryDirectory();
+    const journals = path.join(root, 'journals');
+    const directory = await writeJournal(journals, 'protected', journalManifest());
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw Object.assign(new Error('protected'), { code: 'EPERM' });
+    });
+
+    try {
+      await expect(recoverActiveLifecycleTransactions(journals)).resolves.toEqual([]);
+      await expect(fs.access(directory)).resolves.toBeUndefined();
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it('rejects malformed durable journals with all semantic validation failures aggregated', async () => {
+    const root = await temporaryDirectory();
+    const journals = path.join(root, 'journals');
+    const absolute = path.join(root, 'target');
+    const invalidManifests: unknown[] = [
+      null,
+      journalManifest({ kind: 'unknown' }),
+      journalManifest({ ownerPid: 0 }),
+      journalManifest({ phase: 'unknown' }),
+      journalManifest({ operations: {} }),
+      journalManifest({ operations: [null] }),
+      journalManifest({ operations: [{ type: 'tree', path: 'relative' }] }),
+      journalManifest({ operations: [{ type: 'unknown', path: absolute }] }),
+      journalManifest({
+        operations: [{ type: 'file', state: 'regular', path: absolute, mode: -1, backup: 'x' }],
+      }),
+      journalManifest({
+        operations: [
+          { type: 'file', state: 'regular', path: absolute, mode: 0o600, backup: '../escape' },
+        ],
+      }),
+    ];
+    await Promise.all(
+      invalidManifests.map((manifest, index) =>
+        writeJournal(journals, `invalid-${index}`, manifest)
+      )
+    );
+
+    let failure: unknown;
+    try {
+      await recoverActiveLifecycleTransactions(journals);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).errors).toHaveLength(invalidManifests.length);
+    expect((failure as Error).message).toMatch(/recovery failed/);
   });
 });

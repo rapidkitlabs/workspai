@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installed interpreters to be detected.
 - Bumped the monorepo root, `workspai`, and `wspai` packages to `0.46.0`, and
   aligned the `wspai` dependency on `workspai@0.46.0`.
+- Expanded the release-gated suite to 2,040 passing tests, with targeted
+  coverage for Workspace Intelligence runner ordering and evidence, semantic
+  contract boundaries, Doctor remediation, workspace lifecycle recovery,
+  runtime adapters, archives, platform behavior, and low-coverage utilities.
+- Raised the verified CLI coverage to 81.68% statements, 71.28% branches,
+  91.98% functions, and 82.40% lines; `workspace-run.ts` now reaches 81.07%
+  statements and 82.30% lines.
 
 ### Fixed
 
@@ -56,9 +63,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed the npm dependency tree used by CycloneDX SBOM generation by removing an
   unsafe global `minimatch` override and resolving the Nunjucks/Tsup `chokidar`
   peer versions without invalid packages.
-- Aligned the metrics coverage gate with Vitest's authoritative granular
-  thresholds and made test, lint, and audit collection fail closed instead of
-  reporting command failures as zero errors or vulnerabilities.
+- Hardened metrics collection so test, lint, and audit execution or parse
+  failures fail closed instead of being reported as zero errors or
+  vulnerabilities; the existing 80% aggregate coverage target remains enforced.
+- Fixed metrics collection for the expanded enterprise suite by increasing the
+  subprocess output budget and testing Vitest summary parsing, preventing a
+  fully passing run from being misreported as an invalid test result.
+- Removed type-only declarations and compatibility-only re-export barrels from
+  the executable coverage denominator while retaining TypeScript enforcement
+  and explicit public-export contract tests.
 
 ### Verification
 
@@ -68,6 +81,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `corepack npm --workspace workspai run test`
 - Unified runner contract, CLI-chain, lifecycle transaction, frontend execution,
   Python-engine state, and package-publish contract suites.
+- 2,040 tests passed with 8 explicitly skipped; aggregate coverage passed the
+  80% release threshold at 82% in the metrics gate.
 
 ## [0.45.0] - 2026-07-15
 

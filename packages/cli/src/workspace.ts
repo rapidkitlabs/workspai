@@ -91,7 +91,7 @@ async function initializeStandaloneGitRepository(
   }
 }
 
-function normalizeWorkspaceEntry(entry: WorkspaceEntry): WorkspaceEntry {
+export function normalizeWorkspaceEntry(entry: WorkspaceEntry): WorkspaceEntry {
   const normalizedPath = normalizeRegistryPath(entry.path);
   const projectsArray = Array.isArray(entry.projects) ? entry.projects : [];
   const normalizedProjects: WorkspaceProject[] = [];

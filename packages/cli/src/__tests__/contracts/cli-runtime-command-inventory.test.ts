@@ -4,7 +4,10 @@ import path from 'node:path';
 
 import { getGlobalCommandCapabilities } from '../../index';
 import { buildRuntimeCommandSurfaceContract } from '../../contracts/runtime-command-surface-contract';
-import { buildCliRuntimeCommandInventory } from '../../utils/cli-command-surface';
+import {
+  buildCliRuntimeCommandInventory,
+  formatCliCommandSurfaceIntegrityError,
+} from '../../utils/cli-command-surface';
 import { assertJsonSchemaContract } from '../../utils/json-schema-contract';
 
 function sorted(values: readonly string[]): string[] {
@@ -60,6 +63,47 @@ describe('live CLI runtime command inventory', () => {
     const inventory = buildCliRuntimeCommandInventory(fakeProgram);
     expect(inventory.integrity.ok).toBe(false);
     expect(inventory.integrity.registeredButUndeclared).toContain('future-command');
+  });
+
+  it('captures optional Commander metadata and renders every integrity mismatch class', () => {
+    const fakeProgram = {
+      name: () => 'workspai',
+      commands: [
+        {
+          name: () => 'future-command',
+          aliases: () => ['future'],
+          description: () => 'Future command',
+          _hidden: true,
+          options: [{ flags: '--mode <mode>', attributeName: () => 'mode' }, { flags: '--raw' }],
+          registeredArguments: [{ name: () => 'target', required: true, variadic: false }],
+          commands: [{ name: () => 'child', commands: [] }],
+        },
+      ],
+    };
+
+    const inventory = buildCliRuntimeCommandInventory(fakeProgram);
+    expect(inventory.commands.find((entry) => entry.command === 'future-command')).toMatchObject({
+      aliases: ['future'],
+      description: 'Future command',
+      hidden: true,
+      arguments: [{ name: 'target', required: true, variadic: false }],
+      options: [
+        { flags: '--mode <mode>', attributeName: 'mode' },
+        { flags: '--raw', attributeName: null },
+      ],
+    });
+    expect(formatCliCommandSurfaceIntegrityError(inventory.integrity)).toContain(
+      'registered but undeclared: future-command'
+    );
+    expect(formatCliCommandSurfaceIntegrityError(inventory.integrity)).toContain(
+      'declared but unreachable:'
+    );
+    expect(formatCliCommandSurfaceIntegrityError(inventory.integrity)).toContain(
+      'registered scoped but undeclared: future-command child'
+    );
+    expect(formatCliCommandSurfaceIntegrityError(inventory.integrity)).toContain(
+      'declared scoped but unreachable:'
+    );
   });
 
   it('keeps the published runtime inventory snapshot aligned with the live Commander tree', () => {

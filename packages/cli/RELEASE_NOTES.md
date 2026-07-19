@@ -40,8 +40,15 @@ same canonical source of truth.
 - **Release-gate integrity**
   - Repaired the npm tree used by CycloneDX SBOM generation so Nunjucks, Tsup,
     ESLint, `chokidar`, and `minimatch` resolve without invalid nodes.
-  - Aligned aggregate metrics with Vitest's authoritative thresholds and made
-    test, lint, and audit collection fail closed.
+  - Preserved the 80% aggregate coverage target and made test, lint, and audit
+    collection fail closed.
+  - Expanded the suite to 2,040 passing tests, including targeted contract,
+    Workspace Intelligence, Doctor, recovery, archive, runtime adapter, and
+    platform-boundary coverage.
+  - Verified 81.68% statement, 71.28% branch, 91.98% function, and 82.40% line
+    coverage; the official metrics gate reports 82%.
+  - Fixed metrics subprocess buffering so the larger passing suite is parsed
+    reliably instead of being reported as an invalid test result.
 
 - **Documentation and runtime alignment**
   - Aligned CLI documentation, help, contracts, artifact catalogs, CI examples,
@@ -59,6 +66,8 @@ same canonical source of truth.
 - Unified runner contract and CLI-chain suites.
 - Lifecycle transaction, frontend execution, Python-engine state, registry,
   mirror, archive, runtime adapter, and package-publish suites.
+- 2,040 tests passed, 8 tests were explicitly skipped, ESLint reported zero
+  errors or warnings, and npm audit reported zero vulnerabilities.
 
 **Upgrade:**
 

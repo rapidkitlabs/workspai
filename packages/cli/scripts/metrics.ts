@@ -24,10 +24,7 @@ interface Metrics {
 }
 
 const BUNDLE_SIZE_LIMIT_KB = Number(process.env.RAPIDKIT_BUNDLE_SIZE_LIMIT_KB ?? '2000');
-// Vitest enforces granular thresholds (lines/statements 60, functions 75,
-// branches 50). This aggregate dashboard metric must not impose a conflicting
-// undocumented 80% gate after the authoritative coverage gate has passed.
-const TEST_COVERAGE_TARGET = Number(process.env.WORKSPAI_TEST_COVERAGE_TARGET ?? '60');
+const TEST_COVERAGE_TARGET = Number(process.env.WORKSPAI_TEST_COVERAGE_TARGET ?? '80');
 
 class MetricsCollector {
   private rootDir: string;
@@ -45,6 +42,10 @@ class MetricsCollector {
       encoding: 'utf-8',
       cwd: this.rootDir,
       stdio: ['ignore', 'pipe', 'pipe'],
+      // The enterprise suite legitimately emits more than Node's 1 MiB
+      // execFileSync default. Without an explicit budget a fully passing run
+      // is reported as an invalid test result once coverage grows.
+      maxBuffer: 64 * 1024 * 1024,
     });
   }
 

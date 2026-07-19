@@ -11,6 +11,14 @@ export default defineConfig({
       include: [
         'src/index.ts',
         'src/workspace.ts',
+        // Workspace Intelligence is a first-class architectural surface. Keep
+        // every stage, graph provider, runner, artifact producer, and consumer
+        // bridge inside the official coverage gate so newly added stages can
+        // never remain invisible to the release metrics.
+        'src/workspace-*.ts',
+        'src/analyze.ts',
+        'src/readiness.ts',
+        'src/artifact-remediation-plan.ts',
         'src/doctor.ts',
         'src/create.ts',
         'src/ai/**/*.ts',
@@ -30,6 +38,11 @@ export default defineConfig({
         '**/*.config.*',
         '**/mockData',
         'src/__tests__/**',
+        // These modules intentionally contain no executable JavaScript. The
+        // public compatibility barrel is covered by an export-contract test,
+        // while runtime adapter declarations are enforced by TypeScript.
+        'src/utils/default-import-workspace.ts',
+        'src/runtime-adapters/types.ts',
       ],
       thresholds: {
         lines: 60,

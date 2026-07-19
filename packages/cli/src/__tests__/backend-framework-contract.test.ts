@@ -7,6 +7,8 @@ import {
   detectBackendFrameworkFromHints,
   detectBackendFrameworkFromProject,
   detectRuntimeCandidatesFromProject,
+  getBackendFrameworkContract,
+  normalizeBackendPlatformKey,
   normalizeBackendFrameworkLabel,
   normalizeBackendRuntimeFamily,
 } from '../utils/backend-framework-contract';
@@ -168,5 +170,107 @@ describe('backend-framework-contract', () => {
       'java',
       'node',
     ]);
+  });
+
+  it('pins unknown normalization and returns immutable public descriptors', () => {
+    expect(normalizeBackendPlatformKey(undefined)).toBe('unknown');
+    expect(normalizeBackendPlatformKey('  Vue.JS  ')).toBe('vue');
+    expect(normalizeBackendRuntimeFamily('not-a-runtime')).toBe('unknown');
+    expect(getBackendFrameworkContract('fastapi')).toEqual({
+      key: 'fastapi',
+      runtime: 'python',
+      displayName: 'FastAPI',
+      supportTier: 'first-class',
+      importStack: 'fastapi',
+    });
+    expect(getBackendFrameworkContract('invalid' as never).key).toBe('unknown');
+    expect(detectBackendFrameworkFromHints({})).toMatchObject({
+      key: 'unknown',
+      confidence: 'low',
+      source: 'unknown',
+    });
+  });
+
+  it.each([
+    ['nestjs', 'package.json', '{"dependencies":{"@nestjs/core":"latest"}}', 'nestjs'],
+    ['nestjs-script', 'package.json', '{"scripts":{"dev":"nest start --watch"}}', 'nestjs'],
+    ['express', 'package.json', '{"dependencies":{"express":"latest"}}', 'express'],
+    ['fastify', 'package.json', '{"dependencies":{"fastify":"latest"}}', 'fastify'],
+    ['koa', 'package.json', '{"dependencies":{"koa":"latest"}}', 'koa'],
+    ['node-generic', 'package.json', '{"name":"node-app"}', 'node'],
+    ['fastapi', 'requirements.txt', 'fastapi==1.0', 'fastapi'],
+    ['django', 'pyproject.toml', 'dependencies = ["django"]', 'django'],
+    ['flask', 'requirements.in', 'Flask', 'flask'],
+    ['python-generic', 'requirements.txt', 'requests', 'python'],
+    ['gogin', 'go.mod', 'require github.com/gin-gonic/gin v1', 'gogin'],
+    ['echo', 'go.mod', 'require github.com/labstack/echo/v4 v4', 'echo'],
+    ['go-generic', 'go.mod', 'module example', 'go'],
+    ['java-generic', 'build.gradle', 'plugins { id "java" }', 'java'],
+    ['laravel', 'composer.json', '{"require":{"laravel/framework":"*"}}', 'laravel'],
+    ['symfony', 'composer.json', '{"require":{"symfony/console":"*"}}', 'symfony'],
+    ['php-generic', 'composer.json', '{"require":{}}', 'php'],
+    ['sinatra', 'Gemfile', "gem 'sinatra'", 'sinatra'],
+    ['ruby-generic', 'Gemfile', "gem 'rake'", 'ruby'],
+    ['actix', 'Cargo.toml', 'actix-web = "4"', 'actix'],
+    ['rocket', 'Cargo.toml', 'rocket = "0.5"', 'rocket'],
+    ['rust-generic', 'Cargo.toml', '[package]\nname="x"', 'rust'],
+    ['phoenix', 'mix.exs', '{:phoenix, "~> 1.7"}', 'phoenix'],
+    ['elixir-generic', 'mix.exs', 'defmodule App.MixProject', 'elixir'],
+  ])('detects %s from %s content', async (name, fileName, content, expectedKey) => {
+    const project = await createTempProject(name);
+    await fs.writeFile(path.join(project, fileName), content);
+    expect(detectBackendFrameworkFromProject(project).key).toBe(expectedKey);
+  });
+
+  it.each([
+    ['clojure', 'deps.edn', '{}'],
+    ['scala', 'build.sbt', 'scalaVersion := "3"'],
+    ['deno', 'deno.json', '{}'],
+    ['bun', 'bun.lock', 'lockfileVersion = 1'],
+    ['c', 'main.c', 'int main(void) { return 0; }'],
+  ])('detects marker-only %s projects', async (expectedKey, fileName, content) => {
+    const project = await createTempProject(expectedKey);
+    await fs.writeFile(path.join(project, fileName), content);
+    expect(detectBackendFrameworkFromProject(project).key).toBe(expectedKey);
+  });
+
+  it('detects Kotlin source and generic .NET projects through recursive suffix discovery', async () => {
+    const kotlin = await createTempProject('kotlin');
+    await fs.ensureDir(path.join(kotlin, 'src', 'main'));
+    await fs.writeFile(path.join(kotlin, 'src', 'main', 'App.kt'), 'fun main() {}');
+    expect(detectBackendFrameworkFromProject(kotlin).key).toBe('kotlin');
+
+    const dotnet = await createTempProject('dotnet-generic');
+    await fs.ensureDir(path.join(dotnet, 'src'));
+    await fs.writeFile(
+      path.join(dotnet, 'src', 'Api.csproj'),
+      '<Project Sdk="Microsoft.NET.Sdk" />'
+    );
+    expect(detectBackendFrameworkFromProject(dotnet)).toMatchObject({
+      key: 'dotnet',
+      confidence: 'medium',
+    });
+  });
+
+  it('prefers explicit project metadata over conflicting on-disk signals', async () => {
+    const project = await createTempProject('hint-priority');
+    await fs.writeFile(path.join(project, 'package.json'), '{"dependencies":{"express":"*"}}');
+    expect(
+      detectBackendFrameworkFromProject(project, { kit_name: 'fastapi.standard' })
+    ).toMatchObject({
+      key: 'fastapi',
+      source: 'kit',
+      confidence: 'high',
+    });
+    expect(detectBackendFrameworkFromProject(project, { framework: 'django' })).toMatchObject({
+      key: 'django',
+      source: 'framework',
+    });
+  });
+
+  it('returns unknown for empty and unreadable project roots', async () => {
+    const empty = await createTempProject('empty');
+    expect(detectRuntimeCandidatesFromProject(path.join(empty, 'missing'))).toEqual([]);
+    expect(detectBackendFrameworkFromProject(empty).key).toBe('unknown');
   });
 });

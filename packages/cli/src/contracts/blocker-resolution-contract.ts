@@ -66,6 +66,26 @@ export function normalizeBlockerResolutionClass(value: unknown): BlockerResoluti
   return BLOCKER_RESOLUTION_CLASSES.includes(normalized) ? normalized : null;
 }
 
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string';
+}
+
+function isBlockerFixHint(value: unknown): value is BlockerFixHint {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.detail === 'string' &&
+    BLOCKER_FIX_HINT_ACTION_KINDS.includes(record.actionKind as BlockerFixHintActionKind) &&
+    isOptionalString(record.targetPath) &&
+    (record.studioActionId === undefined ||
+      ['fix-lens', 'verify-gates', 'run-analyze', 'doctor-fix'].includes(
+        record.studioActionId as string
+      ))
+  );
+}
+
 export function isBlockerResolution(value: unknown): value is BlockerResolution {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return false;
@@ -76,6 +96,12 @@ export function isBlockerResolution(value: unknown): value is BlockerResolution 
     typeof record.blockerId === 'string' &&
     typeof record.blockerSignature === 'string' &&
     normalizeBlockerResolutionClass(record.resolutionClass) != null &&
-    Array.isArray(record.fixHints)
+    Array.isArray(record.fixHints) &&
+    record.fixHints.every(isBlockerFixHint) &&
+    isOptionalString(record.sourceCommand) &&
+    isOptionalString(record.sourceArtifact) &&
+    isOptionalString(record.commandRetryHint) &&
+    isOptionalString(record.verifyCommand) &&
+    isOptionalString(record.verifyArtifact)
   );
 }

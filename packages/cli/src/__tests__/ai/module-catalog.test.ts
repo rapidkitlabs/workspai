@@ -5,6 +5,7 @@ import {
   getModulesByCategory,
   searchModules,
   getAllModuleIds,
+  getModuleCatalogSync,
 } from '../../ai/module-catalog.js';
 
 vi.mock('../../core-bridge/pythonRapidkitExec.js', () => ({
@@ -316,6 +317,98 @@ describe('AI Module Catalog', () => {
       const results = await catalogModule.searchModules('risk');
       expect(results.length).toBeGreaterThan(0);
       expect(results[0].id).toBe('security/risk_guard');
+    });
+
+    it('normalizes alternate identities, categories, frameworks, and array fields', async () => {
+      vi.resetModules();
+      mockedPythonCapture.mockResolvedValue({
+        stdout: `noise before JSON ${JSON.stringify({
+          data: [
+            {
+              id: 'billing',
+              display_name: 'Billing',
+              category: 'billing',
+              summary: 'Pay',
+              framework: 'FastAPI',
+              keywords: ['PAY', 1],
+              dependencies: ['auth', 2],
+              useCases: ['checkout'],
+            },
+            {
+              module_id: 'mail',
+              name: 'Mail',
+              category: 'communication',
+              description: 'Send',
+              framework: 'NestJS',
+              tags: ['Mail'],
+              use_cases: ['notify'],
+            },
+            { name: 'metrics', category: 'analytics', description: 'Observe', framework: null },
+            { name: '', category: 'unknown' },
+            null,
+          ],
+        })}`,
+        stderr: '',
+        exitCode: 0,
+      } as any);
+      const catalogModule = await import('../../ai/module-catalog.js');
+      const catalog = await catalogModule.getModuleCatalog();
+      expect(catalog).toHaveLength(3);
+      expect(catalog[0]).toMatchObject({
+        id: 'billing',
+        category: 'payment',
+        framework: 'fastapi',
+        keywords: ['pay'],
+        dependencies: ['auth'],
+        useCases: ['checkout'],
+        longDescription: '',
+      });
+      expect(catalog[1]).toMatchObject({ id: 'Mail', framework: 'nestjs', useCases: ['notify'] });
+      expect(catalog[2]).toMatchObject({ id: 'metrics', category: 'analytics', framework: 'both' });
+      expect(catalogModule.getModuleCatalogSync()).toBe(catalog);
+    });
+
+    it('accepts a top-level array response', async () => {
+      vi.resetModules();
+      mockedPythonCapture.mockResolvedValue({
+        stdout: JSON.stringify([
+          { slug: 'db', display_name: 'Database', category: 'database', description: 'DB' },
+        ]),
+        stderr: '',
+        exitCode: 0,
+      } as any);
+      const catalogModule = await import('../../ai/module-catalog.js');
+      await expect(catalogModule.getModuleCatalog()).resolves.toMatchObject([
+        { id: 'db', category: 'database' },
+      ]);
+    });
+
+    it('falls back for malformed JSON, failed core commands, and empty responses', async () => {
+      for (const result of [
+        { stdout: 'not-json', stderr: '', exitCode: 0 },
+        { stdout: '', stderr: 'core unavailable', exitCode: 2 },
+      ]) {
+        vi.resetModules();
+        mockedPythonCapture.mockResolvedValue(result as any);
+        const catalogModule = await import('../../ai/module-catalog.js');
+        expect((await catalogModule.getModuleCatalog()).length).toBeGreaterThan(0);
+      }
+
+      vi.resetModules();
+      mockedPythonCapture.mockResolvedValue({
+        stdout: '{"modules":[]}',
+        stderr: '',
+        exitCode: 0,
+      } as any);
+      const emptyModule = await import('../../ai/module-catalog.js');
+      expect((await emptyModule.getModuleCatalog()).length).toBeGreaterThan(0);
+    });
+
+    it('returns the synchronous fallback before any dynamic fetch', async () => {
+      vi.resetModules();
+      const catalogModule = await import('../../ai/module-catalog.js');
+      expect(catalogModule.getModuleCatalogSync().length).toBeGreaterThan(0);
+      expect(getModuleCatalogSync().length).toBeGreaterThan(0);
     });
   });
 });

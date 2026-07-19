@@ -171,7 +171,7 @@ const DEFAULT_MAX_COMPRESSION_RATIO = 1_000;
 const MAX_ARCHIVE_REDIRECTS = 5;
 const MAX_MANIFEST_BYTES_IN_MEMORY = 64 * 1024 * 1024;
 
-function isPrivateAddress(address: string): boolean {
+export function isPrivateAddress(address: string): boolean {
   const normalized = address.toLowerCase().split('%')[0];
   if (net.isIPv4(normalized)) {
     const octets = normalized.split('.').map(Number);
@@ -202,7 +202,7 @@ function isPrivateAddress(address: string): boolean {
   return true;
 }
 
-async function assertSafeRemoteArchiveUrl(
+export async function assertSafeRemoteArchiveUrl(
   rawUrl: string,
   allowPrivateNetwork: boolean
 ): Promise<URL> {
@@ -297,6 +297,7 @@ function toArchivePath(inputPath: string): string {
 
 export function sanitizeWorkspaceArchiveName(rawName: string): string {
   const stripped = rawName
+    .trim()
     .replace(/\.workspai-archive\.zip$/i, '')
     .replace(/\.rapidkit-archive\.zip$/i, '')
     .replace(/\.zip$/i, '')

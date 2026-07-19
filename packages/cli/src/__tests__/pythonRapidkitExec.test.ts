@@ -95,6 +95,40 @@ rapidkit deploy
     });
   });
 
+  describe('PEP 440 compatible version constraints', () => {
+    it.each([
+      ['1.2.3', '==1.2.3', true],
+      ['1.2.4', '==1.2.3', false],
+      ['1.2.3', '>=1.2,<2.0', true],
+      ['1.1.9', '>=1.2', false],
+      ['2.1', '<=2.0', false],
+      ['2.0', '<=2.0', true],
+      ['2.0', '>2.0', false],
+      ['2.0.1', '>2.0', true],
+      ['2.0', '<2.0', false],
+      ['1.9', '<2.0', true],
+      ['1.4.9', '~=1.4', true],
+      ['2.0', '~=1.4', false],
+      ['1.4.9', '~=1.4.5', true],
+      ['1.5.0', '~=1.4.5', false],
+      ['1.2.3rc1', '>=1.2.3', true],
+    ])('%s against %s => %s', (version, constraint, expected) => {
+      expect(bridge.__test__.isVersionSatisfyingConstraint(version, constraint)).toBe(expected);
+    });
+
+    it('rejects malformed versions and constraints', () => {
+      for (const [version, constraint] of [
+        ['', '>=1'],
+        ['latest', '>=1'],
+        ['1.0', ''],
+        ['1.0', '^1.0'],
+        ['1.0', '>=bad'],
+      ]) {
+        expect(bridge.__test__.isVersionSatisfyingConstraint(version, constraint)).toBe(false);
+      }
+    });
+  });
+
   describe('pickSystemPython', () => {
     it('returns the first available Python candidate', async () => {
       mockExeca.mockResolvedValueOnce({ exitCode: 0 });

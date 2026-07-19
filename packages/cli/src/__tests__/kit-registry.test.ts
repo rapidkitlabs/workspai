@@ -7,7 +7,11 @@ import {
   normalizeKitId,
   resolveKitDefinition,
 } from '../utils/kit-registry';
-import { getRuntimeAdapter, listRuntimeAdapters } from '../utils/runtime-adapters';
+import {
+  getRuntimeAdapter,
+  hasRuntimeAdapter,
+  listRuntimeAdapters,
+} from '../utils/runtime-adapters';
 
 describe('kit registry and runtime adapters', () => {
   it('resolves aliases to canonical kit definitions', () => {
@@ -53,5 +57,9 @@ describe('kit registry and runtime adapters', () => {
 
     expect(resolveKitDefinition('aspnetcore')?.id).toBe('dotnet.webapi.clean');
     expect(KIT_REGISTRY.some((kit) => kit.id === 'dotnet.webapi.clean')).toBe(true);
+    expect(getRuntimeAdapter('unknown')).toMatchObject({ runtime: 'unknown', hasExecutor: false });
+    expect(getRuntimeAdapter('not-a-runtime')).toBeNull();
+    expect(hasRuntimeAdapter('python')).toBe(true);
+    expect(hasRuntimeAdapter('not-a-runtime')).toBe(false);
   });
 });

@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
-import { runAnalyze } from '../analyze.js';
+import { printAnalyzeReport, runAnalyze } from '../analyze.js';
 
 const createTempDir = async (): Promise<string> => {
   const dir = path.join(
@@ -246,5 +246,79 @@ describe('analyze command', () => {
     expect(report.summary.verdict).toBe('needs-attention');
     expect(report.nextActions[0]).toContain('create project');
     expect(report.nextActions[0]).not.toContain('create workspace');
+  });
+
+  it('writes an explicit output outside a workspace without publishing canonical evidence', async () => {
+    const directory = await createTempDir();
+    const output = path.join(directory, 'reports', 'custom-analyze.json');
+
+    const report = await runAnalyze({ workspacePath: directory, output });
+
+    expect(report.workspaceDetected).toBe(false);
+    expect(JSON.parse(await fs.readFile(output, 'utf8')).schemaVersion).toBe('rapidkit-analyze-v1');
+    await expect(
+      fs.access(path.join(directory, '.workspai', 'reports', 'analyze-last-run.json'))
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('renders project risk bands, dependency impact, finding severities, and next actions', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const base = {
+      schemaVersion: 'rapidkit-analyze-v1',
+      generatedAt: '2026-07-19T00:00:00.000Z',
+      workspacePath: '/workspace',
+      workspaceDetected: true,
+      profile: null,
+      summary: {
+        score: 64,
+        verdict: 'blocked',
+        projectCount: 3,
+        runtimeCount: 2,
+        findings: { fail: 1, warn: 1, info: 1 },
+      },
+      runtimes: { node: 2, python: 1 },
+      projects: [
+        { relativePath: 'healthy', runtime: 'node', framework: 'nestjs', score: 90 },
+        { relativePath: 'warning', runtime: 'node', framework: 'express', score: 70 },
+        { relativePath: 'risk', runtime: 'python', framework: 'fastapi', score: 40 },
+      ],
+      dependencyGraph: {
+        status: 'generated',
+        edges: [{ from: 'healthy', to: 'risk' }],
+        topImpactedProjects: [{ project: 'risk', directDependents: 2, directDependencies: 1 }],
+      },
+      findings: [
+        { severity: 'fail', target: 'risk', title: 'Failure', remediation: 'Fix failure' },
+        { severity: 'warn', target: 'warning', title: 'Warning', remediation: 'Fix warning' },
+        { severity: 'info', target: 'healthy', title: 'Info', remediation: 'Review info' },
+      ],
+      nextActions: ['Run verification'],
+      enterpriseControls: {
+        jsonReady: true,
+        ciGateCommand: 'workspai analyze --json --strict',
+        releaseGateCommand: 'workspai readiness --json',
+        evidencePath: '.workspai/reports/analyze-last-run.json',
+      },
+    } as never;
+
+    let output = '';
+    try {
+      printAnalyzeReport(base);
+      printAnalyzeReport({
+        ...(base as Record<string, unknown>),
+        summary: { ...(base as any).summary, verdict: 'ready' },
+      } as never);
+      printAnalyzeReport({
+        ...(base as Record<string, unknown>),
+        summary: { ...(base as any).summary, verdict: 'needs-attention' },
+      } as never);
+      output = logSpy.mock.calls.flat().join('\n');
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    expect(output).toContain('Dependency Graph');
+    expect(output).toContain('Top Findings');
+    expect(output).toContain('Run verification');
   });
 });

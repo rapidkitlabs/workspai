@@ -31,7 +31,13 @@ async function temporaryWorkspace(): Promise<string> {
 describe('workspace artifact path compatibility', () => {
   it('rejects absolute paths and workspace traversal for canonical and legacy resolution', () => {
     const root = path.resolve(os.tmpdir(), 'workspai-artifact-root');
-    for (const unsafe of ['../outside.json', '../../outside.json', path.resolve(root, '..', 'x')]) {
+    for (const unsafe of [
+      '',
+      '   ',
+      '../outside.json',
+      '../../outside.json',
+      path.resolve(root, '..', 'x'),
+    ]) {
       expect(() => resolveWorkspaceArtifactPath(root, unsafe)).toThrow(/artifact path/i);
       expect(() => resolveLegacyWorkspaceArtifactPath(root, unsafe)).toThrow(/artifact path/i);
     }
@@ -56,6 +62,30 @@ describe('workspace artifact path compatibility', () => {
     ).toBe(false);
   });
 
+  it('removes abandoned temporary artifacts and honors the bounded test delay', async () => {
+    const root = await temporaryWorkspace();
+    const reportDirectory = path.join(root, '.workspai', 'reports');
+    const staleTemporary = path.join(reportDirectory, 'example.txt.abandoned.tmp');
+    await fsExtra.outputFile(staleTemporary, 'partial');
+    const oldTime = new Date(Date.now() - 60_000);
+    await fsExtra.utimes(staleTemporary, oldTime, oldTime);
+    const previousDelay = process.env.WORKSPAI_TEST_ATOMIC_WRITE_DELAY_MS;
+    process.env.WORKSPAI_TEST_ATOMIC_WRITE_DELAY_MS = '1';
+
+    try {
+      const artifact = await writeWorkspaceArtifactText(
+        root,
+        '.workspai/reports/example.txt',
+        'complete'
+      );
+      expect(await fsExtra.readFile(artifact, 'utf8')).toBe('complete');
+      expect(await fsExtra.pathExists(staleTemporary)).toBe(false);
+    } finally {
+      if (previousDelay === undefined) delete process.env.WORKSPAI_TEST_ATOMIC_WRITE_DELAY_MS;
+      else process.env.WORKSPAI_TEST_ATOMIC_WRITE_DELAY_MS = previousDelay;
+    }
+  });
+
   it('tolerates Windows EPERM fsync failures during atomic artifact writes', async () => {
     const root = await temporaryWorkspace();
     const probePath = path.join(root, 'probe.txt');
@@ -78,6 +108,36 @@ describe('workspace artifact path compatibility', () => {
       expect(await fsExtra.readJson(jsonPath)).toEqual({ value: 'windows-fsync-tolerated' });
       expect(
         (await fsExtra.readdir(path.dirname(jsonPath))).some((name) => name.endsWith('.tmp'))
+      ).toBe(false);
+    } finally {
+      syncSpy.mockRestore();
+      platformSpy.mockRestore();
+    }
+  });
+
+  it('fails closed on durability errors outside Windows and removes partial output', async () => {
+    const root = await temporaryWorkspace();
+    const probePath = path.join(root, 'probe.txt');
+    await fsExtra.outputFile(probePath, 'probe');
+    const probeHandle = await open(probePath, 'r');
+    const fileHandlePrototype = Object.getPrototypeOf(probeHandle) as {
+      sync: () => Promise<void>;
+    };
+    await probeHandle.close();
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
+    const syncSpy = vi
+      .spyOn(fileHandlePrototype, 'sync')
+      .mockRejectedValueOnce(Object.assign(new Error('I/O failure'), { code: 'EIO' }));
+
+    try {
+      await expect(
+        writeWorkspaceArtifactText(root, '.workspai/reports/failed.txt', 'partial')
+      ).rejects.toThrow('I/O failure');
+      expect(await fsExtra.pathExists(path.join(root, '.workspai/reports/failed.txt'))).toBe(false);
+      expect(
+        (await fsExtra.readdir(path.join(root, '.workspai/reports'))).some((name) =>
+          name.endsWith('.tmp')
+        )
       ).toBe(false);
     } finally {
       syncSpy.mockRestore();
@@ -135,6 +195,13 @@ describe('workspace artifact path compatibility', () => {
     expect(await firstExistingWorkspaceArtifactPath(root, relativePath)).toBe(canonicalPath);
   });
 
+  it('returns null when neither canonical nor legacy artifact exists', async () => {
+    const root = await temporaryWorkspace();
+    await expect(
+      firstExistingWorkspaceArtifactPath(root, '.workspai/reports/missing.json')
+    ).resolves.toBeNull();
+  });
+
   it('rejects reads through an artifact symlink outside the workspace', async () => {
     const root = await temporaryWorkspace();
     const outside = await temporaryWorkspace();
@@ -164,5 +231,81 @@ describe('workspace artifact path compatibility', () => {
       })
     ).rejects.toThrow(/timed out/i);
     expect(await fsExtra.pathExists(lockPath)).toBe(true);
+  });
+
+  it('recovers a stale lock owned by a dead process and cleans it after success', async () => {
+    const root = await temporaryWorkspace();
+    const relativePath = '.workspai/reports/recovered.json';
+    const lockPath = `${resolveWorkspaceArtifactPath(root, relativePath)}.lock`;
+    await fsExtra.outputJson(lockPath, { pid: 999_999_999, createdAt: 'old' });
+    const oldTime = new Date(Date.now() - 60_000);
+    await fsExtra.utimes(lockPath, oldTime, oldTime);
+
+    await expect(
+      withWorkspaceArtifactLock(root, relativePath, async () => 'recovered', {
+        timeoutMs: 500,
+        staleAfterMs: 1,
+      })
+    ).resolves.toBe('recovered');
+    expect(await fsExtra.pathExists(lockPath)).toBe(false);
+  });
+
+  it('recovers stale malformed locks without probing an invalid process id', async () => {
+    const root = await temporaryWorkspace();
+    const relativePath = '.workspai/reports/malformed-lock.json';
+    const lockPath = `${resolveWorkspaceArtifactPath(root, relativePath)}.lock`;
+    await fsExtra.outputFile(lockPath, 'not-json');
+    const oldTime = new Date(Date.now() - 60_000);
+    await fsExtra.utimes(lockPath, oldTime, oldTime);
+    const killSpy = vi.spyOn(process, 'kill');
+
+    try {
+      await expect(
+        withWorkspaceArtifactLock(root, relativePath, async () => 'recovered', {
+          timeoutMs: 500,
+          staleAfterMs: 1,
+        })
+      ).resolves.toBe('recovered');
+      expect(killSpy).not.toHaveBeenCalled();
+      expect(await fsExtra.pathExists(lockPath)).toBe(false);
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it('treats EPERM while probing a stale lock owner as evidence that it is alive', async () => {
+    const root = await temporaryWorkspace();
+    const relativePath = '.workspai/reports/protected-lock.json';
+    const lockPath = `${resolveWorkspaceArtifactPath(root, relativePath)}.lock`;
+    await fsExtra.outputJson(lockPath, { pid: 424_242, createdAt: 'old' });
+    const oldTime = new Date(Date.now() - 60_000);
+    await fsExtra.utimes(lockPath, oldTime, oldTime);
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw Object.assign(new Error('protected'), { code: 'EPERM' });
+    });
+
+    try {
+      await expect(
+        withWorkspaceArtifactLock(root, relativePath, async () => undefined, {
+          timeoutMs: 30,
+          staleAfterMs: 1,
+        })
+      ).rejects.toThrow(/timed out/i);
+      expect(await fsExtra.pathExists(lockPath)).toBe(true);
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it('cleans the lock when the protected operation throws', async () => {
+    const root = await temporaryWorkspace();
+    const relativePath = '.workspai/reports/throwing.json';
+    const lockPath = `${resolveWorkspaceArtifactPath(root, relativePath)}.lock`;
+    await expect(
+      withWorkspaceArtifactLock(root, relativePath, async () => {
+        throw new Error('operation failed');
+      })
+    ).rejects.toThrow('operation failed');
+    expect(await fsExtra.pathExists(lockPath)).toBe(false);
   });
 });

@@ -7,10 +7,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   exportWorkspaceArchive,
+  assertSafeRemoteArchiveUrl,
   doctorWorkspaceArchive,
   hydrateWorkspaceArchive,
   inspectWorkspaceArchive,
   isSafeArchiveEntryName,
+  isPrivateAddress,
   sanitizeWorkspaceArchiveName,
   shouldExcludeWorkspaceArchivePath,
   verifyWorkspaceArchive,
@@ -159,6 +161,73 @@ describe('workspace archive export/hydrate', () => {
     expect(shouldExcludeWorkspaceArchivePath('backups/old.rapidkit-archive.zip')).toBe(true);
   });
 
+  it('classifies private IPv4/IPv6 ranges and rejects unsafe URL forms', async () => {
+    for (const address of [
+      '0.1.2.3',
+      '10.0.0.1',
+      '127.0.0.1',
+      '169.254.1.1',
+      '172.16.0.1',
+      '172.31.255.255',
+      '192.168.1.1',
+      '100.64.0.1',
+      '224.0.0.1',
+      '::',
+      '::1',
+      'fc00::1',
+      'fd00::1',
+      'fe80::1',
+      'ff02::1',
+      '::ffff:127.0.0.1',
+      '::ffff:10.0.0.1',
+      '::ffff:192.168.1.1',
+    ]) {
+      expect(isPrivateAddress(address)).toBe(true);
+    }
+    expect(isPrivateAddress('8.8.8.8')).toBe(false);
+    expect(isPrivateAddress('2001:4860:4860::8888')).toBe(false);
+    expect(isPrivateAddress('not-an-ip')).toBe(true);
+
+    await expect(assertSafeRemoteArchiveUrl('file:///tmp/archive.zip', false)).rejects.toThrow(
+      'protocol is not supported'
+    );
+    await expect(assertSafeRemoteArchiveUrl('http://8.8.8.8/archive.zip', false)).rejects.toThrow(
+      'require HTTPS'
+    );
+    await expect(
+      assertSafeRemoteArchiveUrl('https://user:pass@8.8.8.8/archive.zip', false)
+    ).rejects.toThrow('embedded credentials');
+    await expect(
+      assertSafeRemoteArchiveUrl('https://localhost/archive.zip', false)
+    ).rejects.toThrow('private or local network address');
+    await expect(
+      assertSafeRemoteArchiveUrl('https://127.0.0.1/archive.zip', false)
+    ).rejects.toThrow('private or local network address');
+    await expect(
+      assertSafeRemoteArchiveUrl('https://8.8.8.8/archive.zip', false)
+    ).resolves.toMatchObject({
+      hostname: '8.8.8.8',
+    });
+    await expect(
+      assertSafeRemoteArchiveUrl('http://localhost/archive.zip', true)
+    ).resolves.toMatchObject({
+      protocol: 'http:',
+    });
+  });
+
+  it('covers archive name and entry safety boundaries', () => {
+    expect(sanitizeWorkspaceArchiveName('  ...  ')).toBe('imported-workspace');
+    expect(sanitizeWorkspaceArchiveName('UPPER___Name.workspai-archive.zip')).toBe('upper___name');
+    for (const unsafe of ['', '.', '..', 'a/../b', 'a\\..\\b', '\\server\\share', 'a\0b']) {
+      expect(isSafeArchiveEntryName(unsafe)).toBe(false);
+    }
+    expect(isSafeArchiveEntryName('./api/main.ts')).toBe(false);
+    expect(shouldExcludeWorkspaceArchivePath('api/.git/config')).toBe(true);
+    expect(shouldExcludeWorkspaceArchivePath('api/dist/app.js')).toBe(true);
+    expect(shouldExcludeWorkspaceArchivePath('api/.env.production')).toBe(true);
+    expect(shouldExcludeWorkspaceArchivePath('api/.env.production.example')).toBe(true);
+  });
+
   it('rejects loopback archive URLs before making a network request', async () => {
     await expect(
       inspectWorkspaceArchive({ archivePathOrUrl: 'http://127.0.0.1:65535/archive.zip' })
@@ -260,6 +329,55 @@ describe('workspace archive export/hydrate', () => {
     );
     expect((await fsExtra.readdir(outputRoot)).some((name) => name.includes('.hydrate-'))).toBe(
       false
+    );
+  });
+
+  it('rejects non-empty and non-directory hydrate targets without force', async () => {
+    const workspacePath = await makeTempDir('rk-workspace-hydrate-target-src-');
+    const outputRoot = await makeTempDir('rk-workspace-hydrate-target-out-');
+    const archivePath = path.join(outputRoot, 'team.workspai-archive.zip');
+    await fsExtra.writeJson(path.join(workspacePath, '.workspai-workspace'), {
+      signature: 'WORKSPAI_WORKSPACE',
+      name: 'target-ws',
+    });
+    await fsExtra.outputFile(path.join(workspacePath, 'api', 'main.ts'), 'content');
+    await exportWorkspaceArchive({ workspacePath, outputPath: archivePath });
+
+    const nonEmpty = path.join(outputRoot, 'non-empty');
+    await fsExtra.outputFile(path.join(nonEmpty, 'keep.txt'), 'keep');
+    await expect(
+      hydrateWorkspaceArchive({ archivePathOrUrl: archivePath, outputPath: nonEmpty })
+    ).rejects.toThrow('Output directory is not empty');
+
+    const fileTarget = path.join(outputRoot, 'file-target');
+    await fsExtra.writeFile(fileTarget, 'not a directory');
+    await expect(
+      hydrateWorkspaceArchive({ archivePathOrUrl: archivePath, outputPath: fileTarget })
+    ).rejects.toThrow('Output path is not a directory');
+  });
+
+  it('includes environment files only when explicitly requested and reports the doctor warning', async () => {
+    const workspacePath = await makeTempDir('rk-workspace-env-src-');
+    const outputRoot = await makeTempDir('rk-workspace-env-out-');
+    const archivePath = path.join(outputRoot, 'env.workspai-archive.zip');
+    await fsExtra.writeJson(path.join(workspacePath, '.workspai-workspace'), {
+      signature: 'WORKSPAI_WORKSPACE',
+      name: 'env-ws',
+    });
+    await fsExtra.outputFile(path.join(workspacePath, 'api', '.env'), 'TOKEN=secret');
+    const exported = await exportWorkspaceArchive({
+      workspacePath,
+      outputPath: archivePath,
+      includeEnv: true,
+      compression: 'deflate',
+    });
+    expect(exported.manifest.security.envFilesIncluded).toBe(true);
+    expect(exported.manifest.files.map((file) => file.path)).toContain('api/.env');
+
+    const doctor = await doctorWorkspaceArchive({ archivePathOrUrl: archivePath });
+    expect(doctor.status).toBe('warning');
+    expect(doctor.recommendedActions).toContain(
+      'Share this archive only through trusted internal channels.'
     );
   });
 

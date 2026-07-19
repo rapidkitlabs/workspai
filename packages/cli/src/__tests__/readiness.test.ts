@@ -1,8 +1,8 @@
 import fsExtra from 'fs-extra';
 import os from 'os';
 import path from 'path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { evaluateReleaseReadiness } from '../readiness.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { evaluateReleaseReadiness, runReleaseReadinessCommand } from '../readiness.js';
 
 const createdPaths: string[] = [];
 
@@ -487,5 +487,60 @@ describe('release readiness', () => {
 
     expect(analyzeGate?.status).toBe('warn');
     expect(readiness.overallStatus).toBe('warn');
+  });
+
+  it('renders JSON and human readiness outputs for pass, warn, and fail postures', async () => {
+    const healthy = await makeWorkspace();
+    await fsExtra.writeJSON(path.join(healthy, '.workspai', 'toolchain.lock'), {
+      runtime: { node: { version: '20.12.0' } },
+    });
+    await fsExtra.writeJSON(path.join(healthy, '.workspai', 'reports', 'doctor-last-run.json'), {
+      summary: { totalIssues: 0, hasSystemErrors: false },
+      projects: [{ name: 'api', depsInstalled: true, vulnerabilities: 0 }],
+    });
+    await writeAnalyzeEvidence(healthy, 'ready');
+
+    const warning = await makeWorkspace();
+    await fsExtra.writeJSON(path.join(warning, '.workspai', 'workspace.json'), {
+      profile: 'polyglot',
+      workspace_name: 'warning-shell',
+    });
+    await fsExtra.writeJSON(path.join(warning, '.workspai', 'workspace.contract.json'), {
+      projects: [],
+    });
+    await fsExtra.writeJSON(path.join(warning, '.workspai', 'toolchain.lock'), {
+      runtime: { node: { version: '20.12.0' } },
+    });
+    await fsExtra.writeJSON(path.join(warning, '.workspai', 'reports', 'doctor-last-run.json'), {
+      schemaVersion: 'doctor-workspace-evidence-v1',
+      evidenceType: 'workspace',
+      healthScore: { passed: 1, warnings: 0, errors: 0, total: 1 },
+      projects: [],
+    });
+    await writeAnalyzeEvidence(warning, 'needs-attention');
+
+    const failing = await makeWorkspace();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await runReleaseReadinessCommand({ workspace: healthy, json: true, skipVerify: true });
+      await runReleaseReadinessCommand({ workspace: healthy, json: false, skipVerify: true });
+      await runReleaseReadinessCommand({ workspace: warning, json: false, skipVerify: true });
+      await runReleaseReadinessCommand({ workspace: failing, json: false, skipVerify: false });
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    await expect(
+      fsExtra.pathExists(
+        path.join(healthy, '.workspai', 'reports', 'release-readiness-last-run.json')
+      )
+    ).resolves.toBe(true);
+  });
+
+  it('enforces strict command mode for any non-pass release posture', async () => {
+    const workspace = await makeWorkspace();
+    await expect(
+      runReleaseReadinessCommand({ workspace, json: true, strict: true })
+    ).rejects.toThrow('process.exit unexpectedly called with "1"');
   });
 });

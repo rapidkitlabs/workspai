@@ -79,4 +79,40 @@ describe('workspace foundation ensure', () => {
       },
     });
   });
+
+  it('honors pinned Python, explicit install method, profile, and forced regeneration', async () => {
+    const workspacePath = await makeTempDir('rk-foundation-options-');
+    await fsExtra.writeFile(path.join(workspacePath, '.python-version'), '3.10\n');
+    const first = await ensureWorkspaceFoundation(workspacePath, {
+      profile: 'enterprise',
+      installMethod: 'venv',
+    });
+    expect(first.status).toBe('passed');
+    const manifest = await fsExtra.readJson(
+      path.join(workspacePath, '.workspai', 'workspace.json')
+    );
+    expect(manifest).toMatchObject({
+      profile: 'enterprise',
+      engine: { python_version: '3.10', install_method: 'venv' },
+    });
+
+    const forced = await ensureWorkspaceFoundation(workspacePath, {
+      profile: 'node-only',
+      installMethod: 'pipx',
+      force: true,
+    });
+    expect(forced.status).toBe('passed');
+    const updated = await fsExtra.readJson(path.join(workspacePath, '.workspai', 'workspace.json'));
+    expect(updated).toMatchObject({ profile: 'node-only', engine: { install_method: 'pipx' } });
+  });
+
+  it('ignores a blank Python version file and defaults non-Python profiles to venv', async () => {
+    const workspacePath = await makeTempDir('rk-foundation-blank-python-');
+    await fsExtra.writeFile(path.join(workspacePath, '.python-version'), '  \n');
+    await ensureWorkspaceFoundation(workspacePath, { profile: 'go-only' });
+    const manifest = await fsExtra.readJson(
+      path.join(workspacePath, '.workspai', 'workspace.json')
+    );
+    expect(manifest.engine).toMatchObject({ install_method: 'venv', python_version: null });
+  });
 });

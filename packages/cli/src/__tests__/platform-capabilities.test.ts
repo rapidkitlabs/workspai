@@ -15,6 +15,7 @@ import {
   getRapidkitLocalScriptCandidates,
   getWorkspaceRegistryFileCandidates,
   getWorkspaceRegistryDirectory,
+  getLegacyWorkspaceRegistryDirectory,
   getUserLocalBinCandidates,
 } from '../utils/platform-capabilities.js';
 
@@ -181,6 +182,30 @@ describe('platform-capabilities', () => {
     it('returns .workspai under home on linux', () => {
       const dir = getWorkspaceRegistryDirectory({}, 'linux');
       expect(dir).toBe(path.join(os.homedir(), '.workspai'));
+    });
+
+    it('honors HOME for both canonical and legacy registries', () => {
+      expect(getWorkspaceRegistryDirectory({ HOME: '/srv/user' }, 'linux')).toBe(
+        path.join('/srv/user', '.workspai')
+      );
+      expect(getLegacyWorkspaceRegistryDirectory({ HOME: '/srv/user' }, 'linux')).toBe(
+        path.join('/srv/user', '.rapidkit')
+      );
+    });
+
+    it('uses XDG_CONFIG_HOME ahead of APPDATA for Windows compatibility candidates', () => {
+      const candidates = getWorkspaceRegistryFileCandidates(
+        {
+          USERPROFILE: 'C:\\Users\\user',
+          XDG_CONFIG_HOME: 'D:\\xdg',
+          APPDATA: 'C:\\Users\\user\\AppData\\Roaming',
+        },
+        'win32'
+      );
+      expect(candidates).toContain(path.join('D:\\xdg', 'workspai', 'workspaces.json'));
+      expect(candidates).not.toContain(
+        path.join('C:\\Users\\user\\AppData\\Roaming', 'workspai', 'workspaces.json')
+      );
     });
   });
 
