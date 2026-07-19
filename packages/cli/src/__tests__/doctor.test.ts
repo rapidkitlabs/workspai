@@ -3963,7 +3963,9 @@ describe('Doctor Command', () => {
   });
 
   it('uses interpreter pip metadata for a Windows-layout project venv', async () => {
-    const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'workspai-doctor-win-venv-'));
+    const tempRoot = await fsExtra.realpath(
+      await fsExtra.mkdtemp(path.join(os.tmpdir(), 'workspai-doctor-win-venv-'))
+    );
     const interpreter = path.join(tempRoot, '.venv', 'Scripts', 'python.exe');
     await fsExtra.ensureDir(path.dirname(interpreter));
     await fsExtra.writeFile(interpreter, '', 'utf8');

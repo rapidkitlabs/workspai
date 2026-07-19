@@ -129,8 +129,8 @@ export function resolvePackageRunnerInvocation(
   const nodeBinDir = pathApi.dirname(nodeExecPath);
   const extension = isWindowsPlatform(platform) ? '.cmd' : '';
   const candidates = [
-    path.join(nodeBinDir, `${normalized}${extension}`),
-    path.join(nodeBinDir, normalized),
+    pathApi.join(nodeBinDir, `${normalized}${extension}`),
+    pathApi.join(nodeBinDir, normalized),
   ];
 
   for (const candidate of candidates) {
