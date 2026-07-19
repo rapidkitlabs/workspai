@@ -42,13 +42,14 @@ same canonical source of truth.
     ESLint, `chokidar`, and `minimatch` resolve without invalid nodes.
   - Preserved the 80% aggregate coverage target and made test, lint, and audit
     collection fail closed.
-  - Expanded the suite to 2,040 passing tests, including targeted contract,
+  - Expanded the suite to 2,042 passing tests, including targeted contract,
     Workspace Intelligence, Doctor, recovery, archive, runtime adapter, and
     platform-boundary coverage.
   - Verified 81.68% statement, 71.28% branch, 91.98% function, and 82.40% line
     coverage; the official metrics gate reports 82%.
-  - Fixed metrics subprocess buffering so the larger passing suite is parsed
-    reliably instead of being reported as an invalid test result.
+  - Made `test:coverage` publish a machine-readable Vitest result for `metrics`,
+    removing the duplicate suite execution and fragile console parsing that
+    could report a passing run as invalid.
 
 - **Documentation and runtime alignment**
   - Aligned CLI documentation, help, contracts, artifact catalogs, CI examples,
@@ -66,7 +67,7 @@ same canonical source of truth.
 - Unified runner contract and CLI-chain suites.
 - Lifecycle transaction, frontend execution, Python-engine state, registry,
   mirror, archive, runtime adapter, and package-publish suites.
-- 2,040 tests passed, 8 tests were explicitly skipped, ESLint reported zero
+- 2,042 tests passed, 8 tests were explicitly skipped, ESLint reported zero
   errors or warnings, and npm audit reported zero vulnerabilities.
 
 **Upgrade:**

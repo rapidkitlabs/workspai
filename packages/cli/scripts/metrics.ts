@@ -23,6 +23,13 @@ interface Metrics {
   security_vulnerabilities: number;
 }
 
+interface VitestJsonReport {
+  success: boolean;
+  numTotalTests: number;
+  numPassedTests: number;
+  numFailedTests: number;
+}
+
 const BUNDLE_SIZE_LIMIT_KB = Number(process.env.RAPIDKIT_BUNDLE_SIZE_LIMIT_KB ?? '2000');
 const TEST_COVERAGE_TARGET = Number(process.env.WORKSPAI_TEST_COVERAGE_TARGET ?? '80');
 
@@ -156,6 +163,32 @@ class MetricsCollector {
    */
   getTestStats(): { total: number; passing: number; failing: number } {
     try {
+      // `check` runs test:coverage immediately before metrics. Consume that
+      // machine-readable result instead of running the full enterprise suite
+      // for a second time and scraping its potentially huge console output.
+      const reportPath = join(this.rootDir, 'test-results', 'vitest.json');
+      if (existsSync(reportPath)) {
+        const report = JSON.parse(readFileSync(reportPath, 'utf-8')) as VitestJsonReport;
+        const values = [report.numTotalTests, report.numPassedTests, report.numFailedTests];
+        if (
+          typeof report.success !== 'boolean' ||
+          values.some((value) => !Number.isInteger(value) || value < 0) ||
+          report.numPassedTests + report.numFailedTests > report.numTotalTests
+        ) {
+          throw new Error('Vitest JSON report is invalid.');
+        }
+        if (!report.success || report.numFailedTests > 0) {
+          throw new Error(`Vitest reported ${report.numFailedTests} failed test(s).`);
+        }
+        return {
+          total: report.numPassedTests + report.numFailedTests,
+          passing: report.numPassedTests,
+          failing: report.numFailedTests,
+        };
+      }
+
+      // Keep standalone `npm run metrics` useful when no preceding coverage
+      // report exists. The larger buffer protects this compatibility fallback.
       const result = this.runNpm(['test']);
 
       // Parse vitest output

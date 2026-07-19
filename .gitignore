@@ -34,6 +34,7 @@ coverage/
 # Vitest
 .vitest/
 test-cli-output/
+test-results/
 
 # Test workspaces created during manual testing
 test-workspace/
