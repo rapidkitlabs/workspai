@@ -10,6 +10,7 @@ import { normalizeRegistryPath } from './registry-path.js';
 import {
   readWorkspaceContract,
   WORKSPACE_CONTRACT_PATH,
+  type WorkspaceContract,
   type WorkspaceContractProject,
 } from './workspace-contract.js';
 import {
@@ -147,7 +148,10 @@ async function readGlobalRegistrySnapshot(workspacePath: string): Promise<{
   };
 }
 
-export async function resolveWorkspaceRegisteredProjects(workspacePath: string): Promise<{
+export async function resolveWorkspaceRegisteredProjects(
+  workspacePath: string,
+  options?: { contract?: WorkspaceContract }
+): Promise<{
   summary: Omit<WorkspaceRegistrySummary, 'generatedAt' | 'registrySummaryPath'>;
   contractExists: boolean;
 }> {
@@ -159,9 +163,11 @@ export async function resolveWorkspaceRegisteredProjects(workspacePath: string):
   const manifest = await readWorkspaceManifest(resolvedWorkspacePath);
   const globalRegistry = await readGlobalRegistrySnapshot(resolvedWorkspacePath);
 
-  const contractExists = Boolean(contractPath);
+  const contractExists = options?.contract !== undefined || Boolean(contractPath);
   let contractProjects: WorkspaceContractProject[] = [];
-  if (contractExists) {
+  if (options?.contract) {
+    contractProjects = options.contract.projects || [];
+  } else if (contractExists) {
     try {
       const { contract } = await readWorkspaceContract({ workspacePath: resolvedWorkspacePath });
       contractProjects = contract.projects || [];
@@ -246,19 +252,29 @@ export async function readWorkspaceRegistrySummary(
 
 export async function publishWorkspaceRegistrySummary(
   workspacePath: string,
-  options?: { now?: Date }
+  options?: { now?: Date; contract?: WorkspaceContract }
 ): Promise<WorkspaceRegistrySummary> {
-  const resolved = await resolveWorkspaceRegisteredProjects(workspacePath);
-  const summary: WorkspaceRegistrySummary = {
-    ...resolved.summary,
-    generatedAt: (options?.now ?? new Date()).toISOString(),
-    registrySummaryPath: WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH,
-  };
+  const summary = await buildWorkspaceRegistrySummary(workspacePath, options);
   await writeWorkspaceArtifactJson(
     workspacePath,
     WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH,
     summary
   );
+  return summary;
+}
+
+export async function buildWorkspaceRegistrySummary(
+  workspacePath: string,
+  options?: { now?: Date; contract?: WorkspaceContract }
+): Promise<WorkspaceRegistrySummary> {
+  const resolved = await resolveWorkspaceRegisteredProjects(workspacePath, {
+    contract: options?.contract,
+  });
+  const summary: WorkspaceRegistrySummary = {
+    ...resolved.summary,
+    generatedAt: (options?.now ?? new Date()).toISOString(),
+    registrySummaryPath: WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH,
+  };
   return summary;
 }
 

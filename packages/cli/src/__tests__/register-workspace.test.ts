@@ -2,9 +2,23 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { registerWorkspaceAtPath } from '../create.js';
 import * as fsExtra from 'fs-extra';
 import { execa } from 'execa';
+import { finalizeWorkspaceOnboarding } from '../utils/workspace-onboarding.js';
 
 vi.mock('fs-extra');
 vi.mock('execa');
+vi.mock('../utils/workspace-onboarding.js', () => ({
+  finalizeWorkspaceOnboarding: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../utils/lifecycle-transaction.js', () => ({
+  recoverActiveLifecycleTransactions: vi.fn().mockResolvedValue([]),
+  createLifecycleTransaction: vi.fn(async () => ({
+    journalPath: undefined,
+    captureFile: vi.fn().mockResolvedValue(undefined),
+    captureOwnedTree: vi.fn().mockResolvedValue(false),
+    commit: vi.fn().mockResolvedValue(undefined),
+    rollback: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
 vi.mock('../cli-ui/spinner.js', () => ({
   createUiSpinner: vi.fn(() => ({
     start: vi.fn().mockReturnThis(),
@@ -230,7 +244,7 @@ describe('registerWorkspaceAtPath', () => {
     // git commit was called
     const allCalls = vi.mocked(execa).mock.calls as unknown as any[][];
     const commitCalls = allCalls.filter(
-      (c) => c[0] === 'git' && Array.isArray(c[1]) && c[1][0] === 'commit'
+      (c) => c[0] === 'git' && Array.isArray(c[1]) && c[1].includes('commit')
     );
     expect(commitCalls.length).toBeGreaterThan(0);
 
@@ -278,17 +292,15 @@ describe('registerWorkspaceAtPath', () => {
     );
   });
 
-  // ─── Error path: shared registry import fails silently ───────────────────
-  it('should continue silently when workspace registry import rejects', async () => {
+  it('should propagate strict onboarding failures', async () => {
     mockExecaSuccess();
 
-    // workspace.js dynamic import inside registerWorkspaceAtPath throws
-    vi.doMock('../workspace.js', () => {
-      throw new Error('registry module unavailable');
-    });
+    vi.mocked(finalizeWorkspaceOnboarding).mockRejectedValueOnce(
+      new Error('registry module unavailable')
+    );
 
     await expect(
       registerWorkspaceAtPath('/tmp/my-ws-no-registry', { skipGit: true, installMethod: 'poetry' })
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow('registry module unavailable');
   });
 });

@@ -22,12 +22,21 @@ import {
 import { getPythonCommand } from './utils.js';
 import {
   getDefaultPythonCommand,
+  getWorkspaceRegistryDirectory,
+  getWorkspaceRegistryFileCandidates,
   getPythonCommandCandidates,
   getPythonVersionProbeCandidates,
   getUserLocalBinCandidates,
   getVenvPythonPath,
   isWindowsPlatform,
 } from './utils/platform-capabilities.js';
+import {
+  createLifecycleTransaction,
+  recoverActiveLifecycleTransactions,
+  type LifecycleTransaction,
+} from './utils/lifecycle-transaction.js';
+import { WORKSPACE_CONTRACT_PATH } from './utils/workspace-contract.js';
+import { WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH } from './utils/workspace-registry-summary.js';
 import {
   createNpmWorkspaceMarker,
   writeWorkspaceMarker as writeWorkspaceMarkerToFile,
@@ -39,6 +48,94 @@ import {
   WORKSPAI_METADATA_DIR,
   WORKSPAI_WORKSPACE_MARKER,
 } from './utils/workspace-paths.js';
+
+const WORKSPACE_LIFECYCLE_JOURNAL_DIRECTORY = 'transactions';
+
+function lifecycleJournalDirectory(): string {
+  return path.join(getWorkspaceRegistryDirectory(), WORKSPACE_LIFECYCLE_JOURNAL_DIRECTORY);
+}
+
+async function beginLifecycleTransaction(): Promise<LifecycleTransaction> {
+  const journalDirectory = lifecycleJournalDirectory();
+  await recoverActiveLifecycleTransactions(journalDirectory);
+  return createLifecycleTransaction({ journalDirectory });
+}
+
+async function captureGlobalRegistryFiles(transaction: LifecycleTransaction): Promise<void> {
+  for (const registryFile of getWorkspaceRegistryFileCandidates()) {
+    await transaction.captureFile(registryFile);
+  }
+}
+
+async function beginNewWorkspaceTransaction(workspacePath: string): Promise<LifecycleTransaction> {
+  const transaction = await beginLifecycleTransaction();
+  try {
+    await captureGlobalRegistryFiles(transaction);
+    await transaction.captureOwnedTree(workspacePath);
+    return transaction;
+  } catch (error) {
+    return rollbackLifecycleTransaction(transaction, error);
+  }
+}
+
+async function beginExistingWorkspaceTransaction(
+  workspacePath: string
+): Promise<LifecycleTransaction> {
+  const transaction = await beginLifecycleTransaction();
+  try {
+    await captureGlobalRegistryFiles(transaction);
+    await transaction.captureOwnedTree(path.join(workspacePath, WORKSPAI_METADATA_DIR));
+    await transaction.captureOwnedTree(path.join(workspacePath, '.venv'));
+
+    const touchedFiles = [
+      WORKSPAI_WORKSPACE_MARKER,
+      '.gitignore',
+      path.join(WORKSPAI_METADATA_DIR, 'workspace.json'),
+      path.join(WORKSPAI_METADATA_DIR, 'toolchain.lock'),
+      path.join(WORKSPAI_METADATA_DIR, 'policies.yml'),
+      path.join(WORKSPAI_METADATA_DIR, 'cache-config.yml'),
+      WORKSPACE_CONTRACT_PATH,
+      WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH,
+      'pyproject.toml',
+      'poetry.toml',
+      'poetry.lock',
+      'rapidkit',
+      'rapidkit.cmd',
+      'README.md',
+      '.rapidkit-global',
+    ];
+    for (const relativePath of touchedFiles) {
+      await transaction.captureFile(path.join(workspacePath, relativePath));
+    }
+    return transaction;
+  } catch (error) {
+    return rollbackLifecycleTransaction(transaction, error);
+  }
+}
+
+async function commitLifecycleTransaction(transaction: LifecycleTransaction): Promise<void> {
+  await transaction.commit();
+  if (transaction.journalPath) {
+    await fsPromises
+      .rm(path.dirname(transaction.journalPath), { recursive: true, force: true })
+      .catch((error) => logger.debug(`Could not remove committed lifecycle journal: ${error}`));
+  }
+}
+
+async function rollbackLifecycleTransaction(
+  transaction: LifecycleTransaction,
+  failure: unknown
+): Promise<never> {
+  try {
+    await transaction.rollback();
+  } catch (rollbackFailure) {
+    throw new AggregateError(
+      [failure, rollbackFailure],
+      'Workspace lifecycle failed and rollback was incomplete.'
+    );
+  }
+  throw failure;
+}
 
 async function writeWorkspaceMarker(
   workspacePath: string,
@@ -109,10 +206,25 @@ async function initializeStandaloneGitRepository(
   try {
     await execa('git', ['init'], { cwd: targetPath, env: buildCleanGitEnv() });
     await execa('git', ['add', '.'], { cwd: targetPath, env: buildCleanGitEnv() });
-    await execa('git', ['commit', '-m', commitMessage], {
-      cwd: targetPath,
-      env: buildCleanGitEnv(),
-    });
+    // A generated workspace must get a usable baseline even on fresh machines where
+    // the user has not configured a global Git identity yet. Keep this identity local
+    // to the one bootstrap commit; subsequent commits use the user's normal config.
+    await execa(
+      'git',
+      [
+        '-c',
+        'user.name=Workspai',
+        '-c',
+        'user.email=workspai@localhost',
+        'commit',
+        '-m',
+        commitMessage,
+      ],
+      {
+        cwd: targetPath,
+        env: buildCleanGitEnv(),
+      }
+    );
     spinner.succeed('Git repository initialized');
   } catch {
     spinner.warn('Could not initialize git repository');
@@ -1040,7 +1152,9 @@ export async function createProject(
       userConfig,
       defaultProfile,
       defaultInstallMethod,
-      defaultPythonVersion
+      defaultPythonVersion,
+      skipGit,
+      skipPythonEngine
     );
     return;
   }
@@ -1108,8 +1222,9 @@ export async function createProject(
   // The engine install is optional so users can start with Workspace Intelligence
   // governance and add rapidkit-core later only when they need Python-backed kits/modules.
   const needsPythonPrompts = !yes && PYTHON_PROFILES.has(resolvedProfile);
-  const pythonEngineMode: PythonEngineMode =
-    PYTHON_PROFILES.has(resolvedProfile) && skipPythonEngine
+  const pythonEngineMode: PythonEngineMode = !PYTHON_PROFILES.has(resolvedProfile)
+    ? 'skip'
+    : skipPythonEngine
       ? 'skip'
       : needsPythonPrompts
         ? (
@@ -1255,6 +1370,7 @@ export async function createProject(
       component: 'create',
       phase: 'workspace.python-free',
     });
+    const transaction = await beginNewWorkspaceTransaction(projectPath);
     try {
       await fsExtra.ensureDir(projectPath);
       spinner2.succeed('Directory created');
@@ -1300,11 +1416,23 @@ export async function createProject(
                     `npx workspai init\n` +
                     `npx workspai dev\n`
                   : `npx workspai create project\ncd <project-name>\nnpx workspai init\nnpx workspai dev\n`) +
-          `\`\`\`\n`,
+          `\`\`\`\n\n` +
+          `## Workspace Intelligence\n\n` +
+          `\`\`\`bash\n` +
+          `npx workspai workspace model --json --write\n` +
+          `npx workspai workspace context --for-agent --json --write\n` +
+          `npx workspai pipeline --json --strict\n` +
+          `\`\`\`\n\n` +
+          `Durable evidence is written to \`.workspai/reports/\`; generated agent instructions start at \`AGENTS.md\`.\n`,
         'utf-8'
       );
 
-      // Git init
+      await finalizeWorkspaceOnboarding(projectPath, {
+        workspaceName: name,
+        silent: testMode,
+      });
+      await commitLifecycleTransaction(transaction);
+
       if (!skipGit) {
         await initializeStandaloneGitRepository(
           projectPath,
@@ -1312,11 +1440,6 @@ export async function createProject(
           'Initial commit: Workspai workspace'
         );
       }
-
-      await finalizeWorkspaceOnboarding(projectPath, {
-        workspaceName: name,
-        silent: testMode,
-      });
 
       // Profile-specific success message
       console.log(chalk.green('\n✨ Workspace created!\n'));
@@ -1409,7 +1532,7 @@ export async function createProject(
     } catch (_err) {
       spinner2.fail('Failed to create workspace');
       console.error(chalk.red('\n❌ Error:'), _err);
-      throw _err;
+      return rollbackLifecycleTransaction(transaction, _err);
     }
     return; // ← skip Python env setup entirely
   }
@@ -1419,6 +1542,7 @@ export async function createProject(
       component: 'create',
       phase: 'workspace.python-engine-skipped',
     });
+    const transaction = await beginNewWorkspaceTransaction(projectPath);
     try {
       await fsExtra.ensureDir(projectPath);
       spinner2.succeed('Directory created');
@@ -1450,10 +1574,13 @@ export async function createProject(
         `# ${name}\n\nWorkspai **${profileLabel[resolvedProfile] ?? resolvedProfile}** workspace with Workspace Intelligence enabled and Python engine installation skipped.\n\n` +
           `## Quick start\n\n` +
           `\`\`\`bash\n` +
-          `npx workspai workspace model --json\n` +
+          `npx workspai workspace model --json --write\n` +
+          `npx workspai workspace context --for-agent --json --write\n` +
           `npx workspai adopt /path/to/project\n` +
           `npx workspai workspace verify --json\n` +
+          `npx workspai pipeline --json --strict\n` +
           `\`\`\`\n\n` +
+          `Durable evidence is written to \`.workspai/reports/\`; generated agent instructions start at \`AGENTS.md\`.\n\n` +
           `## Add the Python engine later\n\n` +
           `\`\`\`bash\n` +
           `npx workspai create project fastapi.standard api --yes\n` +
@@ -1462,6 +1589,12 @@ export async function createProject(
         'utf-8'
       );
 
+      await finalizeWorkspaceOnboarding(projectPath, {
+        workspaceName: name,
+        silent: testMode,
+      });
+      await commitLifecycleTransaction(transaction);
+
       if (!skipGit) {
         await initializeStandaloneGitRepository(
           projectPath,
@@ -1469,11 +1602,6 @@ export async function createProject(
           `Initial commit: Workspai workspace (${resolvedProfile})`
         );
       }
-
-      await finalizeWorkspaceOnboarding(projectPath, {
-        workspaceName: name,
-        silent: testMode,
-      });
 
       console.log(chalk.green('\n✨ Workspace created!\n'));
       console.log(chalk.cyan('📂 Location:'), chalk.white(projectPath));
@@ -1493,7 +1621,7 @@ export async function createProject(
     } catch (_err) {
       spinner2.fail('Failed to create workspace');
       console.error(chalk.red('\n❌ Error:'), _err);
-      throw _err;
+      return rollbackLifecycleTransaction(transaction, _err);
     }
   }
 
@@ -1584,6 +1712,7 @@ export async function createProject(
               component: 'create',
               phase: 'workspace.python-free',
             });
+            const transaction = await beginNewWorkspaceTransaction(projectPath);
             try {
               await fsExtra.ensureDir(projectPath);
               spinner2.succeed('Directory created');
@@ -1632,6 +1761,12 @@ export async function createProject(
                 'utf-8'
               );
 
+              await finalizeWorkspaceOnboarding(projectPath, {
+                workspaceName: name,
+                silent: testMode,
+              });
+              await commitLifecycleTransaction(transaction);
+
               if (!skipGit) {
                 await initializeStandaloneGitRepository(
                   projectPath,
@@ -1639,11 +1774,6 @@ export async function createProject(
                   `Initial commit: Workspai workspace (${fallback} profile)`
                 );
               }
-
-              await finalizeWorkspaceOnboarding(projectPath, {
-                workspaceName: name,
-                silent: testMode,
-              });
 
               console.log(chalk.green('\n✨ Workspace created with fallback profile!\n'));
               console.log(chalk.cyan('📂 Location:'), chalk.white(projectPath));
@@ -1663,7 +1793,7 @@ export async function createProject(
             } catch (_err) {
               spinner2.fail('Failed to create workspace');
               console.error(chalk.red('\n❌ Error:'), _err);
-              throw _err;
+              return rollbackLifecycleTransaction(transaction, _err);
             }
           }
         }
@@ -1681,6 +1811,7 @@ export async function createProject(
             component: 'create',
             phase: 'workspace.python-free',
           });
+          const transaction = await beginNewWorkspaceTransaction(projectPath);
           try {
             await fsExtra.ensureDir(projectPath);
             spinner2.succeed('Directory created');
@@ -1692,6 +1823,12 @@ export async function createProject(
             });
             await writeWorkspaceGitignore(projectPath);
 
+            await finalizeWorkspaceOnboarding(projectPath, {
+              workspaceName: name,
+              silent: testMode,
+            });
+            await commitLifecycleTransaction(transaction);
+
             if (!skipGit) {
               await initializeStandaloneGitRepository(
                 projectPath,
@@ -1699,11 +1836,6 @@ export async function createProject(
                 `Initial commit: Workspai workspace (${fallback})`
               );
             }
-
-            await finalizeWorkspaceOnboarding(projectPath, {
-              workspaceName: name,
-              silent: testMode,
-            });
 
             console.log(chalk.green('\n✨ Workspace created (auto-fallback profile)!\n'));
             console.log(chalk.cyan('📂 Location:'), chalk.white(projectPath));
@@ -1730,7 +1862,7 @@ export async function createProject(
           } catch (_err) {
             spinner2.fail('Failed to create workspace');
             console.error(chalk.red('\n❌ Error:'), _err);
-            throw _err;
+            return rollbackLifecycleTransaction(transaction, _err);
           }
         }
       }
@@ -1743,6 +1875,7 @@ export async function createProject(
     component: 'create',
     phase: 'workspace.directory',
   });
+  const transaction = await beginNewWorkspaceTransaction(projectPath);
 
   try {
     // Create directory
@@ -1871,7 +2004,12 @@ export async function createProject(
 
     spinner.succeed('Workspai environment ready!');
 
-    // Git initialization
+    await finalizeWorkspaceOnboarding(projectPath, {
+      workspaceName: name,
+      silent: testMode,
+    });
+    await commitLifecycleTransaction(transaction);
+
     if (!options.skipGit) {
       await initializeStandaloneGitRepository(
         projectPath,
@@ -1879,11 +2017,6 @@ export async function createProject(
         'Initial commit: Workspai environment'
       );
     }
-
-    await finalizeWorkspaceOnboarding(projectPath, {
-      workspaceName: name,
-      silent: testMode,
-    });
 
     // Success message
     console.log(chalk.green('\n✨ Workspai environment created successfully!\n'));
@@ -1985,15 +2118,7 @@ export async function createProject(
     spinner.fail('Failed to create Workspai environment');
     console.error(chalk.red('\n❌ Error:'), _error);
 
-    // Cleanup on failure
-    try {
-      await fsExtra.remove(projectPath);
-    } catch (_cleanupError) {
-      // Ignore cleanup errors
-    }
-
-    // Re-throw the error for callers to handle (e.g., tests and CLI error handlers)
-    throw _error;
+    return rollbackLifecycleTransaction(transaction, _error);
   }
 }
 
@@ -2432,7 +2557,7 @@ async function installWithVenv(
             `On Debian/Ubuntu systems, install the venv package:\n` +
             `  sudo apt install ${packageName}\n\n` +
             `Or use Poetry instead (recommended):\n` +
-            `  npx workspai ${path.basename(projectPath)} --yes`
+            `  npx workspai create workspace ${path.basename(projectPath)} --yes --install-method poetry`
         )
       );
     }
@@ -2705,23 +2830,23 @@ export async function registerWorkspaceAtPath(
   const resolvedMethod: InstallMethod =
     method === 'poetry' && !(await isPoetryAvailable()) ? 'venv' : method;
 
-  // Create marker and gitignore
-  await writeWorkspaceMarker(workspacePath, path.basename(workspacePath), resolvedMethod);
-  await writeWorkspaceGitignore(workspacePath);
-  await writeWorkspaceFoundationFiles(
-    workspacePath,
-    path.basename(workspacePath),
-    resolvedMethod,
-    pythonVersion,
-    options?.profile
-  );
-
   const spinner = createCliSpinner('Registering workspace', {
     component: 'create',
     phase: 'workspace.register',
   });
+  const transaction = await beginExistingWorkspaceTransaction(workspacePath);
 
   try {
+    await writeWorkspaceMarker(workspacePath, path.basename(workspacePath), resolvedMethod);
+    await writeWorkspaceGitignore(workspacePath);
+    await writeWorkspaceFoundationFiles(
+      workspacePath,
+      path.basename(workspacePath),
+      resolvedMethod,
+      pythonVersion,
+      options?.profile
+    );
+
     if (resolvedMethod === 'poetry') {
       // Write pyproject.toml stub so installWithPoetry can skip poetry init + poetry add.
       await writePyprojectStub(workspacePath, path.basename(workspacePath));
@@ -2741,6 +2866,7 @@ export async function registerWorkspaceAtPath(
       workspaceName: path.basename(workspacePath),
       silent: testMode,
     });
+    await commitLifecycleTransaction(transaction);
 
     if (!skipGit) {
       await initializeStandaloneGitRepository(
@@ -2751,7 +2877,7 @@ export async function registerWorkspaceAtPath(
     }
   } catch (e) {
     spinner.fail('Failed to register workspace');
-    throw e;
+    return rollbackLifecycleTransaction(transaction, e);
   }
 }
 
@@ -2855,6 +2981,16 @@ workspai modules list
 - \`workspai upgrade\` - Upgrade project templates
 - \`workspai doctor\` - Check system requirements
 - \`workspai --help\` - Show all commands
+
+## Workspace Intelligence
+
+\`\`\`bash
+workspai workspace model --json --write
+workspai workspace context --for-agent --json --write
+workspai pipeline --json --strict
+\`\`\`
+
+Durable evidence is written to \`.workspai/reports/\`; generated agent instructions start at \`AGENTS.md\`.
 
 ## Workspai Documentation
 
@@ -3311,7 +3447,7 @@ venv/
   npx workspai test   # 🧪 Run tests
   npx workspai help   # 📚 Show help
 
-💡 For Python engine features: pipx install rapidkit
+💡 For Python engine features: pipx install rapidkit-core
 \`);
 }
 
@@ -3383,7 +3519,7 @@ Each generated demo project contains:
 
 1. **Explore the Generated Code** - Check out \`src/main.py\` and \`src/routing/\`
 2. **Add Routes** - Create new endpoints in \`src/routing/\`
-3. **Install RapidKit Core** - For Python engine features: \`pipx install rapidkit\`
+3. **Install RapidKit Core** - For Python engine features: \`pipx install rapidkit-core\`
 4. **Read the Documentation** - Visit [Workspai Docs](https://workspai.dev/docs)
 
 ## ⚠️ Demo Mode Limitations
@@ -3397,7 +3533,7 @@ This is a demo workspace with:
 For Python engine features, install RapidKit Core:
 
 \`\`\`bash
-pipx install rapidkit
+pipx install rapidkit-core
 \`\`\`
 
 ## 🛠️ Workspace Structure
@@ -3461,7 +3597,7 @@ ${name}/
     console.log(chalk.white('   workspai dev'));
     console.log();
     console.log(chalk.yellow('💡 Note:'), 'This is a demo workspace. For Python engine features:');
-    console.log(chalk.cyan('   pipx install rapidkit'));
+    console.log(chalk.cyan('   pipx install rapidkit-core'));
     console.log();
   } catch (_error) {
     spinner.fail('Failed to create demo workspace');
@@ -3479,7 +3615,9 @@ async function showDryRun(
   userConfig: UserConfig,
   profileArg?: string,
   installMethodArg?: string,
-  pythonVersionArg?: string
+  pythonVersionArg?: string,
+  skipGit = false,
+  skipPythonEngine = false
 ): Promise<void> {
   console.log(chalk.cyan('\n🔍 Dry-run mode - what would be created:\n'));
   console.log(chalk.white('📂 Workspace path:'), projectPath);
@@ -3509,11 +3647,15 @@ async function showDryRun(
 
     if (isPythonProfile) {
       console.log(chalk.gray(`  - Python version: ${pythonVersion}`));
-      console.log(chalk.gray(`  - Install method: ${installMethod}`));
-      console.log(chalk.gray(`  - Git init: ${userConfig.skipGit ? 'No' : 'Yes'}`));
+      console.log(
+        chalk.gray(
+          `  - Python engine: ${skipPythonEngine ? 'Skipped' : `Install with ${installMethod}`}`
+        )
+      );
+      console.log(chalk.gray(`  - Git init: ${skipGit ? 'No' : 'Yes'}`));
     } else {
       console.log(chalk.gray(`  - Python-free profile (no Python needed)`));
-      console.log(chalk.gray(`  - Git init: ${userConfig.skipGit ? 'No' : 'Yes'}`));
+      console.log(chalk.gray(`  - Git init: ${skipGit ? 'No' : 'Yes'}`));
     }
 
     console.log(chalk.white('\n📋 Files to create:'));
@@ -3521,7 +3663,7 @@ async function showDryRun(
     console.log(chalk.gray('  - .workspai/ (workspace config directory)'));
     console.log(chalk.gray('  - README.md'));
     console.log(chalk.gray('  - .gitignore'));
-    if (isPythonProfile) {
+    if (isPythonProfile && !skipPythonEngine) {
       console.log(
         chalk.gray(
           `  - ${installMethod === 'poetry' ? 'pyproject.toml + poetry.lock' : '.venv/ (virtual environment)'}`
@@ -3530,7 +3672,9 @@ async function showDryRun(
     }
 
     console.log(chalk.white('\n⚙️  Environment setup:'));
-    if (isPythonProfile) {
+    if (isPythonProfile && skipPythonEngine) {
+      console.log(chalk.gray(`  - Python engine setup skipped`));
+    } else if (isPythonProfile) {
       if (installMethod === 'poetry') {
         console.log(
           chalk.gray(

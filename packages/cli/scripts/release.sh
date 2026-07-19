@@ -12,7 +12,7 @@ Examples:
     scripts/release.sh 0.22.0 --no-publish
 
 Notes:
-    - Runs quality checks before release.
+    - Bumps before regenerating contracts and running release checks.
     - Bumps version only when a bump argument is provided.
     - Always runs npm publish --dry-run before publish.
     - Publishes workspai and the short wspai alias package.
@@ -87,12 +87,6 @@ else
     echo "✅ Working tree is clean"
 fi
 
-echo "🧪 Running quality checks..."
-"${NPM_CMD[@]}" run validate
-"${NPM_CMD[@]}" run build
-"${NPM_CMD[@]}" run bundle-size
-echo "✅ Quality checks passed"
-
 if [[ -n "$BUMP" ]]; then
     echo "📌 Bumping version: $BUMP"
     "${NPM_CMD[@]}" version "$BUMP" --no-git-tag-version --workspaces=false
@@ -102,6 +96,16 @@ if [[ -n "$BUMP" ]]; then
     node -e "const fs=require('fs'); const p='packages/wspai/package.json'; const pkg=require('./'+p); pkg.dependencies.workspai=process.argv[1]; fs.writeFileSync(p, JSON.stringify(pkg, null, 2)+'\\n');" "$VERSION"
     "${NPM_CMD[@]}" install --package-lock-only --ignore-scripts
 fi
+
+echo "🔄 Regenerating version-derived contracts..."
+"${NPM_CMD[@]}" --workspace workspai run generate:contracts
+"${NPM_CMD[@]}" --workspace workspai run check:generated-contracts
+
+echo "🧪 Running quality checks..."
+"${NPM_CMD[@]}" run validate
+"${NPM_CMD[@]}" run build
+"${NPM_CMD[@]}" run bundle-size
+echo "✅ Quality checks passed"
 
 VERSION="$(node -p "require('./packages/cli/package.json').version")"
 TAG="v$VERSION"
@@ -147,15 +151,16 @@ else
     exit "$WSPAI_VIEW_STATUS"
 fi
 
-if [[ -n "$BUMP" ]]; then
-    git add package.json package-lock.json packages/cli/package.json packages/wspai/package.json
-    git commit -S -m "chore(release): $TAG"
-    git tag -s "$TAG" -m "Release $TAG"
-fi
-
 echo "👀 Dry-run publish for $TAG"
 "${NPM_CMD[@]}" publish --dry-run --access public --workspace workspai
 "${NPM_CMD[@]}" publish --dry-run --access public --workspace wspai
+
+if [[ -n "$BUMP" ]]; then
+    git add package.json package-lock.json packages/cli/package.json packages/wspai/package.json \
+        packages/cli/contracts/extension-cli-compatibility.v1.json
+    git commit -S -m "chore(release): $TAG"
+    git tag -s "$TAG" -m "Release $TAG"
+fi
 
 if [[ "$NO_PUBLISH" == "true" ]]; then
     echo "ℹ️ --no-publish set. Stopping after dry-run."

@@ -3,9 +3,15 @@ import os from 'os';
 import path from 'path';
 
 import fsExtra from 'fs-extra';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { registerProjectInWorkspace, registerWorkspace, syncWorkspaceProjects } from '../workspace';
+import {
+  registerProjectInWorkspace,
+  registerProjectInWorkspaceStrict,
+  registerWorkspace,
+  registerWorkspaceStrict,
+  syncWorkspaceProjects,
+} from '../workspace';
 import {
   getLegacyWorkspaceRegistryDirectory,
   getWorkspaceRegistryDirectory,
@@ -24,6 +30,7 @@ async function makeTempDir(prefix: string): Promise<string> {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   if (originalHome === undefined) {
     delete process.env.HOME;
   } else {
@@ -172,27 +179,73 @@ describe('workspace registry', () => {
     );
   });
 
-  it('preserves an invalid registry before repairing canonical and legacy state', async () => {
+  it('fails closed without changing either registry when an imported registry is corrupt', async () => {
     const homePath = await makeTempDir('rapidkit-registry-corrupt-home-');
     process.env.HOME = homePath;
     process.env.USERPROFILE = homePath;
     if (process.platform === 'win32') process.env.APPDATA = homePath;
 
     const canonicalFile = path.join(getWorkspaceRegistryDirectory(), 'workspaces.json');
+    const legacyFile = path.join(getLegacyWorkspaceRegistryDirectory(), 'workspaces.json');
+    const canonicalPreimage = '{invalid-json\n';
+    const legacyPreimage = `${JSON.stringify({
+      workspaces: [
+        {
+          name: 'preserved',
+          path: normalizeRegistryPath(path.join(homePath, 'workspaces', 'preserved')),
+          mode: 'full',
+          projects: [],
+        },
+      ],
+    })}\n`;
     await fsExtra.ensureDir(path.dirname(canonicalFile));
-    await fsExtra.writeFile(canonicalFile, '{invalid-json\n');
+    await fsExtra.ensureDir(path.dirname(legacyFile));
+    await fsExtra.writeFile(canonicalFile, canonicalPreimage);
+    await fsExtra.writeFile(legacyFile, legacyPreimage);
 
-    await registerWorkspace(path.join(homePath, 'workspaces', 'recovered'), 'recovered');
+    await expect(
+      registerWorkspaceStrict(path.join(homePath, 'workspaces', 'recovered'), 'recovered')
+    ).rejects.toThrow(`Workspace registry is invalid: ${canonicalFile}`);
 
-    const repaired = await fsExtra.readJson(canonicalFile);
-    const backups = (await fsExtra.readdir(path.dirname(canonicalFile))).filter((name) => {
-      return name.startsWith('workspaces.json.corrupt-');
+    expect(await fsExtra.readFile(canonicalFile, 'utf8')).toBe(canonicalPreimage);
+    expect(await fsExtra.readFile(legacyFile, 'utf8')).toBe(legacyPreimage);
+  });
+
+  it('restores exact preimages when the legacy write fails after the canonical write', async () => {
+    const homePath = await makeTempDir('rapidkit-registry-rollback-home-');
+    process.env.HOME = homePath;
+    process.env.USERPROFILE = homePath;
+    if (process.platform === 'win32') process.env.APPDATA = homePath;
+
+    const canonicalFile = path.join(getWorkspaceRegistryDirectory(), 'workspaces.json');
+    const legacyFile = path.join(getLegacyWorkspaceRegistryDirectory(), 'workspaces.json');
+    const canonicalPreimage = Buffer.from('{\n  "workspaces": []\n}\n');
+    const legacyPreimage = Buffer.from('{"workspaces":[]}\n');
+    await fsExtra.ensureDir(path.dirname(canonicalFile));
+    await fsExtra.ensureDir(path.dirname(legacyFile));
+    await fsExtra.writeFile(canonicalFile, canonicalPreimage);
+    await fsExtra.writeFile(legacyFile, legacyPreimage);
+
+    const rename = fs.rename.bind(fs);
+    let failureInjected = false;
+    vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
+      if (!failureInjected && destination.toString() === legacyFile) {
+        failureInjected = true;
+        throw Object.assign(new Error('injected legacy write failure'), { code: 'EIO' });
+      }
+      return rename(source, destination);
     });
-    expect(repaired.workspaces).toEqual([expect.objectContaining({ name: 'recovered' })]);
-    expect(backups).toHaveLength(1);
-    expect(await fsExtra.readFile(path.join(path.dirname(canonicalFile), backups[0]), 'utf8')).toBe(
-      '{invalid-json\n'
-    );
+
+    await expect(
+      registerWorkspaceStrict(path.join(homePath, 'workspaces', 'new'), 'new')
+    ).rejects.toThrow('injected legacy write failure');
+
+    expect(failureInjected).toBe(true);
+    expect(await fsExtra.readFile(canonicalFile)).toEqual(canonicalPreimage);
+    expect(await fsExtra.readFile(legacyFile)).toEqual(legacyPreimage);
+    expect(
+      await fsExtra.pathExists(path.join(getWorkspaceRegistryDirectory(), 'workspaces.json.lock'))
+    ).toBe(false);
   });
 
   it('upserts registered project paths when an adopted project is re-linked', async () => {
@@ -229,5 +282,20 @@ describe('workspace registry', () => {
       }),
     ]);
     expect(legacyRegistry).toEqual(registry);
+  });
+
+  it('fails strict project registration when the workspace is absent', async () => {
+    const homePath = await makeTempDir('rapidkit-registry-strict-project-home-');
+    process.env.HOME = homePath;
+    process.env.USERPROFILE = homePath;
+    if (process.platform === 'win32') process.env.APPDATA = homePath;
+
+    await expect(
+      registerProjectInWorkspaceStrict(
+        path.join(homePath, 'missing-workspace'),
+        'web',
+        path.join(homePath, 'web')
+      )
+    ).rejects.toThrow('Workspace is not registered');
   });
 });

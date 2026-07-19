@@ -30,7 +30,7 @@ describe('loadWorkspaiConfig', () => {
       "module.exports = { workspace: { defaultAuthor: 'CJS Team' } };\n"
     );
 
-    await expect(loadWorkspaiConfig(dir)).resolves.toMatchObject({
+    await expect(loadWorkspaiConfig(dir, { trustExecutableConfig: true })).resolves.toMatchObject({
       workspace: { defaultAuthor: 'CJS Team' },
     });
   });
@@ -42,7 +42,7 @@ describe('loadWorkspaiConfig', () => {
       "export default { projects: { defaultKit: 'nestjs.standard' } };\n"
     );
 
-    await expect(loadWorkspaiConfig(dir)).resolves.toMatchObject({
+    await expect(loadWorkspaiConfig(dir, { trustExecutableConfig: true })).resolves.toMatchObject({
       projects: { defaultKit: 'nestjs.standard' },
     });
   });
@@ -54,7 +54,7 @@ describe('loadWorkspaiConfig', () => {
       "module.exports = { workspace: { installMethod: 'venv' } };\n"
     );
 
-    await expect(loadRapidKitConfig(dir)).resolves.toMatchObject({
+    await expect(loadRapidKitConfig(dir, { trustExecutableConfig: true })).resolves.toMatchObject({
       workspace: { installMethod: 'venv' },
     });
   });
@@ -63,8 +63,26 @@ describe('loadWorkspaiConfig', () => {
     const dir = await makeTempDir('workspai-config-invalid-');
     await fsExtra.writeFile(path.join(dir, 'workspai.config.mjs'), 'export default {\n');
 
-    await expect(loadWorkspaiConfig(dir)).rejects.toThrow(
+    await expect(loadWorkspaiConfig(dir, { trustExecutableConfig: true })).rejects.toThrow(
       /Failed to load Workspai config.*workspai\.config\.mjs/
     );
+  });
+
+  it('refuses executable config without explicit trust', async () => {
+    const dir = await makeTempDir('workspai-config-untrusted-');
+    await fsExtra.writeFile(path.join(dir, 'workspai.config.mjs'), 'export default {};\n');
+
+    await expect(loadWorkspaiConfig(dir)).rejects.toThrow(/without explicit trust/);
+  });
+
+  it('loads data-only JSON config without executable trust', async () => {
+    const dir = await makeTempDir('workspai-config-json-');
+    await fsExtra.writeJson(path.join(dir, 'workspai.config.json'), {
+      workspace: { defaultAuthor: 'JSON Team' },
+    });
+
+    await expect(loadWorkspaiConfig(dir)).resolves.toMatchObject({
+      workspace: { defaultAuthor: 'JSON Team' },
+    });
   });
 });

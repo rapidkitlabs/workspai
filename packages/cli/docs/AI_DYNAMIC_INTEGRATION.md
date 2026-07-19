@@ -22,10 +22,13 @@ export const MODULE_CATALOG = [
 ### After (Dynamic):
 
 ```typescript
-// ✅ Fetches from Python Core
+// Fetches through the validated Core bridge
 export async function getModuleCatalog() {
-  const result = await exec('rapidkit modules list --json');
-  return parseModules(result);
+  const result = await runCoreRapidkitCapture(
+    ['modules', 'list', '--json-schema', '1'],
+    { preferWorkspaceVenv: true }
+  );
+  return parseModules(result.stdout);
 }
 ```
 
@@ -42,7 +45,7 @@ AI Recommender
     ↓
 getModuleCatalog()
     ↓
-    ├─ Try: rapidkit modules list --json
+    ├─ Try through Core bridge: modules list --json-schema 1
     │   └─ Success: Return Python modules (runtime count)
     │   └─ Fail: Return fallback catalog (baseline subset)
     ↓
@@ -61,10 +64,10 @@ Return Top Recommendations
 
 **Features:**
 
-- ✅ Calls `rapidkit modules list --json`
+- Calls the Core bridge with `modules list --json-schema 1`
 - ✅ 5-minute cache (reduces Python calls)
 - ✅ Fallback to hardcoded catalog if Python not available
-- ✅ Automatic retry and error handling
+- Validates the bridge result and falls back on failure
 - ✅ Category and framework mapping
 
 **Code:**
@@ -78,8 +81,11 @@ export async function getModuleCatalog(): Promise<ModuleMetadata[]> {
 
   // Fetch from Python Core
   try {
-    const { stdout } = await execAsync('rapidkit modules list --json');
-    const modules = parseModules(stdout);
+    const result = await runCoreRapidkitCapture(
+      ['modules', 'list', '--json-schema', '1'],
+      { preferWorkspaceVenv: true }
+    );
+    const modules = parseModules(result.stdout);
     cachedModules = modules;
     return modules;
   } catch (error) {
@@ -126,13 +132,13 @@ Python Category → TypeScript Type
 
 ```
 First call:
-├─ Fetch from Python (10s)
+├─ Fetch from Python Core (duration depends on environment)
 ├─ Cache result
 └─ Return
 
 Subsequent calls (within 5 min):
 ├─ Return cached
-└─ Instant response
+└─ Avoid another Core bridge invocation
 
 After 5 min:
 ├─ Re-fetch from Python
@@ -141,9 +147,9 @@ After 5 min:
 
 **Benefits:**
 
-- ✅ Fast responses (cached)
-- ✅ Always up-to-date (5min refresh)
-- ✅ Reduces Python CLI calls
+- Cached responses avoid repeated bridge calls
+- Runtime catalog refreshes after five minutes
+- Provider and Core latency remain environment-dependent
 
 ---
 
@@ -209,7 +215,7 @@ npx tsx src/ai/generate-embeddings.ts
 $ workspai ai recommend "I need user authentication"
 
 # Behind the scenes:
-# 1. Calls: rapidkit modules list --json
+# 1. Calls the Core bridge: modules list --json-schema 1
 # 2. Gets runtime module catalog from Python Core
 # 3. Generates query embedding
 # 4. Compares with catalog embeddings
@@ -294,15 +300,11 @@ If Python unavailable:
 └─ Can upgrade to Python later
 ```
 
-### ✅ Performance
+### Cache behavior
 
-```
-Cache Strategy:
-├─ First call: 10s (Python fetch)
-├─ Cached calls: <100ms (instant)
-├─ Cache refresh: Every 5 minutes
-└─ Optimal balance
-```
+The in-process catalog cache refreshes every five minutes. No fixed response-time
+or throughput guarantee is made; Core startup, provider latency, and catalog size
+vary by environment.
 
 ---
 
@@ -311,12 +313,6 @@ Cache Strategy:
 ### Environment Variables
 
 ```bash
-# Optional: Force fallback mode (testing)
-export RAPIDKIT_AI_FALLBACK=true
-
-# Optional: Cache TTL (default: 5 minutes)
-export RAPIDKIT_CACHE_TTL=600000  # milliseconds
-
 # Optional: Python command/interpreter override (if python3/python is not the right one)
 export RAPIDKIT_PYTHON_CMD=/path/to/python
 ```
@@ -352,15 +348,15 @@ workspai ai recommend "authentication"
 ### Test 3: Cache Behavior
 
 ```bash
-# First call (cold cache)
-time workspai ai recommend "auth"  # ~10 seconds
+# First call (cold cache; duration is environment-dependent)
+time workspai ai recommend "auth"
 
-# Second call (warm cache)
-time workspai ai recommend "database"  # <1 second
+# Second call (warm catalog cache; still includes provider latency)
+time workspai ai recommend "database"
 
 # Wait 6 minutes, try again
 sleep 360
-time workspai ai recommend "payment"  # ~10 seconds (cache expired)
+time workspai ai recommend "payment"
 ```
 
 ---

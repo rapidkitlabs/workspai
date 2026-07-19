@@ -4,6 +4,9 @@ Canonical setup reference for **maintainers** of the Workspai CLI.
 
 **End users:** start with [../README.md](../README.md), [OPEN_SOURCE_USER_SCENARIOS.md](./OPEN_SOURCE_USER_SCENARIOS.md), and [workspace-operations.md](./workspace-operations.md).
 
+Unless noted otherwise, run commands in this guide from `packages/cli`. From the
+monorepo root, use `npm --workspace workspai run <script>`.
+
 ## Prerequisites
 
 - Node.js `>= 20.19.0`
@@ -19,14 +22,14 @@ npm ci
 npm run build
 npm run validate
 npm run validate:docs
-npm run validate:contracts
+npm run contracts:validate
 ```
 
 | Command | Purpose |
 | --- | --- |
 | `validate` | typecheck + lint + format + tests |
 | `validate:docs` | markdown links, drift guard, doc examples, README smoke |
-| `validate:contracts` | generated JSON contracts + parity tests |
+| `contracts:validate` | generated/shared contracts, parity, runtime conformance, and adversarial gates |
 
 See [ci-workflows.md](./ci-workflows.md) for GitHub Actions mapping.
 
@@ -38,7 +41,7 @@ npm run build
 node dist/index.js --help
 node dist/index.js --version
 
-node dist/index.js create workspace test-ws --yes --profile polyglot
+node dist/index.js create workspace test-ws --here --yes --profile polyglot
 node dist/index.js workspace list
 cd test-ws
 node ../dist/index.js bootstrap --profile polyglot

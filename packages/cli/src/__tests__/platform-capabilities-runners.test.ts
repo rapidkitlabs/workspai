@@ -1,5 +1,6 @@
 import path from 'path';
-import { describe, expect, it } from 'vitest';
+import fs from 'fs-extra';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   augmentPathWithNodeBin,
@@ -9,11 +10,14 @@ import {
 } from '../utils/platform-capabilities.js';
 
 describe('platform-capabilities package runners', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('resolves package runners as command-safe invocations', () => {
     const invocation = resolvePackageRunnerInvocation('npm');
 
     expect(invocation.command).toBeTruthy();
-    expect(invocation.command.includes(' ')).toBe(false);
 
     if (invocation.command === process.execPath) {
       expect(invocation.prefixArgs[0]).toMatch(/npm-cli\.js$/);
@@ -28,6 +32,24 @@ describe('platform-capabilities package runners', () => {
   it('keeps the legacy executable helper compatible with invocation resolution', () => {
     const resolved = resolvePackageRunnerExecutable('npm');
     expect(resolved).toBe(resolvePackageRunnerInvocation('npm').command);
+  });
+
+  it('uses node and npm CLI JavaScript on Windows without losing spaced paths', () => {
+    const node = 'C:\\Program Files\\nodejs\\node.exe';
+    const npmCli = 'C:/Program Files/nodejs/node_modules/npm/bin/npm-cli.js';
+    vi.spyOn(fs, 'existsSync').mockImplementation((candidate) => {
+      const value = String(candidate);
+      return value === npmCli || value.endsWith('npm.cmd');
+    });
+
+    const invocation = resolvePackageRunnerInvocation(
+      'npm',
+      'win32',
+      { npm_execpath: npmCli },
+      node
+    );
+
+    expect(invocation).toEqual({ command: node, prefixArgs: [npmCli] });
   });
 
   it('prepends the Node bin directory to PATH', () => {

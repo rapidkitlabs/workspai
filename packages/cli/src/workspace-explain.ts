@@ -248,7 +248,7 @@ export async function buildWorkspaceExplain(
       summary: verify
         ? emptyWorkspaceShell
           ? summarizeEmptyWorkspaceExplain(blockingReasons.length, verify.summary.verdict)
-          : `Release blocked: ${verify.summary.verdict} with ${blockingReasons.length} blocking reason(s).`
+          : `${blockingReasons.length > 0 || verify.summary.verdict === 'blocked' ? 'Release blocked' : 'Release posture'}: ${verify.summary.verdict} with ${blockingReasons.length} blocking reason(s).`
         : 'Release posture unknown — verify report missing.',
       sections,
       releaseRisk: verify?.impact.risk,

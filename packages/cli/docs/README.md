@@ -2,6 +2,29 @@
 
 Hub for user and contributor documentation. Start with the [main README](../README.md) for install and quickstarts.
 
+`workspai` is the canonical package and command; `wspai` is only an optional
+short `npx` alias. Install with `npm install -g workspai`, or run the current
+release with `npx workspai@latest --help`.
+
+## Canonical quickstart
+
+```bash
+npx workspai adopt /path/to/project --json
+cd ~/.workspai/workspaces/workspai
+npx workspai workspace intelligence run --for-agent codex --strict --json
+```
+
+The broader governance/release pipeline is a separate gate:
+
+```bash
+npx workspai pipeline --json --strict
+```
+
+Adoption keeps source in place. The runner preserves contract order and writes
+the authoritative `.workspai/reports/workspace-intelligence-run-last-run.json`
+result alongside the model, agent context, report index, and generated
+instructions; see the [Artifact Catalog](./contracts/ARTIFACT_CATALOG.md).
+
 ## Table of contents
 
 - [User documentation](#user-documentation)
@@ -15,9 +38,11 @@ Hub for user and contributor documentation. Start with the [main README](../READ
 
 | Document | Description |
 | --- | --- |
+| [creating-workspaces-and-projects.md](./creating-workspaces-and-projects.md) | Plain-language guide to every workspace and project creation scenario |
 | [commands-reference.md](./commands-reference.md) | Full CLI syntax, profiles, and policy keys |
 | [workspace-operations.md](./workspace-operations.md) | Import, adopt, snapshots, archives, contracts, infra |
 | [workspace-run.md](./workspace-run.md) | Polyglot fleet orchestration (`workspace run`) |
+| [workspace-intelligence-runner.md](./workspace-intelligence-runner.md) | Canonical unified runner, execution envelope, report schema, exit codes, failure propagation, and CI consumption |
 | [create-planner-capabilities.md](./create-planner-capabilities.md) | Native create, official, and existing lanes |
 | [../contracts/project-entry-capability.v1.json](../contracts/project-entry-capability.v1.json) | Contract: any readable project can enter through adopt/import when it can be registered |
 | [from-code-to-shared-understanding.md](./from-code-to-shared-understanding.md) | GitHub-rendered Workspace Intelligence diagram |
@@ -29,10 +54,12 @@ Hub for user and contributor documentation. Start with the [main README](../READ
 
 **Common tasks**
 
+- Create a workspace or project: [creating-workspaces-and-projects.md](./creating-workspaces-and-projects.md)
 - Adopt an existing repo: [workspace-operations.md#import-and-adoption](./workspace-operations.md#import-and-adoption)
 - Scaffold a frontend app: [commands-reference.md](./commands-reference.md) (`create project nextjs <name>`)
-- CI release gate: [commands-reference.md](./commands-reference.md) (`pipeline`, `readiness`)
-- Agent context: `workspace model` / `workspace context` — schemas in [contracts/workspace-intelligence/](../contracts/workspace-intelligence/)
+- Canonical intelligence gate: `workspace intelligence run --for-agent codex --strict --json`
+- Broader CI release gate: [commands-reference.md](./commands-reference.md) (`pipeline`, `readiness`)
+- Targeted model/context inspection — schemas in [contracts/workspace-intelligence/](../contracts/workspace-intelligence/)
 
 ## Operations & security
 
@@ -71,7 +98,7 @@ Regenerate and verify:
 ```bash
 npm run generate:contracts
 npm run check:generated-contracts
-npm run validate:contracts
+npm run contracts:validate
 ```
 
 ## Contributor documentation

@@ -1,7 +1,7 @@
 import fsExtra from 'fs-extra';
 
 import { readWorkspaceMarker, writeWorkspaceMarker } from '../workspace-marker.js';
-import { workspaceMetadataCandidates } from './workspace-paths.js';
+import { workspaceMetadataCandidates, workspaceMetadataPath } from './workspace-paths.js';
 
 type InstallMethod = 'poetry' | 'venv' | 'pipx' | 'pip';
 
@@ -19,17 +19,27 @@ function asObject(value: unknown): JsonObject {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as JsonObject) : {};
 }
 
-async function updateJsonFile(
-  filePath: string,
+async function updateCanonicalJsonFile(
+  workspacePath: string,
+  fileName: string,
   updater: (value: JsonObject) => JsonObject
 ): Promise<boolean> {
-  if (!(await fsExtra.pathExists(filePath))) {
+  const sourcePath = (
+    await Promise.all(
+      workspaceMetadataCandidates(workspacePath, fileName).map(async (candidate) => ({
+        candidate,
+        exists: await fsExtra.pathExists(candidate),
+      }))
+    )
+  ).find(({ exists }) => exists)?.candidate;
+  if (!sourcePath) {
     return false;
   }
 
-  const current = asObject(await fsExtra.readJson(filePath));
-  await fsExtra.outputJson(filePath, updater(current), { spaces: 2 });
-  await fsExtra.appendFile(filePath, '\n', 'utf-8');
+  const canonicalPath = workspaceMetadataPath(workspacePath, fileName);
+  const current = asObject(await fsExtra.readJson(sourcePath));
+  await fsExtra.outputJson(canonicalPath, updater(current), { spaces: 2 });
+  await fsExtra.appendFile(canonicalPath, '\n', 'utf-8');
   return true;
 }
 
@@ -40,59 +50,55 @@ export async function markWorkspacePythonEngineInstalled(
   const installedAt = options.now ?? new Date().toISOString();
   const installMethod = options.installMethod === 'pip' ? 'venv' : options.installMethod;
 
-  for (const workspaceJsonPath of workspaceMetadataCandidates(workspacePath, 'workspace.json')) {
-    await updateJsonFile(workspaceJsonPath, (manifest) => {
-      const engine = asObject(manifest.engine);
-      const pythonCore = asObject(engine.python_core);
+  await updateCanonicalJsonFile(workspacePath, 'workspace.json', (manifest) => {
+    const engine = asObject(manifest.engine);
+    const pythonCore = asObject(engine.python_core);
 
-      delete manifest.bootstrap_note;
-      delete pythonCore.reason;
+    delete manifest.bootstrap_note;
+    delete pythonCore.reason;
 
-      return {
-        ...manifest,
-        engine: {
-          ...engine,
+    return {
+      ...manifest,
+      engine: {
+        ...engine,
+        install_method: installMethod,
+        python_version: options.pythonVersion ?? engine.python_version ?? null,
+        python_core: {
+          ...pythonCore,
+          status: 'installed',
+          installed_at: installedAt,
+          ...(options.coreVersion ? { version: options.coreVersion } : {}),
+        },
+      },
+    };
+  });
+
+  await updateCanonicalJsonFile(workspacePath, 'toolchain.lock', (toolchain) => {
+    const runtime = asObject(toolchain.runtime);
+    const python = asObject(runtime.python);
+    const core = asObject(python.core);
+
+    delete core.reason;
+
+    return {
+      ...toolchain,
+      generated_at: installedAt,
+      runtime: {
+        ...runtime,
+        python: {
+          ...python,
+          version: options.pythonVersion ?? python.version ?? null,
           install_method: installMethod,
-          python_version: options.pythonVersion ?? engine.python_version ?? null,
-          python_core: {
-            ...pythonCore,
+          core: {
+            ...core,
             status: 'installed',
             installed_at: installedAt,
             ...(options.coreVersion ? { version: options.coreVersion } : {}),
           },
         },
-      };
-    });
-  }
-
-  for (const toolchainPath of workspaceMetadataCandidates(workspacePath, 'toolchain.lock')) {
-    await updateJsonFile(toolchainPath, (toolchain) => {
-      const runtime = asObject(toolchain.runtime);
-      const python = asObject(runtime.python);
-      const core = asObject(python.core);
-
-      delete core.reason;
-
-      return {
-        ...toolchain,
-        generated_at: installedAt,
-        runtime: {
-          ...runtime,
-          python: {
-            ...python,
-            version: options.pythonVersion ?? python.version ?? null,
-            install_method: installMethod,
-            core: {
-              ...core,
-              status: 'installed',
-              installed_at: installedAt,
-              ...(options.coreVersion ? { version: options.coreVersion } : {}),
-            },
-          },
-        },
-      };
-    });
-  }
+      },
+    };
+  });
 
   const marker = await readWorkspaceMarker(workspacePath);
   if (marker) {

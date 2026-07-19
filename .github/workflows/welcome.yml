@@ -21,7 +21,7 @@ jobs:
           issue-message: |
             Hi @${{ github.actor }},
 
-            Thanks for opening your first issue in RapidKit 🚀
+            Thanks for opening your first issue in Workspai.
 
             We appreciate your report and will review it shortly.
             If you can share reproduction details and environment info, that helps us resolve faster.
@@ -31,7 +31,7 @@ jobs:
           pr-message: |
             Hi @${{ github.actor }},
 
-            Thank you for your first contribution to RapidKit 🎉
+            Thank you for your first contribution to Workspai.
 
             We really appreciate the time and effort you’ve invested. Contributions like yours help improve the ecosystem for developers worldwide.
 

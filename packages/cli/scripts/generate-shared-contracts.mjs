@@ -47,21 +47,11 @@ const GENERATED_FILES = [
 
 function runGenerator() {
   const scriptPath = path.resolve(cliRoot, 'scripts/run-generate-shared-contracts.ts');
-  const localTsx = path.resolve(
-    cliRoot,
-    'node_modules',
-    '.bin',
-    process.platform === 'win32' ? 'tsx.cmd' : 'tsx'
-  );
-  const workspaceTsx = path.resolve(
-    monorepoRoot,
-    'node_modules',
-    '.bin',
-    process.platform === 'win32' ? 'tsx.cmd' : 'tsx'
-  );
-  const hasLocalTsx = fs.existsSync(localTsx);
-  const runner = hasLocalTsx ? localTsx : fs.existsSync(workspaceTsx) ? workspaceTsx : 'npx';
-  const result = spawnSync(runner, runner === 'npx' ? ['tsx', scriptPath] : [scriptPath], {
+  const tsxPackage = path.resolve(monorepoRoot, 'node_modules', 'tsx');
+  const hasTsx = fs.existsSync(tsxPackage);
+  const runner = hasTsx ? process.execPath : 'npx';
+  const args = hasTsx ? ['--import', 'tsx', scriptPath] : ['tsx', scriptPath];
+  const result = spawnSync(runner, args, {
     cwd: cliRoot,
     stdio: 'inherit',
     shell: process.platform === 'win32',
@@ -70,8 +60,8 @@ function runGenerator() {
   if (result.error) {
     console.error('Could not run shared contract generator.');
     console.error(
-      hasLocalTsx
-        ? `Failed runner: ${localTsx}`
+      hasTsx
+        ? `Failed runner: ${process.execPath} --import tsx`
         : 'Neither local/workspace node_modules/.bin/tsx nor npx is available.'
     );
     console.error('Install npm dependencies or run through npm so npx can resolve tsx.');

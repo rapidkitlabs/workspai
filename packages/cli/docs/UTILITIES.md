@@ -36,9 +36,9 @@ await cache.clear();
 ### Cache Features
 - **Memory cache** for fast access
 - **Disk cache** for persistence
-- **TTL**: 24 hours (configurable)
+- **TTL**: fixed at 24 hours
 - **Versioning**: Version support
-- **Automatic cleanup**: Auto-removal of expired cache
+- **Lazy cleanup**: Expired disk entries are removed when read
 
 ## Performance Monitoring
 
@@ -138,18 +138,11 @@ const user = await fetchUserData('123');
 // Second time: Reads from cache (fast)
 ```
 
-## Environment Variables
+## Debugging
 
-```bash
-# Enable debug mode to see cache hits/misses
-DEBUG=rapidkit:cache npm run dev
-
-# Enable performance logging
-DEBUG=rapidkit:perf npm run dev
-
-# Enable all
-DEBUG=rapidkit:* npm run dev
-```
+These utilities do not implement `DEBUG=rapidkit:*` namespace handling. Use the
+CLI's supported `--debug` flag where available, or enable `logger.setDebug(true)`
+in a focused maintainer harness.
 
 ## Testing
 
@@ -211,11 +204,6 @@ chmod 700 "$HOME/.workspai/cache"
 ```
 
 ### Incorrect performance metrics
-```bash
-# Make sure you're in debug mode
-export DEBUG=rapidkit:perf
-npm run dev
 
-# Check memory usage
-node --expose-gc --max-old-space-size=4096 dist/index.js
-```
+Verify that each timer is started and ended exactly once. For focused memory
+diagnostics, run `node --expose-gc --max-old-space-size=4096 dist/index.js`.

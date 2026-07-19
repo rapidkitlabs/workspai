@@ -1,7 +1,7 @@
 {
   "schemaVersion": "rapidkit-extension-cli-compatibility.v1",
   "cli": "workspai",
-  "minimumVerifiedCliVersion": "0.45.0",
+  "minimumVerifiedCliVersion": "0.46.0",
   "publishedContractSchemas": {
     "runtimeCommandSurface": "rapidkit-runtime-command-surface-v1",
     "cliRuntimeCommandInventory": "workspai-cli-runtime-command-inventory-v1",
@@ -29,7 +29,8 @@
       "agentCustomizationPack": "rapidkit-agent-customization-pack.v1",
       "skillsIndex": "workspace-skills-index.v1",
       "agents": null,
-      "explain": "workspace-explain.v1"
+      "explain": "workspace-explain.v1",
+      "intelligenceRun": "workspace-intelligence-run.v1"
     },
     "cliLogEvent": "cli-log-event-v1",
     "freshnessMetadata": "rapidkit-freshness-metadata-v1",

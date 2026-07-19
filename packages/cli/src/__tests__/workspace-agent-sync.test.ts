@@ -171,6 +171,13 @@ describe('workspace agent sync', () => {
     );
     expect(groundingDoc).toContain('## Mandatory read order');
 
+    const reportsIndex = await fsExtra.readJson(path.join(workspacePath, AGENT_REPORTS_INDEX_PATH));
+    expect(
+      reportsIndex.reports.find(
+        (report: { path: string }) => report.path === WORKSPACE_SKILLS_INDEX_PATH
+      )
+    ).toMatchObject({ required: true, exists: true, validity: 'valid' });
+
     const pack = await fsExtra.readJson(
       path.join(workspacePath, AGENT_CUSTOMIZATION_PACK_REPORT_PATH)
     );

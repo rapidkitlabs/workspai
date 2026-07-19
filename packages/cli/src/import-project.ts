@@ -17,6 +17,10 @@ import { inferWorkspaceProjectKind, type WorkspaceProjectKind } from './utils/pr
 import { resolveWorkspaceProjectPaths } from './utils/workspace-project-paths.js';
 import { buildCleanGitEnv } from './utils/git-worktree.js';
 import {
+  assertSafeProjectMetadataDirectories,
+  isProjectMetadataSymlink,
+} from './utils/project-metadata-path-safety.js';
+import {
   removeImportedProjectsRegistryEntries,
   upsertImportedProjectsRegistry,
   type ImportedProjectRegistryEntry,
@@ -154,8 +158,11 @@ function isSensitiveEnvFile(baseName: string): boolean {
   );
 }
 
-function shouldCopyProjectEntry(sourcePath: string): boolean {
+async function shouldCopyProjectEntry(sourcePath: string): Promise<boolean> {
   const baseName = path.basename(sourcePath);
+  if (await isProjectMetadataSymlink(sourcePath)) {
+    return false;
+  }
   if (
     [
       '.git',
@@ -175,7 +182,6 @@ function shouldCopyProjectEntry(sourcePath: string): boolean {
       'bin',
       'obj',
       'vendor',
-      'packages',
     ].includes(baseName)
   ) {
     return false;
@@ -191,6 +197,7 @@ function shouldCopyProjectEntry(sourcePath: string): boolean {
 async function readExistingProjectJson(
   projectPath: string
 ): Promise<Record<string, unknown> | null> {
+  await assertSafeProjectMetadataDirectories(projectPath);
   for (const projectJsonPath of projectMetadataCandidates(projectPath, 'project.json')) {
     if (!(await fsExtra.pathExists(projectJsonPath))) {
       continue;
@@ -219,6 +226,7 @@ async function writeImportedProjectMetadata(input: {
   importReadinessPath: string;
   moduleSupport: boolean;
 }> {
+  await assertSafeProjectMetadataDirectories(input.projectPath);
   const importedAt = new Date().toISOString();
   const projectName =
     typeof input.existingProjectJson?.name === 'string'
@@ -389,6 +397,7 @@ async function rollbackImportedProject(destinationPath: string): Promise<void> {
     return;
   }
 
+  await assertSafeProjectMetadataDirectories(destinationPath);
   await fsExtra.remove(destinationPath);
 }
 
@@ -419,6 +428,7 @@ export async function importProjectIntoWorkspace(
       if (!sourceStats || !sourceStats.isDirectory()) {
         throw new Error('Import source is not a directory.');
       }
+      await assertSafeProjectMetadataDirectories(sourcePath);
       if (hasWorkspaceRootMarkers(sourcePath)) {
         throw new Error('This is a workspace. Import it as a workspace instead.');
       }
@@ -432,12 +442,13 @@ export async function importProjectIntoWorkspace(
       });
     } else {
       destinationPrepared = true;
-      await execa('git', ['clone', '--depth', '1', source, destinationPath], {
+      await execa('git', ['clone', '--depth', '1', '--', source, destinationPath], {
         timeout: 120000,
         env: buildCleanGitEnv(),
       });
     }
 
+    await assertSafeProjectMetadataDirectories(destinationPath);
     const existingProjectJson = await readExistingProjectJson(destinationPath);
     const detection = detectBackendFrameworkFromProject(destinationPath, existingProjectJson);
     const projectKind = await inferWorkspaceProjectKind(destinationPath, existingProjectJson);

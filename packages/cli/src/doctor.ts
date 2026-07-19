@@ -53,7 +53,9 @@ import {
 import {
   hasWorkspaceRootMarkers as hasKnownWorkspaceRootMarkers,
   projectMetadataCandidates,
+  workspaceMetadataCandidates,
 } from './utils/workspace-paths.js';
+import { readWorkspaceMarker } from './workspace-marker.js';
 import { getProbeTimeoutMs } from './utils/command-timeouts.js';
 import {
   buildDoctorFixExecutionResult,
@@ -1107,9 +1109,9 @@ function buildScopeProvenanceSummary(
 
 function buildProjectFixCommand(projectPath: string, command: string): string {
   if (isWindowsPlatform()) {
-    return `cd "${projectPath}"; ${command}`;
+    return `Set-Location -LiteralPath "${projectPath.replace(/"/g, '`"')}"; ${command}`;
   }
-  return `cd ${projectPath} && ${command}`;
+  return `cd '${projectPath.replace(/'/g, `'"'"'`)}' && ${command}`;
 }
 
 function buildEnvCopyFixCommand(projectPath: string): string {
@@ -1806,32 +1808,40 @@ async function collectSystemChecks(): Promise<{
 
 async function checkPython(): Promise<HealthCheckResult> {
   const pythonCommands = getPythonCommandCandidates();
+  let unsupportedVersion: { version: string; command: string } | undefined;
 
   for (const cmd of pythonCommands) {
     try {
-      const { stdout } = await execa(cmd, ['--version'], { timeout: 3000 });
-      const match = stdout.match(/Python (\d+\.\d+\.\d+)/);
+      const args = cmd === 'py' ? ['-3', '--version'] : ['--version'];
+      const { stdout, stderr } = await execa(cmd, args, { timeout: 3000, reject: false });
+      const output = `${stdout ?? ''}\n${stderr ?? ''}`;
+      const match = output.match(/Python\s+(\d+\.\d+(?:\.\d+)?)/i);
       if (match) {
         const version = match[1];
         const [major, minor] = version.split('.').map(Number);
 
         if (major < 3 || (major === 3 && minor < 10)) {
-          return {
-            status: 'warn',
-            message: `Python ${version} (requires 3.10+)`,
-            details: `${cmd} found but version is below minimum requirement`,
-          };
+          unsupportedVersion ??= { version, command: [cmd, ...args.slice(0, -1)].join(' ') };
+          continue;
         }
 
         return {
           status: 'ok',
           message: `Python ${version}`,
-          details: `Using ${cmd}`,
+          details: `Using ${[cmd, ...args.slice(0, -1)].join(' ')}`,
         };
       }
     } catch {
       continue;
     }
+  }
+
+  if (unsupportedVersion) {
+    return {
+      status: 'warn',
+      message: `Python ${unsupportedVersion.version} (requires 3.10+)`,
+      details: `${unsupportedVersion.command} found but version is below minimum requirement`,
+    };
   }
 
   return {
@@ -2079,11 +2089,11 @@ async function checkRapidKitCore(): Promise<HealthCheckResult> {
   const pythonCommands = getPythonCommandCandidates();
   for (const cmd of pythonCommands) {
     try {
-      const { stdout, exitCode } = await execa(
-        cmd,
-        ['-c', 'import rapidkit_core; print(rapidkit_core.__version__)'],
-        { timeout: 3000, reject: false }
-      );
+      const args =
+        cmd === 'py'
+          ? ['-3', '-c', 'import rapidkit_core; print(rapidkit_core.__version__)']
+          : ['-c', 'import rapidkit_core; print(rapidkit_core.__version__)'];
+      const { stdout, exitCode } = await execa(cmd, args, { timeout: 3000, reject: false });
 
       if (
         exitCode === 0 &&
@@ -2275,6 +2285,128 @@ async function performCommonChecks(
   } catch {
     // Ignore security check errors
   }
+}
+
+function pythonEnvironmentInterpreterCandidates(environmentPath: string): string[] {
+  return uniquePaths([
+    getVenvPythonPath(environmentPath),
+    path.join(environmentPath, 'Scripts', 'python.exe'),
+    path.join(environmentPath, 'Scripts', 'python'),
+    path.join(environmentPath, 'bin', 'python'),
+    path.join(environmentPath, 'bin', 'python3'),
+  ]);
+}
+
+function parsePipPackageList(output: string): Array<{ name?: string }> | null {
+  const start = output.indexOf('[');
+  const end = output.lastIndexOf(']');
+  if (start < 0 || end < start) return null;
+  try {
+    const parsed: unknown = JSON.parse(output.slice(start, end + 1));
+    return Array.isArray(parsed) ? (parsed as Array<{ name?: string }>) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function inspectPythonEnvironment(input: {
+  environmentPath: string;
+  frameworkImport: string;
+}): Promise<{
+  interpreter?: string;
+  coreVersion?: string;
+  dependenciesInstalled: boolean;
+}> {
+  for (const interpreter of pythonEnvironmentInterpreterCandidates(input.environmentPath)) {
+    if (!(await fsExtra.pathExists(interpreter))) continue;
+
+    let coreVersion: string | undefined;
+    try {
+      const result = await execa(
+        interpreter,
+        ['-c', 'import rapidkit_core; print(rapidkit_core.__version__)'],
+        { timeout: 2000, reject: false }
+      );
+      if (result.exitCode === 0 && result.stdout.trim()) coreVersion = result.stdout.trim();
+    } catch {
+      // Core is optional in project environments.
+    }
+
+    if (input.frameworkImport) {
+      try {
+        const result = await execa(interpreter, ['-c', `import ${input.frameworkImport}`], {
+          timeout: 2000,
+          reject: false,
+        });
+        if (result.exitCode === 0) {
+          return { interpreter, coreVersion, dependenciesInstalled: true };
+        }
+      } catch {
+        // Fall through to pip metadata, which is portable across venv layouts.
+      }
+    }
+
+    try {
+      const result = await execa(interpreter, ['-m', 'pip', 'list', '--format=json'], {
+        timeout: 5000,
+        reject: false,
+      });
+      const packages = parsePipPackageList(`${result.stdout ?? ''}\n${result.stderr ?? ''}`);
+      const ignored = new Set(['pip', 'setuptools', 'wheel']);
+      const dependenciesInstalled =
+        packages?.some(
+          (pkg) => typeof pkg.name === 'string' && !ignored.has(pkg.name.toLowerCase())
+        ) ?? false;
+      return { interpreter, coreVersion, dependenciesInstalled };
+    } catch {
+      return { interpreter, coreVersion, dependenciesInstalled: false };
+    }
+  }
+
+  return { dependenciesInstalled: false };
+}
+
+async function resolvePythonProjectEnvironment(
+  projectPath: string,
+  frameworkImport: string,
+  usesPoetry: boolean
+): Promise<{
+  environmentPath?: string;
+  interpreter?: string;
+  coreVersion?: string;
+  dependenciesInstalled: boolean;
+}> {
+  const localEnvironmentPath = path.join(projectPath, '.venv');
+  if (await fsExtra.pathExists(localEnvironmentPath)) {
+    return {
+      environmentPath: localEnvironmentPath,
+      ...(await inspectPythonEnvironment({
+        environmentPath: localEnvironmentPath,
+        frameworkImport,
+      })),
+    };
+  }
+
+  if (usesPoetry) {
+    try {
+      const result = await execa('poetry', ['env', 'info', '--path'], {
+        cwd: projectPath,
+        timeout: 3000,
+        reject: false,
+      });
+      const environmentPath = result.stdout.trim();
+      if (result.exitCode === 0 && environmentPath && (await fsExtra.pathExists(environmentPath))) {
+        return {
+          environmentPath,
+          ...(await inspectPythonEnvironment({ environmentPath, frameworkImport })),
+        };
+      }
+    } catch {
+      // Poetry may be unavailable or the project may not have an environment yet.
+    }
+  }
+
+  return { dependenciesInstalled: false };
 }
 
 function pushProjectProbe(health: ProjectHealth, probe: ProjectProbeResult): void {
@@ -3136,7 +3268,18 @@ async function checkProject(
 
     if (!health.depsInstalled) {
       health.issues.push('Java dependencies are not warmed or built yet');
-      health.fixCommands?.push(buildProjectFixCommand(projectPath, 'npx workspai init'));
+      const dependencyCommand = hasPomXml
+        ? hasMavenWrapper
+          ? isWindowsPlatform()
+            ? '.\\mvnw.cmd -B -DskipTests dependency:go-offline'
+            : './mvnw -B -DskipTests dependency:go-offline'
+          : 'mvn -B -DskipTests dependency:go-offline'
+        : hasGradleWrapper
+          ? isWindowsPlatform()
+            ? '.\\gradlew.bat dependencies'
+            : './gradlew dependencies'
+          : 'gradle dependencies';
+      health.fixCommands?.push(buildProjectFixCommand(projectPath, dependencyCommand));
     }
 
     const envPath = path.join(projectPath, '.env');
@@ -3415,9 +3558,20 @@ async function checkProject(
 
     if (!health.depsInstalled) {
       health.issues.push('Dependencies not installed (node_modules empty or missing)');
-      health.fixCommands?.push(
-        buildProjectFixCommand(projectPath, isBunProject ? 'bun install' : 'npx workspai init')
-      );
+      const declaredPackageManager =
+        typeof packageJsonData?.packageManager === 'string'
+          ? packageJsonData.packageManager.split('@')[0]
+          : undefined;
+      const nodeInstallCommand = isBunProject
+        ? 'bun install'
+        : declaredPackageManager === 'pnpm' ||
+            (await fsExtra.pathExists(path.join(projectPath, 'pnpm-lock.yaml')))
+          ? 'pnpm install'
+          : declaredPackageManager === 'yarn' ||
+              (await fsExtra.pathExists(path.join(projectPath, 'yarn.lock')))
+            ? 'yarn install'
+            : 'npm install';
+      health.fixCommands?.push(buildProjectFixCommand(projectPath, nodeInstallCommand));
     }
 
     // Node.js projects don't need Python venv
@@ -3505,86 +3659,29 @@ async function checkProject(
     const pythonDetection = await detectPythonFramework(projectPath, projectJsonData);
     applyFrameworkMetadata(health, pythonDetection.framework, pythonDetection.confidence);
 
-    // Check for virtual environment
-    const venvPath = path.join(projectPath, '.venv');
-    if (await fsExtra.pathExists(venvPath)) {
-      health.venvActive = true;
+    let frameworkImport = 'fastapi';
+    if (health.framework === 'Django') frameworkImport = 'django';
+    else if (health.framework === 'Flask') frameworkImport = 'flask';
+    else if (health.framework === 'Python') frameworkImport = '';
 
-      // Check if dependencies are installed
-      const pythonPath = getVenvPythonPath(venvPath);
+    const pyprojectText = await readFileIfExists(pyprojectTomlPath);
+    const environment = await resolvePythonProjectEnvironment(
+      projectPath,
+      frameworkImport,
+      /\[tool\.poetry\]/.test(pyprojectText)
+    );
+    health.venvActive = Boolean(environment.environmentPath);
+    health.depsInstalled = environment.dependenciesInstalled;
+    health.coreInstalled = Boolean(environment.coreVersion);
+    health.coreVersion = environment.coreVersion;
 
-      if (await fsExtra.pathExists(pythonPath)) {
-        // Check for rapidkit-core in venv (optional - Core is usually global)
-        try {
-          const { stdout } = await execa(
-            pythonPath,
-            ['-c', 'import rapidkit_core; print(rapidkit_core.__version__)'],
-            { timeout: 2000 }
-          );
-          health.coreInstalled = true;
-          health.coreVersion = stdout.trim();
-        } catch {
-          // Not an issue - Core is typically installed globally via pipx
-          health.coreInstalled = false;
-        }
-
-        // Check if dependencies are installed using framework signal first.
-        let frameworkImport = 'fastapi';
-        if (health.framework === 'Django') {
-          frameworkImport = 'django';
-        } else if (health.framework === 'Flask') {
-          frameworkImport = 'flask';
-        } else if (health.framework === 'Python') {
-          frameworkImport = '';
-        }
-
-        let shouldRunFallback = true;
-        if (frameworkImport) {
-          try {
-            await execa(pythonPath, ['-c', `import ${frameworkImport}`], { timeout: 2000 });
-            health.depsInstalled = true;
-            shouldRunFallback = false;
-          } catch {
-            shouldRunFallback = true;
-          }
-        }
-
-        if (shouldRunFallback) {
-          try {
-            const libPath = path.join(venvPath, 'lib');
-            if (await fsExtra.pathExists(libPath)) {
-              const pythonDirs = await fsExtra.readdir(libPath);
-              const pythonDir = pythonDirs.find((d) => d.startsWith('python'));
-
-              if (pythonDir) {
-                const sitePackagesPath = path.join(libPath, pythonDir, 'site-packages');
-                if (await fsExtra.pathExists(sitePackagesPath)) {
-                  const packages = await fsExtra.readdir(sitePackagesPath);
-                  // Check if there are actual packages (more than just pip/setuptools/wheel)
-                  const realPackages = packages.filter(
-                    (p) =>
-                      !p.startsWith('_') &&
-                      !p.includes('dist-info') &&
-                      !['pip', 'setuptools', 'wheel', 'pkg_resources'].includes(p)
-                  );
-                  health.depsInstalled = realPackages.length > 0;
-                }
-              }
-            }
-
-            if (!health.depsInstalled) {
-              health.issues.push('Dependencies not installed');
-              health.fixCommands?.push(buildPythonDependencyInstallFixCommand(projectPath));
-            }
-          } catch {
-            health.issues.push('Could not verify dependency installation');
-          }
-        }
-      } else {
-        health.issues.push('Virtual environment exists but Python executable not found');
-      }
-    } else {
+    if (!environment.environmentPath) {
       health.issues.push('Virtual environment not created');
+      health.fixCommands?.push(buildPythonDependencyInstallFixCommand(projectPath));
+    } else if (!environment.interpreter) {
+      health.issues.push('Virtual environment exists but Python executable not found');
+    } else if (!health.depsInstalled) {
+      health.issues.push('Dependencies not installed');
       health.fixCommands?.push(buildPythonDependencyInstallFixCommand(projectPath));
     }
 
@@ -4131,19 +4228,17 @@ async function getWorkspaceHealth(
 ): Promise<WorkspaceHealth> {
   let workspaceName = path.basename(workspacePath);
 
-  // Try to read workspace name from marker file
-  try {
-    const markerPath = path.join(workspacePath, '.rapidkit-workspace');
-    if (await fsExtra.pathExists(markerPath)) {
-      const marker = await fsExtra.readJSON(markerPath);
-      workspaceName = marker.name || workspaceName;
-    }
-  } catch {
-    // Try alternative format
+  const marker = await readWorkspaceMarker(workspacePath);
+  if (typeof marker?.name === 'string' && marker.name.trim().length > 0) {
+    workspaceName = marker.name;
+  } else {
     try {
-      const configPath = path.join(workspacePath, '.rapidkit', 'config.json');
-      const config = await fsExtra.readJSON(configPath);
-      workspaceName = config.workspace_name || workspaceName;
+      for (const manifestPath of workspaceMetadataCandidates(workspacePath, 'workspace.json')) {
+        if (!(await fsExtra.pathExists(manifestPath))) continue;
+        const manifest = await fsExtra.readJSON(manifestPath);
+        workspaceName = manifest.workspace_name || manifest.name || workspaceName;
+        break;
+      }
     } catch {
       // Use directory name as fallback
     }
@@ -4518,7 +4613,21 @@ function renderHealthCheck(check: HealthCheckResult, label: string): void {
   }
 }
 
-function renderProjectHealth(project: ProjectHealth): void {
+function humanFixDescription(project: ProjectHealth, command: string): string {
+  const capability = findRepairCapabilityForCommand(project, command);
+  if (command.startsWith('rapidkit:doctor:repair ')) {
+    return capability?.title ?? 'Apply Doctor-managed project repair';
+  }
+  if (/^https?:\/\//i.test(command.trim())) return `Open: ${command.trim()}`;
+
+  const separator = command.match(/\s+(?:&&|;)\s+/);
+  const runnable = separator
+    ? command.slice((separator.index ?? 0) + separator[0].length)
+    : command;
+  return `Run in project: ${runnable}`;
+}
+
+function renderProjectHealth(project: ProjectHealth, hostCore?: HealthCheckResult): void {
   const hasIssues = project.issues.length > 0;
   const icon = hasIssues ? '⚠️' : '✅';
   const nameColor = hasIssues ? chalk.yellow : chalk.green;
@@ -4613,10 +4722,12 @@ function renderProjectHealth(project: ProjectHealth): void {
       console.log(
         `   ${chalk.dim('ℹ')}  RapidKit Core: ${chalk.gray(project.coreVersion || 'In venv')} ${chalk.dim('(optional)')}`
       );
-    } else {
+    } else if (hostCore?.status === 'ok') {
       console.log(
         `   ${chalk.dim('ℹ')}  RapidKit Core: ${chalk.gray('Using global installation')} ${chalk.dim('(recommended)')}`
       );
+    } else {
+      console.log(`   ❌ RapidKit Core: ${chalk.red('Not detected locally or globally')}`);
     }
   }
 
@@ -4719,7 +4830,7 @@ function renderProjectHealth(project: ProjectHealth): void {
     if (project.fixCommands && project.fixCommands.length > 0) {
       console.log(`\n   ${chalk.bold.cyan('🔧 Quick Fix:')}`);
       project.fixCommands.forEach((cmd) => {
-        console.log(`   ${chalk.cyan('$')} ${chalk.white(cmd)}`);
+        console.log(`   ${chalk.white(humanFixDescription(project, cmd))}`);
       });
     }
   }
@@ -5288,47 +5399,6 @@ async function readFileIfExists(filePath: string): Promise<string> {
     return await fsExtra.readFile(filePath, 'utf8');
   } catch {
     return '';
-  }
-}
-
-async function preparePoetryInProjectEnvironment(
-  projectPath: string,
-  quiet: boolean
-): Promise<void> {
-  const cacheDir = path.join(projectPath, '.workspai', 'cache', 'pypoetry');
-  await fsExtra.ensureDir(cacheDir);
-
-  const env = {
-    ...process.env,
-    POETRY_CACHE_DIR: cacheDir,
-    POETRY_VIRTUALENVS_IN_PROJECT: 'true',
-  };
-
-  await execa('poetry', ['config', 'virtualenvs.in-project', 'true', '--local'], {
-    cwd: projectPath,
-    env,
-    shell: shouldUseShellExecution(),
-    stdio: quiet ? 'pipe' : 'inherit',
-  });
-
-  const candidates = getPythonCommandCandidates();
-  let lastError: unknown;
-  for (const candidate of candidates) {
-    try {
-      await execa('poetry', ['env', 'use', candidate], {
-        cwd: projectPath,
-        env,
-        shell: shouldUseShellExecution(),
-        stdio: quiet ? 'pipe' : 'inherit',
-      });
-      return;
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  if (lastError) {
-    throw lastError;
   }
 }
 
@@ -6081,7 +6151,7 @@ async function ensureProjectSnapshot(
   const safeProjectName = path.basename(projectPath).replace(/[^a-zA-Z0-9._-]/g, '_');
   const snapshotRoot = path.join(
     projectPath,
-    '.rapidkit',
+    '.workspai',
     'reports',
     'fix-snapshots',
     `${safeProjectName}-${snapshotId}`
@@ -6268,7 +6338,7 @@ async function executeFixCommands(
       const fixCommands = project.fixCommands ?? [];
       console.log(chalk.bold(`Project: ${chalk.yellow(project.name)}`));
       fixCommands.forEach((cmd, idx) => {
-        console.log(`  ${idx + 1}. ${chalk.cyan(cmd)}`);
+        console.log(`  ${idx + 1}. ${chalk.cyan(humanFixDescription(project, cmd))}`);
       });
       console.log();
     }
@@ -6288,11 +6358,12 @@ async function executeFixCommands(
     );
 
     for (const step of remediationPlan.steps) {
+      const project = fixableProjects.find((candidate) => candidate.path === step.projectPath);
       const state = step.executableInCurrentEnvironment
         ? chalk.green('ready')
         : chalk.yellow(`blocked${step.blockedReason ? ` (${step.blockedReason})` : ''}`);
       console.log(
-        `  - ${chalk.cyan(step.projectName)} [${step.risk}] ${step.originalCommand} ${chalk.gray(`=> ${state}`)}`
+        `  - ${chalk.cyan(step.projectName)} [${step.risk}] ${project ? humanFixDescription(project, step.originalCommand) : step.preview.title} ${chalk.gray(`=> ${state}`)}`
       );
     }
 
@@ -6429,7 +6500,7 @@ async function executeFixCommands(
     executedSteps.add(stepKey);
 
     try {
-      logFix(chalk.gray(`  $ ${cmd}`));
+      logFix(chalk.gray(`  ${humanFixDescription(project, cmd)}`));
 
       if (planStep.kind === 'manual-url') {
         logFix(chalk.yellow(`  ℹ Manual action required: open ${cmd}`));
@@ -6733,16 +6804,13 @@ async function executeFixCommands(
               ...process.env,
               POETRY_CACHE_DIR: path.join(
                 dependencySync.projectPath,
-                '.rapidkit',
+                '.workspai',
                 'cache',
-                'pypoetry'
+                'python',
+                'poetry'
               ),
-              POETRY_VIRTUALENVS_IN_PROJECT: 'true',
             }
           : process.env;
-        if (isPoetryInstall) {
-          await preparePoetryInProjectEnvironment(dependencySync.projectPath, quiet);
-        }
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
           try {
             await execa(dependencySync.command, dependencySync.args, {
@@ -7048,7 +7116,7 @@ export async function runDoctor(
         contract: getDoctorContractMetadata(),
         policyProfile,
         workspace: {
-          name: path.basename(workspacePath),
+          name: health.workspaceName,
           path: workspacePath,
         },
         cache: {
@@ -7142,7 +7210,7 @@ export async function runDoctor(
 
     if (health.projects.length > 0) {
       console.log(chalk.bold(`\n📦 Projects (${health.projects.length}):`));
-      health.projects.forEach((project) => renderProjectHealth(project));
+      health.projects.forEach((project) => renderProjectHealth(project, health.rapidkitCore));
     } else {
       console.log(chalk.bold('\n📦 Projects:'));
       console.log(chalk.gray('   No Workspai projects found in workspace'));
@@ -7428,7 +7496,7 @@ export async function runDoctor(
     renderHealthCheck(envelope.rapidkitCore, 'RapidKit Core');
 
     console.log(chalk.bold('\n📦 Project (1):'));
-    renderProjectHealth(envelope.project);
+    renderProjectHealth(envelope.project, envelope.rapidkitCore);
 
     const hasSystemIssues = [envelope.python, envelope.rapidkitCore].some(
       (c) => c.status === 'error'

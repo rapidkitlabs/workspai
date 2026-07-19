@@ -128,12 +128,12 @@ import {
 import { suggestProjectNameForKit } from './utils/suggested-project-name.js';
 import { evaluateReleaseReadiness, runReleaseReadinessCommand } from './readiness.js';
 import { runMirrorLifecycle } from './utils/mirror.js';
+import { importProjectIntoWorkspace, isGitUrl } from './import-project.js';
 import {
-  cleanupImportedProjectImport,
-  importProjectIntoWorkspace,
-  isGitUrl,
-} from './import-project.js';
-import { adoptProjectIntoWorkspace, cleanupAdoptedProjectImport } from './adopt-project.js';
+  adoptProjectIntoWorkspace,
+  captureAdoptProjectRollbackSnapshot,
+  type AdoptProjectRollbackSnapshot,
+} from './adopt-project.js';
 import {
   collectWorkspaceProfileRuntimes,
   formatWorkspaceProfileCompatibilityHint,
@@ -143,23 +143,21 @@ import {
   resolveWorkspaceProfileProjectCompatibility,
 } from './workspace-profile-compatibility.js';
 import {
-  buildFrontendProjectRegistryEntry,
   createFrontendProject,
   frontendCreateUsage,
   isFrontendProjectKit,
   normalizeCreateFrontendArgs,
   resolveFrontendGenerator,
 } from './frontend-project.js';
-import { upsertImportedProjectsRegistry } from './imported-projects-registry.js';
 import {
   getDefaultPythonCommand,
   getPythonCommandCandidates,
   getRapidkitLocalScriptCandidates,
+  getLegacyWorkspaceRegistryDirectory,
   getVenvActivateScriptPath,
   getVenvPythonPath,
   getWorkspaceRegistryDirectory,
   isWindowsPlatform,
-  shouldUseShellExecution,
 } from './utils/platform-capabilities.js';
 import {
   MANAGED_DEFAULT_WORKSPACE_LABEL,
@@ -178,7 +176,6 @@ import {
   resolveWorkspaceTargetPath,
   shouldBlockExistingWorkspaceName,
 } from './utils/workspace-create-location.js';
-import { createNpmWorkspaceMarker, writeWorkspaceMarker } from './workspace-marker.js';
 import {
   archiveWorkspaceProject,
   createWorkspaceSnapshot,
@@ -189,6 +186,16 @@ import {
   restoreArchivedProject,
   restoreWorkspaceSnapshot,
 } from './workspace-snapshot.js';
+import {
+  createLifecycleTransaction,
+  recoverActiveLifecycleTransactions,
+} from './utils/lifecycle-transaction.js';
+import {
+  resolveLegacyWorkspaceArtifactPath,
+  resolveWorkspaceArtifactPath,
+} from './utils/artifact-path-compat.js';
+import { WORKSPACE_CONTRACT_PATH } from './utils/workspace-contract.js';
+import { WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH } from './utils/workspace-registry-summary.js';
 
 type BridgeFailureCode =
   | 'PYTHON_NOT_FOUND'
@@ -624,6 +631,259 @@ function validateNpmKitFlags(kitId: string, args: readonly string[]): string | n
   return null;
 }
 
+async function prepareOutsideWorkspaceCreate(args: string[]): Promise<void> {
+  if (
+    args.includes('--dry-run') ||
+    args.includes('--no-workspace') ||
+    findWorkspaceMarkerUp(process.cwd())
+  ) {
+    return;
+  }
+
+  const skipGit = args.includes('--skip-git') || args.includes('--no-git');
+  if (args.includes('--create-workspace')) {
+    const { registerWorkspaceAtPath } = await import('./create.js');
+    await registerWorkspaceAtPath(process.cwd(), {
+      skipGit,
+      yes: args.includes('--yes') || args.includes('-y'),
+      userConfig: await loadUserConfig(),
+    });
+    return;
+  }
+
+  if (args.includes('--yes') || args.includes('-y') || !process.stdin.isTTY) {
+    return;
+  }
+
+  const { workspaceMode } = (await prompt([
+    {
+      type: 'rawlist',
+      name: 'workspaceMode',
+      message: 'This project is outside a Workspai workspace. How should it be managed?',
+      choices: [
+        {
+          name: 'Link it to the managed default workspace (recommended)',
+          value: 'managed',
+        },
+        {
+          name: 'Turn the current folder into a workspace',
+          value: 'current',
+        },
+        {
+          name: 'Create it without workspace management',
+          value: 'none',
+        },
+      ],
+      default: 1,
+    },
+  ])) as { workspaceMode: 'managed' | 'current' | 'none' };
+
+  if (workspaceMode === 'current') {
+    const { registerWorkspaceAtPath } = await import('./create.js');
+    await registerWorkspaceAtPath(process.cwd(), {
+      skipGit,
+      yes: false,
+      userConfig: await loadUserConfig(),
+    });
+  } else if (workspaceMode === 'none') {
+    args.push('--no-workspace');
+  }
+}
+
+interface ProjectLifecycleTransaction {
+  commit(): Promise<void>;
+  rollback(): Promise<void>;
+  registerCompensation(compensation: () => void | Promise<void>): void;
+}
+
+async function acquireProjectLifecycleLock(journalDirectory: string): Promise<() => Promise<void>> {
+  await fsExtra.ensureDir(journalDirectory);
+  const lockPath = path.join(journalDirectory, 'lifecycle.lock');
+  const startedAt = Date.now();
+  for (;;) {
+    try {
+      const handle = await fs.promises.open(lockPath, 'wx');
+      await handle.writeFile(`${JSON.stringify({ pid: process.pid })}\n`);
+      return async () => {
+        await handle.close().catch(() => undefined);
+        await fsExtra.remove(lockPath).catch(() => undefined);
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const lock = await fsExtra.readJson(lockPath).catch(() => null);
+      const ownerPid = Number(lock?.pid);
+      let ownerAlive = false;
+      if (Number.isInteger(ownerPid) && ownerPid > 0) {
+        try {
+          process.kill(ownerPid, 0);
+          ownerAlive = true;
+        } catch (ownerError) {
+          ownerAlive = (ownerError as NodeJS.ErrnoException).code === 'EPERM';
+        }
+      }
+      if (!ownerAlive) {
+        await fsExtra.remove(lockPath).catch(() => undefined);
+        continue;
+      }
+      if (Date.now() - startedAt > 30_000) {
+        throw new Error(`Timed out waiting for lifecycle transaction lock: ${lockPath}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+}
+
+async function beginProjectLifecycleTransaction(
+  workspacePath: string,
+  options: { projectPath?: string; ownedDestination?: string; ownedWorkspace?: string } = {}
+): Promise<ProjectLifecycleTransaction> {
+  const journalDirectory = path.join(getWorkspaceRegistryDirectory(), 'transactions');
+  const releaseLock = await acquireProjectLifecycleLock(journalDirectory);
+  let transaction: Awaited<ReturnType<typeof createLifecycleTransaction>> | undefined;
+  try {
+    await recoverActiveLifecycleTransactions(journalDirectory);
+    transaction = await createLifecycleTransaction({ journalDirectory });
+  } catch (error) {
+    await releaseLock();
+    throw error;
+  }
+  const files = new Set([
+    path.join(getWorkspaceRegistryDirectory(), 'workspaces.json'),
+    path.join(getLegacyWorkspaceRegistryDirectory(), 'workspaces.json'),
+    resolveWorkspaceArtifactPath(workspacePath, WORKSPACE_CONTRACT_PATH),
+    resolveLegacyWorkspaceArtifactPath(workspacePath, WORKSPACE_CONTRACT_PATH),
+    resolveWorkspaceArtifactPath(workspacePath, WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH),
+    resolveLegacyWorkspaceArtifactPath(workspacePath, WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH),
+    ...workspaceMetadataCandidates(workspacePath, 'imported-projects.json'),
+  ]);
+  if (options.projectPath) {
+    files.add(projectMetadataPath(options.projectPath, 'project.json'));
+    files.add(projectMetadataPath(options.projectPath, 'adopt.json'));
+    files.add(projectMetadataPath(options.projectPath, 'adopt-readiness.json'));
+  }
+
+  try {
+    for (const filePath of files) await transaction.captureFile(filePath);
+    if (options.ownedDestination) {
+      await transaction.captureOwnedTree(options.ownedDestination);
+    }
+    if (options.ownedWorkspace) {
+      await transaction.captureOwnedTree(options.ownedWorkspace);
+    }
+    let finished = false;
+    return {
+      registerCompensation: (compensation) => transaction.registerCompensation(compensation),
+      commit: async () => {
+        if (finished) return;
+        await transaction.commit();
+        finished = true;
+        await releaseLock();
+      },
+      rollback: async () => {
+        if (finished) return;
+        finished = true;
+        try {
+          await transaction.rollback();
+        } finally {
+          await releaseLock();
+        }
+      },
+    };
+  } catch (error) {
+    await transaction.rollback().catch(() => undefined);
+    await releaseLock();
+    throw error;
+  }
+}
+
+async function rollbackProjectLifecycleTransaction(
+  transaction: ProjectLifecycleTransaction,
+  error: unknown
+): Promise<never> {
+  try {
+    await transaction.rollback();
+  } catch (rollbackError) {
+    throw new AggregateError(
+      [error, rollbackError],
+      `Project lifecycle failed and rollback was incomplete: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  throw error;
+}
+
+async function finalizeCreatedProjectWorkspace(
+  args: string[],
+  projectPath: string,
+  projectName: string
+): Promise<string | undefined> {
+  if (args.includes('--no-workspace') || args.includes('--dry-run')) {
+    return undefined;
+  }
+  if (!(await fsExtra.pathExists(projectPath))) {
+    logger.warn(`Created project path was not found for workspace linking: ${projectPath}`);
+    return undefined;
+  }
+
+  let workspacePath = findWorkspaceUp(projectPath) || findWorkspaceUp(process.cwd());
+  let linkedToDefaultWorkspace = false;
+  let transaction: ProjectLifecycleTransaction;
+  if (!workspacePath) {
+    workspacePath = resolveManagedDefaultImportWorkspacePath();
+    transaction = await beginProjectLifecycleTransaction(workspacePath, {
+      projectPath,
+      ownedWorkspace: workspacePath,
+    });
+    try {
+      const ensured = await ensureManagedDefaultImportWorkspace();
+      workspacePath = ensured.workspacePath;
+    } catch (error) {
+      await rollbackProjectLifecycleTransaction(transaction, error);
+    }
+    linkedToDefaultWorkspace = true;
+  } else {
+    transaction = await beginProjectLifecycleTransaction(workspacePath, { projectPath });
+  }
+
+  let relationship = 'managed';
+  try {
+    const relativeProjectPath = path.relative(workspacePath, projectPath);
+    const projectIsExternal =
+      relativeProjectPath.startsWith('..') || path.isAbsolute(relativeProjectPath);
+    if (projectIsExternal) {
+      const adopted = await adoptProjectIntoWorkspace({
+        source: projectPath,
+        workspacePath,
+        name: projectName,
+      });
+      relationship = adopted.relationship;
+    }
+
+    const { registerProjectInWorkspaceStrict, registerWorkspaceStrict } =
+      await import('./workspace.js');
+    const { syncWorkspaceContract } = await import('./utils/workspace-contract.js');
+    await registerWorkspaceStrict(workspacePath, path.basename(workspacePath));
+    await registerProjectInWorkspaceStrict(workspacePath, projectName, projectPath);
+    await syncWorkspaceContract({ workspacePath, strict: true });
+    await transaction.commit();
+  } catch (error) {
+    await rollbackProjectLifecycleTransaction(transaction, error);
+  }
+
+  if (linkedToDefaultWorkspace) {
+    console.log(
+      chalk.gray(
+        `ℹ️  Project created outside a Workspai workspace — linked to managed workspace "${MANAGED_DEFAULT_WORKSPACE_LABEL}" (${relationship}).`
+      )
+    );
+    console.log(
+      chalk.gray(`   Registry: ${path.join(getWorkspaceRegistryDirectory(), 'workspaces.json')}`)
+    );
+    console.log(chalk.gray(`   Workspace: ${workspacePath}`));
+  }
+
+  return workspacePath;
+}
+
 async function runNpmBackedKitCreate(args: string[]): Promise<number> {
   if (args[0] !== 'create' || args[1] !== 'project') return 1;
 
@@ -657,15 +917,26 @@ async function runNpmBackedKitCreate(args: string[]): Promise<number> {
   const projectPath = path.resolve(outputDir, name);
   const skipGit = args.includes('--skip-git') || args.includes('--no-git');
   const skipInstall = args.includes('--skip-install');
+  const dryRun = args.includes('--dry-run');
+  let ownsProjectPath = false;
 
   try {
     const { default: fsExtra } = await import('fs-extra');
-    await fsExtra.ensureDir(path.dirname(projectPath));
     if (await fsExtra.pathExists(projectPath)) {
       process.stderr.write(`❌ Directory "${projectPath}" already exists\n`);
       return 1;
     }
+    if (dryRun) {
+      console.log(chalk.bold(`\n${definition.label}`));
+      console.log(chalk.gray(`   Runtime: ${definition.runtime}`));
+      console.log(chalk.gray(`   Target: ${projectPath}`));
+      console.log(chalk.gray('   Dry run: no files or workspace state will be changed.'));
+      return 0;
+    }
+
+    await fsExtra.ensureDir(path.dirname(projectPath));
     await fsExtra.ensureDir(projectPath);
+    ownsProjectPath = true;
 
     await runNpmKitGenerator(definition, {
       projectName: name,
@@ -676,14 +947,14 @@ async function runNpmBackedKitCreate(args: string[]): Promise<number> {
     });
     await persistRequestedProjectPort(args, process.cwd());
 
-    const workspacePath = findWorkspaceUp(process.cwd());
-    if (workspacePath) {
-      const { syncWorkspaceProjects } = await import('./workspace.js');
-      await syncWorkspaceProjects(workspacePath, true);
-    }
+    await finalizeCreatedProjectWorkspace(args, projectPath, name);
 
     return 0;
   } catch (e) {
+    if (ownsProjectPath) {
+      const { default: fsExtra } = await import('fs-extra');
+      await fsExtra.remove(projectPath).catch(() => undefined);
+    }
     process.stderr.write(
       `Workspai ${definition.id} generator failed: ${(e as Error)?.message ?? e}\n`
     );
@@ -694,49 +965,19 @@ async function runNpmBackedKitCreate(args: string[]): Promise<number> {
 async function runFrontendProjectCreate(args: string[]): Promise<number> {
   const definition = resolveFrontendGenerator(args[2]);
   if (!definition) return 1;
+  let ownedProjectPath: string | undefined;
 
   try {
     const result = await createFrontendProject({ args });
 
     if (!result.dryRun) {
-      let workspacePath = findWorkspaceUp(process.cwd());
-      let linkedToDefaultWorkspace = false;
-      if (!workspacePath) {
-        const ensured = await ensureManagedDefaultImportWorkspace();
-        workspacePath = ensured.workspacePath;
-        linkedToDefaultWorkspace = true;
-      }
-
-      const { registerProjectInWorkspace, registerWorkspace, syncWorkspaceProjects } =
-        await import('./workspace.js');
-      const registryEntry = buildFrontendProjectRegistryEntry({ workspacePath, result });
-      await registerWorkspace(workspacePath, path.basename(workspacePath));
-      await upsertImportedProjectsRegistry(workspacePath, [registryEntry]);
-      await registerProjectInWorkspace(workspacePath, result.projectName, result.projectPath);
-      await syncWorkspaceProjects(workspacePath, true);
-      await syncWorkspaceContractAfterProjectChange(workspacePath, { silent: true });
-
-      if (linkedToDefaultWorkspace) {
-        console.log(
-          chalk.gray(
-            `ℹ️  Project created outside a Workspai workspace — linked to managed workspace "${MANAGED_DEFAULT_WORKSPACE_LABEL}" (${registryEntry.relationship}).`
-          )
-        );
-        console.log(
-          chalk.gray(
-            `   Registry: ${path.join(getWorkspaceRegistryDirectory(), 'workspaces.json')}`
-          )
-        );
-        console.log(
-          chalk.gray(
-            '   Tip: run from inside a workspace next time, or create one with `workspai create workspace`.'
-          )
-        );
-      }
+      ownedProjectPath = result.projectPath;
+      await finalizeCreatedProjectWorkspace(args, result.projectPath, result.projectName);
     }
 
     return 0;
   } catch (error) {
+    if (ownedProjectPath) await fsExtra.remove(ownedProjectPath).catch(() => undefined);
     process.stderr.write(
       `Workspai ${definition.kitId} generator failed: ${(error as Error)?.message ?? error}\n`
     );
@@ -796,6 +1037,7 @@ async function runCreateFallback(args: string[], reasonCode: BridgeFailureCode):
 
   const outputDir = readFlagValue(args, '--output') || process.cwd();
   const projectPath = path.resolve(outputDir, name);
+  let ownsProjectPath = false;
 
   // Respect common flags used by the npm wrapper.
   const skipGit = args.includes('--skip-git') || args.includes('--no-git');
@@ -828,6 +1070,7 @@ async function runCreateFallback(args: string[], reasonCode: BridgeFailureCode):
     }
 
     await fsExtra.ensureDir(projectPath);
+    ownsProjectPath = true;
     const { generateDemoKit } = await import('./demo-kit.js');
     await generateDemoKit(projectPath, {
       project_name: name,
@@ -839,15 +1082,11 @@ async function runCreateFallback(args: string[], reasonCode: BridgeFailureCode):
     });
     await persistRequestedProjectPort(args, process.cwd());
 
-    // Sync workspace to register the new project
-    if (workspacePath) {
-      const { syncWorkspaceProjects } = await import('./workspace.js');
-      await syncWorkspaceProjects(workspacePath, true); // silent sync
-      await syncWorkspaceContractAfterProjectChange(workspacePath, { silent: true });
-    }
+    await finalizeCreatedProjectWorkspace(args, projectPath, name);
 
     return 0;
   } catch (e) {
+    if (ownsProjectPath) await fsExtra.remove(projectPath).catch(() => undefined);
     process.stderr.write(`Workspai CLI offline fallback failed: ${(e as Error)?.message ?? e}\n`);
     return 1;
   }
@@ -904,9 +1143,11 @@ Options:
   --skip-install       Scaffold without dependency installation
   --dry-run            Show the planned create operation without writing files
   --create-workspace   Register the current directory as a workspace first
-  --no-workspace       Do not prompt to create/register a workspace
+  --no-workspace       Create without linking to any workspace
 
 Notes:
+  Outside a workspace, projects are linked to the managed default workspace.
+  Interactive mode can instead turn the current folder into a workspace or opt out.
   Python-backed kits delegate execution to RapidKit Core when needed, but the
   Workspai CLI owns the command UX, workspace registration, and artifacts.`);
 }
@@ -960,7 +1201,7 @@ function printBridgeBackedCreateDryRun(args: string[]): void {
   const kit = args[2] ?? '<kit>';
   const name = args[3] ?? '<name>';
   const outputDir = readFlagValue(args, '--output') || process.cwd();
-  console.log('Workspai create project dry run');
+  console.log('Workspai create project dry run (Dry-run mode)');
   console.log(`  kit: ${kit}`);
   console.log(`  name: ${name}`);
   console.log(`  output: ${path.resolve(outputDir)}`);
@@ -1228,6 +1469,7 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
           if (!(await enforceWorkspaceProfileForRequestedKit(kitChoice))) {
             return 1;
           }
+          await prepareOutsideWorkspaceCreate(normalizedArgs);
           const code = isFrontendProjectKit(kitChoice)
             ? await runFrontendProjectCreate(normalizedArgs)
             : await runNpmBackedKitCreate(normalizedArgs);
@@ -1270,14 +1512,11 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
         return 1;
       }
 
+      await prepareOutsideWorkspaceCreate(args);
+
       // npm-backed kits run entirely at wrapper level, bypassing the Python engine.
       if (isNpmBackedKit(args[2])) {
-        const code = await runNpmBackedKitCreate(args);
-        const workspacePath = findWorkspaceUp(process.cwd());
-        if (code === 0 && workspacePath) {
-          await syncWorkspaceContractAfterProjectChange(workspacePath);
-        }
-        return code;
+        return await runNpmBackedKitCreate(args);
       }
 
       // Frontend generators manage their own registry linking (including managed workspai adoption).
@@ -1295,53 +1534,6 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
       if (args.includes('--dry-run')) {
         printBridgeBackedCreateDryRun(args);
         return 0;
-      }
-
-      const hasCreateWorkspace = args.includes('--create-workspace');
-      const hasNoWorkspace = args.includes('--no-workspace');
-      const hasYes = args.includes('--yes') || args.includes('-y');
-      const skipGit = args.includes('--skip-git') || args.includes('--no-git');
-
-      const hasWorkspace = !!findWorkspaceMarkerUp(process.cwd());
-
-      if (!hasWorkspace) {
-        const { registerWorkspaceAtPath } = await import('./create.js');
-        if (hasCreateWorkspace) {
-          // Non-interactive: create workspace automatically
-          await registerWorkspaceAtPath(process.cwd(), {
-            skipGit,
-            yes: hasYes,
-            userConfig: await loadUserConfig(),
-          });
-        } else if (!hasNoWorkspace) {
-          // Interactive flow (default behavior when none of the explicit flags are set)
-          if (hasYes) {
-            // Default to creating a workspace when --yes is provided
-            await registerWorkspaceAtPath(process.cwd(), {
-              skipGit,
-              yes: true,
-              userConfig: await loadUserConfig(),
-            });
-          } else {
-            const { createWs } = (await prompt([
-              {
-                type: 'confirm',
-                name: 'createWs',
-                message:
-                  'This project will be created outside a Workspai workspace. Create and register a workspace here?',
-                default: true,
-              },
-            ])) as { createWs: boolean };
-
-            if (createWs) {
-              await registerWorkspaceAtPath(process.cwd(), {
-                skipGit,
-                yes: false,
-                userConfig: await loadUserConfig(),
-              });
-            }
-          }
-        }
       }
 
       // Filter wrapper-only flags from args forwarded to the Python core engine
@@ -1381,17 +1573,22 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
         // If project creation succeeded, sync Python version and register workspace projects
         if (exitCode === 0) {
           await persistRequestedProjectPort(args, process.cwd());
-          const workspacePath = workspacePathForCreate || findWorkspaceUp(process.cwd());
+          const projectName = args[3];
+          const outputDir = readFlagValue(args, '--output') || process.cwd();
+          const projectPath = projectName ? path.resolve(outputDir, projectName) : undefined;
+          const workspacePath =
+            projectName && projectPath
+              ? await finalizeCreatedProjectWorkspace(args, projectPath, projectName).catch(
+                  async (error) => {
+                    await fsExtra.remove(projectPath).catch(() => undefined);
+                    throw error;
+                  }
+                )
+              : workspacePathForCreate;
           if (workspacePath) {
             // Sync Python version from workspace to newly created project
             try {
-              // Extract project name from args: create project <kit> <name>
-              const projectName = args[3];
-              if (projectName) {
-                const outputIndex = args.indexOf('--output');
-                const outputDir = outputIndex >= 0 ? args[outputIndex + 1] : '.';
-                const projectPath = path.resolve(process.cwd(), outputDir, projectName);
-
+              if (projectName && projectPath) {
                 const workspacePythonVersionFile = path.join(workspacePath, '.python-version');
                 const projectPythonVersionFile = path.join(projectPath, '.python-version');
 
@@ -1406,17 +1603,13 @@ export async function handleCreateOrFallback(args: string[]): Promise<number> {
             } catch (err) {
               logger.debug('Could not sync Python version from workspace:', err);
             }
-
-            const { syncWorkspaceProjects } = await import('./workspace.js');
-            await syncWorkspaceProjects(workspacePath, true); // silent sync
-            await syncWorkspaceContractAfterProjectChange(workspacePath);
           }
         }
 
         return exitCode;
       } catch (e) {
         const code = bridgeFailureCode(e);
-        if (code) return await runCreateFallback(forwardedArgs, code);
+        if (code) return await runCreateFallback(args, code);
         process.stderr.write(
           `Workspai failed to run the Python core engine: ${(e as Error)?.message ?? e}\n`
         );
@@ -2289,10 +2482,11 @@ async function runCommandInCwd(
         })}\n`
       );
     }
+    const requiresWindowsBatchShell = isWindowsPlatform() && /\.(?:cmd|bat)$/i.test(executable);
     child = spawn(executable, spawnArgs, {
       stdio: inheritChildOutput ? 'inherit' : ['ignore', 'pipe', 'pipe'],
       cwd,
-      shell: shouldUseShellExecution(),
+      shell: requiresWindowsBatchShell,
       env: spawnEnv,
       detached: !isWindowsPlatform(),
     });
@@ -2414,6 +2608,41 @@ async function writeJsonFile(filePath: string, payload: unknown): Promise<void> 
   await fsExtra.outputFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
 }
 
+function normalizeImportedProjectName(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/\.git$/i, '')
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-_.]+|[-_.]+$/g, '')
+    .slice(0, 64);
+}
+
+async function resolveOwnedImportDestination(
+  workspacePath: string,
+  source: string,
+  requestedName?: string
+): Promise<string> {
+  const sourceName = isGitUrl(source)
+    ? source.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop()?.split(':').pop() ||
+      'imported-project'
+    : path.basename(source);
+  const baseName = normalizeImportedProjectName(requestedName || sourceName) || 'imported-project';
+  let attempt = 0;
+  for (;;) {
+    const candidateName =
+      attempt === 0
+        ? baseName
+        : attempt === 1
+          ? `${baseName}-imported`
+          : `${baseName}-imported-${attempt}`;
+    const candidatePath = path.join(workspacePath, candidateName);
+    if (!(await fsExtra.pathExists(candidatePath))) return candidatePath;
+    attempt += 1;
+  }
+}
+
 export async function handleImportCommand(
   source: string,
   options: {
@@ -2438,6 +2667,7 @@ export async function handleImportCommand(
   let workspacePath = explicitWorkspace ?? findWorkspaceUp(process.cwd());
   let usedDefaultWorkspace = false;
   let createdDefaultWorkspace = false;
+  let willCreateDefaultWorkspace = false;
 
   if (explicitWorkspace) {
     if (!hasWorkspaceRootMarkers(explicitWorkspace)) {
@@ -2450,13 +2680,12 @@ export async function handleImportCommand(
       return 1;
     }
   } else if (!workspacePath || !hasWorkspaceRootMarkers(workspacePath)) {
-    const ensuredWorkspace = await ensureManagedDefaultImportWorkspace();
-    workspacePath = ensuredWorkspace.workspacePath;
+    workspacePath = resolveManagedDefaultImportWorkspacePath();
     usedDefaultWorkspace = true;
-    createdDefaultWorkspace = ensuredWorkspace.created;
+    willCreateDefaultWorkspace = true;
   }
 
-  if (!workspacePath || !hasWorkspaceRootMarkers(workspacePath)) {
+  if (!workspacePath || (!hasWorkspaceRootMarkers(workspacePath) && !willCreateDefaultWorkspace)) {
     const message = 'Not inside a Workspai workspace';
     if (options.json) {
       console.log(JSON.stringify({ error: message }, null, 2));
@@ -2471,20 +2700,22 @@ export async function handleImportCommand(
 
   const suggestedCdCommand = `cd ${workspacePath}`;
 
-  const syncImportedWorkspace =
-    dependencies?.syncWorkspaceProjects ??
-    (async (nextWorkspacePath: string) => {
-      if (shouldInjectImportSyncFailure) {
-        throw new Error('forced sync failure for command-level import rollback test');
-      }
-      const { syncWorkspaceProjects } = await import('./workspace.js');
-      await syncWorkspaceProjects(nextWorkspacePath, true);
-      await syncWorkspaceContractAfterProjectChange(nextWorkspacePath, { silent: true });
-    });
-  const rollbackImportedProject =
-    dependencies?.rollbackImportedProjectImport ?? cleanupImportedProjectImport;
-
+  let transaction: ProjectLifecycleTransaction | undefined;
   try {
+    const ownedDestination = await resolveOwnedImportDestination(
+      workspacePath,
+      source,
+      options.name
+    );
+    transaction = await beginProjectLifecycleTransaction(workspacePath, {
+      ownedDestination,
+      ownedWorkspace: willCreateDefaultWorkspace ? workspacePath : undefined,
+    });
+    if (willCreateDefaultWorkspace) {
+      const ensuredWorkspace = await ensureManagedDefaultImportWorkspace({ silent: options.json });
+      workspacePath = ensuredWorkspace.workspacePath;
+      createdDefaultWorkspace = ensuredWorkspace.created;
+    }
     const importedProject = await importProjectIntoWorkspace({
       workspacePath,
       source,
@@ -2493,17 +2724,35 @@ export async function handleImportCommand(
       enableModules: options.enableModules,
     });
 
+    if (importedProject.path !== ownedDestination) {
+      transaction.registerCompensation(() => fsExtra.remove(importedProject.path));
+    }
+
     try {
-      await syncImportedWorkspace(workspacePath);
-    } catch (syncError) {
-      await rollbackImportedProject(workspacePath, importedProject.path);
-
-      try {
-        await syncImportedWorkspace(workspacePath);
-      } catch {
-        // Best-effort restore only.
+      if (dependencies?.syncWorkspaceProjects) {
+        await dependencies.syncWorkspaceProjects(workspacePath);
+      } else {
+        if (shouldInjectImportSyncFailure) {
+          throw new Error('forced sync failure for command-level import rollback test');
+        }
+        const { registerProjectInWorkspaceStrict, registerWorkspaceStrict } =
+          await import('./workspace.js');
+        const { syncWorkspaceContract } = await import('./utils/workspace-contract.js');
+        await registerWorkspaceStrict(workspacePath, path.basename(workspacePath));
+        await registerProjectInWorkspaceStrict(
+          workspacePath,
+          importedProject.name,
+          importedProject.path
+        );
+        await syncWorkspaceContract({ workspacePath, strict: true });
       }
-
+      await transaction.commit();
+    } catch (syncError) {
+      try {
+        await rollbackProjectLifecycleTransaction(transaction, syncError);
+      } catch (rolledBackError) {
+        if (rolledBackError !== syncError) throw rolledBackError;
+      }
       throw new Error(
         `Workspace sync failed after import and the imported project was rolled back: ${syncError instanceof Error ? syncError.message : String(syncError)}`
       );
@@ -2559,6 +2808,15 @@ export async function handleImportCommand(
     console.log(chalk.gray(`   Next shell step: ${suggestedCdCommand}`));
     return 0;
   } catch (error) {
+    if (transaction) {
+      try {
+        await rollbackProjectLifecycleTransaction(transaction, error);
+      } catch (rolledBackError) {
+        if (rolledBackError !== error) {
+          error = rolledBackError;
+        }
+      }
+    }
     const message = error instanceof Error ? error.message : String(error);
     if (options.json) {
       console.log(JSON.stringify({ error: message }, null, 2));
@@ -2589,7 +2847,7 @@ export async function handleAdoptCommand(
     rollbackAdoptedProjectImport?: (
       workspacePath: string,
       projectPath: string,
-      previousProjectJson: Record<string, unknown> | null
+      snapshot: AdoptProjectRollbackSnapshot
     ) => Promise<void>;
   }
 ): Promise<number> {
@@ -2598,6 +2856,7 @@ export async function handleAdoptCommand(
   let workspacePath = explicitWorkspace ?? findWorkspaceUp(process.cwd());
   let usedDefaultWorkspace = false;
   let createdDefaultWorkspace = false;
+  let willCreateDefaultWorkspace = false;
 
   if (explicitWorkspace) {
     if (!hasWorkspaceRootMarkers(explicitWorkspace)) {
@@ -2610,13 +2869,20 @@ export async function handleAdoptCommand(
       return 1;
     }
   } else if (!workspacePath || !hasWorkspaceRootMarkers(workspacePath)) {
-    const ensuredWorkspace = await ensureManagedDefaultImportWorkspace();
-    workspacePath = ensuredWorkspace.workspacePath;
+    const defaultWorkspacePath = resolveManagedDefaultImportWorkspacePath();
+    workspacePath = defaultWorkspacePath;
     usedDefaultWorkspace = true;
-    createdDefaultWorkspace = ensuredWorkspace.created;
+    willCreateDefaultWorkspace = options.dryRun !== true;
   }
 
-  if (!workspacePath || !hasWorkspaceRootMarkers(workspacePath)) {
+  const allowsUncreatedDefaultWorkspace =
+    usedDefaultWorkspace &&
+    workspacePath !== null &&
+    (options.dryRun === true || willCreateDefaultWorkspace);
+  if (
+    !workspacePath ||
+    (!hasWorkspaceRootMarkers(workspacePath) && !allowsUncreatedDefaultWorkspace)
+  ) {
     const message = 'Not inside a Workspai workspace';
     if (options.json) {
       console.log(JSON.stringify({ error: message }, null, 2));
@@ -2635,43 +2901,22 @@ export async function handleAdoptCommand(
       process.env.VITEST === '1' ||
       process.env.NODE_ENV === 'test');
 
-  const syncWorkspace =
-    dependencies?.syncWorkspaceProjects ??
-    (async (nextWorkspacePath: string) => {
-      if (shouldInjectAdoptSyncFailure) {
-        throw new Error('forced sync failure for command-level adopt rollback test');
-      }
-      const { syncWorkspaceProjects } = await import('./workspace.js');
-      await syncWorkspaceProjects(nextWorkspacePath, true);
-      await syncWorkspaceContractAfterProjectChange(nextWorkspacePath, { silent: true });
-    });
-  const registerProject =
-    dependencies?.registerProjectInWorkspace ??
-    (async (nextWorkspacePath: string, projectName: string, projectPath: string) => {
-      const { registerProjectInWorkspace } = await import('./workspace.js');
-      await registerProjectInWorkspace(nextWorkspacePath, projectName, projectPath);
-    });
-  const registerWorkspace =
-    dependencies?.registerWorkspace ??
-    (async (nextWorkspacePath: string, workspaceName: string) => {
-      const { registerWorkspace } = await import('./workspace.js');
-      await registerWorkspace(nextWorkspacePath, workspaceName);
-    });
-
-  const rollbackAdoptedProject =
-    dependencies?.rollbackAdoptedProjectImport ?? cleanupAdoptedProjectImport;
-
+  let transaction: ProjectLifecycleTransaction | undefined;
   try {
-    let previousProjectJson: Record<string, unknown> | null = null;
-    for (const previousProjectJsonPath of projectMetadataCandidates(sourcePath, 'project.json')) {
-      if (await fsExtra.pathExists(previousProjectJsonPath)) {
-        previousProjectJson = (await fsExtra.readJson(previousProjectJsonPath)) as Record<
-          string,
-          unknown
-        >;
-        break;
+    if (options.dryRun !== true) {
+      transaction = await beginProjectLifecycleTransaction(workspacePath, {
+        projectPath: sourcePath,
+        ownedWorkspace: willCreateDefaultWorkspace ? workspacePath : undefined,
+      });
+      if (willCreateDefaultWorkspace) {
+        const ensuredWorkspace = await ensureManagedDefaultImportWorkspace({
+          silent: options.json,
+        });
+        workspacePath = ensuredWorkspace.workspacePath;
+        createdDefaultWorkspace = ensuredWorkspace.created;
       }
     }
+    const rollbackSnapshot = await captureAdoptProjectRollbackSnapshot(workspacePath, sourcePath);
 
     const adoptedProject = await adoptProjectIntoWorkspace({
       workspacePath,
@@ -2679,15 +2924,53 @@ export async function handleAdoptCommand(
       name: options.name,
       dryRun: options.dryRun === true,
       enableModules: options.enableModules,
+      rollbackSnapshot,
     });
 
     if (options.dryRun !== true) {
       try {
-        await registerWorkspace(workspacePath, path.basename(workspacePath));
-        await registerProject(workspacePath, adoptedProject.name, adoptedProject.path);
-        await syncWorkspace(workspacePath);
+        if (
+          dependencies?.registerWorkspace ||
+          dependencies?.registerProjectInWorkspace ||
+          dependencies?.syncWorkspaceProjects
+        ) {
+          if (dependencies.registerWorkspace) {
+            await dependencies.registerWorkspace(workspacePath, path.basename(workspacePath));
+          }
+          if (dependencies.registerProjectInWorkspace) {
+            await dependencies.registerProjectInWorkspace(
+              workspacePath,
+              adoptedProject.name,
+              adoptedProject.path
+            );
+          }
+          if (dependencies.syncWorkspaceProjects) {
+            await dependencies.syncWorkspaceProjects(workspacePath);
+          }
+        } else {
+          const { registerProjectInWorkspaceStrict, registerWorkspaceStrict } =
+            await import('./workspace.js');
+          const { syncWorkspaceContract } = await import('./utils/workspace-contract.js');
+          await registerWorkspaceStrict(workspacePath, path.basename(workspacePath));
+          await registerProjectInWorkspaceStrict(
+            workspacePath,
+            adoptedProject.name,
+            adoptedProject.path
+          );
+          if (shouldInjectAdoptSyncFailure) {
+            throw new Error('forced sync failure for command-level adopt rollback test');
+          }
+          await syncWorkspaceContract({ workspacePath, strict: true });
+        }
+        await transaction?.commit();
       } catch (syncError) {
-        await rollbackAdoptedProject(workspacePath, adoptedProject.path, previousProjectJson);
+        if (transaction) {
+          try {
+            await rollbackProjectLifecycleTransaction(transaction, syncError);
+          } catch (rolledBackError) {
+            if (rolledBackError !== syncError) throw rolledBackError;
+          }
+        }
         throw new Error(
           `Workspace sync failed after adopt and adoption metadata was rolled back: ${syncError instanceof Error ? syncError.message : String(syncError)}`
         );
@@ -2705,6 +2988,10 @@ export async function handleAdoptCommand(
                 ? 'explicit'
                 : 'nearest',
             defaultWorkspaceCreated: usedDefaultWorkspace ? createdDefaultWorkspace : false,
+            wouldCreateDefaultWorkspace:
+              usedDefaultWorkspace && options.dryRun === true
+                ? !hasWorkspaceRootMarkers(workspacePath)
+                : false,
             dryRun: options.dryRun === true,
             adoptedProject,
           },
@@ -2744,6 +3031,15 @@ export async function handleAdoptCommand(
     console.log(chalk.gray(`   Next: npx workspai workspace model --json`));
     return 0;
   } catch (error) {
+    if (transaction) {
+      try {
+        await rollbackProjectLifecycleTransaction(transaction, error);
+      } catch (rolledBackError) {
+        if (rolledBackError !== error) {
+          error = rolledBackError;
+        }
+      }
+    }
     const message = error instanceof Error ? error.message : String(error);
     if (options.json) {
       console.log(JSON.stringify({ error: message }, null, 2));
@@ -2985,7 +3281,7 @@ function resolveDefaultWorkspacePath(basePath: string): { name: string; targetPa
   return resolveAvailableWorkspaceSlot(basePath);
 }
 
-async function ensureManagedDefaultImportWorkspace(): Promise<{
+async function ensureManagedDefaultImportWorkspace(options: { silent?: boolean } = {}): Promise<{
   workspacePath: string;
   created: boolean;
 }> {
@@ -2993,17 +3289,36 @@ async function ensureManagedDefaultImportWorkspace(): Promise<{
   const workspaceName = path.basename(workspacePath);
   const existed = hasWorkspaceRootMarkers(workspacePath);
 
-  await writeWorkspaceMarker(workspacePath, createNpmWorkspaceMarker(workspaceName, getVersion()));
-
-  const workspaceManifestPath = workspaceMetadataPath(workspacePath, 'workspace.json');
-  if (!(await fsExtra.pathExists(workspaceManifestPath))) {
-    await writeJsonFile(workspaceManifestPath, {
-      name: workspaceName,
-      workspace_name: workspaceName,
-      profile: 'minimal',
-      createdAt: new Date().toISOString(),
-      createdBy: 'workspai-cli-import-fallback',
-    });
+  if (!existed) {
+    const { createProject } = await import('./create.js');
+    const previousLogFormat = process.env.WORKSPAI_LOG_FORMAT;
+    const previousConsoleLog = console.log;
+    const previousConsoleWarn = console.warn;
+    if (options.silent) {
+      process.env.WORKSPAI_LOG_FORMAT = 'json';
+      console.log = () => undefined;
+      console.warn = () => undefined;
+    }
+    try {
+      await createProject(workspaceName, {
+        parentDirectory: path.dirname(workspacePath),
+        profile: 'polyglot',
+        skipPythonEngine: true,
+        skipGit: true,
+        yes: true,
+        userConfig: await loadUserConfig(),
+      });
+    } finally {
+      if (options.silent) {
+        console.log = previousConsoleLog;
+        console.warn = previousConsoleWarn;
+        if (previousLogFormat === undefined) {
+          delete process.env.WORKSPAI_LOG_FORMAT;
+        } else {
+          process.env.WORKSPAI_LOG_FORMAT = previousLogFormat;
+        }
+      }
+    }
   }
 
   return {
@@ -4148,6 +4463,7 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
       });
       const prereq = await adapter.checkPrereqs();
       const workspacePath = findWorkspaceUp(process.cwd());
+      const runtimePath = workspacePath || process.cwd();
       let version: string | null = null;
       if (runtime === 'node' && prereq.exitCode === 0) {
         version = process.version;
@@ -4172,6 +4488,54 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
         await fsExtra.ensureDir(path.dirname(lockPath));
         await fs.promises.writeFile(lockPath, JSON.stringify(lock, null, 2) + '\n', 'utf-8');
       }
+      const warmDependencies: {
+        requested: boolean;
+        status: 'not-requested' | 'passed' | 'failed' | 'skipped';
+        exitCode: number | null;
+        targets: number;
+        messages: string[];
+      } = {
+        requested: warmDeps,
+        status: 'not-requested',
+        exitCode: null,
+        targets: 0,
+        messages: [],
+      };
+      if (warmDeps && prereq.exitCode === 0) {
+        let targets = [runtimePath];
+        if (runtime === 'java' && workspacePath) {
+          const workspaceProjects = await collectWorkspaceProjects(workspacePath);
+          const javaProjects = workspaceProjects.filter((projectPath) => {
+            const projectJson = readRapidkitProjectJson(projectPath);
+            return isJavaProject(projectJson, projectPath);
+          });
+          if (javaProjects.length > 0) {
+            targets = javaProjects;
+          }
+        }
+
+        const results: CommandResult[] = [];
+        for (const targetPath of targets) {
+          results.push(
+            await warmRuntimeDependencies(
+              runtime as 'python' | 'node' | 'go' | 'java' | 'dotnet',
+              targetPath
+            )
+          );
+        }
+        const failed = results.filter((result) => result.exitCode !== 0);
+        const completed = results.filter(
+          (result) => result.exitCode === 0 && !/skipped/i.test(result.message || '')
+        );
+        warmDependencies.status =
+          failed.length > 0 ? 'failed' : completed.length > 0 ? 'passed' : 'skipped';
+        warmDependencies.exitCode = failed[0]?.exitCode ?? 0;
+        warmDependencies.targets = targets.length;
+        warmDependencies.messages = results
+          .map((result) => result.message)
+          .filter((message): message is string => typeof message === 'string');
+      }
+
       process.stdout.write(
         `${JSON.stringify(
           {
@@ -4182,6 +4546,7 @@ export async function handleSetupCommand(args: string[]): Promise<number> {
             workspacePath,
             version,
             warmDeps,
+            warmDependencies,
           },
           null,
           2
@@ -5784,6 +6149,7 @@ async function delegateToLocalCLI(): Promise<boolean> {
           const child = spawn(localScriptEarly, args, {
             stdio: 'inherit',
             cwd,
+            shell: isWindows,
             env: delegationEnv,
           });
           child.on('close', (code) => process.exit(code ?? 0));
@@ -6051,10 +6417,11 @@ program
   .addOption(
     new Option(
       '--no-workspace',
-      'When creating a project outside a workspace: do not create a workspace'
+      'When creating a project outside a workspace: do not link it to any workspace'
     ).hideHelp()
   )
   .option('--no-update-check', 'Skip checking for updates')
+  .option('--trust-config', 'Trust and execute workspai.config.js/mjs/cjs discovered in this tree')
   .action(async (name, options) => {
     try {
       // Enable debug mode if requested
@@ -6065,10 +6432,16 @@ program
 
       // Load user configuration
       const userConfig = await loadUserConfig();
-      logger.debug('User config loaded', userConfig);
+      logger.debug('User config loaded', {
+        ...userConfig,
+        openaiApiKey: userConfig.openaiApiKey ? '[REDACTED]' : undefined,
+      });
 
       // Load Workspai config file (workspai.config.*; rapidkit.config.* is legacy fallback)
-      const workspaiConfig = await loadWorkspaiConfig();
+      const workspaiConfig = await loadWorkspaiConfig(process.cwd(), {
+        trustExecutableConfig:
+          options.trustConfig === true || process.env.WORKSPAI_TRUST_CONFIG === '1',
+      });
       logger.debug('Workspai config loaded', workspaiConfig);
 
       // Merge configurations (CLI > workspai.config.* > .workspairc.json > legacy fallback)
@@ -7285,6 +7658,10 @@ program
     WORKSPACE_ARCHIVE_CLI_FLAGS.downloadTimeoutMs.signature,
     WORKSPACE_ARCHIVE_CLI_FLAGS.downloadTimeoutMs.description
   )
+  .option(
+    WORKSPACE_ARCHIVE_CLI_FLAGS.allowPrivateNetwork.signature,
+    WORKSPACE_ARCHIVE_CLI_FLAGS.allowPrivateNetwork.description
+  )
   .option('--force', 'Overwrite an existing hydrate output directory')
   .option('--refresh', 'Publish workspace registry summary before reading status')
   .option('--dry-run', 'Preview hydrate without writing files')
@@ -7349,6 +7726,7 @@ See the command reference for action-specific required inputs and output artifac
       maxDownloadSize?: string;
       maxExpandedSize?: string;
       downloadTimeoutMs?: string;
+      allowPrivateNetwork?: boolean;
       force?: boolean;
       refresh?: boolean;
       dryRun?: boolean;
@@ -7461,11 +7839,14 @@ See the command reference for action-specific required inputs and output artifac
           '--max-expanded-size'
         ),
         downloadTimeoutMs: timeout,
+        allowPrivateNetwork:
+          actionOptions.allowPrivateNetwork === true || hasRawFlag('--allow-private-network'),
       };
     };
 
     const allowedWorkspaceFlagsByAction: Record<string, readonly string[]> = {
       list: ['--json'],
+      intelligence: ['--workspace', '--json', '--strict', '--for-agent'],
       model: [
         '--workspace',
         '--json',
@@ -7566,6 +7947,7 @@ See the command reference for action-specific required inputs and output artifac
         '--max-download-size',
         '--max-expanded-size',
         '--download-timeout-ms',
+        '--allow-private-network',
       ],
       hydrate: [
         '--json',
@@ -7576,6 +7958,7 @@ See the command reference for action-specific required inputs and output artifac
         '--max-download-size',
         '--max-expanded-size',
         '--download-timeout-ms',
+        '--allow-private-network',
       ],
       import: [
         '--json',
@@ -7586,6 +7969,7 @@ See the command reference for action-specific required inputs and output artifac
         '--max-download-size',
         '--max-expanded-size',
         '--download-timeout-ms',
+        '--allow-private-network',
       ],
       run: [
         '--workspace',
@@ -7678,6 +8062,29 @@ See the command reference for action-specific required inputs and output artifac
     if (action === 'list') {
       const { listWorkspaces } = await import('./workspace.js');
       await listWorkspaces({ json: actionOptions.json === true || hasRawFlag('--json') });
+    } else if (action === 'intelligence') {
+      if (subaction && subaction !== 'run') {
+        console.log(chalk.red(`❌ Unknown workspace intelligence action: ${subaction}`));
+        console.log(chalk.gray('   npx workspai workspace intelligence run [--strict] [--json]'));
+        process.exit(2);
+      }
+      const workspacePath = requireWorkspaceRootForAction('intelligence');
+      const { runWorkspaceIntelligenceChain } = await import('./workspace-intelligence-runner.js');
+      const result = await runWorkspaceIntelligenceChain({
+        workspacePath,
+        strict: actionOptions.strict === true || hasRawFlag('--strict'),
+        agent: typeof actionOptions.forAgent === 'string' ? actionOptions.forAgent : 'generic',
+      });
+      if (actionOptions.json === true || hasRawFlag('--json')) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(chalk.green(`✔ Workspace Intelligence: ${result.status}`));
+        for (const stage of result.stages) {
+          console.log(chalk.gray(`   ${stage.id}: ${stage.status} — ${stage.message}`));
+        }
+        console.log(chalk.gray(`   Evidence: ${result.artifactPath}`));
+      }
+      if (result.exitCode !== 0) process.exit(result.exitCode);
     } else if (action === 'model') {
       const workspacePath = requireWorkspaceRootForAction('model');
       const { buildWorkspaceModelCached, buildWorkspaceModelIncremental, writeWorkspaceModel } =
@@ -9401,16 +9808,17 @@ function printHelp() {
   console.log(chalk.cyan(cmd('   npx workspai my-workspace')));
   console.log(chalk.cyan(cmd('   npx workspai adopt /path/to/project')));
   console.log(chalk.cyan(cmd('   npx workspai import <path|git-url>\n')));
-  console.log(chalk.white('2. Build a workspace model\n'));
-  console.log(chalk.cyan(cmd('   npx workspai workspace model --json\n')));
-  console.log(chalk.white('3. Generate agent-ready context\n'));
-  console.log(chalk.cyan(cmd('   npx workspai workspace context --for-agent --json --write\n')));
-  console.log(chalk.white('4. Analyze change impact\n'));
-  console.log(chalk.cyan(cmd('   npx workspai workspace impact --from <diff>\n')));
-  console.log(chalk.white('5. Verify release readiness\n'));
-  console.log(chalk.cyan(cmd('   npx workspai workspace verify --strict')));
-  console.log(chalk.cyan(cmd('   npx workspai pipeline --strict\n')));
-  console.log(chalk.white('6. Explain blockers and trace change impact\n'));
+  console.log(chalk.white('2. Run the contract-backed intelligence chain\n'));
+  console.log(
+    chalk.cyan(cmd('   npx workspai workspace intelligence run --for-agent codex --json\n'))
+  );
+  console.log(chalk.white('3. Enforce enterprise gates in CI or before release\n'));
+  console.log(
+    chalk.cyan(
+      cmd('   npx workspai workspace intelligence run --for-agent codex --strict --json\n')
+    )
+  );
+  console.log(chalk.white('4. Explain blockers and trace change impact\n'));
   console.log(chalk.cyan(cmd('   npx workspai workspace explain release-blocked --json --write')));
   console.log(
     chalk.cyan(
@@ -9421,7 +9829,13 @@ function printHelp() {
   );
 
   printHelpSectionDivider('Workspace Intelligence');
-  console.log(chalk.white('\nWhat projects exist?\n'));
+  console.log(chalk.white('\nRun the complete canonical chain?\n'));
+  console.log(
+    chalk.cyan(
+      cmd('   npx workspai workspace intelligence run --for-agent codex --strict --json\n')
+    )
+  );
+  console.log(chalk.white('What projects exist?\n'));
   console.log(chalk.cyan(cmd('   npx workspai workspace model --json\n')));
   console.log(chalk.white('What should AI agents know?\n'));
   console.log(chalk.cyan(cmd('   npx workspai workspace context --for-agent --json --write\n')));
@@ -9567,6 +9981,11 @@ function printHelp() {
   console.log(grayCmd('  npx workspai workspace list               List registered workspaces'));
   console.log(
     grayCmd('  npx workspai workspace model --json      Build workspace intelligence model')
+  );
+  console.log(
+    grayCmd(
+      '  npx workspai workspace intelligence run [--strict] --json  Run the canonical contract-backed chain'
+    )
   );
   console.log(
     grayCmd(
@@ -9726,7 +10145,7 @@ function printHelp() {
   );
   console.log(
     chalk.gray(
-      '  --no-workspace             When creating a project outside a workspace: do not create a workspace'
+      '  --no-workspace             When creating a project outside a workspace: do not link it to any workspace'
     )
   );
   console.log(chalk.gray('  --no-update-check          Skip checking for updates\n'));
@@ -9972,7 +10391,16 @@ if (shouldBootstrapCli) {
     await exitAfterOutputFlush(0);
   }
 
-  if (shouldKeepNpmOwnedCommandLocal && isNpmOnlyManualHandlerCommand(preFirst)) {
+  if (shouldKeepNpmOwnedCommandLocal && preFirst === NPM_ONLY_CREATE_HANDLER_COMMAND) {
+    (async () => {
+      await exitAfterOutputFlush(await handleCreateOrFallback(preArgs));
+    })().catch((error) => {
+      process.stderr.write(
+        `Workspai CLI failed to run create: ${(error as Error)?.message ?? error}\n`
+      );
+      process.exit(1);
+    });
+  } else if (shouldKeepNpmOwnedCommandLocal && isNpmOnlyManualHandlerCommand(preFirst)) {
     (async () => {
       await exitAfterOutputFlush(await runNpmOnlyManualHandler(preFirst, preArgs));
     })().catch((error) => {

@@ -110,6 +110,19 @@ rapidkit deploy
       expect(res).toBe(bridge.__test__.pythonCommandCandidates()[1]);
     });
 
+    it('rejects a nonzero Windows Store alias and probes py with Python 3', async () => {
+      process.env.RAPIDKIT_BRIDGE_PYTHON = 'python';
+      process.env.RAPIDKIT_PYTHON_CMD = 'py';
+      mockExeca
+        .mockResolvedValueOnce({ exitCode: 9009, stderr: 'Python was not found' })
+        .mockResolvedValueOnce({ exitCode: 0, stdout: 'Python 3.12.4' });
+
+      const res = await bridge.__test__.pickSystemPython();
+
+      expect(res).toBe('py');
+      expect(mockExeca).toHaveBeenNthCalledWith(2, 'py', ['-3', '--version'], expect.any(Object));
+    });
+
     it('returns null if none found', async () => {
       mockExeca.mockRejectedValue(new Error('no python'));
       const res = await bridge.__test__.pickSystemPython();
@@ -209,6 +222,32 @@ rapidkit deploy
       expect(py).toContain('python');
       expect(mockExeca).toHaveBeenCalledWith(
         'good-python',
+        expect.arrayContaining(['-m', 'venv']),
+        expect.any(Object)
+      );
+    });
+
+    it('does not bootstrap with a candidate whose version probe exits nonzero', async () => {
+      process.env.RAPIDKIT_BRIDGE_PYTHON = 'store-python';
+      process.env.RAPIDKIT_PYTHON_CMD = 'working-python';
+      mockFs.pathExists.mockResolvedValue(false);
+      mockFs.ensureDir.mockResolvedValue(undefined);
+      mockExeca
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Python was not found' })
+        .mockResolvedValueOnce({ exitCode: 0, stdout: 'Python 3.12', stderr: '' })
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' })
+        .mockResolvedValueOnce({ exitCode: 0, stdout: 'pip 24', stderr: '' })
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' });
+
+      await bridge.__test__.ensureBridgeVenvFromCandidates();
+
+      expect(mockExeca).not.toHaveBeenCalledWith(
+        'store-python',
+        expect.arrayContaining(['-m', 'venv']),
+        expect.any(Object)
+      );
+      expect(mockExeca).toHaveBeenCalledWith(
+        'working-python',
         expect.arrayContaining(['-m', 'venv']),
         expect.any(Object)
       );

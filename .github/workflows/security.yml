@@ -1,5 +1,9 @@
 name: Security Audit
 
+permissions:
+  contents: read
+  security-events: write
+
 on:
   push:
     branches: [main, develop]
@@ -16,6 +20,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Dependency review
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -28,6 +43,12 @@ jobs:
 
       - name: Block high and critical npm vulnerabilities
         run: npm audit --audit-level=high
+
+      - name: Generate CycloneDX-compatible npm SBOM
+        run: npm sbom --sbom-format cyclonedx > workspai-sbom.cdx.json
+
+      - name: Analyze source with CodeQL
+        uses: github/codeql-action/analyze@v3
 
       - name: Run dependency check
         run: |
@@ -55,3 +76,10 @@ jobs:
           name: security-report
           path: security-report.md
           retention-days: 30
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspai-sbom
+          path: workspai-sbom.cdx.json
+          retention-days: 90

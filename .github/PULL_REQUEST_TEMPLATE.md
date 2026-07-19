@@ -1,9 +1,11 @@
-## Thank you for contributing to RapidKit 🚀
+## Thank you for contributing to Workspai
 
 Please make sure:
 
 - [ ] The related issue is linked (if applicable)
-- [ ] Tests pass locally (`npm test`)
+- [ ] Repository validation passes locally (`npm run validate`)
+- [ ] Documentation validation passes for doc changes (`npm --workspace workspai run validate:docs`)
+- [ ] Contract validation passes for contract changes (`npm --workspace workspai run contracts:validate`)
 - [ ] Documentation was updated when behavior changed
 - [ ] Changes are focused and backward-compatible (or clearly documented)
 
@@ -24,3 +26,6 @@ List commands/tests you ran and their result.
 - [ ] No unrelated refactors
 - [ ] No sensitive data introduced
 - [ ] Release notes/changelog updated (if needed)
+
+See the [contribution guide](../packages/cli/CONTRIBUTING.md) for the complete
+workflow.

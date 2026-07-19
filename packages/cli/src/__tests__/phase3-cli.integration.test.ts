@@ -27,6 +27,51 @@ function cliEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 }
 
 describe('Phase 3 commands - CLI process integration', () => {
+  it('keeps create workspace arguments intact under npx execution', () => {
+    const dist = ensureDistBuilt();
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'workspai-npx-create-'));
+    const workspaceName = 'sidebar-enterprise-test';
+
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [
+          dist,
+          'create',
+          'workspace',
+          workspaceName,
+          '--yes',
+          '--output',
+          tempDir,
+          '--profile',
+          'enterprise',
+          '--skip-python-engine',
+          '--skip-git',
+          '--dry-run',
+        ],
+        {
+          cwd: tempDir,
+          encoding: 'utf8',
+          env: cliEnv({
+            npm_command: 'exec',
+            npm_config_user_agent: 'npm/12.0.1 node/v20.20.0 linux x64 workspaces/false',
+          }),
+        }
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain(path.join(tempDir, workspaceName));
+      expect(result.stdout).not.toContain(path.join(tempDir, 'create'));
+      expect(result.stdout).toContain('Python engine: Skipped');
+      expect(result.stdout).toContain('Git init: No');
+      expect(result.stdout).toContain('Python engine setup skipped');
+      expect(result.stdout).not.toContain('Poetry virtual environment created');
+      expect(fs.existsSync(path.join(tempDir, workspaceName))).toBe(false);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
+  }, 60_000);
+
   it('keeps adopt --dry-run read-only when the global wrapper option consumes the flag', () => {
     const dist = ensureDistBuilt();
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-adopt-dry-run-'));
@@ -67,6 +112,96 @@ describe('Phase 3 commands - CLI process integration', () => {
       fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
   }, 60_000);
+
+  it.each([
+    { label: 'without a source argument', sourceArgs: [] },
+    { label: 'with the current-directory source', sourceArgs: ['.'] },
+  ])(
+    'does not provision the managed default workspace during adopt --dry-run $label',
+    ({ sourceArgs }) => {
+      const dist = ensureDistBuilt();
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-adopt-default-dry-run-'));
+      const isolatedHome = path.join(tempDir, 'home');
+      const projectDir = path.join(tempDir, 'api');
+
+      try {
+        fs.mkdirSync(isolatedHome, { recursive: true });
+        fs.mkdirSync(projectDir, { recursive: true });
+        fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'api' }));
+
+        const result = spawnSync(
+          process.execPath,
+          [dist, 'adopt', ...sourceArgs, '--dry-run', '--json'],
+          {
+            cwd: projectDir,
+            encoding: 'utf8',
+            env: cliEnv({ HOME: isolatedHome, USERPROFILE: isolatedHome }),
+          }
+        );
+
+        expect(result.status).toBe(0);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          workspaceResolution: 'default-auto',
+          defaultWorkspaceCreated: false,
+          wouldCreateDefaultWorkspace: true,
+          dryRun: true,
+          adoptedProject: { wroteFiles: false },
+        });
+        expect(fs.existsSync(path.join(isolatedHome, '.workspai'))).toBe(false);
+        expect(fs.existsSync(path.join(projectDir, '.workspai'))).toBe(false);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      }
+    },
+    60_000
+  );
+
+  it.each([
+    { label: 'without a source argument', sourceArgs: [] },
+    { label: 'with the current-directory source', sourceArgs: ['.'] },
+  ])(
+    'adopts the current project into an auto-created managed workspace $label',
+    ({ sourceArgs }) => {
+      const dist = ensureDistBuilt();
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-adopt-current-default-'));
+      const isolatedHome = path.join(tempDir, 'home');
+      const projectDir = path.join(tempDir, 'api');
+      const managedWorkspace = path.join(isolatedHome, '.workspai', 'workspaces', 'workspai');
+
+      try {
+        fs.mkdirSync(isolatedHome, { recursive: true });
+        fs.mkdirSync(projectDir, { recursive: true });
+        fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'api' }));
+
+        const result = spawnSync(process.execPath, [dist, 'adopt', ...sourceArgs, '--json'], {
+          cwd: projectDir,
+          encoding: 'utf8',
+          env: cliEnv({ HOME: isolatedHome, USERPROFILE: isolatedHome }),
+        });
+
+        expect(
+          result.status,
+          `adopt failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`
+        ).toBe(0);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          workspacePath: managedWorkspace,
+          workspaceResolution: 'default-auto',
+          defaultWorkspaceCreated: true,
+          dryRun: false,
+          adoptedProject: {
+            path: projectDir,
+            relationship: 'adopted',
+            wroteFiles: true,
+          },
+        });
+        expect(fs.existsSync(path.join(projectDir, '.workspai', 'adopt.json'))).toBe(true);
+        expect(fs.existsSync(path.join(managedWorkspace, '.workspai-workspace'))).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      }
+    },
+    60_000
+  );
 
   it('lists registered workspaces via workspace list', () => {
     const dist = ensureDistBuilt();
@@ -399,6 +534,37 @@ describe('Phase 3 commands - CLI process integration', () => {
     expect(run.status).toBe(0);
     const output = `${run.stdout || ''}\n${run.stderr || ''}`;
     expect(output).toContain('prerequisites look good');
+  });
+
+  it('reports the actual dependency warm-up result in setup JSON mode', () => {
+    const dist = ensureDistBuilt();
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rapidkit-setup-json-warm-'));
+
+    try {
+      const run = spawnSync(process.execPath, [dist, 'setup', 'node', '--json', '--warm-deps'], {
+        cwd: tempDir,
+        encoding: 'utf8',
+        env: cliEnv({ RAPIDKIT_ENABLE_RUNTIME_ADAPTERS: '1' }),
+      });
+
+      expect(run.status).toBe(0);
+      expect(run.stderr).toBe('');
+      expect(JSON.parse(run.stdout)).toMatchObject({
+        command: 'setup',
+        runtime: 'node',
+        result: 'ok',
+        warmDeps: true,
+        warmDependencies: {
+          requested: true,
+          status: 'skipped',
+          exitCode: 0,
+          targets: 1,
+          messages: ['Node warm-up skipped: package.json not found in current directory.'],
+        },
+      });
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
   });
 
   it('handles cache status command at npm wrapper level', () => {

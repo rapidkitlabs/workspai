@@ -2,6 +2,10 @@
 
 Optimization ideas for the Workspai CLI codebase.
 
+> This is a proposal backlog, not a description of shipped APIs, benchmarks, CI,
+> or release policy. Validate every proposal against the current package manifest,
+> workflows, and [Development Guide](./DEVELOPMENT.md) before implementation.
+
 **Users:** [../README.md](../README.md) · [OPEN_SOURCE_USER_SCENARIOS.md](./OPEN_SOURCE_USER_SCENARIOS.md) · [Documentation index](./README.md)
 
 ## 1. Performance Optimizations
@@ -350,7 +354,10 @@ npm install -D typedoc
 }
 ```
 
-### 7.2 Interactive Examples
+### 7.2 Proposed public API example
+
+The package currently guarantees a CLI binary, not this programmatic API. The
+following is illustrative only and must not be used by consumers:
 ```typescript
 // examples/programmatic-usage.ts
 import { createProject } from 'workspai';
@@ -380,7 +387,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: [18, 20, 22]
+        node-version: ['20.19.0', 22]
     
     steps:
       - uses: actions/checkout@v3
@@ -392,28 +399,12 @@ jobs:
       - run: npm run build
 ```
 
-### 8.2 Automated Releases
-```yaml
-# .github/workflows/release.yml
-name: Release
+### 8.2 Releases
 
-on:
-  push:
-    tags:
-      - 'v*'
-
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-      - run: npm ci
-      - run: npm run build
-      - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-```
+Do not publish directly from a tag-triggered example. Releases use the
+maintainer-only `.github/workflows/release-npm-manual.yml` workflow and package
+release scripts after all required exact-SHA gates pass. See
+[CI Workflows](./ci-workflows.md) and [Setup](./SETUP.md).
 
 ## 9. Monitoring & Analytics Optimizations
 
@@ -474,31 +465,8 @@ const createDemoWorkspace = async () => {
 };
 ```
 
-## Implementation Priority
+## Evaluation requirements
 
-### 🔴 High Priority (Week 1)
-1. ESLint + Prettier setup ✅
-2. Better error messages with suggestions
-3. Input validation improvements
-4. Bundle size optimization
-
-### 🟡 Medium Priority (Weeks 2-3)
-1. Plugin system
-2. Integration tests
-3. Performance benchmarks
-4. CI/CD workflows (optional)
-
-### 🟢 Low Priority (Month 2+)
-1. Telemetry system
-2. Advanced caching
-3. Multi-language support
-4. Interactive documentation
-
-## Summary
-
-These optimizations can achieve:
-- **Performance**: ~40% faster installation
-- **Bundle Size**: ~30% reduction
-- **User Experience**: Significant improvements in error handling and progress tracking
-- **Code Quality**: Higher coverage and better maintainability
-- **Security**: Reduced attack surface and better validation
+Proposals need an owner, measured baseline, target platform matrix, compatibility
+analysis, and tests before implementation. Do not claim performance or bundle
+improvements without committed, reproducible benchmark evidence.

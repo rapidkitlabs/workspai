@@ -10,7 +10,7 @@ vi.mock('execa', () => ({
 
 import { execa } from 'execa';
 import { readImportedProjectsRegistry } from '../imported-projects-registry';
-import { importProjectIntoWorkspace } from '../import-project';
+import { cleanupImportedProjectImport, importProjectIntoWorkspace } from '../import-project';
 import { resolveProjectCommandCapabilities } from '../utils/project-command-capabilities';
 import { syncWorkspaceContract } from '../utils/workspace-contract';
 
@@ -20,6 +20,22 @@ async function makeTempDir(prefix: string): Promise<string> {
   const dirPath = await fsExtra.mkdtemp(path.join(os.tmpdir(), prefix));
   createdPaths.push(dirPath);
   return dirPath;
+}
+
+async function tryCreateDirectorySymlink(targetPath: string, linkPath: string): Promise<boolean> {
+  try {
+    await fsExtra.symlink(targetPath, linkPath, 'dir');
+    return true;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      ['EACCES', 'EPERM', 'ENOSYS'].includes(String(error.code))
+    ) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 afterEach(async () => {
@@ -181,6 +197,8 @@ describe('import-project', () => {
     await fsExtra.writeFile(path.join(sourcePath, 'node_modules', 'leftpad', 'index.js'), '');
     await fsExtra.ensureDir(path.join(sourcePath, 'dist'));
     await fsExtra.writeFile(path.join(sourcePath, 'dist', 'bundle.js'), '');
+    await fsExtra.ensureDir(path.join(sourcePath, 'packages', 'shared'));
+    await fsExtra.writeFile(path.join(sourcePath, 'packages', 'shared', 'index.ts'), 'export {}\n');
     await fsExtra.writeFile(path.join(sourcePath, 'server.key'), 'private-key\n');
 
     const imported = await importProjectIntoWorkspace({
@@ -196,7 +214,76 @@ describe('import-project', () => {
     expect(await fsExtra.pathExists(path.join(imported.path, '.git'))).toBe(false);
     expect(await fsExtra.pathExists(path.join(imported.path, 'node_modules'))).toBe(false);
     expect(await fsExtra.pathExists(path.join(imported.path, 'dist'))).toBe(false);
+    expect(
+      await fsExtra.pathExists(path.join(imported.path, 'packages', 'shared', 'index.ts'))
+    ).toBe(true);
     expect(await fsExtra.pathExists(path.join(imported.path, 'server.key'))).toBe(false);
+  });
+
+  for (const metadataDirectory of ['.workspai', '.rapidkit']) {
+    it(`rejects a local source whose ${metadataDirectory} directory is a symlink`, async (context) => {
+      const workspacePath = await makeTempDir('rapidkit-import-symlink-workspace-');
+      const sourcePath = await makeTempDir('rapidkit-import-symlink-source-');
+      const outsidePath = await makeTempDir('rapidkit-import-symlink-outside-');
+      await fsExtra.writeFile(path.join(sourcePath, 'package.json'), '{}');
+      await fsExtra.writeJson(path.join(outsidePath, 'project.json'), { name: 'outside-project' });
+      if (
+        !(await tryCreateDirectorySymlink(outsidePath, path.join(sourcePath, metadataDirectory)))
+      ) {
+        context.skip();
+      }
+
+      await expect(
+        importProjectIntoWorkspace({
+          workspacePath,
+          source: sourcePath,
+          name: 'unsafe-project',
+        })
+      ).rejects.toThrow('Project metadata directory must not be a symlink');
+
+      await expect(fsExtra.readJson(path.join(outsidePath, 'project.json'))).resolves.toEqual({
+        name: 'outside-project',
+      });
+      expect(await fsExtra.pathExists(path.join(workspacePath, 'unsafe-project'))).toBe(false);
+    });
+  }
+
+  it('rejects a metadata symlink even when its target is inside the local source', async (context) => {
+    const workspacePath = await makeTempDir('rapidkit-import-inside-symlink-workspace-');
+    const sourcePath = await makeTempDir('rapidkit-import-inside-symlink-source-');
+    const metadataTarget = path.join(sourcePath, 'metadata-target');
+    await fsExtra.ensureDir(metadataTarget);
+    if (!(await tryCreateDirectorySymlink(metadataTarget, path.join(sourcePath, '.workspai')))) {
+      context.skip();
+    }
+
+    await expect(
+      importProjectIntoWorkspace({
+        workspacePath,
+        source: sourcePath,
+        name: 'unsafe-project',
+      })
+    ).rejects.toThrow('Project metadata directory must not be a symlink');
+    expect(await fsExtra.pathExists(path.join(workspacePath, 'unsafe-project'))).toBe(false);
+  });
+
+  it('refuses rollback through a metadata symlink without removing its target', async (context) => {
+    const workspacePath = await makeTempDir('rapidkit-import-cleanup-symlink-workspace-');
+    const projectPath = path.join(workspacePath, 'unsafe-project');
+    const outsidePath = await makeTempDir('rapidkit-import-cleanup-symlink-outside-');
+    await fsExtra.ensureDir(projectPath);
+    await fsExtra.writeFile(path.join(outsidePath, 'sentinel.txt'), 'keep');
+    if (!(await tryCreateDirectorySymlink(outsidePath, path.join(projectPath, '.workspai')))) {
+      context.skip();
+    }
+
+    await expect(cleanupImportedProjectImport(workspacePath, projectPath)).rejects.toThrow(
+      'Project metadata directory must not be a symlink'
+    );
+    await expect(fsExtra.readFile(path.join(outsidePath, 'sentinel.txt'), 'utf8')).resolves.toBe(
+      'keep'
+    );
+    expect(await fsExtra.pathExists(projectPath)).toBe(true);
   });
 
   it('records a profile compatibility warning when importing a mismatched runtime', async () => {
@@ -505,7 +592,7 @@ describe('import-project', () => {
     expect(imported.stack).toBe('go');
     expect(execaMock).toHaveBeenCalledWith(
       'git',
-      ['clone', '--depth', '1', 'https://github.com/acme/checkout-api.git', imported.path],
+      ['clone', '--depth', '1', '--', 'https://github.com/acme/checkout-api.git', imported.path],
       expect.objectContaining({ timeout: 120000 })
     );
 

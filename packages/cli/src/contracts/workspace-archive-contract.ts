@@ -20,17 +20,23 @@ export const WORKSPACE_ARCHIVE_CLI_FLAGS = {
   },
   maxDownloadSize: {
     signature: '--max-download-size <size>',
-    description: 'Optional maximum remote archive download size (for example 8gb)',
+    description: 'Maximum remote archive download size (secure default: 5gb)',
     appliesTo: ['inspect', 'verify', 'doctor', 'hydrate'],
   },
   maxExpandedSize: {
     signature: '--max-expanded-size <size>',
-    description: 'Optional maximum expanded archive payload size (for example 20gb)',
+    description: 'Maximum expanded archive payload size (secure default: 20gb)',
     appliesTo: ['inspect', 'verify', 'doctor', 'hydrate'],
   },
   downloadTimeoutMs: {
     signature: '--download-timeout-ms <ms>',
     description: 'Remote archive download timeout in milliseconds; 0 disables it',
+    appliesTo: ['inspect', 'verify', 'doctor', 'hydrate'],
+  },
+  allowPrivateNetwork: {
+    signature: '--allow-private-network',
+    description:
+      'Allow archive downloads from loopback/private networks (unsafe for untrusted input)',
     appliesTo: ['inspect', 'verify', 'doctor', 'hydrate'],
   },
 } as const;
@@ -54,10 +60,11 @@ export function buildWorkspaceArchiveCapabilitiesContract() {
       payloadBufferedInMemory: false,
     },
     sizePolicy: {
-      workspacePayloadDefault: 'unlimited',
-      safetyBudgets: 'opt-in',
-      manifestMemoryLimitBytes: 256 * 1024 * 1024,
-      remoteDownloadTimeoutDefaultMs: 30 * 60 * 1000,
+      workspacePayloadDefault: '20gb',
+      remoteDownloadDefault: '5gb',
+      safetyBudgets: 'secure-defaults-with-explicit-overrides',
+      manifestMemoryLimitBytes: 64 * 1024 * 1024,
+      remoteDownloadTimeoutDefaultMs: 5 * 60 * 1000,
     },
     integrity: {
       algorithm: 'sha256',

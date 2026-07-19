@@ -26,6 +26,7 @@ vi.mock('ora', () => ({
     succeed: vi.fn().mockReturnThis(),
     fail: vi.fn().mockReturnThis(),
     warn: vi.fn().mockReturnThis(),
+    info: vi.fn().mockReturnThis(),
     stop: vi.fn().mockReturnThis(),
     text: '',
   })),
@@ -225,5 +226,24 @@ describe('generateSpringBootKit', () => {
     if (process.platform !== 'win32') {
       expect(stat.mode & 0o111).not.toBe(0);
     }
+  });
+
+  it('propagates custom Java version and port to Docker templates', async () => {
+    const projectPath = path.join(testDir, 'custom-runtime-service');
+    await generateSpringBootKit(projectPath, {
+      project_name: 'custom-runtime-service',
+      java_version: '22',
+      port: '9090',
+      skipGit: true,
+      skipInstall: true,
+    });
+
+    const dockerfile = await fs.readFile(path.join(projectPath, 'Dockerfile'), 'utf8');
+    expect(dockerfile).toContain('FROM maven:3.9.9-eclipse-temurin-22 AS build');
+    expect(dockerfile).toContain('FROM eclipse-temurin:22-jre');
+    expect(dockerfile).toContain('EXPOSE 9090');
+
+    const compose = await fs.readFile(path.join(projectPath, 'docker-compose.yml'), 'utf8');
+    expect(compose).toContain('- "9090:9090"');
   });
 });

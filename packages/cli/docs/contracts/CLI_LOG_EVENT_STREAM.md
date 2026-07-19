@@ -75,7 +75,7 @@ Each stderr line is a single JSON object:
   "component": "cli",
   "message": "CLI run started",
   "command": ["workspace", "model"],
-  "metadata": { "cwd": "/path/to/workspace", "rapidkitVersion": "0.38.0" }
+  "metadata": { "cwd": "/path/to/workspace", "rapidkitVersion": "<workspai-version>" }
 }
 ```
 

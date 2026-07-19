@@ -4,10 +4,15 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['src/__tests__/setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       include: [
+        'src/index.ts',
+        'src/workspace.ts',
+        'src/doctor.ts',
+        'src/create.ts',
         'src/ai/**/*.ts',
         'src/commands/**/*.ts',
         'src/config/**/*.ts',
@@ -25,9 +30,13 @@ export default defineConfig({
         '**/*.config.*',
         '**/mockData',
         'src/__tests__/**',
-        'src/workspace.ts',
-        'src/doctor.ts', // New feature, tests in progress
       ],
+      thresholds: {
+        lines: 60,
+        functions: 75,
+        statements: 60,
+        branches: 50,
+      },
     },
   },
 });

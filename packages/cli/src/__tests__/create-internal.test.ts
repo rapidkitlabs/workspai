@@ -15,6 +15,19 @@ function normalizeTestPath(value: unknown): string {
 vi.mock('fs-extra');
 vi.mock('execa');
 vi.mock('inquirer');
+vi.mock('../utils/workspace-onboarding.js', () => ({
+  finalizeWorkspaceOnboarding: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../utils/lifecycle-transaction.js', () => ({
+  recoverActiveLifecycleTransactions: vi.fn().mockResolvedValue([]),
+  createLifecycleTransaction: vi.fn(async () => ({
+    journalPath: undefined,
+    captureFile: vi.fn().mockResolvedValue(undefined),
+    captureOwnedTree: vi.fn().mockResolvedValue(true),
+    commit: vi.fn().mockResolvedValue(undefined),
+    rollback: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
 vi.mock('../cli-ui/index.js', async () => {
   const inquirerModule = await import('inquirer');
   return {
@@ -814,7 +827,10 @@ describe('Create Module - Internal Functions', () => {
       vi.mocked(execa).mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 } as any);
       vi.spyOn(fsPromises, 'readFile').mockResolvedValue('[tool.poetry]');
 
-      await createProject('test-project', {});
+      await createProject('test-project', {
+        profile: 'python-only',
+        installMethod: 'poetry',
+      });
 
       expect(fsExtra.outputFile).toHaveBeenCalledWith(
         expect.stringContaining('.gitignore'),
@@ -1336,7 +1352,7 @@ describe('Create Module - Internal Functions', () => {
       vi.mocked(execa).mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 } as any);
       vi.spyOn(fsPromises, 'readFile').mockResolvedValue('[tool.poetry]');
 
-      await createProject('test-project', {});
+      await createProject('test-project', { profile: 'python-only' });
 
       expect(execa).toHaveBeenCalledWith(
         'poetry',

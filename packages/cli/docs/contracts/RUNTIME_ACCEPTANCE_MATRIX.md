@@ -43,10 +43,10 @@ lifecycle failures only when the CLI prints actionable diagnostics such as
 
 The matrix verifies:
 
-- npm-owned global entrypoints: `--version` and `-v`.
-- global command ownership contract via `commands --json`, plus core-owned
-  catalog commands in default/full modes: `version`, `commands`, `list`,
-  `info`, `frameworks`, `modules`, and `license`.
+- npm-owned global entrypoints: `--version`, `-v`, and `commands --json`.
+- delegated Core catalog surfaces in default/full modes: `version`, `list`,
+  `info`, `frameworks`, `modules`, and `license`. The normal
+  `workspai --version` path remains wrapper-owned.
 - `create workspace` with a Python-free minimal profile.
 - `create project` for npm-backed Go Fiber, Go Gin, Spring Boot, and ASP.NET
   Core Clean Web API kits.

@@ -185,6 +185,7 @@ describe('CLI Entry Point', () => {
           npx workspai doctor workspace [--ci]     Workspace health with CI exit codes
           npx workspai workspace list               List registered workspaces
           npx workspai workspace model --json      Build workspace intelligence model
+          npx workspai workspace intelligence run [--strict] --json  Run the canonical contract-backed chain
           npx workspai workspace context --for-agent --json --write  Build agent context + sync grounding
           npx workspai workspace agent-sync --write --refresh-context  Sync the Agent Customization Pack
           npx workspai workspace snapshot --json   Persist workspace intelligence snapshot
@@ -498,10 +499,9 @@ describe('CLI Entry Point', () => {
         expect(exitCode).toBe(1);
         expect(await fs.pathExists(path.join(workspaceRoot, 'orders-api'))).toBe(false);
 
-        const registry = await fs.readJson(
-          path.join(workspaceRoot, '.workspai', 'imported-projects.json')
-        );
-        expect(registry.projects).toEqual([]);
+        expect(
+          await fs.pathExists(path.join(workspaceRoot, '.workspai', 'imported-projects.json'))
+        ).toBe(false);
         expect(consoleLog).toHaveBeenCalledWith(
           JSON.stringify(
             {
@@ -969,10 +969,9 @@ describe('CLI Entry Point', () => {
           false
         );
 
-        const registry = await fs.readJson(
-          path.join(workspaceRoot, '.workspai', 'imported-projects.json')
-        );
-        expect(registry.projects).toEqual([]);
+        expect(
+          await fs.pathExists(path.join(workspaceRoot, '.workspai', 'imported-projects.json'))
+        ).toBe(false);
       } finally {
         await fs.remove(workspaceRoot);
         await fs.remove(sourceDir);

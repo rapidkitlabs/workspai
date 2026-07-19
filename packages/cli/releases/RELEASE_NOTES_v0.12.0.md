@@ -99,7 +99,7 @@ rapidkit new api --template fastapi
 
 ## 📝 Full Changelog
 
-See [CHANGELOG.md](./CHANGELOG.md) for the complete list of changes.
+See [CHANGELOG.md](../CHANGELOG.md) for the complete list of changes.
 
 ---
 

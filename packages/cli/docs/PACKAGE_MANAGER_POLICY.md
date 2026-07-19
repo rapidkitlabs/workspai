@@ -18,7 +18,10 @@ This repository is **npm-only** for development and CI workflows.
 
 ## Enforcement
 
-A `preinstall` guard blocks non-npm package managers during local install.
+`npm run check:package-manager` from `packages/cli`, or
+`npm --workspace workspai run check:package-manager` from the monorepo root,
+enforces the policy in package validation and quality workflows. There is no
+install-time `preinstall` guard.
 
 ## Notes
 

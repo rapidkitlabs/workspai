@@ -2,7 +2,7 @@
 
 Get started with Workspai AI recommendations in 60 seconds!
 
-## Option 1: Zero-Config Start (Recommended) ⚡
+## Option 1: Use the bundled catalog (Recommended) ⚡
 
 Just run it - AI will guide you through everything:
 
@@ -10,7 +10,9 @@ Just run it - AI will guide you through everything:
 npx workspai ai recommend "user authentication"
 ```
 
-**First time?** You'll see this:
+Published Workspai packages normally include `data/modules-embeddings.json`, so
+recommendations can use the bundled catalog after an API key is configured.
+If that file is missing, the CLI offers this recovery flow:
 
 ```
 ⚠️  Module embeddings not found
@@ -22,7 +24,7 @@ AI recommendations require embeddings to be generated.
   ❌ Cancel
 ```
 
-Select option 1, provide your OpenAI API key, and you're done! 🎉
+Select option 1 to rebuild the missing data, or use the manual refresh flow below.
 
 ## Option 2: Manual Setup (For Advanced Users)
 
@@ -62,7 +64,8 @@ You'll see:
 ? Generate embeddings now? Yes
 ```
 
-**This is a ONE-TIME cost!** Embeddings last forever.
+Embeddings are reusable until the module catalog, embedding model, or desired
+coverage changes.
 
 ### Step 4: Use It! (Instant)
 

@@ -57,7 +57,7 @@ const DEPENDENCY_LOCKFILES: Record<DoctorSurfaceRuntimeFamily, string[]> = {
   bun: ['bun.lock', 'bun.lockb'],
   python: ['uv.lock', 'poetry.lock', 'requirements.txt', 'requirements.lock'],
   go: ['go.sum'],
-  java: ['pom.xml', 'gradle.lockfile', 'gradle/libs.versions.toml'],
+  java: ['gradle.lockfile', 'gradle/libs.versions.toml'],
   rust: ['Cargo.lock'],
   elixir: ['mix.lock'],
   clojure: ['deps.edn', 'project.clj'],
@@ -243,6 +243,33 @@ async function inferDependencyBaselineRepair(input: {
       title: 'Reconcile Go module graph',
       files: ['go.mod', 'go.sum'],
       limitations: ['Review go.mod/go.sum changes before committing.'],
+    };
+  }
+
+  if (input.runtime === 'java') {
+    const hasPom = await fsExtra.pathExists(path.join(input.projectPath, 'pom.xml'));
+    const hasMavenWrapper =
+      (await fsExtra.pathExists(path.join(input.projectPath, 'mvnw'))) ||
+      (await fsExtra.pathExists(path.join(input.projectPath, 'mvnw.cmd')));
+    const hasGradleWrapper =
+      (await fsExtra.pathExists(path.join(input.projectPath, 'gradlew'))) ||
+      (await fsExtra.pathExists(path.join(input.projectPath, 'gradlew.bat')));
+    const command = hasPom
+      ? hasMavenWrapper
+        ? process.platform === 'win32'
+          ? '.\\mvnw.cmd -B -DskipTests dependency:go-offline'
+          : './mvnw -B -DskipTests dependency:go-offline'
+        : 'mvn -B -DskipTests dependency:go-offline'
+      : hasGradleWrapper
+        ? process.platform === 'win32'
+          ? '.\\gradlew.bat dependencies'
+          : './gradlew dependencies'
+        : 'gradle dependencies';
+    return {
+      command,
+      title: 'Prepare Java dependency baseline',
+      files: ['pom.xml', 'build.gradle', 'build.gradle.kts', 'gradle.lockfile'],
+      limitations: ['Review resolved dependency and lockfile changes before committing.'],
     };
   }
 

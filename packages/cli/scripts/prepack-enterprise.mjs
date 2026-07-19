@@ -33,6 +33,10 @@ if (!fs.existsSync(tsupCli)) {
   fail(`missing tsup CLI at ${tsupCli}; run npm ci before packaging`);
 }
 
+runNode(
+  ['scripts/generate-shared-contracts.mjs', '--check'],
+  'checking generated contracts, including extension CLI compatibility'
+);
 runNode([tsupCli], 'building dist');
 runNode(['scripts/prepare-mock-embeddings.mjs'], 'preparing packaged embeddings');
 runNode(['scripts/verify-package-cli.mjs'], 'verifying bundled CLI command ownership');

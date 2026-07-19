@@ -29,6 +29,31 @@ describe('workspace verify', () => {
     return dir;
   }
 
+  function doctorEvidence(workspacePath: string, generatedAt: string, percent = 95) {
+    return {
+      schemaVersion: 'doctor-workspace-evidence-v1',
+      evidenceType: 'workspace',
+      generatedAt,
+      workspacePath,
+      summary: { totalProjects: 1, totalIssues: 0, hasSystemErrors: false },
+      projects: [],
+      healthScore: { percent, errors: 0 },
+    };
+  }
+
+  function readinessEvidence(workspacePath: string, generatedAt: string) {
+    return {
+      schemaVersion: 'release-readiness-v1',
+      generatedAt,
+      workspacePath,
+      projectPath: workspacePath,
+      overallStatus: 'pass',
+      blocking: false,
+      blockingReasons: [],
+      gates: [],
+    };
+  }
+
   afterEach(async () => {
     while (tempDirs.length > 0) {
       const dir = tempDirs.pop();
@@ -82,17 +107,11 @@ describe('workspace verify', () => {
     });
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
-      {
-        generatedAt: now.toISOString(),
-        healthScore: { percent: 92, errors: 0 },
-      }
+      doctorEvidence(workspacePath, now.toISOString(), 92)
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
-      {
-        generatedAt: now.toISOString(),
-        overallStatus: 'pass',
-      }
+      readinessEvidence(workspacePath, now.toISOString())
     );
 
     const verify = await buildWorkspaceVerify({ workspacePath, now });
@@ -117,17 +136,11 @@ describe('workspace verify', () => {
     });
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
-      {
-        generatedAt: evidenceTime,
-        healthScore: { percent: 92, errors: 0 },
-      }
+      doctorEvidence(workspacePath, evidenceTime, 92)
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
-      {
-        generatedAt: evidenceTime,
-        overallStatus: 'pass',
-      }
+      readinessEvidence(workspacePath, evidenceTime)
     );
 
     const verify = await buildWorkspaceVerify({ workspacePath, now });
@@ -147,10 +160,7 @@ describe('workspace verify', () => {
     });
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
-      {
-        generatedAt: now.toISOString(),
-        healthScore: { percent: 92, errors: 0 },
-      }
+      doctorEvidence(workspacePath, now.toISOString(), 92)
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-fix-result-last-run.json'),
@@ -164,10 +174,7 @@ describe('workspace verify', () => {
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
-      {
-        generatedAt: now.toISOString(),
-        overallStatus: 'pass',
-      }
+      readinessEvidence(workspacePath, now.toISOString())
     );
 
     const verify = await buildWorkspaceVerify({ workspacePath, now });
@@ -190,10 +197,7 @@ describe('workspace verify', () => {
     });
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
-      {
-        generatedAt: now.toISOString(),
-        healthScore: { percent: 92, errors: 0 },
-      }
+      doctorEvidence(workspacePath, now.toISOString(), 92)
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-fix-result-last-run.json'),
@@ -215,10 +219,7 @@ describe('workspace verify', () => {
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
-      {
-        generatedAt: now.toISOString(),
-        overallStatus: 'pass',
-      }
+      readinessEvidence(workspacePath, now.toISOString())
     );
 
     const verify = await buildWorkspaceVerify({ workspacePath, now });
@@ -240,10 +241,7 @@ describe('workspace verify', () => {
     });
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
-      {
-        generatedAt: '2026-06-15T00:03:00.000Z',
-        healthScore: { percent: 92, errors: 0 },
-      }
+      doctorEvidence(workspacePath, '2026-06-15T00:03:00.000Z', 92)
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-fix-result-last-run.json'),
@@ -257,10 +255,7 @@ describe('workspace verify', () => {
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
-      {
-        generatedAt: '2026-06-15T00:03:00.000Z',
-        overallStatus: 'pass',
-      }
+      readinessEvidence(workspacePath, '2026-06-15T00:03:00.000Z')
     );
     const before = await buildWorkspaceModelSnapshot({ workspacePath });
     const beforePath = await writeWorkspaceModelSnapshot(before, workspacePath);
@@ -336,17 +331,11 @@ describe('workspace verify', () => {
     });
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
-      {
-        generatedAt: '2026-06-15T00:01:00.000Z',
-        healthScore: { percent: 92, errors: 0 },
-      }
+      doctorEvidence(workspacePath, '2026-06-15T00:01:00.000Z', 92)
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
-      {
-        generatedAt: '2026-06-15T00:01:00.000Z',
-        overallStatus: 'pass',
-      }
+      readinessEvidence(workspacePath, '2026-06-15T00:01:00.000Z')
     );
 
     const before = await buildWorkspaceModelSnapshot({
@@ -366,17 +355,11 @@ describe('workspace verify', () => {
 
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
-      {
-        generatedAt: '2026-06-15T00:03:00.000Z',
-        healthScore: { percent: 98, errors: 0 },
-      }
+      doctorEvidence(workspacePath, '2026-06-15T00:03:00.000Z', 98)
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
-      {
-        generatedAt: '2026-06-15T00:03:00.000Z',
-        overallStatus: 'pass',
-      }
+      readinessEvidence(workspacePath, '2026-06-15T00:03:00.000Z')
     );
 
     const verify = await buildWorkspaceVerify({
@@ -409,15 +392,11 @@ describe('workspace verify', () => {
     });
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
-      {
-        healthScore: { percent: 95, errors: 0 },
-      }
+      doctorEvidence(workspacePath, '2026-06-15T00:00:00.000Z')
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
-      {
-        overallStatus: 'pass',
-      }
+      readinessEvidence(workspacePath, '2026-06-15T00:00:00.000Z')
     );
 
     const impact = await buildWorkspaceImpact({
@@ -511,17 +490,11 @@ describe('workspace verify', () => {
     });
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
-      {
-        generatedAt: '2026-06-15T00:03:00.000Z',
-        healthScore: { percent: 95, errors: 0 },
-      }
+      doctorEvidence(workspacePath, '2026-06-15T00:03:00.000Z')
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
-      {
-        generatedAt: '2026-06-15T00:03:00.000Z',
-        overallStatus: 'pass',
-      }
+      readinessEvidence(workspacePath, '2026-06-15T00:03:00.000Z')
     );
 
     const impact = await buildWorkspaceImpact({
@@ -616,16 +589,11 @@ describe('workspace verify', () => {
     const impactPath = await writeWorkspaceImpact(impact, workspacePath);
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
-      {
-        healthScore: { percent: 95, errors: 0 },
-      }
+      { ...doctorEvidence(workspacePath, '2026-06-15T00:03:00.000Z'), generatedAt: undefined }
     );
     await fsExtra.outputJson(
       path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
-      {
-        generatedAt: '2026-06-15T00:03:00.000Z',
-        overallStatus: 'pass',
-      }
+      readinessEvidence(workspacePath, '2026-06-15T00:03:00.000Z')
     );
 
     const verify = await buildWorkspaceVerify({
@@ -637,8 +605,140 @@ describe('workspace verify', () => {
     expect(doctorStep).toMatchObject({
       status: 'fail',
       required: true,
-      message: expect.stringContaining('missing generatedAt'),
+      message: expect.stringContaining("required property 'generatedAt'"),
     });
+  });
+
+  it('fails closed for empty and unreadable mapped evidence without throwing verify', async () => {
+    const workspacePath = await makeTempDir('rk-verify-malformed-evidence-');
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {
+      name: 'api',
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
+      {}
+    );
+    await fsExtra.outputFile(
+      path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
+      '{not-json'
+    );
+
+    const verify = await buildWorkspaceVerify({ workspacePath });
+
+    expect(verify.summary.verdict).toBe('blocked');
+    expect(verify.steps.find((step) => step.id === 'workspace.doctor')).toMatchObject({
+      status: 'fail',
+      required: true,
+      message: expect.stringContaining('Evidence report is invalid'),
+    });
+    expect(verify.steps.find((step) => step.id === 'workspace.readiness')).toMatchObject({
+      status: 'fail',
+      required: true,
+      message: expect.stringContaining('Evidence report is unreadable JSON'),
+    });
+  });
+
+  it('treats blocked optional analyze and pipeline evidence as needs-attention', async () => {
+    const workspacePath = await makeTempDir('rk-verify-optional-failures-');
+    const generatedAt = '2026-06-15T12:00:00.000Z';
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {
+      name: 'api',
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'doctor-last-run.json'),
+      doctorEvidence(workspacePath, generatedAt)
+    );
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'release-readiness-last-run.json'),
+      readinessEvidence(workspacePath, generatedAt)
+    );
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'analyze-last-run.json'),
+      {
+        schemaVersion: 'rapidkit-analyze-v1',
+        generatedAt,
+        workspacePath,
+        workspaceDetected: true,
+        summary: {
+          score: 20,
+          verdict: 'blocked',
+          projectCount: 1,
+          runtimeCount: 1,
+          findings: { fail: 1, warn: 0, info: 0 },
+        },
+        projects: [],
+        findings: [],
+        enterpriseControls: {
+          jsonReady: true,
+          ciGateCommand: 'workspai analyze --json',
+          releaseGateCommand: 'workspai readiness --json',
+          evidencePath: '.workspai/reports/analyze-last-run.json',
+        },
+      }
+    );
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'reports', 'pipeline-last-run.json'),
+      {
+        schemaVersion: 'rapidkit-pipeline-v1',
+        generatedAt,
+        workspacePath,
+        summary: {
+          verdict: 'blocked',
+          exitCode: 2,
+          stagesPassed: 0,
+          stagesWarn: 0,
+          stagesFailed: 1,
+        },
+        stages: [],
+        blockingReasons: ['analyze blocked'],
+        artifacts: { reportPath: '.workspai/reports/pipeline-last-run.json' },
+      }
+    );
+
+    const verify = await buildWorkspaceVerify({ workspacePath });
+
+    expect(verify.steps.find((step) => step.id === 'workspace.analyze')?.status).toBe('fail');
+    expect(verify.steps.find((step) => step.id === 'workspace.pipeline')?.status).toBe('fail');
+    expect(verify.summary.verdict).toBe('needs-attention');
+    expect(verify.summary.exitCode).toBe(1);
+  });
+
+  it('blocks a coherently stripped persisted impact', async () => {
+    const workspacePath = await makeTempDir('rk-verify-stripped-impact-');
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.rapidkit', 'project.json'), {
+      name: 'api',
+      runtime: 'python',
+      kit_name: 'fastapi.standard',
+    });
+    const before = await buildWorkspaceModelSnapshot({ workspacePath });
+    const beforePath = await writeWorkspaceModelSnapshot(before, workspacePath);
+    await fsExtra.outputJson(path.join(workspacePath, 'web', 'package.json'), {
+      dependencies: { react: '^19.0.0', vite: '^6.0.0' },
+      scripts: { test: 'vitest run' },
+    });
+    const impact = await buildWorkspaceImpact({ workspacePath, fromPath: beforePath });
+    expect(impact.affectedProjects.length).toBeGreaterThan(0);
+
+    impact.affectedProjects = [];
+    impact.transitiveImpact = [];
+    impact.verificationPlan = [];
+    impact.summary.affectedProjects = 0;
+    impact.summary.recommendedCommands = 0;
+    impact.summary.blastRadius.directlyAffected = 0;
+    impact.summary.blastRadius.transitivelyAffected = 0;
+    impact.summary.blastRadius.maxDistance = 0;
+    const impactPath = await writeWorkspaceImpact(impact, workspacePath);
+
+    const verify = await buildWorkspaceVerify({ workspacePath, fromImpactPath: impactPath });
+
+    expect(verify.summary.verdict).toBe('blocked');
+    expect(verify.blockingReasons).toContain(
+      'workspace.impact: Persisted impact semantics do not match the impact re-derived from the embedded diff. Regenerate diff and impact.'
+    );
   });
 
   it('loads verify schema contract file with pinned schema version', () => {

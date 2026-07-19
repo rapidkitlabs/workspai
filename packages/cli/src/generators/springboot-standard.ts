@@ -488,8 +488,8 @@ JAVA_OPTS=-Xms256m -Xmx512m
 `;
 }
 
-function dockerfile(): string {
-  return `FROM maven:3.9.9-eclipse-temurin-21 AS build
+function dockerfile(v: Required<SpringBootVariables>): string {
+  return `FROM maven:3.9.9-eclipse-temurin-${v.java_version} AS build
 WORKDIR /workspace
 
 COPY pom.xml ./
@@ -498,12 +498,12 @@ RUN mvn -B -q -DskipTests dependency:go-offline
 COPY src ./src
 RUN mvn -B -DskipTests package
 
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:${v.java_version}-jre
 WORKDIR /app
 
 COPY --from=build /workspace/target/*.jar /app/app.jar
 
-EXPOSE 8080
+EXPOSE ${v.port}
 ENV JAVA_OPTS=""
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
@@ -517,7 +517,7 @@ function dockerCompose(v: Required<SpringBootVariables>): string {
       context: .
       dockerfile: Dockerfile
     ports:
-      - "${v.port}:8080"
+      - "${v.port}:${v.port}"
     env_file:
       - .env
     environment:
@@ -1035,7 +1035,7 @@ export async function generateSpringBootKit(
       w('.editorconfig', editorconfig()),
       w('.env.example', envExample(v)),
       w('.dockerignore', dockerIgnore()),
-      w('Dockerfile', dockerfile()),
+      w('Dockerfile', dockerfile(v)),
       w('docker-compose.yml', dockerCompose(v)),
       w('.github/workflows/ci.yml', githubWorkflow(v)),
       w('README.md', readmeMd(v)),

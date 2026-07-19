@@ -71,7 +71,7 @@ describe('graph-aware verify subgraph gate (1.11)', () => {
     const impact = impactWith(['api'], ['web', 'worker', 'db', 'cache']) as WorkspaceImpact;
     const steps: WorkspaceVerifyStep[] = [
       step('api', 'test', 'pass', true),
-      step('web', 'test', 'fail', false), // failed dependent → block
+      step('web', 'test', 'fail', false), // failed optional dependent → needs-attention
       step('worker', 'test', 'missing', true), // missing required dependent → block
       step('db', 'test', 'missing', false), // missing non-required dependent → needs-attention
       // cache has no verification step at all → unverifiable
@@ -85,7 +85,9 @@ describe('graph-aware verify subgraph gate (1.11)', () => {
     expect(gate.subgraph.uncovered).toEqual(['db', 'web', 'worker']);
     expect(gate.subgraph.unverifiable).toEqual(['cache']);
 
-    expect(gate.blockingReasons.some((reason) => reason.includes('graph.subgraph.web'))).toBe(true);
+    expect(gate.blockingReasons.some((reason) => reason.includes('graph.subgraph.web'))).toBe(
+      false
+    );
     expect(gate.blockingReasons.some((reason) => reason.includes('graph.subgraph.worker'))).toBe(
       true
     );

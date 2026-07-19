@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rapidkit.dev/contracts/workspace-intelligence/workspace-intelligence-run.v1.json",
+  "title": "Workspace Intelligence Run",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "chainSchemaVersion",
+    "generatedAt",
+    "workspacePath",
+    "baselineCreated",
+    "preflight",
+    "status",
+    "exitCode",
+    "stages",
+    "artifactPath"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "workspace-intelligence-run.v1" },
+    "chainSchemaVersion": { "const": "workspai-workspace-intelligence-chain-v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "workspacePath": { "type": "string", "minLength": 1 },
+    "baselineCreated": { "type": "boolean" },
+    "preflight": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/preflight",
+          "type": "object",
+          "properties": {
+            "id": { "const": "sync" },
+            "status": { "enum": ["passed", "failed"] },
+            "result": { "enum": ["synchronized", "failed"] },
+            "artifacts": {
+              "const": [".workspai/workspace.contract.json", ".workspai/workspace-registry.v1.json"]
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/preflight",
+          "type": "object",
+          "properties": {
+            "id": { "const": "baseline" },
+            "status": { "enum": ["passed", "failed", "skipped"] },
+            "result": { "enum": ["created", "reused", "failed", "skipped"] },
+            "artifacts": {
+              "const": [".workspai/reports/workspace-model-snapshot.json"]
+            }
+          }
+        }
+      ],
+      "items": false
+    },
+    "status": { "enum": ["passed", "blocked", "failed"] },
+    "exitCode": { "enum": [0, 1, 2] },
+    "artifactPath": {
+      "const": ".workspai/reports/workspace-intelligence-run-last-run.json"
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 11,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/stage",
+          "type": "object",
+          "properties": {
+            "id": { "const": "model" },
+            "artifacts": { "const": [".workspai/reports/workspace-model.json"] }
+          }
+        },
+        {
+          "$ref": "#/$defs/stage",
+          "type": "object",
+          "properties": {
+            "id": { "const": "diff" },
+            "artifacts": { "const": [".workspai/reports/workspace-model-diff-last-run.json"] }
+          }
+        },
+        {
+          "$ref": "#/$defs/stage",
+          "type": "object",
+          "properties": {
+            "id": { "const": "impact" },
+            "artifacts": { "const": [".workspai/reports/workspace-impact-last-run.json"] }
+          }
+        },
+        {
+          "$ref": "#/$defs/stage",
+          "type": "object",
+          "properties": {
+            "id": { "const": "doctor-evidence" },
+            "artifacts": { "const": [".workspai/reports/doctor-last-run.json"] }
+          }
+        },
+        {
+          "$ref": "#/$defs/stage",
+          "type": "object",
+          "properties": {
+            "id": { "const": "contract-evidence" },
+            "artifacts": { "const": [".workspai/reports/workspace-contract-verify-last-run.json"] }
+          }
+        },
+        {
+          "$ref": "#/$defs/stage",
+          "type": "object",
+          "properties": {
+            "id": { "const": "analyze-evidence" },
+            "artifacts": { "const": [".workspai/reports/analyze-last-run.json"] }
+          }
+        },
+        {
+          "$ref": "#/$defs/stage",
+          "type": "object",
+          "properties": {
+            "id": { "const": "readiness-evidence" },
+            "artifacts": { "const": [".workspai/reports/release-readiness-last-run.json"] }
+          }
+        },
+        {
+          "$ref": "#/$defs/stage",
+          "type": "object",
+          "properties": {
+            "id": { "const": "verify" },
+            "artifacts": {
+              "const": [
+                ".workspai/reports/workspace-verify-last-run.json",
+                ".workspai/reports/workspace-intelligence-history.json"
+              ]
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/stage",
+          "type": "object",
+          "properties": {
+            "id": { "const": "context" },
+            "artifacts": { "const": [".workspai/reports/workspace-context-agent.json"] }
+          }
+        },
+        {
+          "$ref": "#/$defs/stage",
+          "type": "object",
+          "properties": {
+            "id": { "const": "agent-sync" },
+            "artifacts": {
+              "const": [
+                ".workspai/reports/INDEX.json",
+                ".workspai/reports/agent-customization-pack.json",
+                ".workspai/reports/workspace-skills-index.json",
+                "AGENTS.md"
+              ]
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/stage",
+          "type": "object",
+          "properties": {
+            "id": { "const": "explain" },
+            "artifacts": { "const": [".workspai/reports/workspace-explain-last-run.json"] }
+          }
+        }
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "preflight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "result", "durationMs", "artifacts", "message"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["passed", "failed", "skipped"] },
+        "result": { "enum": ["synchronized", "created", "reused", "failed", "skipped"] },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "artifacts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "durationMs", "artifacts", "exitCode", "message"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["passed", "blocked", "failed", "skipped"] },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "artifacts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "exitCode": { "type": "integer", "minimum": 0 },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

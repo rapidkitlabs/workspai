@@ -10,6 +10,7 @@ name: Workspai Agent Grounding
 on:
   pull_request:
     paths:
+      - '.workspai/**'
       - '.rapidkit/**'
       - 'AGENTS.md'
       - 'CLAUDE.md'
@@ -34,17 +35,21 @@ jobs:
       - name: Install Workspai CLI
         run: npm install --no-save workspai
 
-      - name: Run governance pipeline
-        run: npx workspai pipeline --json --strict
+      - name: Run canonical Workspace Intelligence chain
+        # Exit 1 = hard execution failure; exit 2 = completed but evidence-blocked.
+        # Continue here only so the durable run report and blocker evidence can
+        # always be uploaded; the final step below still fails either outcome.
+        run: npx workspai workspace intelligence run --for-agent codex --strict --json
+        continue-on-error: true
+        id: intelligence
+
+      - name: Run separate governance pipeline
+        run: npx workspai pipeline --json --strict --no-agent-sync
         continue-on-error: true
         id: pipeline
 
-      - name: Sync and verify agent grounding
-        run: |
-          npx workspai workspace agent-sync --write --refresh-context --strict --json --preset enterprise
-          node ./node_modules/workspai/scripts/check-agent-customization-drift.mjs --workspace .
-        env:
-          RAPIDKIT_NO_AGENT_SYNC: '0'
+      - name: Verify agent grounding drift
+        run: node ./node_modules/workspai/scripts/check-agent-customization-drift.mjs --workspace .
 
       - name: Upload agent grounding artifacts
         if: always()
@@ -54,12 +59,13 @@ jobs:
           path: |
             .workspai/reports/INDEX.json
             .workspai/reports/workspace-context-agent.json
+            .workspai/reports/workspace-intelligence-run-last-run.json
             .workspai/reports/agent-customization-pack.json
             .workspai/reports/workspai-mcp-design.json
             .workspai/reports/pipeline-last-run.json
             AGENTS.md
           if-no-files-found: ignore
 
-      - name: Fail if pipeline blocked
-        if: steps.pipeline.outcome == 'failure'
+      - name: Fail if canonical chain or pipeline blocked
+        if: steps.intelligence.outcome == 'failure' || steps.pipeline.outcome == 'failure'
         run: exit 1

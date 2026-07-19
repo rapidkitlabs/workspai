@@ -32,6 +32,7 @@ vi.mock('ora', () => ({
     succeed: vi.fn().mockReturnThis(),
     fail: vi.fn().mockReturnThis(),
     warn: vi.fn().mockReturnThis(),
+    info: vi.fn().mockReturnThis(),
     stop: vi.fn().mockReturnThis(),
     text: '',
   })),
@@ -250,6 +251,20 @@ describe('generateGoGinKit', () => {
       const dockerfile = await fs.readFile(path.join(projectPath, 'Dockerfile'), 'utf8');
       expect(dockerfile).toContain('FROM');
       expect(dockerfile).toContain('go build');
+    });
+
+    it('should generate a Dockerfile that does not require go.sum after skip-install', async () => {
+      const projectPath = path.join(testDir, 'gin-dockerfile-skip-install');
+      await generateGoGinKit(projectPath, {
+        project_name: 'gin-dockerfile-skip-install',
+        skipGit: true,
+        skipInstall: true,
+      });
+
+      const dockerfile = await fs.readFile(path.join(projectPath, 'Dockerfile'), 'utf8');
+      await expect(fs.stat(path.join(projectPath, 'go.sum'))).rejects.toThrow();
+      expect(dockerfile).toContain('COPY go.mod ./');
+      expect(dockerfile).not.toContain('COPY go.mod go.sum');
     });
 
     it('should generate valid .workspai/project.json with correct kit identifier', async () => {

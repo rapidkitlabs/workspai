@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import type { CommandResult, RuntimeAdapter } from './types.js';
 import { hasMakefileTarget } from '../utils/lifecycle-makefile.js';
+import { isWindowsPlatform } from '../utils/platform-capabilities.js';
 
 export type DotnetCommandRunner = (command: string, args: string[], cwd: string) => Promise<number>;
 
@@ -146,7 +147,7 @@ export class DotnetRuntimeAdapter implements RuntimeAdapter {
   }
 
   async runLint(projectPath: string): Promise<CommandResult> {
-    if (hasMakefileTarget(projectPath, 'lint')) {
+    if (!isWindowsPlatform() && hasMakefileTarget(projectPath, 'lint')) {
       return this.run('make', ['lint'], projectPath);
     }
 
@@ -173,7 +174,7 @@ export class DotnetRuntimeAdapter implements RuntimeAdapter {
   }
 
   async runFormat(projectPath: string): Promise<CommandResult> {
-    if (hasMakefileTarget(projectPath, 'format')) {
+    if (!isWindowsPlatform() && hasMakefileTarget(projectPath, 'format')) {
       return this.run('make', ['format'], projectPath);
     }
 

@@ -1277,6 +1277,10 @@
           "attributeName": "downloadTimeoutMs"
         },
         {
+          "flags": "--allow-private-network",
+          "attributeName": "allowPrivateNetwork"
+        },
+        {
           "flags": "--force",
           "attributeName": "force"
         },

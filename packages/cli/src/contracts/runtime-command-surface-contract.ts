@@ -208,6 +208,8 @@ const COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
     'Evaluate whether current workspace evidence satisfies release-readiness requirements and blockers.',
   'readiness --json':
     'Emit the release-readiness verdict, blockers, and evidence references as structured JSON.',
+  'readiness --json --skip-verify':
+    'Refresh pre-verification readiness evidence without consuming a verify artifact from an earlier chain run.',
   reconcile:
     'Reconcile detected project or workspace state with its governed metadata and registered configuration.',
   rollback:
@@ -254,6 +256,10 @@ const COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
     'Compute structured impact evidence from the latest canonical workspace model diff artifact.',
   'workspace model':
     'Discover and normalize workspace entities, relationships, ownership, runtime, contract, and evidence state.',
+  'workspace intelligence':
+    'Run the canonical Workspace Intelligence dependency graph as one evidence-coherent operation.',
+  'workspace intelligence run':
+    'Execute every required Workspace Intelligence stage in dependency order and persist one authoritative run result.',
   'workspace model --json --write':
     'Persist the canonical workspace model and emit the same versioned representation as JSON.',
   'workspace verify':

@@ -114,4 +114,95 @@ describe('workspace Python engine state', () => {
     expect(marker.metadata.npm.installMethod).toBe('venv');
     expect(marker.metadata.npm.lastUsedAt).toBe('2026-07-06T01:02:03.000Z');
   });
+
+  it('reads legacy-only state and materializes canonical state without mutating legacy files', async () => {
+    await fsExtra.remove(path.join(workspacePath, '.workspai'));
+    const legacyWorkspace = {
+      workspace_name: 'legacy-demo',
+      custom: { preserved: true },
+      engine: { python_core: { status: 'skipped', reason: 'legacy-state' } },
+    };
+    const legacyToolchain = {
+      custom: { preserved: true },
+      runtime: { python: { core: { status: 'skipped', reason: 'legacy-state' } } },
+    };
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'workspace.json'),
+      legacyWorkspace,
+      { spaces: 2 }
+    );
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'toolchain.lock'),
+      legacyToolchain,
+      { spaces: 2 }
+    );
+    await fsExtra.outputJson(path.join(workspacePath, '.rapidkit-workspace'), {
+      signature: 'RAPIDKIT_WORKSPACE',
+      createdBy: 'rapidkit-cli',
+      version: '0.40.0',
+      createdAt: '2026-07-01T00:00:00.000Z',
+      name: 'legacy-demo',
+    });
+
+    await markWorkspacePythonEngineInstalled(workspacePath, {
+      installMethod: 'venv',
+      pythonVersion: '3.11.9',
+      coreVersion: '0.45.0',
+      now: '2026-07-06T01:02:03.000Z',
+    });
+
+    const canonicalWorkspace = await fsExtra.readJson(
+      path.join(workspacePath, '.workspai', 'workspace.json')
+    );
+    const canonicalToolchain = await fsExtra.readJson(
+      path.join(workspacePath, '.workspai', 'toolchain.lock')
+    );
+    expect(canonicalWorkspace.custom).toEqual({ preserved: true });
+    expect(canonicalWorkspace.engine.python_core.status).toBe('installed');
+    expect(canonicalToolchain.custom).toEqual({ preserved: true });
+    expect(canonicalToolchain.runtime.python.core.status).toBe('installed');
+    expect(await fsExtra.readJson(path.join(workspacePath, '.rapidkit', 'workspace.json'))).toEqual(
+      legacyWorkspace
+    );
+    expect(await fsExtra.readJson(path.join(workspacePath, '.rapidkit', 'toolchain.lock'))).toEqual(
+      legacyToolchain
+    );
+    expect(await fsExtra.pathExists(path.join(workspacePath, '.workspai-workspace'))).toBe(true);
+  });
+
+  it('uses canonical state as authority and leaves a divergent legacy copy untouched', async () => {
+    const canonicalWorkspace = {
+      workspace_name: 'canonical',
+      authority: 'canonical',
+      engine: { python_core: { status: 'skipped' } },
+    };
+    const legacyWorkspace = {
+      workspace_name: 'legacy',
+      authority: 'legacy',
+      engine: { python_core: { status: 'skipped' } },
+    };
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.workspai', 'workspace.json'),
+      canonicalWorkspace
+    );
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.rapidkit', 'workspace.json'),
+      legacyWorkspace
+    );
+
+    await markWorkspacePythonEngineInstalled(workspacePath, {
+      installMethod: 'pipx',
+      pythonVersion: '3.12.4',
+      now: '2026-07-06T01:02:03.000Z',
+    });
+
+    const updatedCanonical = await fsExtra.readJson(
+      path.join(workspacePath, '.workspai', 'workspace.json')
+    );
+    expect(updatedCanonical.authority).toBe('canonical');
+    expect(updatedCanonical.engine.python_core.status).toBe('installed');
+    expect(await fsExtra.readJson(path.join(workspacePath, '.rapidkit', 'workspace.json'))).toEqual(
+      legacyWorkspace
+    );
+  });
 });

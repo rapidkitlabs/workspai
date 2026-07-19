@@ -1255,12 +1255,6 @@ export async function syncWorkspaceAgentGrounding(
     }
   }
 
-  const index = await buildWorkspaceAgentReportsIndex({
-    workspacePath,
-    staleAfterHours,
-    now,
-  });
-
   const strictViolations: string[] = [];
 
   const writtenFiles: string[] = [];
@@ -1282,23 +1276,6 @@ export async function syncWorkspaceAgentGrounding(
     });
   };
 
-  record(
-    await writeTextFile(
-      path.join(workspacePath, AGENT_REPORTS_INDEX_PATH),
-      `${JSON.stringify(index, null, 2)}\n`,
-      write
-    ),
-    AGENT_REPORTS_INDEX_PATH
-  );
-
-  record(
-    await writeTextFile(
-      path.join(workspacePath, AGENT_GROUNDING_DOC_PATH),
-      `${buildAgentGroundingDoc(index)}\n`,
-      write
-    ),
-    AGENT_GROUNDING_DOC_PATH
-  );
   let operationalSkillsCatalogSection = '';
   const model = await resolveModelForAgentSync(workspacePath, sharedModel);
   let contract: Awaited<ReturnType<typeof readWorkspaceContract>>['contract'] | null = null;
@@ -1325,6 +1302,34 @@ export async function syncWorkspaceAgentGrounding(
   }
   record(write ? 'written' : 'skipped', WORKSPACE_SKILLS_INDEX_PATH);
   operationalSkillsCatalogSection = buildOperationalSkillsCatalogSection(skillsWrite.index);
+
+  // Build the consumer index only after every required intelligence artifact
+  // owned by this command has been materialized. Building INDEX.json before
+  // workspace-skills-index.json made a successful agent-sync publish a stale
+  // `exists:false` entry for a file written milliseconds later.
+  const index = await buildWorkspaceAgentReportsIndex({
+    workspacePath,
+    staleAfterHours,
+    now,
+  });
+
+  record(
+    await writeTextFile(
+      path.join(workspacePath, AGENT_REPORTS_INDEX_PATH),
+      `${JSON.stringify(index, null, 2)}\n`,
+      write
+    ),
+    AGENT_REPORTS_INDEX_PATH
+  );
+
+  record(
+    await writeTextFile(
+      path.join(workspacePath, AGENT_GROUNDING_DOC_PATH),
+      `${buildAgentGroundingDoc(index)}\n`,
+      write
+    ),
+    AGENT_GROUNDING_DOC_PATH
+  );
 
   if (targetEnabled(selectedTargets, 'agents') || targetEnabled(selectedTargets, 'vscode')) {
     record(

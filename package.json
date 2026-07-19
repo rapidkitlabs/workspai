@@ -1,7 +1,7 @@
 {
   "name": "workspai",
   "private": true,
-  "version": "0.45.0",
+  "version": "0.46.0",
   "description": "Workspai monorepo for Workspace Intelligence packages.",
   "license": "MIT",
   "packageManager": "npm@10.8.2",
@@ -35,6 +35,11 @@
     "release:dry": "corepack npm --workspace workspai run release:dry",
     "release:patch": "corepack npm --workspace workspai run release:patch",
     "release:minor": "corepack npm --workspace workspai run release:minor",
-    "release:major": "corepack npm --workspace workspai run release:major"
+    "release:major": "corepack npm --workspace workspai run release:major",
+    "prepare": "husky",
+    "prepush:check": "corepack npm run check && corepack npm run ci && corepack npm --workspace workspai run contracts:validate"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
   }
 }

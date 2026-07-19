@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-07-18
+
+### Added
+
+- Added the contract-backed `workspace intelligence run` command as the unified
+  execution surface for the mandatory Workspace Intelligence lifecycle.
+- Added the versioned `workspai-workspace-intelligence-run-v1` report contract,
+  runtime registry integration, artifact producer ownership, and semantic
+  validation of ordered stage evidence.
+- Added transactional workspace lifecycle utilities with rollback coverage for
+  create, adopt, import, register, and mirrored project operations.
+- Added first-class frontend project execution coverage and hardened generators
+  for Node, Go, Java, and .NET project families.
+
+### Changed
+
+- Hardened the canonical intelligence sequence across sync, model, contract
+  verify, doctor, analyze, readiness, snapshot, diff, impact, verify, context,
+  agent sync, watch, explain, trace, and remediation planning.
+- Made the unified runner report each required stage with deterministic status,
+  command, timing, artifact, and failure evidence suitable for CI and agents.
+- Expanded CLI documentation, command help, runtime contracts, artifact
+  catalogs, CI examples, and agent-grounding guidance around the same mandatory
+  lifecycle source of truth.
+- Hardened Python-engine discovery and workspace metadata propagation while
+  preserving Python 3.10 as the minimum supported version and allowing newer
+  installed interpreters to be detected.
+- Bumped the monorepo root, `workspai`, and `wspai` packages to `0.46.0`, and
+  aligned the `wspai` dependency on `workspai@0.46.0`.
+
+### Fixed
+
+- Fixed lifecycle partial-write gaps by rolling back newly created metadata,
+  registry entries, mirrors, and project files when an operation fails.
+- Fixed project metadata path validation and registry/mirror consistency across
+  create, adopt, import, archive, and restore workflows.
+- Fixed platform capability probes and runtime adapter behavior for Python, Go,
+  Java, and .NET environments.
+- Fixed documentation and config-example drift, including removal of an
+  accidental Python-version pin from the canonical and legacy examples.
+
+### Verification
+
+- `corepack npm run check`
+- `corepack npm --workspace workspai run contracts:check`
+- `corepack npm --workspace workspai run docs:validate`
+- `corepack npm --workspace workspai run test`
+- Unified runner contract, CLI-chain, lifecycle transaction, frontend execution,
+  Python-engine state, and package-publish contract suites.
+
 ## [0.45.0] - 2026-07-15
 
 ### Added

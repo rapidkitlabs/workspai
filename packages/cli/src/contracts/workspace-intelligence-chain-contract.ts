@@ -63,6 +63,21 @@ export type WorkspaceIntelligenceChainContract = {
       schemaContract: string | null;
     }>;
   };
+  executionEnvelope: {
+    rule: string;
+    operations: Array<{
+      id: 'sync' | 'baseline';
+      executionPoint: 'before:model' | 'after:model-before:diff';
+      artifacts: string[];
+      failurePolicy: 'stop-and-report';
+      purpose: string;
+    }>;
+    report: {
+      artifact: string;
+      schemaVersion: string;
+      invariant: string;
+    };
+  };
   boundaries: {
     inputs: Array<{
       id: string;
@@ -437,6 +452,32 @@ export function buildWorkspaceIntelligenceChainContract(): WorkspaceIntelligence
             id as keyof typeof WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS
           ],
       })),
+    },
+    executionEnvelope: {
+      rule: 'Sync and baseline resolution are deterministic execution prerequisites, not canonical intelligence stages; every run reports them separately and preserves the exact canonical stage sequence.',
+      operations: [
+        {
+          id: 'sync',
+          executionPoint: 'before:model',
+          artifacts: ['.workspai/workspace.contract.json', '.workspai/workspace-registry.v1.json'],
+          failurePolicy: 'stop-and-report',
+          purpose: 'Reconcile portable workspace inventory and contract inputs before modeling.',
+        },
+        {
+          id: 'baseline',
+          executionPoint: 'after:model-before:diff',
+          artifacts: [artifacts.snapshot],
+          failurePolicy: 'stop-and-report',
+          purpose:
+            'Create an initial structural baseline when absent or reuse the existing baseline before Diff.',
+        },
+      ],
+      report: {
+        artifact: artifacts.intelligenceRun,
+        schemaVersion: WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.intelligenceRun,
+        invariant:
+          'The report must preserve exact preflight and stage order, registry-owned artifacts, failure propagation, and aggregate status/exit semantics.',
+      },
     },
     boundaries: {
       inputs: [

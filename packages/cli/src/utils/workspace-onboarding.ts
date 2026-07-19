@@ -18,45 +18,17 @@ export async function finalizeWorkspaceOnboarding(
   const resolvedPath = path.resolve(workspacePath);
   const workspaceName = options.workspaceName ?? path.basename(resolvedPath);
 
-  try {
-    const { registerWorkspace } = await import('../workspace.js');
-    await registerWorkspace(resolvedPath, workspaceName);
-  } catch (error) {
-    if (!options.silent) {
-      console.warn(
-        chalk.gray(
-          `Note: Could not register workspace in shared registry: ${(error as Error)?.message ?? error}`
-        )
-      );
-    }
-  }
+  const { registerWorkspaceStrict } = await import('../workspace.js');
+  await registerWorkspaceStrict(resolvedPath, workspaceName);
 
-  try {
-    const { syncWorkspaceContract } = await import('./workspace-contract.js');
-    const result = await syncWorkspaceContract({ workspacePath: resolvedPath });
+  const { syncWorkspaceContract } = await import('./workspace-contract.js');
+  const result = await syncWorkspaceContract({ workspacePath: resolvedPath, strict: true });
 
-    if (!options.silent) {
-      console.log(
-        chalk.gray(
-          `ℹ️  Workspace intelligence synced (contract + registry summary, ${result.contract.projects.length} project(s)).`
-        )
-      );
-    }
-
-    if (!options.silent && result.verification.status !== 'passed') {
-      console.log(chalk.yellow('⚠️  Workspace contract verification reported issues.'));
-      for (const violation of result.verification.violations) {
-        console.log(chalk.gray(`   Violation: ${violation}`));
-      }
-      console.log(chalk.white('   Next: npx workspai workspace contract inspect'));
-    }
-  } catch (error) {
-    if (!options.silent) {
-      console.warn(
-        chalk.gray(
-          `Note: Could not sync workspace intelligence layer: ${(error as Error)?.message ?? error}`
-        )
-      );
-    }
+  if (!options.silent) {
+    console.log(
+      chalk.gray(
+        `ℹ️  Workspace intelligence synced (contract + registry summary, ${result.contract.projects.length} project(s)).`
+      )
+    );
   }
 }

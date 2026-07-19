@@ -408,7 +408,7 @@
         "status": "available",
         "purpose": "Refresh release-readiness evidence before the definitive gate.",
         "commands": [
-          "readiness --json"
+          "readiness --json --skip-verify"
         ],
         "artifacts": [
           ".workspai/reports/release-readiness-last-run.json"

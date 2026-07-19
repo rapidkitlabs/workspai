@@ -86,7 +86,18 @@ the same evidence without losing the workspace source of truth.
 | `workspace agent-sync --write`                 | `reports/workspace-skills-index.json`                                                                                                                                                                                                                          | `workspace-skills-index.v1`            | `contracts/workspace-intelligence/workspace-skills-index.v1.json`         |
 | `workspace agent-sync --write`                 | `reports/workspai-mcp-design.json`, `.workspai/skills/*.md`, `.workspai/AGENT-GROUNDING.md`, `AGENTS.md`, IDE agent surfaces                                                                                                                                 | Mixed generated surfaces               | See customization pack output inventory                                  |
 | `workspace explain --write`                    | `workspace-explain-last-run.json`                                                                                                                                                                                                                            | `workspace-explain.v1`                 | `contracts/workspace-intelligence/workspace-explain.v1.json`              |
+| `workspace intelligence run`                   | `workspace-intelligence-run-last-run.json`                                                                                                                                                                                                                   | `workspace-intelligence-run.v1`        | `contracts/workspace-intelligence/workspace-intelligence-run.v1.json`     |
 | `workspace feedback record` / `doctor * --fix` | `workspace-intelligence-history.json` (`kind: agent-action`, `doctor-fix`)                                                                                                                                                                                   | `workspace-intelligence-history.v1`    | `contracts/workspace-intelligence/workspace-intelligence-history.v1.json` |
+
+The unified runner report separates its execution envelope from the canonical
+intelligence chain. `preflight` always contains exactly `sync` and `baseline`;
+baseline resolution runs after `model` and before `diff`, recording `created` or
+`reused`. `stages` always contains exactly the 11 ordered steps declared by
+`workspace-intelligence-chain.v1`. JSON Schema enforces the transport shape and
+the runtime semantic validator additionally enforces artifact parity,
+status/exit coherence, hard-failure skip propagation, and the aggregate verdict.
+See [Unified Workspace Intelligence Runner](../workspace-intelligence-runner.md)
+for the normative user and integration semantics.
 
 **CLI semantics:** `workspace diff --from` expects a **model or snapshot** baseline. `workspace impact --from` expects a **diff report**.
 Persisted artifacts retain their artifact schema. JSON command projections that add operation metadata
@@ -261,7 +272,8 @@ Canonical source: `src/observability/run-correlation.ts` (`attachRunCorrelation`
 | `infra plan`                     | `infra-plan.json`                                                      | `rapidkit.infra-plan.v1`                                                                     | —                                                                    |
 | `workspace archive`              | `.workspai/archive-manifest.json` inside ZIP/ZIP64                     | Streaming handoff; workspace payload is unlimited by default and safety budgets are opt-in   | `contracts/workspace-archive-manifest.v1.json`                       |
 | `workspace share`                | `reports/share-bundle.json` (default)                                  | Aggregation bundle                                                                           | —                                                                    |
-| `import` / `adopt`               | `{project}/.workspai/import-readiness.json`                            | Per project                                                                                  | —                                                                    |
+| `import`                         | `{project}/.workspai/import.json`, `{project}/.workspai/import-readiness.json` | Copied/cloned project metadata and readiness                                           | —                                                                    |
+| `adopt`                          | `{project}/.workspai/adopt.json`, `{project}/.workspai/adopt-readiness.json`   | In-place project metadata and readiness                                                | —                                                                    |
 | `workspace contract verify`      | `workspace-contract-verify-last-run.json`                              | CLI verify cache                                                                             | `contracts/workspace-intelligence/workspace-contract-verify.v1.json` |
 
 ## Static capability contracts
@@ -311,7 +323,7 @@ Under `{project}/.workspai/reports/` when commands run at project scope (e.g. pr
 ## Consumer rules
 
 1. **Project count:** read `workspace-registry.v1.json` (or run `workspace registry status --json`).
-2. **Release gates:** follow chain doctor → analyze → readiness → verify → autopilot; use `pipeline-last-run.json` for orchestration summary.
+2. **Workspace Intelligence chain:** run `workspace intelligence run --for-agent codex --strict --json` to preserve Model → Diff → Impact → Doctor + Contract Verify + Analyze → Readiness → Verify → Context → Agent Sync → Explain. `pipeline` is the broader governance/release orchestrator and `autopilot` is a separate release surface; neither redefines the canonical chain. Use `pipeline-last-run.json` only for the pipeline orchestration summary.
 3. **Do not** use `workspace.json.projects` (removed in schema 1.0).
 4. Prefer `schemaVersion` constants in each artifact; legacy `v1` on readiness is accepted when reading old reports.
 5. **Agent customization:** read `.workspai/reports/agent-customization-pack.json` first for generated surfaces, then `.workspai/reports/INDEX.json` and `workspace-context-agent.json`; regenerate with `workspace agent-sync --write --refresh-context --preset enterprise`.

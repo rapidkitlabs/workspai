@@ -106,5 +106,62 @@ describe('frontend create registry', () => {
         framework: 'nextjs',
       }),
     ]);
+    expect(
+      await fs.readJson(path.join(expectedWorkspacePath, '.workspai', 'workspace.json'))
+    ).toMatchObject({
+      profile: 'polyglot',
+      engine: { python_core: { status: 'skipped', reason: 'user-opted-out' } },
+    });
+    expect(await fs.readJson(path.join(projectPath, '.workspai', 'adopt.json'))).toMatchObject({
+      mode: 'linked',
+      policy: { moved_source: false, copied_source: false },
+    });
+  });
+
+  it('removes the generated target when strict finalization fails', async () => {
+    const definition = resolveFrontendGenerator('nextjs');
+    expect(definition).toBeTruthy();
+    if (!definition) throw new Error('nextjs generator missing');
+
+    await fs.ensureDir(path.join(cwdOutsideWorkspace, '.workspai'));
+    await fs.writeJson(path.join(cwdOutsideWorkspace, '.workspai', 'workspace.json'), {
+      workspace_name: 'frontend-workspace',
+    });
+    await fs.writeFile(path.join(cwdOutsideWorkspace, '.workspai-workspace'), '{}');
+    const projectPath = path.join(cwdOutsideWorkspace, 'failed-next');
+    await fs.ensureDir(path.join(projectPath, '.workspai'));
+    await fs.writeJson(path.join(projectPath, '.workspai', 'project.json'), {
+      name: 'failed-next',
+      runtime: 'node',
+      framework: 'nextjs',
+    });
+    vi.spyOn(frontendProject, 'createFrontendProject').mockResolvedValue({
+      definition,
+      projectName: 'failed-next',
+      projectPath,
+      dryRun: false,
+      commandDisplay: 'npx create-next-app@latest failed-next',
+      commandExec: ['npx', '--yes', 'create-next-app@latest', 'failed-next'],
+    });
+    const previousFailure = process.env.WORKSPAI_TEST_FAIL_WORKSPACE_REGISTRY_PUBLISH;
+    process.env.WORKSPAI_TEST_FAIL_WORKSPACE_REGISTRY_PUBLISH = '1';
+
+    try {
+      const exitCode = await index.handleCreateOrFallback([
+        'create',
+        'project',
+        'frontend.nextjs',
+        'failed-next',
+      ]);
+
+      expect(exitCode).toBe(1);
+      expect(await fs.pathExists(projectPath)).toBe(false);
+    } finally {
+      if (previousFailure === undefined) {
+        delete process.env.WORKSPAI_TEST_FAIL_WORKSPACE_REGISTRY_PUBLISH;
+      } else {
+        process.env.WORKSPAI_TEST_FAIL_WORKSPACE_REGISTRY_PUBLISH = previousFailure;
+      }
+    }
   });
 });

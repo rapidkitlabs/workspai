@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import os from 'os';
 import path from 'path';
 import * as cliPrompts from '../cli-ui/prompts.js';
+import * as frontendProject from '../frontend-project.js';
 
 describe('handleCreateOrFallback - wrapper flags handling', () => {
   let tmpDir: string;
@@ -158,27 +159,92 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
     );
   });
 
-  it('prompts interactively when no flags provided and respects user answer', async () => {
-    const promptSpy = vi.spyOn(cliPrompts, 'prompt').mockResolvedValue({ createWs: false });
+  it('offers one workspace-management choice outside a workspace and respects opt-out', async () => {
+    const promptSpy = vi.spyOn(cliPrompts, 'prompt').mockResolvedValue({ workspaceMode: 'none' });
     const registerSpy = vi.spyOn(create, 'registerWorkspaceAtPath').mockResolvedValue();
     const resolveSpy = vi.spyOn(coreExec, 'resolveRapidkitPython').mockResolvedValue();
     const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
+    const stdinIsTty = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+    Object.defineProperty(process.stdin, 'isTTY', {
+      configurable: true,
+      get: () => true,
+    });
 
-    const args = ['create', 'project', 'fastapi.standard', 'demo'];
-    const code = await index.handleCreateOrFallback(args);
+    try {
+      const args = ['create', 'project', 'fastapi.standard', 'demo'];
+      const code = await index.handleCreateOrFallback(args);
 
-    expect(promptSpy).toHaveBeenCalled();
-    // create should NOT be called since user declined
-    expect(registerSpy).not.toHaveBeenCalled();
-    expect(resolveSpy).toHaveBeenCalled();
-    expect(runSpy).toHaveBeenCalled();
+      expect(promptSpy).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: 'workspaceMode',
+          choices: expect.arrayContaining([
+            expect.objectContaining({ value: 'managed' }),
+            expect.objectContaining({ value: 'current' }),
+            expect.objectContaining({ value: 'none' }),
+          ]),
+        }),
+      ]);
+      expect(registerSpy).not.toHaveBeenCalled();
+      expect(resolveSpy).toHaveBeenCalled();
+      expect(runSpy).toHaveBeenCalled();
 
-    const forwarded = runSpy.mock.calls[0][0] as string[];
-    expect(forwarded).toContain('create');
-    expect(forwarded).toContain('project');
-    expect(forwarded).toContain('fastapi.standard');
-    expect(forwarded).toContain('demo');
+      const forwarded = runSpy.mock.calls[0][0] as string[];
+      expect(forwarded).toEqual(['create', 'project', 'fastapi.standard', 'demo']);
+      expect(args).toContain('--no-workspace');
+      expect(code).toBe(0);
+    } finally {
+      if (stdinIsTty) {
+        Object.defineProperty(process.stdin, 'isTTY', stdinIsTty);
+      } else {
+        delete (process.stdin as NodeJS.ReadStream & { isTTY?: boolean }).isTTY;
+      }
+    }
+  });
+
+  it('links successful Python-backed creates to an accurate managed default workspace', async () => {
+    vi.spyOn(coreExec, 'resolveRapidkitPython').mockResolvedValue();
+    vi.spyOn(coreExec, 'runCoreRapidkit').mockImplementation(async (forwardedArgs) => {
+      const projectName = forwardedArgs[3];
+      const projectPath = path.join(tmpDir, projectName);
+      await fsExtra.ensureDir(path.join(projectPath, '.workspai'));
+      await fsExtra.writeJson(path.join(projectPath, '.workspai', 'project.json'), {
+        name: projectName,
+        kit_name: 'fastapi.standard',
+        runtime: 'python',
+        framework: 'fastapi',
+      });
+      await fsExtra.writeFile(
+        path.join(projectPath, 'pyproject.toml'),
+        '[project]\nname = "api"\n'
+      );
+      return 0 as any;
+    });
+
+    const code = await index.handleCreateOrFallback([
+      'create',
+      'project',
+      'fastapi.standard',
+      'managed-api',
+      '--yes',
+      '--skip-git',
+    ]);
+
     expect(code).toBe(0);
+    const projectPath = path.join(tmpDir, 'managed-api');
+    const workspacePath = path.join(tmpDir, '.workspai', 'workspaces', 'workspai');
+    expect(
+      await fsExtra.readJson(path.join(workspacePath, '.workspai', 'workspace.json'))
+    ).toMatchObject({
+      profile: 'polyglot',
+      engine: { python_core: { status: 'skipped', reason: 'user-opted-out' } },
+    });
+    expect(await fsExtra.readJson(path.join(projectPath, '.workspai', 'adopt.json'))).toMatchObject(
+      {
+        mode: 'linked',
+        workspace: { path: workspacePath },
+        policy: { moved_source: false, copied_source: false },
+      }
+    );
   });
 
   it('routes `create` without subcommand to workspace flow in non-interactive mode', async () => {
@@ -342,6 +408,7 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
         'project',
         kit,
         projectName,
+        '--yes',
         '--skip-git',
         '--skip-install',
       ]);
@@ -357,15 +424,50 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
       );
       expect(projectJson.kit_name).toBe(kit);
       expect(projectJson.runtime).toBe(expectedRuntime);
+      const managedWorkspace = path.join(tmpDir, '.workspai', 'workspaces', 'workspai');
+      const workspaceManifest = await fsExtra.readJson(
+        path.join(managedWorkspace, '.workspai', 'workspace.json')
+      );
+      expect(workspaceManifest).toMatchObject({
+        profile: 'polyglot',
+        engine: { python_core: { status: 'skipped', reason: 'user-opted-out' } },
+      });
+      const adoptMetadata = await fsExtra.readJson(
+        path.join(projectRoot, '.workspai', 'adopt.json')
+      );
+      expect(adoptMetadata).toMatchObject({
+        mode: 'linked',
+        policy: { moved_source: false, copied_source: false },
+      });
     },
     30000
   );
 
+  it.each(['gofiber.standard', 'gogin.standard', 'springboot.standard', 'dotnet.webapi.clean'])(
+    'keeps npm-owned %s dry runs read-only',
+    async (kit) => {
+      const projectName = `dry-${kit.split('.')[0]}`;
+      const code = await index.handleCreateOrFallback([
+        'create',
+        'project',
+        kit,
+        projectName,
+        '--dry-run',
+      ]);
+
+      expect(code).toBe(0);
+      expect(await fsExtra.pathExists(path.join(tmpDir, projectName))).toBe(false);
+      expect(await fsExtra.pathExists(path.join(tmpDir, '.workspai'))).toBe(false);
+    }
+  );
+
   it('uses npm-owned generators when interactive project selection chooses Go or Java kits', async () => {
-    vi.spyOn(cliPrompts, 'prompt')
+    const promptSpy = vi
+      .spyOn(cliPrompts, 'prompt')
       .mockResolvedValueOnce({ createTarget: 'project' })
       .mockResolvedValueOnce({ kitChoice: 'gogin.standard' })
-      .mockResolvedValueOnce({ projectName: 'interactive-gin-api' });
+      .mockResolvedValueOnce({ projectName: 'interactive-gin-api' })
+      .mockResolvedValueOnce({ workspaceMode: 'none' });
 
     const resolveSpy = vi.spyOn(coreExec, 'resolveRapidkitPython').mockResolvedValue();
     const runSpy = vi.spyOn(coreExec, 'runCoreRapidkit').mockResolvedValue(0 as any);
@@ -377,12 +479,7 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
     });
 
     try {
-      const code = await index.handleCreateOrFallback([
-        'create',
-        '--no-workspace',
-        '--skip-git',
-        '--skip-install',
-      ]);
+      const code = await index.handleCreateOrFallback(['create', '--skip-git', '--skip-install']);
       expect(code).toBe(0);
       expect(resolveSpy).not.toHaveBeenCalled();
       expect(runSpy).not.toHaveBeenCalled();
@@ -392,12 +489,81 @@ describe('handleCreateOrFallback - wrapper flags handling', () => {
       );
       expect(projectJson.kit_name).toBe('gogin.standard');
       expect(projectJson.runtime).toBe('go');
+      expect(promptSpy).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: 'workspaceMode',
+          choices: expect.arrayContaining([
+            expect.objectContaining({ value: 'managed' }),
+            expect.objectContaining({ value: 'current' }),
+            expect.objectContaining({ value: 'none' }),
+          ]),
+        }),
+      ]);
     } finally {
       if (stdinIsTty) {
         Object.defineProperty(process.stdin, 'isTTY', stdinIsTty);
       }
     }
   }, 30000);
+
+  it('asks how to manage the workspace before an interactive frontend scaffold', async () => {
+    const definition = frontendProject.resolveFrontendGenerator('nextjs');
+    expect(definition).toBeTruthy();
+    if (!definition) {
+      throw new Error('nextjs generator missing');
+    }
+
+    const promptSpy = vi
+      .spyOn(cliPrompts, 'prompt')
+      .mockResolvedValueOnce({ createTarget: 'project' })
+      .mockResolvedValueOnce({ kitChoice: 'frontend.nextjs' })
+      .mockResolvedValueOnce({ projectName: 'interactive-next-app' })
+      .mockResolvedValueOnce({ workspaceMode: 'none' });
+    const createSpy = vi.spyOn(frontendProject, 'createFrontendProject').mockResolvedValue({
+      definition,
+      projectName: 'interactive-next-app',
+      projectPath: path.join(tmpDir, 'interactive-next-app'),
+      dryRun: false,
+      commandDisplay: 'npx create-next-app@latest interactive-next-app',
+      commandExec: ['npx', '--yes', 'create-next-app@latest', 'interactive-next-app'],
+    });
+    const stdinIsTty = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+    Object.defineProperty(process.stdin, 'isTTY', {
+      configurable: true,
+      get: () => true,
+    });
+
+    try {
+      const code = await index.handleCreateOrFallback(['create']);
+
+      expect(code).toBe(0);
+      expect(createSpy).toHaveBeenCalledWith({
+        args: expect.arrayContaining([
+          'create',
+          'project',
+          'frontend.nextjs',
+          'interactive-next-app',
+          '--no-workspace',
+        ]),
+      });
+      expect(promptSpy).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: 'workspaceMode',
+          choices: expect.arrayContaining([
+            expect.objectContaining({ value: 'managed' }),
+            expect.objectContaining({ value: 'current' }),
+            expect.objectContaining({ value: 'none' }),
+          ]),
+        }),
+      ]);
+    } finally {
+      if (stdinIsTty) {
+        Object.defineProperty(process.stdin, 'isTTY', stdinIsTty);
+      } else {
+        delete (process.stdin as NodeJS.ReadStream & { isTTY?: boolean }).isTTY;
+      }
+    }
+  });
 
   it('rejects invalid project names for npm-level generators before filesystem writes', async () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);

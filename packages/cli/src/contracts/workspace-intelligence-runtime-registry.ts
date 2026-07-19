@@ -23,6 +23,7 @@ export const WORKSPACE_INTELLIGENCE_ARTIFACTS = {
   skillsIndex: '.workspai/reports/workspace-skills-index.json',
   agents: 'AGENTS.md',
   explain: '.workspai/reports/workspace-explain-last-run.json',
+  intelligenceRun: '.workspai/reports/workspace-intelligence-run-last-run.json',
 } as const;
 
 export type WorkspaceIntelligenceArtifactId = keyof typeof WORKSPACE_INTELLIGENCE_ARTIFACTS;
@@ -46,6 +47,7 @@ export const WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS = {
   skillsIndex: 'workspace-skills-index.v1',
   agents: null,
   explain: 'workspace-explain.v1',
+  intelligenceRun: 'workspace-intelligence-run.v1',
 } as const satisfies Record<WorkspaceIntelligenceArtifactId, string | null>;
 
 export const WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS = {
@@ -66,6 +68,7 @@ export const WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS = {
   skillsIndex: 'contracts/workspace-intelligence/workspace-skills-index.v1.json',
   agents: null,
   explain: 'contracts/workspace-intelligence/workspace-explain.v1.json',
+  intelligenceRun: 'contracts/workspace-intelligence/workspace-intelligence-run.v1.json',
 } as const satisfies Record<WorkspaceIntelligenceArtifactId, string | null>;
 
 export const WORKSPACE_INTELLIGENCE_COMMAND_SIGNATURES = {
@@ -97,6 +100,16 @@ export const WORKSPACE_INTELLIGENCE_STEP_IDS = [
 ] as const;
 
 export type WorkspaceIntelligenceStepId = (typeof WORKSPACE_INTELLIGENCE_STEP_IDS)[number];
+
+export const WORKSPACE_INTELLIGENCE_PREFLIGHT_IDS = ['sync', 'baseline'] as const;
+
+export type WorkspaceIntelligencePreflightId =
+  (typeof WORKSPACE_INTELLIGENCE_PREFLIGHT_IDS)[number];
+
+export const WORKSPACE_INTELLIGENCE_PREFLIGHT_ARTIFACTS = {
+  sync: ['.workspai/workspace.contract.json', '.workspai/workspace-registry.v1.json'],
+  baseline: [WORKSPACE_INTELLIGENCE_ARTIFACTS.snapshot],
+} as const satisfies Record<WorkspaceIntelligencePreflightId, readonly string[]>;
 
 type RuntimeStepDescriptor = {
   command: readonly string[];
@@ -131,7 +144,9 @@ export const WORKSPACE_INTELLIGENCE_RUNTIME_STEPS = {
     produces: [A.analyze],
   },
   'readiness-evidence': {
-    command: ['readiness', '--json'],
+    // Verify is the definitive downstream gate. Reading a previous verify here
+    // creates a first-run cycle and can mix evidence from different chain runs.
+    command: ['readiness', '--json', '--skip-verify'],
     produces: [A.readiness],
   },
   verify: {

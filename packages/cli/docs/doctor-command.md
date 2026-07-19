@@ -304,7 +304,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '20.19.0'
       - run: npm ci
       - run: npx workspai doctor
 ```
@@ -313,8 +313,9 @@ jobs:
 
 | Code | Meaning                        |
 | ---- | ------------------------------ |
-| `0`  | checks passed or warnings only |
-| `1`  | blocking issues found          |
+| `0`  | Passed; local-profile warnings remain advisory |
+| `1`  | Errors, or warnings under `release`/`enterprise-strict`/`--strict` |
+| `2`  | Warning-only result under the `ci` profile or `--ci` |
 
 ## Enterprise Probe Extensions
 
@@ -457,7 +458,7 @@ Legacy evidence without `schemaVersion` is still accepted. Unknown versions are 
 
 ```bash
 npx workspai bootstrap [--profile <profile>]
-npx workspai setup <python|node|go> [--warm-deps]
+npx workspai setup <python|node|go|java|dotnet> [--warm-deps]
 npx workspai workspace list
 npx workspai cache <status|clear|prune|repair>
 npx workspai mirror <status|sync|verify|rotate>

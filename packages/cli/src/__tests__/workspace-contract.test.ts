@@ -10,7 +10,9 @@ import {
   verifyWorkspaceContract,
   writeWorkspaceContract,
   WORKSPACE_CONTRACT_PATH,
+  WorkspaceContractVerificationError,
 } from '../utils/workspace-contract.js';
+import { WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH } from '../utils/workspace-registry-summary.js';
 import { upsertImportedProjectsRegistry } from '../imported-projects-registry.js';
 
 describe('workspace contract registry', () => {
@@ -23,6 +25,7 @@ describe('workspace contract registry', () => {
   }
 
   afterEach(async () => {
+    delete process.env.WORKSPAI_TEST_FAIL_WORKSPACE_REGISTRY_PUBLISH;
     while (tempDirs.length > 0) {
       const dir = tempDirs.pop();
       if (dir) await fsExtra.remove(dir);
@@ -198,6 +201,33 @@ describe('workspace contract registry', () => {
     expect(contract.projects[0].ports).toEqual([{ name: 'http', port: 3000, protocol: 'http' }]);
   });
 
+  it('does not rewrite canonical contract artifacts when sync has no semantic changes', async () => {
+    const workspacePath = await makeTempDir('rk-contract-idempotent-');
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.workspai', 'project.json'), {
+      runtime: 'node',
+      kit_name: 'nestjs.standard',
+    });
+
+    await syncWorkspaceContract({
+      workspacePath,
+      now: new Date('2026-07-18T00:00:00.000Z'),
+    });
+    const contractPath = path.join(workspacePath, WORKSPACE_CONTRACT_PATH);
+    const summaryPath = path.join(workspacePath, WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH);
+    const before = await Promise.all([
+      fsExtra.readFile(contractPath, 'utf8'),
+      fsExtra.readFile(summaryPath, 'utf8'),
+    ]);
+
+    await syncWorkspaceContract({
+      workspacePath,
+      now: new Date('2026-07-19T00:00:00.000Z'),
+    });
+
+    await expect(fsExtra.readFile(contractPath, 'utf8')).resolves.toBe(before[0]);
+    await expect(fsExtra.readFile(summaryPath, 'utf8')).resolves.toBe(before[1]);
+  });
+
   it('uses explicit project metadata ports instead of kit defaults', async () => {
     const workspacePath = await makeTempDir('rk-contract-explicit-port-');
     await fsExtra.outputJson(path.join(workspacePath, 'web', '.workspai', 'project.json'), {
@@ -221,6 +251,20 @@ describe('workspace contract registry', () => {
     await expect(verifyWorkspaceContract({ workspacePath })).resolves.toMatchObject({
       status: 'passed',
     });
+  });
+
+  it('assigns deterministic available ports when project metadata defaults collide', async () => {
+    const workspacePath = await makeTempDir('rk-contract-port-allocation-');
+    for (const projectName of ['orders', 'users']) {
+      await fsExtra.outputJson(path.join(workspacePath, projectName, '.workspai', 'project.json'), {
+        runtime: 'python',
+        kit_name: 'fastapi.standard',
+        ports: [{ name: 'http', port: 8000, protocol: 'http' }],
+      });
+    }
+
+    const { contract } = await writeWorkspaceContract({ workspacePath, strict: true });
+    expect(contract.projects.map((project) => project.ports[0]?.port).sort()).toEqual([8000, 8001]);
   });
 
   it('syncs discovered projects while preserving manually declared contracts', async () => {
@@ -362,6 +406,28 @@ describe('workspace contract registry', () => {
     expect(result.violations.join('\n')).toContain('depends on unknown project');
   });
 
+  it('restores exact artifact preimages when registry summary publication fails', async () => {
+    const workspacePath = await makeTempDir('rk-contract-transaction-');
+    const contractPath = path.join(workspacePath, WORKSPACE_CONTRACT_PATH);
+    const summaryPath = path.join(workspacePath, WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH);
+    const contractPreimage = Buffer.from('{\n  "preexisting": "contract spacing"\n}\n');
+    const summaryPreimage = Buffer.from('{"preexisting":"summary spacing"}\n');
+    await fsExtra.outputFile(contractPath, contractPreimage);
+    await fsExtra.outputFile(summaryPath, summaryPreimage);
+    await fsExtra.outputJson(path.join(workspacePath, 'api', '.workspai', 'project.json'), {
+      runtime: 'node',
+      kit_name: 'nestjs.standard',
+    });
+    process.env.WORKSPAI_TEST_FAIL_WORKSPACE_REGISTRY_PUBLISH = '1';
+
+    await expect(syncWorkspaceContract({ workspacePath })).rejects.toThrow(
+      'Injected workspace registry summary publication failure.'
+    );
+
+    expect(await fsExtra.readFile(contractPath)).toEqual(contractPreimage);
+    expect(await fsExtra.readFile(summaryPath)).toEqual(summaryPreimage);
+  });
+
   it('fails verification for unsafe paths and invalid service contracts', async () => {
     const workspacePath = await makeTempDir('rk-contract-invalid-contracts-');
     await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_CONTRACT_PATH), {
@@ -394,6 +460,36 @@ describe('workspace contract registry', () => {
     expect(result.violations.join('\n')).toContain('invalid API contract');
     expect(result.violations.join('\n')).toContain('empty event contract');
     expect(result.violations.join('\n')).toContain('invalid env contract');
+  });
+
+  it('rejects strict sync before replacing artifacts when candidate verification fails', async () => {
+    const workspacePath = await makeTempDir('rk-contract-strict-sync-');
+    const contractPath = path.join(workspacePath, WORKSPACE_CONTRACT_PATH);
+    const contractPreimage = {
+      schemaVersion: 1,
+      kind: 'rapidkit.workspace.contract',
+      generatedAt: '2026-06-02T00:00:00.000Z',
+      workspace: { name: 'strict-ws' },
+      projects: [
+        {
+          slug: 'manual-service',
+          relativePath: '../manual-service',
+          modules: [],
+          ports: [],
+          contracts: { owns: [], apis: [], publishes: [], consumes: [], dependsOn: [], env: [] },
+        },
+      ],
+    };
+    await fsExtra.outputJson(contractPath, contractPreimage, { spaces: 4 });
+    const exactPreimage = await fsExtra.readFile(contractPath);
+
+    await expect(syncWorkspaceContract({ workspacePath, strict: true })).rejects.toBeInstanceOf(
+      WorkspaceContractVerificationError
+    );
+    expect(await fsExtra.readFile(contractPath)).toEqual(exactPreimage);
+    expect(
+      await fsExtra.pathExists(path.join(workspacePath, WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH))
+    ).toBe(false);
   });
 
   it('builds service graph nodes and dependency/event edges', async () => {

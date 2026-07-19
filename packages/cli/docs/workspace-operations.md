@@ -7,7 +7,9 @@ Command syntax: [commands-reference.md](./commands-reference.md).
 ## Import and adoption
 
 Use `import` to copy or clone an existing project into a Workspai workspace.
-Use `adopt` when the project must stay where it already lives but should become visible to RapidKit and Workspai workspace intelligence.
+Use `adopt` when the project must stay where it already lives but should become
+visible to Workspai Workspace Intelligence. Core module commands remain limited
+to projects whose existing RapidKit metadata identifies a module-enabled kit.
 
 ```bash
 npx workspai import ../orders-api
@@ -20,24 +22,24 @@ npx workspai adopt --json
 ### Import behavior
 
 - Local folders are copied; git sources are cloned with shallow history.
-- Outside any workspace (no `--workspace`), Workspai auto-creates/reuses the managed workspace at `~/.workspai/workspaces/workspai`.
-- Existing workspaces under `~/rapidkit/workspaces/*` and `~/Workspai/rapidkits/*` remain registered after upgrade.
+- Outside any workspace (no `--workspace`), Workspai creates or reuses the managed `workspai` workspace. New defaults use `~/.workspai/workspaces/workspai`; valid legacy candidates under `~/rapidkit/workspaces/workspai` and `~/Workspai/rapidkits/workspai` can still be reused.
+- Existing workspaces under legacy managed roots remain registered after upgrade.
 - CLI prints a next-step `cd ...` hint (`suggestedCdCommand` in JSON mode).
 - Failed workspace sync rolls back imported files and registry entries.
 
 ### Adopt behavior
 
 - Source files are not moved or copied.
-- Default workspace resolution matches import (`workspai` under `~/.workspai/workspaces/`).
+- Default workspace resolution matches import, including canonical creation and valid legacy managed-default reuse.
 - Writes `.workspai/project.json`, `.workspai/adopt.json`, and `.workspai/adopt-readiness.json`.
 - Registry and contract sync include adopted projects for `workspace model`, `workspace context`, Dashboard, and agents.
 - `--dry-run --json` previews detection without writing metadata.
 
 ### JSON output (`--json`)
 
-- `workspacePath`, `workspaceResolution` (`explicit` | `nearest` | `default-auto`)
-- `defaultWorkspaceCreated`, `suggestedCdCommand`
-- `importedProject` or `adoptedProject` (`name`, `path`, `stack`, `runtime`, `framework`, `supportTier`, `moduleSupport`, `confidence`, `source`)
+- Import returns `workspacePath`, `workspaceResolution`, `defaultWorkspaceCreated`, `suggestedCdCommand`, and `importedProject`. The imported project includes its `source`.
+- Adopt returns `workspacePath`, `workspaceResolution`, `defaultWorkspaceCreated`, `wouldCreateDefaultWorkspace`, `dryRun`, and `adoptedProject`.
+- Project results include detected `name`, `path`, `stack`, `runtime`, `framework`, `supportTier`, `moduleSupport`, and `confidence` where available.
 
 Imported projects receive `.workspai/import-readiness.json`. Adopted projects add frontend-aware detection for Next.js, React, Vite, Vue, Angular, SvelteKit, Nuxt, Astro, Remix, and Solid.
 
@@ -115,15 +117,23 @@ Export excludes dependency folders, build output, git history, logs, `.env`, and
 
 Archive export, verification, and hydrate stream file payloads instead of loading the workspace into memory. Exports use ZIP64, so multi-gigabyte workspaces and archives with more than 65,535 files are supported. Stored ZIP entries are the default; use `--archive-compression deflate` when transfer size matters more than export CPU time.
 
-Workspace size is unrestricted by default. For untrusted remote archives, optional operational budgets can be set without imposing a product-wide workspace limit:
+Remote archives are protected by secure defaults: 5 GB maximum download, 20 GB
+maximum expanded payload, 200,000 entries, per-entry and compression-ratio
+guards, and a five-minute timeout. Public HTTPS destinations are accepted;
+loopback, private, link-local, and private redirect destinations are rejected.
+Budgets can be lowered or explicitly raised for a controlled workflow:
 
 ```bash
 npx workspai workspace hydrate https://example.test/team.zip \
   --output ./team-workspace \
-  --max-download-size 100gb \
-  --max-expanded-size 500gb \
-  --download-timeout-ms 21600000
+  --max-download-size 2gb \
+  --max-expanded-size 8gb \
+  --download-timeout-ms 120000
 ```
+
+For a reviewed archive served from a private development network, opt in with
+`--allow-private-network`. Never use that flag for user-controlled URLs in CI
+or agent services.
 
 IDE, CI, and AI consumers can discover archive behavior from
 `contracts/workspace-archive-capabilities.v1.json`. The embedded manifest and every successful
@@ -162,11 +172,19 @@ Artifacts:
 | `import`                                                    | Workspace ingestion    | Rollback-safe sync                                 |
 | `adopt`                                                     | Workspace adoption     | In-place linking + registry sync                   |
 | `workspace model/context/diff/impact/verify`                | Workspace intelligence | Model, context packs, blast radius                 |
+| `workspace intelligence run`                                | Workspace intelligence | Canonical contract-backed chain and strict gate    |
 | `snapshot`                                                  | Workspace recovery     | Metadata or full snapshots                         |
 | `project archive/restore/delete`                            | Project lifecycle      | Safe delete with confirmation                      |
 | `doctor` / `doctor workspace` / `doctor project`            | Wrapper health         | Host, workspace, and project scopes                |
 | `workspace run`                                             | Workspace orchestrator | Fleet stage execution                              |
 | `infra`                                                     | Workspace sidecar      | Contract-driven local dependencies                 |
+
+The unified intelligence runner keeps `sync` and baseline resolution in a
+separate two-entry execution envelope and emits exactly 11 canonical stages.
+Exit `2` means the evidence gate blocked readiness after successful execution;
+exit `1` means a hard runtime failure. Read the complete
+[Unified Workspace Intelligence Runner contract](./workspace-intelligence-runner.md)
+before consuming its report from CI, IDE, or agent integrations.
 
 ## Verification evidence freshness
 

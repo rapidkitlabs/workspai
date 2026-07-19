@@ -26,6 +26,10 @@
     "cardStatus": {
       "enum": ["pass", "warn", "fail", "missing"]
     },
+    "blocking": {
+      "type": "boolean",
+      "description": "Contract-backed release posture. False means the card is advisory even when warnings or blocker-like guidance are present."
+    },
     "blockers": {
       "type": "array",
       "items": { "type": "string" }

@@ -93,6 +93,22 @@ describe('Runtime Adapters', () => {
       expect(run).toHaveBeenCalledWith('go', ['run', './.'], '/tmp/project');
     });
 
+    it('uses native Go commands instead of Make on Windows', async () => {
+      vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new GoRuntimeAdapter(run);
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+
+      await adapter.runDev('/tmp/project');
+      await adapter.runLint('/tmp/project');
+      await adapter.runFormat('/tmp/project');
+
+      expect(run).not.toHaveBeenCalledWith('make', expect.any(Array), '/tmp/project');
+      expect(run).toHaveBeenCalledWith('go', ['run', './main.go'], '/tmp/project');
+      expect(run).toHaveBeenCalledWith('golangci-lint', ['run', './...'], '/tmp/project');
+      expect(run).toHaveBeenCalledWith('go', ['fmt', './...'], '/tmp/project');
+    });
+
     it('uses cmd/server as Go run target when present', async () => {
       const run = vi.fn().mockResolvedValue(0);
       const adapter = new GoRuntimeAdapter(run);
@@ -1255,6 +1271,23 @@ describe('Runtime Adapters', () => {
       expect(process.env.MAVEN_OPTS).toBe('-Xmx512m');
       expect(process.env.GRADLE_USER_HOME).toBe('/original/gradle');
     });
+
+    it('uses Maven Spotless goals for lint and format', async () => {
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new JavaRuntimeAdapter(run);
+      vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
+        normalizePath(String(p)).endsWith('/tmp/java-project/pom.xml')
+      );
+      vi.spyOn(fs, 'readFileSync').mockReturnValue(
+        '<artifactId>spotless-maven-plugin</artifactId>'
+      );
+
+      await adapter.runLint('/tmp/java-project');
+      await adapter.runFormat('/tmp/java-project');
+
+      expect(run).toHaveBeenCalledWith('mvn', ['spotless:check'], '/tmp/java-project');
+      expect(run).toHaveBeenCalledWith('mvn', ['spotless:apply'], '/tmp/java-project');
+    });
   });
 
   describe('NodeRuntimeAdapter', () => {
@@ -1412,6 +1445,27 @@ describe('Runtime Adapters', () => {
   });
 
   describe('DotnetRuntimeAdapter', () => {
+    it('uses native dotnet commands instead of Make on Windows', async () => {
+      vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+      const run = vi.fn().mockResolvedValue(0);
+      const adapter = new DotnetRuntimeAdapter(run);
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      vi.spyOn(fs, 'readFileSync').mockReturnValue(
+        '<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>'
+      );
+
+      await adapter.runLint('/tmp/dotnet-project');
+      await adapter.runFormat('/tmp/dotnet-project');
+
+      expect(run).not.toHaveBeenCalledWith('make', expect.any(Array), '/tmp/dotnet-project');
+      expect(run).toHaveBeenCalledWith('dotnet', ['build', '-warnaserror'], '/tmp/dotnet-project');
+      expect(run).toHaveBeenCalledWith(
+        'dotnet',
+        ['format', '--verify-no-changes'],
+        '/tmp/dotnet-project'
+      );
+    });
+
     it('discovers nested ASP.NET Core project files for lifecycle commands', async () => {
       const run = vi.fn().mockResolvedValue(0);
       const adapter = new DotnetRuntimeAdapter(run);

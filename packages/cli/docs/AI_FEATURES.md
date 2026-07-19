@@ -4,12 +4,14 @@ AI-powered module recommendations using OpenAI embeddings to help you build fast
 
 ## 🚀 Quick Start
 
-### Option 1: Automatic Setup (Recommended)
+### Option 1: Bundled embeddings (Recommended)
 
-Just use AI recommendations - it will guide you through setup automatically!
+Published packages normally include bundled module embeddings. Configure an API
+key for query embeddings, then run a recommendation. The missing-embeddings
+prompt below is a recovery path, not the normal first-run path.
 
 ```bash
-# First time - AI will detect missing embeddings and offer to generate them
+# If bundled embeddings are missing, AI offers to regenerate them
 npx workspai ai recommend "user authentication with social login"
 
 # Output:
@@ -172,7 +174,7 @@ npx workspai config ai disable
          │
          ▼
 ┌─────────────────┐
-│ Module Catalog  │  27+ modules with pre-generated embeddings
+│ Module Catalog  │  Runtime-dependent modules and bundled embeddings
 │ (Dynamic)       │  Fetched from RapidKit Python Core
 └────────┬────────┘
          │
@@ -191,14 +193,14 @@ npx workspai config ai disable
 ### Technical Details
 
 1. **Module Catalog**:
-   - 27+ production-ready modules (dynamic from Python Core)
-   - Fallback to 11 hardcoded modules if Python unavailable
+   - Runtime catalog from Python Core when available
+   - Bundled fallback catalog when Python is unavailable
    - 5-minute cache for performance
 
 2. **Embeddings**:
    - AI converts module descriptions to 1536-dimensional vectors
    - Generated once, reused for all queries
-   - Stored in `data/modules-embeddings.json` (508KB)
+   - Stored in `data/modules-embeddings.json`; size depends on catalog and model
 
 3. **Semantic Search**:
    - User query → embedding vector
@@ -215,14 +217,11 @@ npx workspai config ai disable
 
 - Model: `text-embedding-3-small` (OpenAI)
 - Dimension: 1536 vectors
-- Accuracy: 92%+ match scores
+- Match scores are similarity estimates, not a versioned accuracy benchmark
 - Cost: provider-dependent (check current provider pricing)
 
-**Performance:**
-
-- First query: ~200ms (embedding generation)
-- Subsequent queries: ~50ms (cached embeddings)
-- Catalog refresh: Every 5 minutes
+Performance depends on provider latency, machine state, catalog size, and cache
+state. The runtime catalog uses a five-minute in-process cache.
 
 ## 🎯 Use Cases
 
@@ -343,7 +342,7 @@ npx workspai config show
 pip install -e /path/to/rapidkit-core
 
 # Verify installation
-rapidkit modules list --json
+rapidkit modules list --json-schema 1
 ```
 
 **Note:** Fallback still provides good results with core modules!
@@ -406,10 +405,10 @@ npx workspai config show
 
 ### Still Having Issues?
 
-1. **Enable debug logging:**
+1. **Enable CLI debug logging where supported:**
 
    ```bash
-   DEBUG=rapidkit:* npx workspai ai recommend "auth"
+   npx workspai --debug ai recommend "auth"
    ```
 
 2. **Check for updates:**
@@ -432,8 +431,7 @@ npx workspai config show
 | `workspai ai recommend [query]`           | Get module recommendations     | `workspai ai recommend "auth"`            |
 | `workspai ai recommend [query] -n <N>`    | Get top N recommendations      | `workspai ai recommend "database" -n 3`   |
 | `workspai ai recommend [query] --json`    | Get JSON output                | `workspai ai recommend "auth" --json`     |
-| `workspai ai generate-embeddings`         | Generate embeddings (one-time) | `workspai ai generate-embeddings`         |
-| `workspai ai generate-embeddings --force` | Force regenerate embeddings    | `workspai ai generate-embeddings --force` |
+| `workspai ai generate-embeddings`         | Generate or refresh embeddings | `workspai ai generate-embeddings`         |
 | `workspai ai update-embeddings`           | Update with latest modules     | `workspai ai update-embeddings`           |
 | `workspai ai info`                        | Show AI features info          | `workspai ai info`                        |
 
@@ -458,15 +456,8 @@ Options:
   -h, --help           Display help
 ```
 
-### Generate-Embeddings Command Options
-
-```bash
-workspai ai generate-embeddings [options]
-
-Options:
-  --force    Force regeneration even if embeddings exist
-  -h, --help Display help
-```
+`generate-embeddings` currently regenerates when invoked. The accepted `--force`
+flag does not alter that behavior and should not be used as a workflow branch.
 
 ## 🚀 Planned Workspace Intelligence Extensions
 

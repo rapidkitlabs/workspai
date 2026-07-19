@@ -9,7 +9,7 @@ This repository uses automated contributor onboarding:
 
 For full contribution workflow, coding standards, and release process, see:
 
-- [../CONTRIBUTING.md](../CONTRIBUTING.md)
+- [Workspai contribution guide](../packages/cli/CONTRIBUTING.md)
 
 For standardized contributor message templates used by maintainers and automation, see:
 

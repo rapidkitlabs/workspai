@@ -1,11 +1,11 @@
 # Workspai Runtime Support Matrix
 
-Last updated: 2026-06-15
+Last updated: 2026-07-18
 
 This document defines the public support contract for Workspai workspace projects.
 It separates three concerns:
 
-- **First-class**: curated RapidKit kit/framework with scaffold/import/govern/lifecycle support. Module mutation still follows the runtime row below.
+- **First-class**: curated kit/framework with scaffold/import/govern/lifecycle support. Core module mutation additionally requires metadata for a module-enabled kit.
 - **Extended**: scaffold/import/govern/lifecycle or import/govern workflows are supported, but Core module mutation is disabled unless explicitly added later.
 - **Observed**: import/govern/contract visibility is supported; lifecycle commands may require manual project scripts or future adapters.
 
@@ -13,8 +13,8 @@ It separates three concerns:
 
 | Runtime             | Tier        | Scaffold | Import | Lifecycle Commands                                | Module Commands | Doctor    |
 | ------------------- | ----------- | -------: | -----: | ------------------------------------------------- | --------------: | --------- |
-| Python              | first-class |      yes |    yes | init, dev, start, build, test, lint, format, help |             yes | full      |
-| Node.js             | extended    |      yes |    yes | init, dev, start, build, test, lint, format, help |             yes | full      |
+| Python              | first-class |      yes |    yes | init, dev, start, build, test, lint, format, help | kit-dependent | full      |
+| Node.js             | extended    |      yes |    yes | init, dev, start, build, test, lint, format, help | kit-dependent | full      |
 | Go                  | extended    |      yes |    yes | init, dev, start, build, test, lint, format, help |              no | readiness |
 | Java / Spring Boot  | extended    |      yes |    yes | init, dev, start, build, test, lint, format, help |              no | readiness |
 | .NET / ASP.NET Core | extended    |      yes |    yes | init, dev, start, build, test, lint, format, help |              no | readiness |
@@ -31,13 +31,17 @@ It separates three concerns:
 
 ## Framework Tiers
 
-> **Runtime vs framework:** Python **runtime** stays first-class (Core-backed modules). Node.js **runtime** is extended; **NestJS** is the first-class Node framework. Frontend stacks (Next.js, Remix, Vite variants, Nuxt, Angular, Astro, SvelteKit) are extended frameworks on the Node runtime.
+> **Runtime vs framework:** Python remains a first-class runtime and Node.js is
+> extended. Core module mutation is guaranteed only when project metadata names
+> a module-enabled kit: `fastapi.standard`, `fastapi.ddd`, or
+> `nestjs.standard`. Arbitrary FastAPI, NestJS, Python, Node.js, and frontend
+> projects remain governable without gaining module mutation.
 
-| Tier        | Frameworks                                                                                                                                                  |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| first-class | FastAPI, NestJS                                                                                                                                              |
+| Tier        | Frameworks                                                                                                                                                                                                                          |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| first-class | FastAPI, NestJS                                                                                                                                                                                                                     |
 | extended    | Go/Fiber, Go/Gin, Spring Boot, ASP.NET Core, Django, Flask, Express, Fastify, Koa, Echo, Laravel, Symfony, Rails, Sinatra, Actix, Axum, Rocket, Phoenix, Next.js, Remix, React, Vue, Svelte, Solid, Nuxt, Angular, Astro, SvelteKit |
-| observed    | Python, Node.js, Go, Java, PHP, Ruby, Rust, Elixir, Unknown/generic projects                                                                                |
+| observed    | Python, Node.js, Go, Java, PHP, Ruby, Rust, Elixir, Unknown/generic projects                                                                                                                                                        |
 
 ## Import Policy
 
@@ -45,7 +49,7 @@ Imported projects are **observed and governed by default**:
 
 - Workspai writes `.workspai/project.json` so workspace contract, graph, doctor, and sharing flows can discover the project.
 - Workspai writes canonical project metadata to `.workspai/project.json` and reads legacy `.rapidkit/project.json` as fallback for older projects.
-- Workspai writes `.workspai/import.json` and `.workspai/import-readiness.json` for auditability, with legacy mirrors when needed.
+- Workspai writes `.workspai/import.json` and `.workspai/import-readiness.json` for auditability while preserving existing Python Core or legacy `.rapidkit` project state.
 - Secrets and dependency/build caches are not copied during local-folder import.
 - `module_support` defaults to `false` for imported projects unless existing RapidKit metadata explicitly opts in.
 

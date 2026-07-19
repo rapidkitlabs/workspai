@@ -8,7 +8,6 @@ import { validateProjectName } from './validation.js';
 import {
   buildPackageRunnerSubprocessEnv,
   resolvePackageRunnerInvocation,
-  shouldUseShellExecution,
 } from './utils/platform-capabilities.js';
 import type { ImportedProjectRegistryEntry } from './imported-projects-registry.js';
 import type { BackendImportStack } from './utils/backend-framework-contract.js';
@@ -410,39 +409,42 @@ export async function createFrontendProject(
   }
 
   await fsExtra.ensureDir(path.dirname(projectPath));
-  const exitCode = await runCommand(
-    commandPlan.command,
-    commandPlan.args,
-    path.dirname(projectPath)
-  );
-  const scaffoldReady = await hasFrontendScaffoldArtifacts(projectPath);
-
-  if (exitCode !== 0 && !scaffoldReady) {
-    throw new Error(
-      `Official ${definition.displayName} generator failed with exit code ${exitCode}`
+  try {
+    const exitCode = await runCommand(
+      commandPlan.command,
+      commandPlan.args,
+      path.dirname(projectPath)
     );
-  }
-  if (exitCode !== 0 && scaffoldReady) {
-    console.log(
-      chalk.yellow(
-        `⚠️  Official ${definition.displayName} generator exited with code ${exitCode}, but the scaffold looks complete. Continuing Workspai project setup...`
-      )
-    );
-  }
+    const scaffoldReady = await hasFrontendScaffoldArtifacts(projectPath);
 
-  if (!skipGit) {
-    await maybeInitProjectGit(projectPath);
-  }
+    if (exitCode !== 0) {
+      throw new Error(
+        `Official ${definition.displayName} generator failed with exit code ${exitCode}`
+      );
+    }
+    if (!scaffoldReady) {
+      throw new Error(
+        `Official ${definition.displayName} generator did not produce a valid package.json`
+      );
+    }
 
-  await writeFrontendRapidkitMetadata({
-    definition,
-    projectName,
-    projectPath,
-    commandDisplay,
-    commandExec: [commandPlan.command, ...commandPlan.args],
-    skipGit,
-    skipInstall,
-  });
+    if (!skipGit) {
+      await maybeInitProjectGit(projectPath);
+    }
+
+    await writeFrontendRapidkitMetadata({
+      definition,
+      projectName,
+      projectPath,
+      commandDisplay,
+      commandExec: [commandPlan.command, ...commandPlan.args],
+      skipGit,
+      skipInstall,
+    });
+  } catch (error) {
+    await fsExtra.remove(projectPath);
+    throw error;
+  }
 
   console.log(chalk.green(`✅ ${definition.displayName} project created at ${projectPath}`));
   console.log(
@@ -594,12 +596,16 @@ async function hasFrontendScaffoldArtifacts(projectPath: string): Promise<boolea
   }
 
   const packageJsonPath = path.join(projectPath, 'package.json');
-  if (await fsExtra.pathExists(packageJsonPath)) {
-    return true;
+  if (!(await fsExtra.pathExists(packageJsonPath))) {
+    return false;
   }
 
-  const entries = await fsExtra.readdir(projectPath);
-  return entries.length > 0;
+  try {
+    const packageJson: unknown = await fsExtra.readJson(packageJsonPath);
+    return packageJson !== null && typeof packageJson === 'object' && !Array.isArray(packageJson);
+  } catch {
+    return false;
+  }
 }
 
 async function maybeInitProjectGit(projectPath: string): Promise<void> {
@@ -633,7 +639,7 @@ async function runCommand(command: string, args: string[], cwd: string): Promise
     const child = spawn(invocation.command, [...invocation.prefixArgs, ...args], {
       cwd,
       stdio: 'inherit',
-      shell: shouldUseShellExecution(),
+      shell: false,
       env:
         command === 'git'
           ? buildCleanGitEnv(buildPackageRunnerSubprocessEnv())
@@ -643,6 +649,11 @@ async function runCommand(command: string, args: string[], cwd: string): Promise
     child.on('error', () => resolve(1));
   });
 }
+
+export const __test__ = {
+  hasFrontendScaffoldArtifacts,
+  runCommand,
+};
 
 function readFlagValue(argv: readonly string[], flag: string): string | undefined {
   const idx = argv.indexOf(flag);

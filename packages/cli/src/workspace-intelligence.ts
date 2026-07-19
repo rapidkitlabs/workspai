@@ -471,16 +471,9 @@ function compareWorkspace(
     });
   }
 
-  if (stableStringify(before.evidence) !== stableStringify(after.evidence)) {
-    addChange(changes, {
-      type: 'workspace.changed',
-      severity: 'info',
-      target: 'evidence',
-      message: 'Workspace evidence summary changed.',
-      before: before.evidence,
-      after: after.evidence,
-    });
-  }
+  // Evidence is produced downstream of structural diff and changes on every
+  // healthy chain run. It is freshness input for gates, not source change. If
+  // compared here the chain observes its own reports and can never be idempotent.
 
   if (stableStringify(before.discovery) !== stableStringify(after.discovery)) {
     addChange(changes, {

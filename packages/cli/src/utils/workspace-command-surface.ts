@@ -15,6 +15,7 @@ export const WORKSPACE_SUBCOMMANDS = [
   'sync',
   'registry',
   'foundation',
+  'intelligence',
   'model',
   'snapshot',
   'diff',
@@ -53,6 +54,7 @@ export type WorkspaceSubcommand = (typeof WORKSPACE_SUBCOMMANDS)[number];
  * `workspace-intelligence-chain.v1.json`; do not infer orchestration from this list.
  */
 export const WORKSPACE_INTELLIGENCE_SUBCOMMANDS = [
+  'intelligence',
   'model',
   'snapshot',
   'diff',

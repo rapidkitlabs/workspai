@@ -46,6 +46,12 @@ const JS_CONFIG_FILES = [
   'rapidkit.config.mjs',
   'rapidkit.config.cjs',
 ];
+const DATA_CONFIG_FILES = ['workspai.config.json', 'rapidkit.config.json'];
+
+export interface LoadWorkspaiConfigOptions {
+  /** Explicit consent to execute JavaScript configuration discovered in the directory tree. */
+  trustExecutableConfig?: boolean;
+}
 
 function isMissingFileError(error: unknown): boolean {
   return (
@@ -105,12 +111,29 @@ export async function saveUserConfig(config: UserConfig): Promise<void> {
  * Legacy rapidkit.config.* files remain supported during migration.
  */
 export async function loadWorkspaiConfig(
-  startDir: string = process.cwd()
+  startDir: string = process.cwd(),
+  options: LoadWorkspaiConfigOptions = {}
 ): Promise<WorkspaiConfig> {
   let currentDir = startDir;
   const root = path.parse(currentDir).root;
 
   while (currentDir !== root) {
+    for (const configFile of DATA_CONFIG_FILES) {
+      const configPath = path.join(currentDir, configFile);
+      try {
+        const content = await fs.readFile(configPath, 'utf-8');
+        const config: unknown = JSON.parse(content);
+        if (!config || typeof config !== 'object' || Array.isArray(config)) {
+          throw new Error('configuration root must be a JSON object');
+        }
+        logger.debug(`Loaded data-only Workspai config from ${configFile}`);
+        return config as WorkspaiConfig;
+      } catch (error) {
+        if (isMissingFileError(error)) continue;
+        throw new Error(configLoadErrorMessage(configPath, error));
+      }
+    }
+
     // Try each config file variant
     for (const configFile of JS_CONFIG_FILES) {
       const configPath = path.join(currentDir, configFile);
@@ -125,6 +148,13 @@ export async function loadWorkspaiConfig(
       }
 
       logger.debug(`Found config file: ${configPath}`);
+
+      if (!options.trustExecutableConfig) {
+        throw new Error(
+          `Refusing to execute Workspai config at ${configPath} without explicit trust. ` +
+            'Use a data-only workspai.config.json file, pass --trust-config, or set WORKSPAI_TRUST_CONFIG=1.'
+        );
+      }
 
       try {
         // Import the config file

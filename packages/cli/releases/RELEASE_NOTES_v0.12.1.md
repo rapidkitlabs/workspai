@@ -19,4 +19,4 @@ npx rapidkit@0.12.1 my-app --template nestjs
 
 ---
 
-**Full Changelog:** See [CHANGELOG.md](./CHANGELOG.md)
+**Full Changelog:** See [CHANGELOG.md](../CHANGELOG.md)

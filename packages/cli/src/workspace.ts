@@ -72,10 +72,19 @@ async function initializeStandaloneGitRepository(
   try {
     await execa('git', ['init'], { cwd: targetPath, env: buildCleanGitEnv() });
     await execa('git', ['add', '.'], { cwd: targetPath, env: buildCleanGitEnv() });
-    await execa('git', ['commit', '-m', commitMessage], {
-      cwd: targetPath,
-      env: buildCleanGitEnv(),
-    });
+    await execa(
+      'git',
+      [
+        '-c',
+        'user.name=Workspai',
+        '-c',
+        'user.email=workspai@localhost',
+        'commit',
+        '-m',
+        commitMessage,
+      ],
+      { cwd: targetPath, env: buildCleanGitEnv() }
+    );
     spinner.succeed('Git repository initialized');
   } catch {
     spinner.warn('Could not initialize git repository');
@@ -132,17 +141,65 @@ function normalizeRegistry(registry: WorkspaceRegistry): WorkspaceRegistry {
 }
 
 async function readWorkspaceRegistryFile(registryFile: string): Promise<WorkspaceRegistry> {
+  let content: string;
   try {
-    const content = await fs.readFile(registryFile, 'utf8');
+    content = await fs.readFile(registryFile, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { workspaces: [] };
+    throw error;
+  }
+  try {
     const parsed = JSON.parse(content) as WorkspaceRegistry;
-    if (parsed && Array.isArray(parsed.workspaces)) {
-      return normalizeRegistry(parsed);
+    if (!parsed || !Array.isArray(parsed.workspaces)) throw new Error('missing workspaces array');
+    return normalizeRegistry(parsed);
+  } catch (error) {
+    throw new Error(`Workspace registry is invalid: ${registryFile}`, { cause: error });
+  }
+}
+
+async function readWorkspaceRegistryFileStrict(registryFile: string): Promise<WorkspaceRegistry> {
+  let content: string;
+  try {
+    content = await fs.readFile(registryFile, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { workspaces: [] };
     }
-  } catch (_error) {
-    // File doesn't exist or is invalid, start fresh
+    throw error;
   }
 
-  return { workspaces: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    throw new Error(`Workspace registry is invalid: ${registryFile}`, { cause: error });
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    !Array.isArray((parsed as WorkspaceRegistry).workspaces)
+  ) {
+    throw new Error(`Workspace registry is invalid: ${registryFile}`);
+  }
+
+  for (const entry of (parsed as WorkspaceRegistry).workspaces) {
+    if (
+      !entry ||
+      typeof entry.name !== 'string' ||
+      typeof entry.path !== 'string' ||
+      (entry.mode !== undefined && typeof entry.mode !== 'string') ||
+      (entry.projects !== undefined && !Array.isArray(entry.projects)) ||
+      (Array.isArray(entry.projects) &&
+        entry.projects.some(
+          (project) =>
+            !project || typeof project.name !== 'string' || typeof project.path !== 'string'
+        ))
+    ) {
+      throw new Error(`Workspace registry contains an invalid entry: ${registryFile}`);
+    }
+  }
+
+  return normalizeRegistry(parsed as WorkspaceRegistry);
 }
 
 async function readWorkspaceRegistryCandidates(): Promise<WorkspaceRegistry> {
@@ -150,6 +207,20 @@ async function readWorkspaceRegistryCandidates(): Promise<WorkspaceRegistry> {
   const seen = new Set<string>();
   for (const registryFile of getWorkspaceRegistryFileCandidates()) {
     const registry = await readWorkspaceRegistryFile(registryFile);
+    for (const entry of registry.workspaces) {
+      if (seen.has(entry.path)) continue;
+      seen.add(entry.path);
+      merged.workspaces.push(entry);
+    }
+  }
+  return merged;
+}
+
+async function readWorkspaceRegistryCandidatesStrict(): Promise<WorkspaceRegistry> {
+  const merged: WorkspaceRegistry = { workspaces: [] };
+  const seen = new Set<string>();
+  for (const registryFile of getWorkspaceRegistryFileCandidates()) {
+    const registry = await readWorkspaceRegistryFileStrict(registryFile);
     for (const entry of registry.workspaces) {
       if (seen.has(entry.path)) continue;
       seen.add(entry.path);
@@ -210,9 +281,21 @@ async function writeWorkspaceRegistryFileAtomically(
     }
   }
 
+  await writeWorkspaceRegistryBytesAtomically(
+    registryFile,
+    `${JSON.stringify(normalizeRegistry(registry), null, 2)}\n`
+  );
+}
+
+async function writeWorkspaceRegistryBytesAtomically(
+  registryFile: string,
+  content: string | Buffer
+): Promise<void> {
+  const registryDir = path.dirname(registryFile);
+  await fs.mkdir(registryDir, { recursive: true });
   const temporaryPath = `${registryFile}.${process.pid}.${randomUUID()}.tmp`;
   try {
-    await fs.writeFile(temporaryPath, `${JSON.stringify(normalizeRegistry(registry), null, 2)}\n`);
+    await fs.writeFile(temporaryPath, content);
     const handle = await fs.open(temporaryPath, 'r');
     try {
       await syncWorkspaceRegistryHandle(handle);
@@ -229,6 +312,35 @@ async function writeWorkspaceRegistryFileAtomically(
   } finally {
     await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
   }
+}
+
+interface WorkspaceRegistryPreimage {
+  exists: boolean;
+  content?: Buffer;
+}
+
+async function captureWorkspaceRegistryPreimage(
+  registryFile: string
+): Promise<WorkspaceRegistryPreimage> {
+  try {
+    return { exists: true, content: await fs.readFile(registryFile) };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { exists: false };
+    }
+    throw error;
+  }
+}
+
+async function restoreWorkspaceRegistryPreimage(
+  registryFile: string,
+  preimage: WorkspaceRegistryPreimage
+): Promise<void> {
+  if (!preimage.exists) {
+    await fs.rm(registryFile, { force: true });
+    return;
+  }
+  await writeWorkspaceRegistryBytesAtomically(registryFile, preimage.content as Buffer);
 }
 
 async function withWorkspaceRegistryLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -287,17 +399,59 @@ async function mutateWorkspaceRegistry(
   mutation: (registry: WorkspaceRegistry) => void | Promise<void>
 ): Promise<WorkspaceRegistry> {
   return withWorkspaceRegistryLock(async () => {
-    const registry = await readWorkspaceRegistryCandidates();
-    await mutation(registry);
-    const normalized = normalizeRegistry(registry);
     const canonicalFile = path.join(getWorkspaceRegistryDirectory(), 'workspaces.json');
     const legacyFile = path.join(getLegacyWorkspaceRegistryDirectory(), 'workspaces.json');
+    const [canonicalPreimage, legacyPreimage] = await Promise.all([
+      captureWorkspaceRegistryPreimage(canonicalFile),
+      captureWorkspaceRegistryPreimage(legacyFile),
+    ]);
+    const registry = await readWorkspaceRegistryCandidatesStrict();
+    await mutation(registry);
+    const normalized = normalizeRegistry(registry);
 
     // Canonical state is authoritative. The legacy file remains an exact
     // compatibility mirror until older extension releases stop consuming it.
-    await writeWorkspaceRegistryFileAtomically(canonicalFile, normalized);
-    await writeWorkspaceRegistryFileAtomically(legacyFile, normalized);
+    try {
+      await writeWorkspaceRegistryFileAtomically(canonicalFile, normalized);
+      await writeWorkspaceRegistryFileAtomically(legacyFile, normalized);
+    } catch (error) {
+      const restoration = await Promise.allSettled([
+        restoreWorkspaceRegistryPreimage(canonicalFile, canonicalPreimage),
+        restoreWorkspaceRegistryPreimage(legacyFile, legacyPreimage),
+      ]);
+      const restorationErrors = restoration
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => result.reason);
+      if (restorationErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...restorationErrors],
+          'Workspace registry transaction failed and could not be fully restored'
+        );
+      }
+      throw error;
+    }
     return normalized;
+  });
+}
+
+export async function registerWorkspaceStrict(workspacePath: string, name: string): Promise<void> {
+  const normalizedWorkspacePath = normalizeRegistryPath(workspacePath);
+  await mutateWorkspaceRegistry((registry) => {
+    const existing = registry.workspaces.find((workspace) => {
+      return workspace.path === normalizedWorkspacePath;
+    });
+    if (existing) {
+      existing.name = name;
+      existing.mode = existing.mode || 'full';
+      existing.projects = Array.isArray(existing.projects) ? existing.projects : [];
+      return;
+    }
+    registry.workspaces.push({
+      name,
+      path: normalizedWorkspacePath,
+      mode: 'full',
+      projects: [],
+    });
   });
 }
 
@@ -307,24 +461,7 @@ async function mutateWorkspaceRegistry(
  */
 export async function registerWorkspace(workspacePath: string, name: string): Promise<void> {
   try {
-    const normalizedWorkspacePath = normalizeRegistryPath(workspacePath);
-    await mutateWorkspaceRegistry((registry) => {
-      const existing = registry.workspaces.find((workspace) => {
-        return workspace.path === normalizedWorkspacePath;
-      });
-      if (existing) {
-        existing.name = name;
-        existing.mode = existing.mode || 'full';
-        existing.projects = Array.isArray(existing.projects) ? existing.projects : [];
-        return;
-      }
-      registry.workspaces.push({
-        name,
-        path: normalizedWorkspacePath,
-        mode: 'full',
-        projects: [],
-      });
-    });
+    await registerWorkspaceStrict(workspacePath, name);
   } catch (_error) {
     // Silent fail - registry is optional
     console.warn(chalk.gray('Note: Could not register workspace in shared registry'));
@@ -484,31 +621,41 @@ export async function syncWorkspaceProjects(
   }
 }
 
+export async function registerProjectInWorkspaceStrict(
+  workspacePath: string,
+  projectName: string,
+  projectPath: string
+): Promise<void> {
+  const normalizedWorkspacePath = normalizeRegistryPath(workspacePath);
+  const normalizedProjectPath = normalizeRegistryPath(projectPath);
+  await mutateWorkspaceRegistry((registry) => {
+    const workspace = registry.workspaces.find((entry) => {
+      return entry.path === normalizedWorkspacePath;
+    });
+    if (!workspace) {
+      throw new Error(`Workspace is not registered: ${normalizedWorkspacePath}`);
+    }
+
+    workspace.projects = Array.isArray(workspace.projects) ? workspace.projects : [];
+    const existingIndex = workspace.projects.findIndex(
+      (project) => project.path === normalizedProjectPath || project.name === projectName
+    );
+    const nextProject = { name: projectName, path: normalizedProjectPath };
+    if (existingIndex >= 0) {
+      workspace.projects[existingIndex] = nextProject;
+    } else {
+      workspace.projects.push(nextProject);
+    }
+  });
+}
+
 export async function registerProjectInWorkspace(
   workspacePath: string,
   projectName: string,
   projectPath: string
 ): Promise<void> {
   try {
-    const normalizedWorkspacePath = normalizeRegistryPath(workspacePath);
-    const normalizedProjectPath = normalizeRegistryPath(projectPath);
-    await mutateWorkspaceRegistry((registry) => {
-      const workspace = registry.workspaces.find((entry) => {
-        return entry.path === normalizedWorkspacePath;
-      });
-      if (!workspace) return;
-
-      workspace.projects = Array.isArray(workspace.projects) ? workspace.projects : [];
-      const existingIndex = workspace.projects.findIndex(
-        (project) => project.path === normalizedProjectPath || project.name === projectName
-      );
-      const nextProject = { name: projectName, path: normalizedProjectPath };
-      if (existingIndex >= 0) {
-        workspace.projects[existingIndex] = nextProject;
-      } else {
-        workspace.projects.push(nextProject);
-      }
-    });
+    await registerProjectInWorkspaceStrict(workspacePath, projectName, projectPath);
   } catch (_error) {
     // Silent fail - registry tracking is optional
   }
@@ -581,22 +728,6 @@ Thumbs.db
 `;
     await fs.writeFile(path.join(workspacePath, '.gitignore'), gitignore);
 
-    // Create canonical workspace marker for auto-detection.
-    await fs.writeFile(
-      path.join(workspacePath, '.workspai-workspace'),
-      JSON.stringify(
-        {
-          signature: 'WORKSPAI_WORKSPACE',
-          createdBy: 'workspai-cli',
-          version: getVersion(),
-          createdAt: new Date().toISOString(),
-          name: options.name,
-        },
-        null,
-        2
-      )
-    );
-
     // Copy templates to workspace
     await copyTemplates(workspacePath);
 
@@ -612,7 +743,7 @@ Thumbs.db
     }
 
     // Register workspace in shared registry for Extension compatibility
-    await registerWorkspace(workspacePath, options.name);
+    await registerWorkspaceStrict(workspacePath, options.name);
 
     // Publish registry evidence only after registration so a newly created
     // workspace cannot start with an immediately stale global-registry snapshot.
@@ -1120,6 +1251,17 @@ npx workspai dev     # Start dev server
 | \`npx workspai test\` | Run tests |
 | \`npx workspai lint\` | Run linting |
 | \`npx workspai format\` | Format code |
+
+## Workspace Intelligence
+
+\`\`\`bash
+npx workspai workspace model --json --write
+npx workspai workspace context --for-agent --json --write
+npx workspai pipeline --json --strict
+\`\`\`
+
+Durable evidence is written to \`.workspai/reports/\`; generated agent
+instructions start at \`AGENTS.md\`.
 
 ## Learn More
 

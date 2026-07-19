@@ -55,7 +55,7 @@ function sanitizeHumanText(value: string, fallback: string): string {
 }
 
 function isTargetFramework(value: string): boolean {
-  return /^net\d+\.\d+$/.test(value.trim());
+  return value.trim() === DEFAULT_DOTNET_TARGET_FRAMEWORK;
 }
 
 function contextJson(): string {
@@ -497,7 +497,7 @@ jobs:
           dotnet format src/${v.project_name}.csproj --verify-no-changes
           dotnet format tests/${v.project_name}.Tests.csproj --verify-no-changes
       - name: Build
-        run: dotnet build src/${v.project_name}.csproj -c Release --no-restore
+        run: dotnet build tests/${v.project_name}.Tests.csproj -c Release --no-restore
       - name: Test
         run: dotnet test tests/${v.project_name}.Tests.csproj -c Release --no-build --collect:"XPlat Code Coverage"
 `;
@@ -637,9 +637,10 @@ export async function generateDotnetWebApiCleanKit(
     variables.root_namespace || `Workspai.${toPascalCase(projectName)}`,
     'Workspai.App'
   );
+  const requestedTargetFramework = variables.target_framework?.trim();
   const targetFramework =
-    variables.target_framework && isTargetFramework(variables.target_framework)
-      ? variables.target_framework
+    requestedTargetFramework && isTargetFramework(requestedTargetFramework)
+      ? requestedTargetFramework
       : DEFAULT_DOTNET_TARGET_FRAMEWORK;
   const port =
     variables.port && /^\d+$/.test(variables.port) ? variables.port : DEFAULT_DOTNET_PORT;

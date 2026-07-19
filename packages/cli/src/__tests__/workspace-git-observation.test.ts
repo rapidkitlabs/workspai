@@ -26,7 +26,7 @@ describe('workspace git observation', () => {
     expect(observation.changedFiles).toEqual([]);
   });
 
-  it('excludes generated reports and caches from the freshness observation', async () => {
+  it('excludes generated reports, caches, and grounding from freshness observation', async () => {
     const workspacePath = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rk-git-generated-'));
     tempDirs.push(workspacePath);
     execFileSync('git', ['init'], { cwd: workspacePath, stdio: 'ignore' });
@@ -38,6 +38,33 @@ describe('workspace git observation', () => {
     await fsExtra.outputJson(
       path.join(workspacePath, '.workspai', 'cache', 'workspace-model.v1.json'),
       { schemaVersion: 'workspace-model-cache.v1' }
+    );
+    await fsExtra.outputFile(
+      path.join(workspacePath, '.workspai', 'AGENT-GROUNDING.md'),
+      '# Generated workspace grounding\n'
+    );
+    execFileSync('git', ['add', '.workspai/AGENT-GROUNDING.md'], {
+      cwd: workspacePath,
+      stdio: 'ignore',
+    });
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'commit.gpgSign=false',
+        '-c',
+        'user.name=Workspai Test',
+        '-c',
+        'user.email=test@workspai.local',
+        'commit',
+        '-m',
+        'test baseline',
+      ],
+      { cwd: workspacePath, stdio: 'ignore' }
+    );
+    await fsExtra.outputFile(
+      path.join(workspacePath, '.workspai', 'AGENT-GROUNDING.md'),
+      '# Refreshed generated workspace grounding\n'
     );
 
     const observation = collectGitWorkingTreeObservation(workspacePath);

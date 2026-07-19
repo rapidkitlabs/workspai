@@ -13,14 +13,14 @@ body:
     id: version
     attributes:
       label: Workspai version
-      placeholder: "e.g. 0.25.1"
+      placeholder: "Output of: npx workspai --version"
     validations:
       required: true
   - type: input
     id: environment
     attributes:
       label: Environment
-      placeholder: "OS, Node, Python"
+      placeholder: "OS and Node; include Python only for Python/Core-dependent failures"
     validations:
       required: true
   - type: textarea

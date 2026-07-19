@@ -424,8 +424,15 @@ describe('Doctor Command', () => {
     await fsExtra.ensureDir(outsidePath);
     await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit-workspace'), {
       signature: 'RAPIDKIT_WORKSPACE',
-      name: 'workspace',
+      name: 'legacy-workspace-name',
       version: '1.0.0',
+    });
+    await fsExtra.writeJSON(path.join(workspacePath, '.workspai-workspace'), {
+      signature: 'RAPIDKIT_WORKSPACE',
+      createdBy: 'workspai-cli',
+      name: 'canonical-workspace-name',
+      version: '1.0.0',
+      createdAt: '2026-07-17T00:00:00.000Z',
     });
     await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit', 'workspace.json'), {
       name: 'workspace',
@@ -462,6 +469,7 @@ describe('Doctor Command', () => {
       expect(payload.cache.evidencePath).toBe(
         path.join(workspacePath, '.workspai', 'reports', 'doctor-last-run.json')
       );
+      expect(payload.workspace.name).toBe('canonical-workspace-name');
       expect(await fsExtra.pathExists(payload.cache.evidencePath)).toBe(true);
     } finally {
       process.chdir(originalCwd);
@@ -1454,6 +1462,12 @@ describe('Doctor Command', () => {
           }),
         ])
       );
+      expect(
+        await fsExtra.pathExists(path.join(projectPath, '.workspai', 'reports', 'fix-snapshots'))
+      ).toBe(true);
+      expect(
+        await fsExtra.pathExists(path.join(projectPath, '.rapidkit', 'reports', 'fix-snapshots'))
+      ).toBe(false);
     } finally {
       process.chdir(originalCwd);
       logSpy.mockRestore();
@@ -3602,10 +3616,11 @@ describe('Doctor Command', () => {
     }
   });
 
-  it('should prepare an in-project Poetry environment before applying Python dependency remediation', async () => {
+  it('should preserve an existing external Poetry environment when applying dependency remediation', async () => {
     const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'rapidkit-doctor-python-apply-'));
     const workspacePath = path.join(tempRoot, 'workspace');
     const projectPath = path.join(workspacePath, 'harbor-api');
+    const poetryEnvironmentPath = path.join(tempRoot, 'poetry-env');
 
     await fsExtra.ensureDir(path.join(workspacePath, '.rapidkit'));
     await fsExtra.writeJSON(path.join(workspacePath, '.rapidkit-workspace'), {
@@ -3640,6 +3655,8 @@ describe('Doctor Command', () => {
       'utf8'
     );
     await fsExtra.ensureDir(path.join(projectPath, 'src'));
+    await fsExtra.ensureDir(path.join(poetryEnvironmentPath, 'bin'));
+    await fsExtra.writeFile(path.join(poetryEnvironmentPath, 'bin', 'python'), '', 'utf8');
 
     mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'python3' || cmd === 'python') {
@@ -3648,13 +3665,12 @@ describe('Doctor Command', () => {
         }
       }
       if (cmd === 'poetry') {
-        if (Array.isArray(args) && args[0] === 'env' && args[1] === 'use') {
-          await fsExtra.ensureDir(path.join(projectPath, '.venv', 'bin'));
-          await fsExtra.writeFile(path.join(projectPath, '.venv', 'bin', 'python'), '', 'utf8');
+        if (Array.isArray(args) && args.join(' ') === 'env info --path') {
+          return { stdout: poetryEnvironmentPath, stderr: '', exitCode: 0 } as any;
         }
         return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
       }
-      if (typeof cmd === 'string' && cmd.endsWith(path.join('.venv', 'bin', 'python'))) {
+      if (cmd === path.join(poetryEnvironmentPath, 'bin', 'python')) {
         if (Array.isArray(args) && args[0] === '-m' && args[1] === 'pip') {
           return { stdout: '[]', stderr: '', exitCode: 0 } as any;
         }
@@ -3683,19 +3699,24 @@ describe('Doctor Command', () => {
       await runDoctor({ json: true, apply: true });
 
       const poetryCalls = mockedExeca.mock.calls.filter(([cmd]) => cmd === 'poetry');
-      expect(poetryCalls.map(([, args]) => args)).toEqual(
-        expect.arrayContaining([
-          ['config', 'virtualenvs.in-project', 'true', '--local'],
-          expect.arrayContaining(['env', 'use']),
-          ['install', '--no-root'],
-        ])
-      );
+      expect(poetryCalls.map(([, args]) => args)).toContainEqual(['install', '--no-root']);
+      expect(poetryCalls.map(([, args]) => args)).not.toContainEqual([
+        'config',
+        'virtualenvs.in-project',
+        'true',
+        '--local',
+      ]);
+      expect(
+        poetryCalls.some(
+          ([, args]) => Array.isArray(args) && args[0] === 'env' && args[1] === 'use'
+        )
+      ).toBe(false);
       const installCall = poetryCalls.find(([, args]) =>
         Array.isArray(args) ? args[0] === 'install' : false
       );
-      expect(installCall?.[2]?.env?.POETRY_VIRTUALENVS_IN_PROJECT).toBe('true');
+      expect(installCall?.[2]?.env?.POETRY_VIRTUALENVS_IN_PROJECT).toBeUndefined();
       expect(installCall?.[2]?.env?.POETRY_CACHE_DIR).toBe(
-        path.join(fsExtra.realpathSync(projectPath), '.rapidkit', 'cache', 'pypoetry')
+        path.join(fsExtra.realpathSync(projectPath), '.workspai', 'cache', 'python', 'poetry')
       );
     } finally {
       process.chdir(originalCwd);
@@ -3889,6 +3910,135 @@ describe('Doctor Command', () => {
 
       expect(promptMock).not.toHaveBeenCalled();
       expect(mockedExeca.mock.calls.length).toBeGreaterThan(0);
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('continues past an old Python candidate and reads py -3 version output from stderr', async () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'python' && args?.[0] === '--version') {
+        return { stdout: '', stderr: 'Python 3.8.10', exitCode: 0 } as any;
+      }
+      if (cmd === 'py' && args?.[0] === '-3' && args?.[1] === '--version') {
+        return { stdout: '', stderr: 'Python 3.12.4', exitCode: 0 } as any;
+      }
+      if (cmd === 'poetry' && args?.[0] === '--version') {
+        return { stdout: 'Poetry version 2.3.2', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === 'go' && args?.[0] === 'version') {
+        return { stdout: 'go version go1.22.0 windows/amd64', stderr: '', exitCode: 0 } as any;
+      }
+      return { stdout: '', stderr: 'not found', exitCode: 1 } as any;
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ json: true });
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string;
+      expect(JSON.parse(jsonLine).system.python).toMatchObject({
+        status: 'ok',
+        message: 'Python 3.12.4',
+        details: 'Using py -3',
+      });
+      expect(mockedExeca).toHaveBeenCalledWith(
+        'py',
+        ['-3', '--version'],
+        expect.objectContaining({ reject: false })
+      );
+    } finally {
+      logSpy.mockRestore();
+      platformSpy.mockRestore();
+    }
+  });
+
+  it('uses interpreter pip metadata for a Windows-layout project venv', async () => {
+    const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'workspai-doctor-win-venv-'));
+    const interpreter = path.join(tempRoot, '.venv', 'Scripts', 'python.exe');
+    await fsExtra.ensureDir(path.dirname(interpreter));
+    await fsExtra.writeFile(interpreter, '', 'utf8');
+    await fsExtra.ensureDir(path.join(tempRoot, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(tempRoot, '.rapidkit', 'project.json'), {
+      name: 'api',
+      runtime: 'python',
+      framework: 'fastapi',
+    });
+    await fsExtra.writeFile(path.join(tempRoot, 'pyproject.toml'), '[project]\nname = "api"\n');
+
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'py' && args?.[0] === '-3' && args?.[1] === '--version') {
+        return { stdout: 'Python 3.12.4', stderr: '', exitCode: 0 } as any;
+      }
+      if (cmd === interpreter && args?.[0] === '-m' && args?.[1] === 'pip') {
+        return {
+          stdout: '',
+          stderr: '[{"name":"fastapi","version":"0.115.0"}]',
+          exitCode: 0,
+        } as any;
+      }
+      return { stdout: '', stderr: '', exitCode: 1 } as any;
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(tempRoot);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ project: true, json: true });
+      const jsonLine = logSpy.mock.calls
+        .map((call) => call[0])
+        .find((msg) => typeof msg === 'string' && msg.trim().startsWith('{')) as string;
+      const payload = JSON.parse(jsonLine);
+      expect(payload.project.venvActive).toBe(true);
+      expect(payload.project.depsInstalled).toBe(true);
+      expect(payload.project.issues).not.toContain('Dependencies not installed');
+    } finally {
+      process.chdir(originalCwd);
+      logSpy.mockRestore();
+      platformSpy.mockRestore();
+      await fsExtra.remove(tempRoot);
+    }
+  });
+
+  it('does not claim global Core or print internal repair tokens in human output', async () => {
+    const tempRoot = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'workspai-doctor-human-'));
+    await fsExtra.ensureDir(path.join(tempRoot, '.rapidkit'));
+    await fsExtra.writeJSON(path.join(tempRoot, '.rapidkit', 'project.json'), {
+      name: 'api',
+      runtime: 'python',
+      framework: 'fastapi',
+    });
+    await fsExtra.writeFile(
+      path.join(tempRoot, 'pyproject.toml'),
+      '[tool.poetry]\nname = "api"\nversion = "0.1.0"\n'
+    );
+    await fsExtra.writeFile(path.join(tempRoot, 'Dockerfile'), 'FROM python:3.12\n');
+
+    mockedExeca.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'python3' && args?.[0] === '--version') {
+        return { stdout: 'Python 3.12.4', stderr: '', exitCode: 0 } as any;
+      }
+      return { stdout: '', stderr: 'not found', exitCode: 1 } as any;
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(tempRoot);
+      const { runDoctor } = await import('../doctor.js');
+      await runDoctor({ project: true });
+      const output = logSpy.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(output).toContain('RapidKit Core: Not detected locally or globally');
+      expect(output).not.toContain('Using global installation');
+      expect(output).not.toContain('rapidkit:doctor:repair');
+      expect(output).not.toMatch(/^\s*\$\s/m);
     } finally {
       process.chdir(originalCwd);
       logSpy.mockRestore();

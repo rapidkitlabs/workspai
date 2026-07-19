@@ -10,8 +10,10 @@ import {
 import {
   firstExistingWorkspaceArtifactPath,
   resolveWorkspaceArtifactPath,
+  withWorkspaceArtifactLock,
   writeWorkspaceArtifactJson,
 } from './artifact-path-compat.js';
+import { assertWorkspaceArtifactContract } from '../contracts/artifact-contract-registry.js';
 import { projectMetadataCandidates, workspaceMetadataCandidates } from './workspace-paths.js';
 import {
   WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
@@ -92,6 +94,13 @@ export interface WorkspaceContractSyncResult {
   addedProjects: string[];
   updatedProjects: string[];
   verification: WorkspaceContractVerificationResult;
+}
+
+export class WorkspaceContractVerificationError extends Error {
+  constructor(public readonly verification: WorkspaceContractVerificationResult) {
+    super(`Workspace contract verification failed: ${verification.violations.join('; ')}`);
+    this.name = 'WorkspaceContractVerificationError';
+  }
 }
 
 export interface WorkspaceContractGraphNode {
@@ -320,7 +329,7 @@ function mergeProjectContract(
   const preferredPort = defaultPortForKit(discovered.kit, discovered.runtime);
   const existingPorts = existing?.ports || [];
   const discoveredPorts = discovered.ports || [];
-  const ports =
+  const selectedPorts =
     existingPorts.length > 0
       ? existingPorts
       : discoveredPorts.length > 0
@@ -334,6 +343,10 @@ function mergeProjectContract(
               },
             ]
           : [];
+  const ports = selectedPorts.map((port) => ({
+    ...port,
+    port: nextAvailablePort(port.port, usedPorts),
+  }));
 
   for (const port of ports) {
     usedPorts.add(port.port);
@@ -474,6 +487,7 @@ export async function writeWorkspaceContract(input: {
   outputPath?: string;
   force?: boolean;
   now?: Date;
+  strict?: boolean;
 }): Promise<{ contractPath: string; contract: WorkspaceContract }> {
   const contractPath = path.resolve(
     input.outputPath || resolveWorkspaceArtifactPath(input.workspacePath, WORKSPACE_CONTRACT_PATH)
@@ -494,20 +508,27 @@ export async function writeWorkspaceContract(input: {
       (project) => mergeProjectContract(undefined, project, usedPorts).project
     ),
   };
-  if (input.outputPath) {
-    await fsExtra.ensureDir(path.dirname(contractPath));
-    await fsExtra.writeJson(contractPath, contract, { spaces: 2 });
-  } else {
-    await writeWorkspaceArtifactJson(input.workspacePath, WORKSPACE_CONTRACT_PATH, contract);
+  const verification = await verifyWorkspaceContract({
+    workspacePath: input.workspacePath,
+    contractPath,
+    contract,
+  });
+  if (input.strict && verification.status === 'failed') {
+    throw new WorkspaceContractVerificationError(verification);
   }
-  const { publishWorkspaceRegistrySummary } = await import('./workspace-registry-summary.js');
-  await publishWorkspaceRegistrySummary(input.workspacePath, { now: input.now });
+  await publishWorkspaceContractArtifacts({
+    workspacePath: input.workspacePath,
+    contractPath,
+    contract,
+    now: input.now,
+  });
   return { contractPath, contract };
 }
 
 export async function syncWorkspaceContract(input: {
   workspacePath: string;
   now?: Date;
+  strict?: boolean;
 }): Promise<WorkspaceContractSyncResult> {
   const workspacePath = path.resolve(input.workspacePath);
   const contractPath = resolveWorkspaceArtifactPath(workspacePath, WORKSPACE_CONTRACT_PATH);
@@ -561,11 +582,133 @@ export async function syncWorkspaceContract(input: {
     projects: projects.sort((a, b) => a.slug.localeCompare(b.slug)),
   };
 
-  await writeWorkspaceArtifactJson(workspacePath, WORKSPACE_CONTRACT_PATH, contract);
-  const verification = await verifyWorkspaceContract({ workspacePath });
-  const { publishWorkspaceRegistrySummary } = await import('./workspace-registry-summary.js');
-  await publishWorkspaceRegistrySummary(workspacePath, { now: input.now });
+  const verification = await verifyWorkspaceContract({
+    workspacePath,
+    contractPath,
+    contract,
+  });
+  if (input.strict && verification.status === 'failed') {
+    throw new WorkspaceContractVerificationError(verification);
+  }
+  await publishWorkspaceContractArtifacts({
+    workspacePath,
+    contractPath,
+    contract,
+    now: input.now,
+  });
   return { contractPath, contract, addedProjects, updatedProjects, verification };
+}
+
+type ArtifactPreimage = { exists: false } | { exists: true; contents: Buffer };
+
+async function captureArtifactPreimage(artifactPath: string): Promise<ArtifactPreimage> {
+  if (!(await fsExtra.pathExists(artifactPath))) {
+    return { exists: false };
+  }
+  return { exists: true, contents: await fsExtra.readFile(artifactPath) };
+}
+
+async function restoreArtifactPreimage(
+  artifactPath: string,
+  preimage: ArtifactPreimage
+): Promise<void> {
+  if (!preimage.exists) {
+    await fsExtra.remove(artifactPath);
+    return;
+  }
+  await fsExtra.outputFile(artifactPath, preimage.contents);
+}
+
+async function publishWorkspaceContractArtifacts(input: {
+  workspacePath: string;
+  contractPath: string;
+  contract: WorkspaceContract;
+  now?: Date;
+}): Promise<void> {
+  const { buildWorkspaceRegistrySummary, WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH } =
+    await import('./workspace-registry-summary.js');
+  const summary = await buildWorkspaceRegistrySummary(input.workspacePath, {
+    now: input.now,
+    contract: input.contract,
+  });
+
+  // `workspace sync` is part of the pre-model preparation path. Rewriting the
+  // canonical inputs solely to advance generatedAt makes the chain observe its
+  // own execution as a workspace change. When both durable projections are
+  // already semantically current, preserve their bytes and timestamps.
+  const summaryPath = resolveWorkspaceArtifactPath(
+    input.workspacePath,
+    WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH
+  );
+  const semanticPayload = (value: unknown): string => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return JSON.stringify(value);
+    }
+    const { generatedAt: _generatedAt, ...rest } = value as Record<string, unknown>;
+    return JSON.stringify(rest);
+  };
+  if ((await fsExtra.pathExists(input.contractPath)) && (await fsExtra.pathExists(summaryPath))) {
+    const [currentContract, currentSummary] = await Promise.all([
+      fsExtra.readJson(input.contractPath),
+      fsExtra.readJson(summaryPath),
+    ]);
+    if (
+      semanticPayload(currentContract) === semanticPayload(input.contract) &&
+      semanticPayload(currentSummary) === semanticPayload(summary)
+    ) {
+      return;
+    }
+  }
+
+  // Validate both candidates before either canonical artifact is replaced.
+  assertWorkspaceArtifactContract(WORKSPACE_CONTRACT_PATH, input.contract);
+  assertWorkspaceArtifactContract(WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH, summary);
+
+  await withWorkspaceArtifactLock(input.workspacePath, WORKSPACE_CONTRACT_PATH, async () => {
+    const [contractPreimage, summaryPreimage] = await Promise.all([
+      captureArtifactPreimage(input.contractPath),
+      captureArtifactPreimage(summaryPath),
+    ]);
+
+    try {
+      if (
+        input.contractPath ===
+        resolveWorkspaceArtifactPath(input.workspacePath, WORKSPACE_CONTRACT_PATH)
+      ) {
+        await writeWorkspaceArtifactJson(
+          input.workspacePath,
+          WORKSPACE_CONTRACT_PATH,
+          input.contract
+        );
+      } else {
+        await fsExtra.ensureDir(path.dirname(input.contractPath));
+        await fsExtra.writeJson(input.contractPath, input.contract, { spaces: 2 });
+      }
+      if (process.env.WORKSPAI_TEST_FAIL_WORKSPACE_REGISTRY_PUBLISH === '1') {
+        throw new Error('Injected workspace registry summary publication failure.');
+      }
+      await writeWorkspaceArtifactJson(
+        input.workspacePath,
+        WORKSPACE_REGISTRY_SUMMARY_RELATIVE_PATH,
+        summary
+      );
+    } catch (error) {
+      const restorations = await Promise.allSettled([
+        restoreArtifactPreimage(input.contractPath, contractPreimage),
+        restoreArtifactPreimage(summaryPath, summaryPreimage),
+      ]);
+      const restorationFailures = restorations.filter(
+        (result): result is PromiseRejectedResult => result.status === 'rejected'
+      );
+      if (restorationFailures.length > 0) {
+        throw new AggregateError(
+          [error, ...restorationFailures.map((result) => result.reason)],
+          'Workspace contract publication failed and rollback was incomplete.'
+        );
+      }
+      throw error;
+    }
+  });
 }
 
 export async function readWorkspaceContract(input: {
@@ -665,9 +808,18 @@ export async function buildWorkspaceContractGraph(input: {
 export async function verifyWorkspaceContract(input: {
   workspacePath: string;
   contractPath?: string;
+  contract?: WorkspaceContract;
   strict?: boolean;
 }): Promise<WorkspaceContractVerificationResult> {
-  const { contractPath, contract } = await readWorkspaceContract(input);
+  const loaded = input.contract
+    ? {
+        contractPath:
+          input.contractPath ??
+          resolveWorkspaceArtifactPath(input.workspacePath, WORKSPACE_CONTRACT_PATH),
+        contract: input.contract,
+      }
+    : await readWorkspaceContract(input);
+  const { contractPath, contract } = loaded;
   const violations: string[] = [];
   const checks: WorkspaceContractVerificationResult['checks'] = [];
 
@@ -821,13 +973,14 @@ export async function verifyWorkspaceContract(input: {
     });
   }
 
-  return {
+  const result: WorkspaceContractVerificationResult = {
     status: violations.length > 0 ? 'failed' : 'passed',
     contractPath,
     projectCount: Array.isArray(contract.projects) ? contract.projects.length : 0,
     checks,
     violations,
   };
+  return result;
 }
 
 export async function writeWorkspaceContractVerifyEvidence(input: {

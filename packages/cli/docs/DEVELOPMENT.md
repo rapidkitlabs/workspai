@@ -6,7 +6,7 @@ Maintainer reference for the Workspai CLI (Node/TypeScript bridge to Python Core
 
 ## Prerequisites
 
-- Node.js `>= 20`
+- Node.js `>=20.19.0`
 - npm — see [PACKAGE_MANAGER_POLICY.md](./PACKAGE_MANAGER_POLICY.md)
 
 ```bash
@@ -18,7 +18,7 @@ npm run build
 
 ```bash
 npm run validate
-npm run validate:contracts
+npm run contracts:validate
 npm run test:drift
 ```
 
@@ -30,11 +30,11 @@ User defaults: [config-file-guide.md](./config-file-guide.md) (`$HOME/.workspair
 
 Priority: CLI flags > environment variables > config file > defaults.
 
-### Test mode (local Core)
+### Local Core checkout
 
 ```bash
 export WORKSPAI_DEV_PATH=/path/to/local/rapidkit-core
-npx workspai my-workspace --test-mode
+npx workspai my-workspace
 ```
 
 `RAPIDKIT_DEV_PATH` remains supported as a legacy fallback.
@@ -47,7 +47,7 @@ npx workspai create project fastapi.standard my-api --output .
 npx workspai create project nextjs my-web --yes
 
 # Workspace mode
-npx workspai create workspace my-workspace --yes --profile polyglot
+npx workspai create workspace my-workspace --here --yes --profile polyglot
 cd my-workspace
 npx workspai bootstrap --profile polyglot
 npx workspai create project

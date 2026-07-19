@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -108,6 +109,7 @@ describe('npm publish contract', () => {
     const prepack = fs.readFileSync(path.join(process.cwd(), enterprisePrepackScript), 'utf8');
     expect(prepack).toContain("'..', '..', 'node_modules', 'tsup', 'dist', 'cli-default.js'");
     expect(prepack).toContain('scripts/prepare-mock-embeddings.mjs');
+    expect(prepack).toContain("['scripts/generate-shared-contracts.mjs', '--check']");
     expect(prepack).not.toContain('sync-legacy-rapidkit-package');
     expect(prepack).toContain('scripts/verify-package-cli.mjs');
     expect(prepack).toContain(enterpriseSmokeScript);
@@ -116,6 +118,40 @@ describe('npm publish contract', () => {
     expect(smoke).toContain('REQUIRED_PACKAGE_FILES');
     expect(smoke).toContain('assertPackageFilesPolicy(missingRequired)');
     expect(smoke).toContain('ignored generated asset');
+  });
+
+  it('keeps npm-only contributor enforcement out of consumer install lifecycles', () => {
+    expect(packageJson.scripts?.preinstall).toBeUndefined();
+    expect(packageJson.scripts?.['check:package-manager']).toBe(
+      'node scripts/enforce-package-manager.cjs'
+    );
+    expect(packageJson.scripts?.validate).toContain('run check:package-manager');
+    expect(packageJson.scripts?.quality).toContain('run check:package-manager');
+
+    const policyScript = path.join(process.cwd(), 'scripts/enforce-package-manager.cjs');
+    for (const [userAgent, expectedStatus] of [
+      ['npm/10.8.2 node/v20.19.0 linux x64 workspaces/false', 0],
+      ['yarn/1.22.22 npm/? node/v20.19.0 linux x64', 1],
+      ['pnpm/9.15.0 npm/? node/v20.19.0 linux x64', 1],
+    ] as const) {
+      const result = spawnSync(process.execPath, [policyScript], {
+        env: { ...process.env, npm_config_user_agent: userAgent },
+      });
+      expect(result.status, userAgent).toBe(expectedStatus);
+    }
+  });
+
+  it('builds dist once before Vitest instead of rebuilding in test workers', () => {
+    expect(packageJson.scripts?.['test:prebuild']).toBe('tsup');
+    expect(packageJson.scripts?.test).toBe('corepack npm run test:prebuild && vitest run');
+
+    const distHelper = fs.readFileSync(
+      path.join(process.cwd(), 'src/__tests__/helpers/dist.ts'),
+      'utf8'
+    );
+    expect(distHelper).not.toContain('spawnSync');
+    expect(distHelper).not.toContain('sourcePaths');
+    expect(distHelper).not.toContain('BUILD_LOCK_PATH');
   });
 
   it('keeps package security gates runnable in Corepack-only environments', () => {
@@ -187,6 +223,17 @@ describe('npm publish contract', () => {
     expect(releaseScript).toContain('publish --dry-run --access public --workspace wspai');
     expect(releaseScript).toContain('publish --access public --workspace workspai');
     expect(releaseScript).toContain('publish --access public --workspace wspai');
+
+    const bump = releaseScript.indexOf('version "$BUMP" --no-git-tag-version');
+    const generate = releaseScript.indexOf('run generate:contracts');
+    const validate = releaseScript.indexOf('run validate');
+    const dryRun = releaseScript.indexOf('publish --dry-run --access public --workspace workspai');
+    const commit = releaseScript.indexOf('git commit -S -m "chore(release): $TAG"');
+    expect(bump).toBeGreaterThan(-1);
+    expect(generate).toBeGreaterThan(bump);
+    expect(validate).toBeGreaterThan(generate);
+    expect(dryRun).toBeGreaterThan(validate);
+    expect(commit).toBeGreaterThan(dryRun);
   });
 
   it('publishes README image assets referenced from npm-safe raw GitHub URLs', () => {

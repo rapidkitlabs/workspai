@@ -41,6 +41,7 @@ import {
 } from './workspace-graph-freshness.js';
 import {
   WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS,
   WORKSPACE_INTELLIGENCE_ARTIFACTS,
 } from './contracts/workspace-intelligence-runtime-registry.js';
 import { assertJsonSchemaContract } from './utils/json-schema-contract.js';
@@ -296,9 +297,10 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function evaluateDoctorEvidence(payload: Record<string, unknown>): EvidenceEvaluation {
   const healthScore = asRecord(payload.healthScore);
+  const summary = asRecord(payload.summary);
   const errors = typeof healthScore?.errors === 'number' ? healthScore.errors : 0;
   const percent = typeof healthScore?.percent === 'number' ? healthScore.percent : undefined;
-  if (errors > 0) {
+  if (errors > 0 || summary?.hasSystemErrors === true) {
     return { status: 'fail', message: `Doctor evidence reports ${errors} error(s).` };
   }
   if (typeof percent === 'number' && percent < 70) {
@@ -335,15 +337,14 @@ function evaluateContractVerifyEvidence(payload: Record<string, unknown>): Evide
 
 function evaluateAnalyzeEvidence(payload: Record<string, unknown>): EvidenceEvaluation {
   const summary = asRecord(payload.summary);
-  const blocking = summary?.blocking === true || payload.blocking === true;
-  if (blocking) {
+  const verdict = typeof summary?.verdict === 'string' ? summary.verdict : undefined;
+  if (verdict === 'blocked') {
     return { status: 'fail', message: 'Analyze evidence reports blocking findings.' };
   }
-  const status = typeof summary?.status === 'string' ? summary.status : undefined;
-  if (status === 'warn' || status === 'warning') {
+  if (verdict === 'needs-attention') {
     return { status: 'warn', message: 'Analyze evidence reports warnings.' };
   }
-  return { status: 'pass', message: 'Analyze evidence is present.' };
+  return { status: 'pass', message: 'Analyze evidence is ready.' };
 }
 
 function evaluateDoctorFixEvidence(payload: Record<string, unknown>): EvidenceEvaluation {
@@ -534,6 +535,25 @@ function staleEvidenceMessage(
   return null;
 }
 
+function evidenceContractForCommand(command: WorkspaceImpactCommand): string | undefined {
+  if (command.id === 'workspace.doctor') {
+    return WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS.doctor;
+  }
+  if (command.id === 'workspace.readiness') {
+    return WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS.readiness;
+  }
+  if (command.id === 'workspace.contract.verify') {
+    return WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS.contractVerify;
+  }
+  if (command.id === 'workspace.analyze') {
+    return WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS.analyze;
+  }
+  if (command.id === 'workspace.pipeline') {
+    return 'contracts/pipeline-last-run.v1.json';
+  }
+  return undefined;
+}
+
 async function evaluateCommandEvidence(
   command: WorkspaceImpactCommand,
   workspacePath: string,
@@ -578,7 +598,23 @@ async function evaluateCommandEvidence(
     };
   }
 
-  const payload = asRecord(await fsExtra.readJson(existingEvidencePath));
+  let rawPayload: unknown;
+  try {
+    rawPayload = await fsExtra.readJson(existingEvidencePath);
+  } catch (error) {
+    return {
+      id: command.id,
+      label: command.label,
+      scope: command.scope,
+      project: command.project,
+      command,
+      status: 'fail',
+      required: command.required,
+      evidencePath: relativeEvidencePath,
+      message: `Evidence report is unreadable JSON: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  const payload = asRecord(rawPayload);
   if (!payload) {
     return {
       id: command.id,
@@ -591,6 +627,25 @@ async function evaluateCommandEvidence(
       evidencePath: relativeEvidencePath,
       message: 'Evidence report is not a JSON object.',
     };
+  }
+
+  const evidenceContract = evidenceContractForCommand(command);
+  if (evidenceContract) {
+    try {
+      assertJsonSchemaContract(payload, evidenceContract, `${command.label} evidence`);
+    } catch (error) {
+      return {
+        id: command.id,
+        label: command.label,
+        scope: command.scope,
+        project: command.project,
+        command,
+        status: 'fail',
+        required: command.required,
+        evidencePath: relativeEvidencePath,
+        message: `Evidence report is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
   }
 
   let evaluation: EvidenceEvaluation;
@@ -718,7 +773,12 @@ function computeVerifySummary(
   if (blockingReasons.length > 0 || graphGate.blockingReasons.length > 0) {
     verdict = 'blocked';
     exitCode = 2;
-  } else if (stepsWarn > 0 || requiredMissing > 0 || graphGate.needsAttention) {
+  } else if (
+    stepsWarn > 0 ||
+    steps.some((step) => !step.required && step.status === 'fail') ||
+    requiredMissing > 0 ||
+    graphGate.needsAttention
+  ) {
     verdict = 'needs-attention';
     exitCode = 1;
   }
@@ -789,17 +849,23 @@ export function computeAffectedSubgraphGate(
       return;
     }
     const failed = ownSteps.filter((step) => step.status === 'fail');
+    const requiredFailed = failed.filter((step) => step.required);
     const missing = ownSteps.filter((step) => step.status === 'missing');
     const requiredMissing = missing.filter((step) => step.required);
     const hasEvidence = ownSteps.some((step) => step.status === 'pass' || step.status === 'warn');
 
-    if (failed.length > 0) {
+    if (requiredFailed.length > 0) {
       uncovered.push(name);
       blockingReasons.push(
-        `graph.subgraph.${name}: ${relationship} has failed verification evidence (${failed
+        `graph.subgraph.${name}: ${relationship} has failed verification evidence (${requiredFailed
           .map((step) => step.id)
           .join(', ')}).`
       );
+      return;
+    }
+    if (failed.length > 0) {
+      uncovered.push(name);
+      needsAttention = true;
       return;
     }
     if (requiredMissing.length > 0) {
@@ -989,6 +1055,30 @@ export async function buildWorkspaceVerify(
       })
     : model;
   const impactDriftReasons: string[] = [];
+  if (impactFromDisk) {
+    const derivedImpact = await buildWorkspaceImpact({
+      workspacePath,
+      fromPath: impact.diff.fromRef,
+      diff: impact.diff,
+      scope: options.scope,
+      now: options.now,
+    });
+    const persistedSemantics = [
+      impact.affectedProjects,
+      impact.transitiveImpact,
+      impact.verificationPlan,
+    ];
+    const derivedSemantics = [
+      derivedImpact.affectedProjects,
+      derivedImpact.transitiveImpact,
+      derivedImpact.verificationPlan,
+    ];
+    if (JSON.stringify(persistedSemantics) !== JSON.stringify(derivedSemantics)) {
+      impactDriftReasons.push(
+        'workspace.impact: Persisted impact semantics do not match the impact re-derived from the embedded diff. Regenerate diff and impact.'
+      );
+    }
+  }
   if (impactFromDisk && hashWorkspaceModel(currentModel) !== impact.diff.toHash) {
     impactDriftReasons.push(
       'workspace.impact: Impact evidence is stale because the current workspace model no longer matches the embedded model. Regenerate diff and impact.'

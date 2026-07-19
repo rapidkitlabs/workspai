@@ -619,11 +619,12 @@
       ]
     },
     {
-      "invocation": "readiness --json",
-      "summary": "Emit the release-readiness verdict, blockers, and evidence references as structured JSON.",
+      "invocation": "readiness --json --skip-verify",
+      "summary": "Refresh pre-verification readiness evidence without consuming a verify artifact from an earlier chain run.",
       "canonicalArgv": [
         "readiness",
-        "--json"
+        "--json",
+        "--skip-verify"
       ]
     },
     {
@@ -972,6 +973,23 @@
       ]
     },
     {
+      "invocation": "workspace intelligence",
+      "summary": "Run the canonical Workspace Intelligence dependency graph as one evidence-coherent operation.",
+      "canonicalArgv": [
+        "workspace",
+        "intelligence"
+      ]
+    },
+    {
+      "invocation": "workspace intelligence run",
+      "summary": "Execute every required Workspace Intelligence stage in dependency order and persist one authoritative run result.",
+      "canonicalArgv": [
+        "workspace",
+        "intelligence",
+        "run"
+      ]
+    },
+    {
       "invocation": "workspace list",
       "summary": "List registered workspaces through the canonical workspace discovery boundary.",
       "canonicalArgv": [
@@ -1202,7 +1220,8 @@
       "producerCommands": [
         [
           "readiness",
-          "--json"
+          "--json",
+          "--skip-verify"
         ]
       ]
     },
@@ -1311,6 +1330,18 @@
           "release-blocked",
           "--json",
           "--write"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-intelligence-run-last-run.json",
+      "schemaVersion": "workspace-intelligence-run.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-intelligence-run.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "intelligence",
+          "run"
         ]
       ]
     },
@@ -1479,6 +1510,7 @@
     "sync",
     "registry",
     "foundation",
+    "intelligence",
     "model",
     "snapshot",
     "diff",
@@ -1505,6 +1537,7 @@
     "init"
   ],
   "workspaceIntelligenceSubcommands": [
+    "intelligence",
     "model",
     "snapshot",
     "diff",
@@ -1629,7 +1662,8 @@
       "id": "readiness-evidence",
       "argv": [
         "readiness",
-        "--json"
+        "--json",
+        "--skip-verify"
       ],
       "produces": [
         {
@@ -1748,7 +1782,8 @@
       "--archive-compression <mode>",
       "--max-download-size <size>",
       "--max-expanded-size <size>",
-      "--download-timeout-ms <ms>"
+      "--download-timeout-ms <ms>",
+      "--allow-private-network"
     ]
   },
   "moduleSuggestionFrameworks": [

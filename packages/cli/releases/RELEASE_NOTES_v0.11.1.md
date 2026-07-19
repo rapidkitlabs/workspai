@@ -133,7 +133,7 @@ Special thanks to all contributors who helped make this release possible!
 
 ## 📋 Full Changelog
 
-See [CHANGELOG.md](./CHANGELOG.md) for complete details.
+See [CHANGELOG.md](../CHANGELOG.md) for complete details.
 
 ---
 

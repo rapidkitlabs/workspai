@@ -20,7 +20,11 @@ function withoutGitRepositoryEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-function runGit(workspacePath: string, args: string[]): { ok: boolean; stdout: string } {
+function runGit(
+  workspacePath: string,
+  args: string[],
+  options?: { preserveWhitespace?: boolean }
+): { ok: boolean; stdout: string } {
   const result = spawnSync('git', args, {
     cwd: workspacePath,
     env: withoutGitRepositoryEnv(),
@@ -30,7 +34,8 @@ function runGit(workspacePath: string, args: string[]): { ok: boolean; stdout: s
   if (result.status !== 0) {
     return { ok: false, stdout: '' };
   }
-  return { ok: true, stdout: (result.stdout ?? '').trim() };
+  const stdout = result.stdout ?? '';
+  return { ok: true, stdout: options?.preserveWhitespace ? stdout : stdout.trim() };
 }
 
 /**
@@ -40,6 +45,9 @@ function runGit(workspacePath: string, args: string[]): { ok: boolean; stdout: s
  */
 export function isGeneratedWorkspaceRuntimePath(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, '/').replace(/^\.\//, '');
+  if (normalized === '.workspai/AGENT-GROUNDING.md') {
+    return true;
+  }
   return ['.workspai/reports/', '.workspai/cache/', '.rapidkit/reports/', '.rapidkit/cache/'].some(
     (prefix) => normalized.startsWith(prefix)
   );
@@ -102,7 +110,9 @@ export function collectGitWorkingTreeObservation(
 
   const branch = runGit(workspacePath, ['rev-parse', '--abbrev-ref', 'HEAD']);
   const commit = runGit(workspacePath, ['rev-parse', 'HEAD']);
-  const status = runGit(workspacePath, ['status', '--porcelain=v1', '--untracked-files=all']);
+  const status = runGit(workspacePath, ['status', '--porcelain=v1', '--untracked-files=all'], {
+    preserveWhitespace: true,
+  });
   const parsed = parsePorcelainStatus(status.stdout);
   const dirty =
     parsed.changedFiles.length > 0 ||

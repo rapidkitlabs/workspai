@@ -6,9 +6,10 @@ import { describe, expect, it } from 'vitest';
 
 import { ensureDistBuilt } from './helpers/dist';
 
-function runCli(dist: string, args: string[], cwd: string) {
+function runCli(dist: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv) {
   const childEnv = {
     ...process.env,
+    ...env,
     CI: '1',
   };
   delete childEnv.VITEST;
@@ -50,6 +51,113 @@ function isLocalSpawnBlocked(error: Error | undefined): boolean {
 }
 
 describe('workspace intelligence CLI chain', () => {
+  it('executes the real unified runner and persists its exact contract on first and subsequent runs', () => {
+    const dist = ensureDistBuilt('workspace intelligence unified runner');
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'workspai-wi-runner-'));
+    const workspaceDir = path.join(tempDir, 'workspace');
+    const homeDir = path.join(tempDir, 'home');
+    const projectDir = path.join(workspaceDir, 'services', 'api');
+
+    try {
+      fs.mkdirSync(path.join(workspaceDir, '.workspai'), { recursive: true });
+      fs.mkdirSync(path.join(projectDir, '.workspai'), { recursive: true });
+      fs.mkdirSync(homeDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(workspaceDir, '.workspai-workspace'),
+        JSON.stringify({
+          signature: 'RAPIDKIT_WORKSPACE',
+          createdBy: 'workspai',
+          version: 'test',
+          createdAt: '2026-07-18T00:00:00.000Z',
+          name: 'workspace',
+        })
+      );
+      fs.writeFileSync(
+        path.join(workspaceDir, '.workspai', 'workspace.json'),
+        JSON.stringify({ workspace_name: 'workspace', profile: 'enterprise' })
+      );
+      fs.writeFileSync(
+        path.join(projectDir, '.workspai', 'project.json'),
+        JSON.stringify({ name: 'api', runtime: 'python', kit_name: 'fastapi.standard' })
+      );
+      fs.writeFileSync(path.join(projectDir, 'pyproject.toml'), '[project]\nname = "api"\n');
+
+      const expectedStages = [
+        'model',
+        'diff',
+        'impact',
+        'doctor-evidence',
+        'contract-evidence',
+        'analyze-evidence',
+        'readiness-evidence',
+        'verify',
+        'context',
+        'agent-sync',
+        'explain',
+      ];
+      const execute = () =>
+        runCli(
+          dist,
+          ['workspace', 'intelligence', 'run', '--for-agent', 'codex', '--json'],
+          workspaceDir,
+          { HOME: homeDir }
+        );
+
+      const first = execute();
+      if (isLocalSpawnBlocked(first.error)) {
+        console.warn(
+          `Skipping unified runner: local sandbox blocked spawn (${first.error.message}).`
+        );
+        return;
+      }
+      expect([0, 2]).toContain(first.status);
+      const firstReport = parseJsonOutput<{
+        schemaVersion: string;
+        baselineCreated: boolean;
+        preflight: Array<{ id: string; status: string; result: string }>;
+        status: string;
+        exitCode: number;
+        stages: Array<{ id: string; status: string; artifacts: string[]; exitCode: number }>;
+        artifactPath: string;
+      }>(first.output);
+      expect(firstReport.schemaVersion).toBe('workspace-intelligence-run.v1');
+      expect(firstReport.baselineCreated).toBe(true);
+      expect(firstReport.preflight).toMatchObject([
+        { id: 'sync', status: 'passed', result: 'synchronized' },
+        { id: 'baseline', status: 'passed', result: 'created' },
+      ]);
+      expect(firstReport.stages.map((stage) => stage.id)).toEqual(expectedStages);
+      expect(firstReport.stages).toHaveLength(11);
+      expect(firstReport.exitCode).toBe(first.status);
+
+      const reportPath = path.join(workspaceDir, firstReport.artifactPath);
+      expect(fs.existsSync(reportPath)).toBe(true);
+      expect(JSON.parse(fs.readFileSync(reportPath, 'utf8'))).toEqual(firstReport);
+      for (const stage of firstReport.stages) {
+        for (const artifact of stage.artifacts) {
+          expect(fs.existsSync(path.join(workspaceDir, artifact)), `${stage.id}: ${artifact}`).toBe(
+            true
+          );
+        }
+      }
+
+      const second = execute();
+      expect([0, 2]).toContain(second.status);
+      const secondReport = parseJsonOutput<typeof firstReport>(second.output);
+      expect(secondReport.baselineCreated).toBe(false);
+      expect(secondReport.preflight[1]).toMatchObject({
+        id: 'baseline',
+        status: 'passed',
+        result: 'reused',
+      });
+      expect(secondReport.stages.map((stage) => stage.id)).toEqual(expectedStages);
+      expect(secondReport.exitCode).toBe(second.status);
+      expect(JSON.parse(fs.readFileSync(reportPath, 'utf8'))).toEqual(secondReport);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }, 120_000);
+
   it('runs model -> snapshot -> diff -> impact -> context for an observed frontend workspace', () => {
     const dist = ensureDistBuilt('workspace intelligence CLI chain');
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rk-wi-cli-chain-'));

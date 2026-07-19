@@ -191,8 +191,43 @@
         "path": ".workspai/reports/workspace-explain-last-run.json",
         "schemaVersion": "workspace-explain.v1",
         "schemaContract": "contracts/workspace-intelligence/workspace-explain.v1.json"
+      },
+      {
+        "id": "intelligenceRun",
+        "path": ".workspai/reports/workspace-intelligence-run-last-run.json",
+        "schemaVersion": "workspace-intelligence-run.v1",
+        "schemaContract": "contracts/workspace-intelligence/workspace-intelligence-run.v1.json"
       }
     ]
+  },
+  "executionEnvelope": {
+    "rule": "Sync and baseline resolution are deterministic execution prerequisites, not canonical intelligence stages; every run reports them separately and preserves the exact canonical stage sequence.",
+    "operations": [
+      {
+        "id": "sync",
+        "executionPoint": "before:model",
+        "artifacts": [
+          ".workspai/workspace.contract.json",
+          ".workspai/workspace-registry.v1.json"
+        ],
+        "failurePolicy": "stop-and-report",
+        "purpose": "Reconcile portable workspace inventory and contract inputs before modeling."
+      },
+      {
+        "id": "baseline",
+        "executionPoint": "after:model-before:diff",
+        "artifacts": [
+          ".workspai/reports/workspace-model-snapshot.json"
+        ],
+        "failurePolicy": "stop-and-report",
+        "purpose": "Create an initial structural baseline when absent or reuse the existing baseline before Diff."
+      }
+    ],
+    "report": {
+      "artifact": ".workspai/reports/workspace-intelligence-run-last-run.json",
+      "schemaVersion": "workspace-intelligence-run.v1",
+      "invariant": "The report must preserve exact preflight and stage order, registry-owned artifacts, failure propagation, and aggregate status/exit semantics."
+    }
   },
   "boundaries": {
     "inputs": [
@@ -853,7 +888,8 @@
       "label": "Readiness Evidence",
       "command": [
         "readiness",
-        "--json"
+        "--json",
+        "--skip-verify"
       ],
       "consumes": [
         "doctor, analysis, runtime, and release signals"

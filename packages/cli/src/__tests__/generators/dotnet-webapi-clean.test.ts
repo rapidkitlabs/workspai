@@ -143,5 +143,28 @@ describe('generateDotnetWebApiCleanKit', () => {
     expect(ciWorkflow).toContain('actions/setup-dotnet@v4');
     expect(ciWorkflow).toContain('dotnet test');
     expect(ciWorkflow).toContain('windows-latest');
+    expect(ciWorkflow).toContain(
+      'dotnet build tests/billing-api.Tests.csproj -c Release --no-restore'
+    );
+    expect(ciWorkflow).toContain(
+      'dotnet test tests/billing-api.Tests.csproj -c Release --no-build'
+    );
+  });
+
+  it('falls back to net8.0 when an inconsistent target framework is requested', async () => {
+    const projectPath = path.join(testDir, 'framework-api');
+
+    await generateDotnetWebApiCleanKit(projectPath, {
+      project_name: 'framework-api',
+      target_framework: 'net9.0',
+      skipGit: true,
+    });
+
+    const csproj = await fs.readFile(path.join(projectPath, 'src/framework-api.csproj'), 'utf8');
+    const projectJson = JSON.parse(
+      await fs.readFile(path.join(projectPath, '.workspai/project.json'), 'utf8')
+    );
+    expect(csproj).toContain('<TargetFramework>net8.0</TargetFramework>');
+    expect(projectJson.target_framework).toBe('net8.0');
   });
 });

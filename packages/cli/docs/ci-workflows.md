@@ -12,6 +12,13 @@ Map of GitHub Actions workflows in this repository. Use this when editing CI to 
 | E2E smoke                | `.github/workflows/e2e-smoke.yml`                | Focused bridge regression smoke                                           |
 | Frontend generator smoke | `.github/workflows/frontend-generator-smoke.yml` | Official frontend generator drift gate                                    |
 | Security                 | `.github/workflows/security.yml`                 | Security scanning and policy checks                                       |
+| Manual npm release       | `.github/workflows/release-npm-manual.yml`       | Maintainer-only release gate and publish workflow                          |
+| Contributor onboarding   | `.github/workflows/contributor-onboarding.yml`   | Accepted-contributor onboarding automation                                |
+| Welcome                  | `.github/workflows/welcome.yml`                  | First-issue and first-contribution messages                                |
+
+The release workflow requires `Frontend Generator Smoke` for the exact release
+SHA. Maintainers must dispatch that workflow against the intended release ref
+before starting a manual npm release if no matching run exists.
 
 ## Consumer workspace: agent grounding CI
 
@@ -22,13 +29,20 @@ For Workspai **consumer workspaces** (not this CLI repo), use the copy-paste tem
 Minimal job:
 
 ```yaml
-- run: npx workspai pipeline --json --strict
-- run: npx workspai workspace agent-sync --write --refresh-context --strict --json --preset enterprise
+- run: npx workspai workspace intelligence run --for-agent codex --strict --json
+- run: npx workspai pipeline --json --strict --no-agent-sync
 - run: node ./node_modules/workspai/scripts/check-agent-customization-drift.mjs --workspace .
 ```
 
-`pipeline` writes governance evidence and **auto-syncs** agent grounding (`AGENTS.md`, Copilot, Cursor, Claude) unless `RAPIDKIT_NO_AGENT_SYNC=1` or `--no-agent-sync`.
-Run the drift check after `agent-sync --write` so CI fails when generated agent customization files are stale.
+The canonical runner owns ordered evidence and agent grounding. The separate
+pipeline uses `--no-agent-sync` so it cannot rewrite those surfaces afterward.
+Run the drift check last so CI fails when generated customization files are stale.
+Runner exit `1` is a hard execution failure; exit `2` is a completed but
+evidence-blocked run and must also block release. When evidence must be uploaded
+after either outcome, follow the `continue-on-error` plus final-failure pattern
+in the template. See
+[Unified Workspace Intelligence Runner](./workspace-intelligence-runner.md) for
+the exact preflight, 11-stage, artifact, and exit contract.
 
 ## Local validation scripts
 
@@ -48,7 +62,7 @@ Run the drift check after `agent-sync --write` so CI fails when generated agent 
 npm run validate
 npm run validate:docs
 npm run security
-npm run security
+npm run contracts:validate
 npm run test:runtime-matrix:full
 ```
 

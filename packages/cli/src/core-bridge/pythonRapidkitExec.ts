@@ -662,12 +662,14 @@ async function resolveRapidkitRunner(cwd?: string): Promise<RapidkitRunner> {
 async function pickSystemPython(): Promise<PythonCommand | null> {
   for (const cmd of pythonCommandCandidates()) {
     try {
-      await execa(cmd, pythonLauncherArgs(cmd, ['--version']), {
+      const probe = await execa(cmd, pythonLauncherArgs(cmd, ['--version']), {
         reject: false,
         stdio: 'pipe',
         timeout: 2000,
       });
-      return cmd;
+      if (probe.exitCode === 0) {
+        return cmd;
+      }
     } catch {
       // try next
     }
@@ -680,11 +682,15 @@ async function ensureBridgeVenvFromCandidates(): Promise<string> {
 
   for (const cmd of pythonCommandCandidates()) {
     try {
-      await execa(cmd, pythonLauncherArgs(cmd, ['--version']), {
+      const probe = await execa(cmd, pythonLauncherArgs(cmd, ['--version']), {
         reject: false,
         stdio: 'pipe',
         timeout: 2000,
       });
+      if (probe.exitCode !== 0) {
+        lastError = new Error(`${cmd} --version exited with code ${probe.exitCode}`);
+        continue;
+      }
     } catch (err) {
       lastError = err;
       continue;

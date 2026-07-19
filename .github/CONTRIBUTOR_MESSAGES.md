@@ -4,7 +4,7 @@
 
 Hi [Name],
 
-Welcome officially to RapidKit 🚀
+Welcome officially to Workspai.
 
 To help you get started smoothly, here are a few recommended first steps:
 
@@ -12,7 +12,7 @@ To help you get started smoothly, here are a few recommended first steps:
 - Explore open issues and choose one that matches your interests or experience level
 - Comment on the issue before starting work so maintainers can support and align with you
 
-If you have ideas, improvements, or questions, feel free to open a discussion anytime — contributor feedback is an important part of RapidKit’s evolution.
+If you have ideas, improvements, or questions, feel free to open a discussion anytime; contributor feedback is an important part of Workspai's evolution.
 
 We’re excited to collaborate with you and look forward to your first contribution.
 
@@ -23,7 +23,7 @@ The Workspai Team
 
 Hi [Name],
 
-Thank you for your first contribution to RapidKit 🎉
+Thank you for your first contribution to Workspai.
 
 We really appreciate the time and effort you’ve invested. Contributions like yours help improve the ecosystem for developers worldwide.
 
@@ -38,13 +38,13 @@ The Workspai Team
 
 Hi [Name],
 
-We wanted to take a moment to thank you for your continued contributions to RapidKit.
+We wanted to take a moment to thank you for your continued contributions to Workspai.
 
 Your involvement is helping shape the future of the project, and we truly value your consistency and collaboration within the community.
 
 As you continue contributing, you’re welcome to participate in architectural discussions, propose improvements, or take ownership of areas that interest you.
 
-We’re glad to have you as part of the RapidKit ecosystem 🚀
+We're glad to have you as part of the Workspai ecosystem.
 
 Best regards,
 The Workspai Team

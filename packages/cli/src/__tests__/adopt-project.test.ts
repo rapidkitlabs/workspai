@@ -2,9 +2,13 @@ import os from 'os';
 import path from 'path';
 
 import fsExtra from 'fs-extra';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { adoptProjectIntoWorkspace, cleanupAdoptedProjectImport } from '../adopt-project';
+import {
+  adoptProjectIntoWorkspace,
+  captureAdoptProjectRollbackSnapshot,
+  cleanupAdoptedProjectImport,
+} from '../adopt-project';
 import { readImportedProjectsRegistry } from '../imported-projects-registry';
 import { buildWorkspaceModel } from '../workspace-model';
 import { syncWorkspaceContract } from '../utils/workspace-contract';
@@ -27,7 +31,24 @@ async function makeWorkspace(): Promise<string> {
   return workspacePath;
 }
 
+async function tryCreateDirectorySymlink(targetPath: string, linkPath: string): Promise<boolean> {
+  try {
+    await fsExtra.symlink(targetPath, linkPath, 'dir');
+    return true;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      ['EACCES', 'EPERM', 'ENOSYS'].includes(String(error.code))
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 afterEach(async () => {
+  vi.restoreAllMocks();
   while (createdPaths.length > 0) {
     const target = createdPaths.pop();
     if (target) {
@@ -286,38 +307,187 @@ describe('adopt-project', () => {
     ).rejects.toThrow('Adopt source cannot be the workspace root itself.');
   });
 
-  it('restores rollback project metadata to the canonical Workspai path only', async () => {
+  it('fails closed when canonical authoritative project metadata is malformed', async () => {
     const workspacePath = await makeWorkspace();
-    const projectPath = await makeTempDir('rapidkit-adopt-rollback-source-');
-    const previousProjectJson = {
-      name: 'external-api',
-      runtime: 'node',
-      framework: 'express',
-    };
-
+    const projectPath = await makeTempDir('rapidkit-adopt-malformed-source-');
     await fsExtra.ensureDir(path.join(projectPath, '.workspai'));
-    await fsExtra.writeJson(path.join(projectPath, '.workspai', 'project.json'), {
-      ...previousProjectJson,
-      framework: 'nextjs',
+    await fsExtra.ensureDir(path.join(projectPath, '.rapidkit'));
+    await fsExtra.writeFile(path.join(projectPath, '.workspai', 'project.json'), '{bad json');
+    await fsExtra.writeJson(path.join(projectPath, '.rapidkit', 'project.json'), {
+      name: 'legacy-valid',
     });
-    await fsExtra.writeJson(path.join(projectPath, '.workspai', 'adopt.json'), {
-      temporary: true,
-    });
-    await fsExtra.writeJson(path.join(projectPath, '.workspai', 'adopt-readiness.json'), {
-      temporary: true,
-    });
-
-    await cleanupAdoptedProjectImport(workspacePath, projectPath, previousProjectJson);
 
     await expect(
-      fsExtra.readJson(path.join(projectPath, '.workspai', 'project.json'))
-    ).resolves.toEqual(previousProjectJson);
-    expect(await fsExtra.pathExists(path.join(projectPath, '.rapidkit', 'project.json'))).toBe(
+      adoptProjectIntoWorkspace({ workspacePath, source: projectPath, dryRun: true })
+    ).rejects.toThrow('Authoritative project metadata is malformed');
+  });
+
+  it('fails closed when legacy project metadata is authoritative and malformed', async () => {
+    const workspacePath = await makeWorkspace();
+    const projectPath = await makeTempDir('rapidkit-adopt-malformed-legacy-source-');
+    await fsExtra.ensureDir(path.join(projectPath, '.rapidkit'));
+    await fsExtra.writeFile(path.join(projectPath, '.rapidkit', 'project.json'), '[]');
+
+    await expect(
+      adoptProjectIntoWorkspace({ workspacePath, source: projectPath, dryRun: true })
+    ).rejects.toThrow('expected a JSON object');
+    expect(await fsExtra.pathExists(path.join(projectPath, '.workspai', 'project.json'))).toBe(
       false
     );
-    expect(await fsExtra.pathExists(path.join(projectPath, '.workspai', 'adopt.json'))).toBe(false);
+  });
+
+  it('restores exact canonical file preimages when an adoption metadata write fails', async () => {
+    const workspacePath = await makeWorkspace();
+    const projectPath = await makeTempDir('rapidkit-adopt-write-failure-source-');
+    const canonicalDir = path.join(projectPath, '.workspai');
+    const projectBytes = Buffer.from('{"name":"existing","custom":true}\n');
+    const adoptBytes = Buffer.from('preexisting adopt bytes\n');
+    const registryBytes = Buffer.from('{"version":1,"updatedAt":"before","projects":[]}\n');
+    await fsExtra.ensureDir(canonicalDir);
+    await fsExtra.writeFile(path.join(canonicalDir, 'project.json'), projectBytes);
+    await fsExtra.writeFile(path.join(canonicalDir, 'adopt.json'), adoptBytes);
+    await fsExtra.ensureDir(path.join(workspacePath, '.workspai'));
+    await fsExtra.writeFile(
+      path.join(workspacePath, '.workspai', 'imported-projects.json'),
+      registryBytes
+    );
+
+    const originalWriteJson = fsExtra.writeJson;
+    const readinessPath = path.join(canonicalDir, 'adopt-readiness.json');
+    vi.spyOn(fsExtra, 'writeJson').mockImplementation((async (
+      filePath: string,
+      ...args: unknown[]
+    ) => {
+      if (path.resolve(filePath) === readinessPath) {
+        throw new Error('forced readiness write failure');
+      }
+      return (originalWriteJson as (...params: unknown[]) => Promise<void>)(filePath, ...args);
+    }) as typeof fsExtra.writeJson);
+
+    await expect(adoptProjectIntoWorkspace({ workspacePath, source: projectPath })).rejects.toThrow(
+      'forced readiness write failure'
+    );
+    expect(await fsExtra.readFile(path.join(canonicalDir, 'project.json'))).toEqual(projectBytes);
+    expect(await fsExtra.readFile(path.join(canonicalDir, 'adopt.json'))).toEqual(adoptBytes);
+    expect(await fsExtra.pathExists(readinessPath)).toBe(false);
     expect(
-      await fsExtra.pathExists(path.join(projectPath, '.workspai', 'adopt-readiness.json'))
-    ).toBe(false);
+      await fsExtra.readFile(path.join(workspacePath, '.workspai', 'imported-projects.json'))
+    ).toEqual(registryBytes);
+  });
+
+  it('restores exact canonical file preimages when registry upsert fails', async () => {
+    const workspacePath = await makeWorkspace();
+    const projectPath = await makeTempDir('rapidkit-adopt-registry-failure-source-');
+    const canonicalDir = path.join(projectPath, '.workspai');
+    const projectBytes = Buffer.from('{"name":"existing"}\n');
+    const adoptBytes = Buffer.from('{"before":"adopt"}\n');
+    const readinessBytes = Buffer.from('{"before":"readiness"}\n');
+    const registryBytes = Buffer.from('{"version":1,"updatedAt":"before","projects":[]}\n');
+    await fsExtra.ensureDir(canonicalDir);
+    await fsExtra.writeFile(path.join(canonicalDir, 'project.json'), projectBytes);
+    await fsExtra.writeFile(path.join(canonicalDir, 'adopt.json'), adoptBytes);
+    await fsExtra.writeFile(path.join(canonicalDir, 'adopt-readiness.json'), readinessBytes);
+    await fsExtra.ensureDir(path.join(workspacePath, '.workspai'));
+    await fsExtra.writeFile(
+      path.join(workspacePath, '.workspai', 'imported-projects.json'),
+      registryBytes
+    );
+    vi.spyOn(fsExtra, 'writeJSON').mockRejectedValueOnce(new Error('forced registry failure'));
+
+    await expect(adoptProjectIntoWorkspace({ workspacePath, source: projectPath })).rejects.toThrow(
+      'forced registry failure'
+    );
+    expect(await fsExtra.readFile(path.join(canonicalDir, 'project.json'))).toEqual(projectBytes);
+    expect(await fsExtra.readFile(path.join(canonicalDir, 'adopt.json'))).toEqual(adoptBytes);
+    expect(await fsExtra.readFile(path.join(canonicalDir, 'adopt-readiness.json'))).toEqual(
+      readinessBytes
+    );
+    expect(
+      await fsExtra.readFile(path.join(workspacePath, '.workspai', 'imported-projects.json'))
+    ).toEqual(registryBytes);
+  });
+
+  for (const metadataDirectory of ['.workspai', '.rapidkit']) {
+    it(`rejects adoption when ${metadataDirectory} is a symlink before reading it`, async (context) => {
+      const workspacePath = await makeWorkspace();
+      const projectPath = await makeTempDir('rapidkit-adopt-symlink-source-');
+      const outsidePath = await makeTempDir('rapidkit-adopt-symlink-outside-');
+      await fsExtra.writeFile(path.join(projectPath, 'package.json'), '{}');
+      await fsExtra.writeJson(path.join(outsidePath, 'project.json'), { name: 'outside-project' });
+      if (
+        !(await tryCreateDirectorySymlink(outsidePath, path.join(projectPath, metadataDirectory)))
+      ) {
+        context.skip();
+      }
+
+      await expect(
+        adoptProjectIntoWorkspace({
+          workspacePath,
+          source: projectPath,
+          dryRun: true,
+        })
+      ).rejects.toThrow('Project metadata directory must not be a symlink');
+
+      await expect(fsExtra.readJson(path.join(outsidePath, 'project.json'))).resolves.toEqual({
+        name: 'outside-project',
+      });
+      expect(await readImportedProjectsRegistry(workspacePath)).toEqual([]);
+    });
+  }
+
+  it('refuses adoption cleanup through a metadata symlink without changing its target', async (context) => {
+    const workspacePath = await makeWorkspace();
+    const projectPath = await makeTempDir('rapidkit-adopt-cleanup-symlink-source-');
+    const outsidePath = await makeTempDir('rapidkit-adopt-cleanup-symlink-outside-');
+    const outsideProjectJson = { name: 'outside-project', untouched: true };
+    await fsExtra.writeJson(path.join(outsidePath, 'project.json'), outsideProjectJson);
+    await fsExtra.writeJson(path.join(outsidePath, 'adopt.json'), { untouched: true });
+    if (!(await tryCreateDirectorySymlink(outsidePath, path.join(projectPath, '.workspai')))) {
+      context.skip();
+    }
+
+    await expect(
+      cleanupAdoptedProjectImport(workspacePath, projectPath, {
+        workspacePath,
+        projectPath,
+        files: [],
+      })
+    ).rejects.toThrow('Project metadata directory must not be a symlink');
+    await expect(fsExtra.readJson(path.join(outsidePath, 'project.json'))).resolves.toEqual(
+      outsideProjectJson
+    );
+    await expect(fsExtra.readJson(path.join(outsidePath, 'adopt.json'))).resolves.toEqual({
+      untouched: true,
+    });
+  });
+
+  it('restores exact canonical bytes without altering legacy metadata', async () => {
+    const workspacePath = await makeWorkspace();
+    const projectPath = await makeTempDir('rapidkit-adopt-rollback-source-');
+    await fsExtra.ensureDir(path.join(projectPath, '.workspai'));
+    await fsExtra.ensureDir(path.join(projectPath, '.rapidkit'));
+    const canonicalProjectBytes = Buffer.from('{"name":"external-api"}\n\n');
+    const legacyProjectBytes = Buffer.from('{"name":"legacy-api"}\n');
+    await fsExtra.writeFile(
+      path.join(projectPath, '.workspai', 'project.json'),
+      canonicalProjectBytes
+    );
+    await fsExtra.writeFile(
+      path.join(projectPath, '.rapidkit', 'project.json'),
+      legacyProjectBytes
+    );
+    const snapshot = await captureAdoptProjectRollbackSnapshot(workspacePath, projectPath);
+    await fsExtra.writeFile(path.join(projectPath, '.workspai', 'project.json'), 'changed');
+    await fsExtra.writeFile(path.join(projectPath, '.workspai', 'adopt.json'), 'created');
+
+    await cleanupAdoptedProjectImport(workspacePath, projectPath, snapshot);
+
+    expect(await fsExtra.readFile(path.join(projectPath, '.workspai', 'project.json'))).toEqual(
+      canonicalProjectBytes
+    );
+    expect(await fsExtra.pathExists(path.join(projectPath, '.workspai', 'adopt.json'))).toBe(false);
+    expect(await fsExtra.readFile(path.join(projectPath, '.rapidkit', 'project.json'))).toEqual(
+      legacyProjectBytes
+    );
   });
 });

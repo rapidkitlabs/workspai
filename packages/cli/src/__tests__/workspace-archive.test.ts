@@ -159,6 +159,12 @@ describe('workspace archive export/hydrate', () => {
     expect(shouldExcludeWorkspaceArchivePath('backups/old.rapidkit-archive.zip')).toBe(true);
   });
 
+  it('rejects loopback archive URLs before making a network request', async () => {
+    await expect(
+      inspectWorkspaceArchive({ archivePathOrUrl: 'http://127.0.0.1:65535/archive.zip' })
+    ).rejects.toThrow(/HTTPS|private or local network address/);
+  });
+
   it('exports and hydrates a portable archive without dependency or secret files', async () => {
     const workspacePath = await makeTempDir('rk-workspace-export-src-');
     const outputRoot = await makeTempDir('rk-workspace-export-out-');

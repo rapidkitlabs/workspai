@@ -10,6 +10,7 @@ import { buildImportReadinessReport } from './utils/import-readiness.js';
 import { resolveImportModuleSupport } from './utils/import-module-support.js';
 import { inferWorkspaceProjectKind, type WorkspaceProjectKind } from './utils/project-kind.js';
 import { resolveWorkspaceProjectPaths } from './utils/workspace-project-paths.js';
+import { assertSafeProjectMetadataDirectories } from './utils/project-metadata-path-safety.js';
 import {
   detectBackendFrameworkFromProject,
   type BackendConfidence,
@@ -21,6 +22,7 @@ import {
   hasWorkspaceRootMarkers,
   projectMetadataCandidates,
   projectMetadataPath,
+  workspaceMetadataPath,
 } from './utils/workspace-paths.js';
 import {
   collectWorkspaceProfileRuntimes,
@@ -40,6 +42,18 @@ export interface AdoptProjectOptions {
   enableModules?: boolean;
   profilePolicyMode?: WorkspaceProfilePolicyMode;
   now?: Date;
+  rollbackSnapshot?: AdoptProjectRollbackSnapshot;
+}
+
+interface AdoptProjectFilePreimage {
+  path: string;
+  contents: Buffer | null;
+}
+
+export interface AdoptProjectRollbackSnapshot {
+  workspacePath: string;
+  projectPath: string;
+  files: AdoptProjectFilePreimage[];
 }
 
 export interface AdoptProjectResult {
@@ -80,17 +94,74 @@ function isSameDirectory(left: string, right: string): boolean {
 async function readExistingProjectJson(
   projectPath: string
 ): Promise<Record<string, unknown> | null> {
+  await assertSafeProjectMetadataDirectories(projectPath);
   for (const projectJsonPath of projectMetadataCandidates(projectPath, 'project.json')) {
     if (!(await fsExtra.pathExists(projectJsonPath))) {
       continue;
     }
+    let parsed: unknown;
     try {
-      return (await fsExtra.readJson(projectJsonPath)) as Record<string, unknown>;
-    } catch {
-      return null;
+      parsed = JSON.parse((await fsExtra.readFile(projectJsonPath)).toString('utf8'));
+    } catch (error) {
+      throw new Error(
+        `Authoritative project metadata is malformed: ${projectJsonPath}: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error(
+        `Authoritative project metadata is malformed: ${projectJsonPath}: expected a JSON object`
+      );
+    }
+    return parsed as Record<string, unknown>;
   }
   return null;
+}
+
+export async function captureAdoptProjectRollbackSnapshot(
+  workspacePath: string,
+  projectPath: string
+): Promise<AdoptProjectRollbackSnapshot> {
+  const resolvedWorkspacePath = path.resolve(workspacePath);
+  const resolvedProjectPath = path.resolve(projectPath);
+  await assertSafeProjectMetadataDirectories(resolvedProjectPath);
+  const filePaths = [
+    projectMetadataPath(resolvedProjectPath, 'project.json'),
+    projectMetadataPath(resolvedProjectPath, 'adopt.json'),
+    projectMetadataPath(resolvedProjectPath, 'adopt-readiness.json'),
+    workspaceMetadataPath(resolvedWorkspacePath, 'imported-projects.json'),
+  ];
+
+  return {
+    workspacePath: resolvedWorkspacePath,
+    projectPath: resolvedProjectPath,
+    files: await Promise.all(
+      filePaths.map(async (filePath) => ({
+        path: filePath,
+        contents: (await fsExtra.pathExists(filePath)) ? await fsExtra.readFile(filePath) : null,
+      }))
+    ),
+  };
+}
+
+function assertMatchingRollbackSnapshot(
+  snapshot: AdoptProjectRollbackSnapshot,
+  workspacePath: string,
+  projectPath: string
+): void {
+  const expectedPaths = [
+    projectMetadataPath(projectPath, 'project.json'),
+    projectMetadataPath(projectPath, 'adopt.json'),
+    projectMetadataPath(projectPath, 'adopt-readiness.json'),
+    workspaceMetadataPath(workspacePath, 'imported-projects.json'),
+  ].map((filePath) => path.resolve(filePath));
+  if (
+    snapshot.workspacePath !== path.resolve(workspacePath) ||
+    snapshot.projectPath !== path.resolve(projectPath) ||
+    snapshot.files.length !== expectedPaths.length ||
+    snapshot.files.some((file, index) => path.resolve(file.path) !== expectedPaths[index])
+  ) {
+    throw new Error('Adopt rollback snapshot does not match the workspace and project paths.');
+  }
 }
 
 function buildAdoptedProjectJson(input: {
@@ -175,37 +246,26 @@ function buildAdoptedProjectJson(input: {
 export async function cleanupAdoptedProjectImport(
   workspacePath: string,
   projectPath: string,
-  previousProjectJson: Record<string, unknown> | null
+  snapshot: AdoptProjectRollbackSnapshot
 ): Promise<void> {
-  const projectJsonPaths = projectMetadataCandidates(projectPath, 'project.json');
-  const canonicalProjectJsonPath = projectMetadataPath(projectPath, 'project.json');
-  const adoptJsonPaths = projectMetadataCandidates(projectPath, 'adopt.json');
-  const adoptReadinessPaths = projectMetadataCandidates(projectPath, 'adopt-readiness.json');
-
-  if (previousProjectJson) {
-    await fsExtra.ensureDir(path.dirname(canonicalProjectJsonPath));
-    await fsExtra.writeJson(canonicalProjectJsonPath, previousProjectJson, { spaces: 2 });
-  } else {
-    for (const projectJsonPath of projectJsonPaths) {
-      if (await fsExtra.pathExists(projectJsonPath)) {
-        await fsExtra.remove(projectJsonPath);
+  await assertSafeProjectMetadataDirectories(projectPath);
+  assertMatchingRollbackSnapshot(snapshot, workspacePath, projectPath);
+  const failures: unknown[] = [];
+  for (const file of snapshot.files) {
+    try {
+      if (file.contents === null) {
+        await fsExtra.remove(file.path);
+      } else {
+        await fsExtra.ensureDir(path.dirname(file.path));
+        await fsExtra.writeFile(file.path, file.contents);
       }
+    } catch (error) {
+      failures.push(error);
     }
   }
-
-  for (const adoptJsonPath of adoptJsonPaths) {
-    if (await fsExtra.pathExists(adoptJsonPath)) {
-      await fsExtra.remove(adoptJsonPath);
-    }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, 'Failed to restore adopt rollback snapshot.');
   }
-  for (const adoptReadinessPath of adoptReadinessPaths) {
-    if (await fsExtra.pathExists(adoptReadinessPath)) {
-      await fsExtra.remove(adoptReadinessPath);
-    }
-  }
-
-  const { removeImportedProjectsRegistryEntries } = await import('./imported-projects-registry.js');
-  await removeImportedProjectsRegistryEntries(workspacePath, [projectPath]);
 }
 
 export async function adoptProjectIntoWorkspace(
@@ -217,12 +277,17 @@ export async function adoptProjectIntoWorkspace(
   if (!projectStats || !projectStats.isDirectory()) {
     throw new Error('Adopt source is not a directory.');
   }
+  await assertSafeProjectMetadataDirectories(projectPath);
   if (isSameDirectory(workspacePath, projectPath)) {
     throw new Error('Adopt source cannot be the workspace root itself.');
   }
   if (hasWorkspaceRootMarkers(projectPath)) {
     throw new Error('This is a workspace. Import it as a workspace instead.');
   }
+  const rollbackSnapshot =
+    options.rollbackSnapshot ??
+    (await captureAdoptProjectRollbackSnapshot(workspacePath, projectPath));
+  assertMatchingRollbackSnapshot(rollbackSnapshot, workspacePath, projectPath);
 
   const existingProjectJson = await readExistingProjectJson(projectPath);
   const detection = detectBackendFrameworkFromProject(projectPath, existingProjectJson);
@@ -339,27 +404,40 @@ export async function adoptProjectIntoWorkspace(
   });
 
   if (options.dryRun !== true) {
-    await fsExtra.ensureDir(path.dirname(projectJsonPath));
-    await fsExtra.writeJson(projectJsonPath, projectJson, { spaces: 2 });
-    await fsExtra.writeJson(adoptJsonPath, adoptPayload, { spaces: 2 });
-    await fsExtra.writeJson(adoptReadinessPath, readinessPayload, { spaces: 2 });
+    try {
+      await assertSafeProjectMetadataDirectories(projectPath);
+      await fsExtra.ensureDir(path.dirname(projectJsonPath));
+      await fsExtra.writeJson(projectJsonPath, projectJson, { spaces: 2 });
+      await fsExtra.writeJson(adoptJsonPath, adoptPayload, { spaces: 2 });
+      await fsExtra.writeJson(adoptReadinessPath, readinessPayload, { spaces: 2 });
 
-    const entry: ImportedProjectRegistryEntry = {
-      name: projectName,
-      path: projectPath,
-      relativePath: paths.contractRelativePath,
-      relationship: 'adopted',
-      stack: detection.importStack,
-      runtime: detection.runtime,
-      framework: detection.key,
-      frameworkDisplayName: detection.displayName,
-      supportTier: detection.supportTier,
-      moduleSupport,
-      confidence: detection.confidence,
-      source: 'adopted-local',
-      importedAt: adoptedAt,
-    };
-    await upsertImportedProjectsRegistry(workspacePath, [entry]);
+      const entry: ImportedProjectRegistryEntry = {
+        name: projectName,
+        path: projectPath,
+        relativePath: paths.contractRelativePath,
+        relationship: 'adopted',
+        stack: detection.importStack,
+        runtime: detection.runtime,
+        framework: detection.key,
+        frameworkDisplayName: detection.displayName,
+        supportTier: detection.supportTier,
+        moduleSupport,
+        confidence: detection.confidence,
+        source: 'adopted-local',
+        importedAt: adoptedAt,
+      };
+      await upsertImportedProjectsRegistry(workspacePath, [entry]);
+    } catch (error) {
+      try {
+        await cleanupAdoptedProjectImport(workspacePath, projectPath, rollbackSnapshot);
+      } catch (rollbackError) {
+        throw new AggregateError(
+          [error, rollbackError],
+          `Adopt failed and rollback was incomplete: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+      throw error;
+    }
   }
 
   return {

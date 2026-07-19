@@ -2,12 +2,10 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.35.x (latest minor) | :white_check_mark: |
-| < 0.35.0 | :x: |
-
-During the `0.x` phase, only the latest minor line receives security fixes.
+During the `0.x` phase, only the latest published minor line receives security
+fixes. Check the [npm package](https://www.npmjs.com/package/workspai) and
+[changelog](../CHANGELOG.md) for the current supported line; older minor lines
+are unsupported.
 
 ## Known Security Considerations
 
@@ -46,12 +44,21 @@ When using Workspai:
 2. **Review generated code**: Always review the workspace structure before deployment
 3. **Use official releases**: Install from npm registry, not from git directly
 4. **Verify package integrity**: Use `npm audit` on your generated project
+5. **Treat executable config as code**: Prefer `workspai.config.json`; only use
+   `--trust-config` after reviewing JavaScript configuration.
+6. **Keep remote archives public-network-only**: Private and loopback archive
+   URLs are rejected unless `--allow-private-network` is explicitly supplied.
+7. **Constrain mirror targets**: Artifact targets are restricted to the managed
+   mirror directory and are committed only after integrity/policy verification.
 
 ## Security Scanning
 
 We use:
 - GitHub Security Advisories
 - npm audit (production dependencies)
+- CodeQL static analysis
+- Pull-request dependency review
+- CycloneDX SBOM generation
 - Dependabot for automated updates
 - Regular manual security reviews
 

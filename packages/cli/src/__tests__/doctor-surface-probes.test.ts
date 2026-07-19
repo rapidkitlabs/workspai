@@ -151,7 +151,7 @@ describe('doctor enterprise surface probes', () => {
 
   it('emits runtime-native dependency baseline repairs across enterprise runtimes', async () => {
     const cases: Array<{
-      runtimeFamily: 'go' | 'rust' | 'php' | 'ruby' | 'dotnet' | 'python';
+      runtimeFamily: 'go' | 'java' | 'rust' | 'php' | 'ruby' | 'dotnet' | 'python';
       files: Record<string, string | object>;
       expectedCommand: string;
       expectedFiles: string[];
@@ -161,6 +161,12 @@ describe('doctor enterprise surface probes', () => {
         files: { 'go.mod': 'module example.com/api\n' },
         expectedCommand: 'go mod tidy',
         expectedFiles: ['go.mod', 'go.sum'],
+      },
+      {
+        runtimeFamily: 'java',
+        files: { 'pom.xml': '<project></project>\n', mvnw: '#!/bin/sh\n' },
+        expectedCommand: './mvnw -B -DskipTests dependency:go-offline',
+        expectedFiles: ['pom.xml', 'gradle.lockfile'],
       },
       {
         runtimeFamily: 'rust',

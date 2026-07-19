@@ -31,6 +31,20 @@ interface ImportedProjectsRegistryFile {
   projects: ImportedProjectRegistryEntry[];
 }
 
+async function writeRegistryFileAtomic(
+  filePath: string,
+  payload: ImportedProjectsRegistryFile
+): Promise<void> {
+  await fsExtra.ensureDir(path.dirname(filePath));
+  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await fsExtra.writeJSON(temporaryPath, payload, { spaces: 2 });
+    await fsExtra.move(temporaryPath, filePath, { overwrite: true });
+  } finally {
+    await fsExtra.remove(temporaryPath).catch(() => undefined);
+  }
+}
+
 function registryFilePath(workspacePath: string): string {
   return workspaceMetadataPath(workspacePath, 'imported-projects.json');
 }
@@ -52,11 +66,16 @@ export async function readImportedProjectsRegistry(
 
   try {
     const raw: unknown = await fsExtra.readJSON(filePath);
-    const projects: unknown[] = Array.isArray((raw as { projects?: unknown[] })?.projects)
-      ? ((raw as { projects?: unknown[] }).projects as unknown[])
-      : [];
-
-    return projects.filter((item: unknown): item is ImportedProjectRegistryEntry => {
+    if (
+      !raw ||
+      typeof raw !== 'object' ||
+      (raw as { version?: unknown }).version !== 1 ||
+      !Array.isArray((raw as { projects?: unknown }).projects)
+    ) {
+      throw new Error('expected a version 1 registry with a projects array');
+    }
+    const projects = (raw as { projects: unknown[] }).projects;
+    const validProjects = projects.filter((item: unknown): item is ImportedProjectRegistryEntry => {
       if (!item || typeof item !== 'object') {
         return false;
       }
@@ -70,8 +89,12 @@ export async function readImportedProjectsRegistry(
         typeof candidate.importedAt === 'string'
       );
     });
-  } catch {
-    return [];
+    if (validProjects.length !== projects.length) {
+      throw new Error('one or more project entries are invalid');
+    }
+    return validProjects;
+  } catch (error) {
+    throw new Error(`Imported-project registry is invalid: ${filePath}`, { cause: error });
   }
 }
 
@@ -105,8 +128,7 @@ export async function upsertImportedProjectsRegistry(
   };
 
   const filePath = registryFilePath(workspacePath);
-  await fsExtra.ensureDir(path.dirname(filePath));
-  await fsExtra.writeJSON(filePath, payload, { spaces: 2 });
+  await writeRegistryFileAtomic(filePath, payload);
 }
 
 export async function removeImportedProjectsRegistryEntries(
@@ -128,6 +150,5 @@ export async function removeImportedProjectsRegistryEntries(
   };
 
   const filePath = registryFilePath(workspacePath);
-  await fsExtra.ensureDir(path.dirname(filePath));
-  await fsExtra.writeJSON(filePath, payload, { spaces: 2 });
+  await writeRegistryFileAtomic(filePath, payload);
 }

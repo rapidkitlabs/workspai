@@ -6,7 +6,7 @@ Complete CLI syntax for the Workspai CLI. For behavior and workflows, see [works
 
 ```bash
 npx workspai create # Prompts: workspace | project
-npx workspai create workspace <name> [--profile <profile>] [--author <name>] [--yes] [--here|--output <parent-dir>] [--skip-python-engine]
+npx workspai create workspace <name> [--profile <profile>] [--yes] [--here|--output <parent-dir>] [--skip-python-engine] [--skip-git] [--dry-run] [--install-method <poetry|venv|pipx>]
 npx workspai bootstrap [--profile <profile>] [--ci] [--json] [--compliance-only]
 npx workspai setup <python|node|go|java|dotnet> [--warm-deps]
 npx workspai pipeline [--json] [--strict] [--skip-verify] [--skip-analyze] [--skip-autopilot] [--autopilot-mode <audit|safe-fix|enforce>] [--agent-sync|--no-agent-sync]
@@ -16,6 +16,13 @@ npx workspai autopilot release [--mode <audit|safe-fix|enforce>] [--json] [--out
 ```
 
 Recommended CI:
+
+```bash
+npx workspai workspace intelligence run --for-agent codex --strict --json
+```
+
+Run the broader governance and release orchestrators as separate gates; they
+do not extend or redefine the canonical Workspace Intelligence chain:
 
 ```bash
 npx workspai pipeline --json --strict
@@ -49,6 +56,7 @@ npx workspai workspace contract init [--force] [--json]
 npx workspai workspace contract inspect [--json]
 npx workspai workspace contract verify [--strict] [--json]
 npx workspai workspace contract graph [--json]
+npx workspai workspace intelligence run [--workspace <path>] [--for-agent <agent>] [--strict] [--json]
 npx workspai workspace model [--workspace <path>] [--json] [--write] [--strict] [--cache] [--incremental] [--include-paths] [--include-evidence] [--scan-depth <count>]
 npx workspai workspace context --for-agent [codex|claude|cursor|orca] [--workspace <path>] [--json] [--write] [--agent-sync|--no-agent-sync] [--target <targets>] [--preset minimal|enterprise] [--include-evidence] [--scan-depth <count>]
 npx workspai workspace agent-sync [--workspace <path>] [--write] [--refresh-context] [--strict] [--json] [--preset minimal|enterprise] [--target all|vscode|agents,copilot,cursor,claude,codex,orca] [--experimental-hooks] [--hydrate-prompts]
@@ -64,12 +72,12 @@ npx workspai workspace trace --from <workspace-diff-report> [--workspace <path>]
 printf '%s\n' '{"actionId":"fix-api","summary":"API tests passed","outcome":"ok"}' | npx workspai workspace feedback record [--workspace <path>] --json
 npx workspai workspace mcp serve [--workspace <path>] [--json]
 npx workspai workspace export --output team-workspace.workspai-archive.zip [--archive-compression store|deflate]
-npx workspai workspace archive inspect team-workspace.workspai-archive.zip [--max-download-size <size>] [--max-expanded-size <size>] [--download-timeout-ms <ms>] [--json]
-npx workspai workspace archive verify team-workspace.workspai-archive.zip [--max-download-size <size>] [--max-expanded-size <size>] [--download-timeout-ms <ms>] [--strict] [--json]
-npx workspai workspace archive doctor team-workspace.workspai-archive.zip [--max-download-size <size>] [--max-expanded-size <size>] [--download-timeout-ms <ms>] [--strict] [--json]
-npx workspai workspace hydrate team-workspace.workspai-archive.zip --output ./team-workspace [--max-download-size <size>] [--max-expanded-size <size>] [--download-timeout-ms <ms>]
-npx workspai import <path|git-url> [--workspace <path>] [--name <project-name>] [--git] [--json]
-npx workspai adopt [path] [--workspace <path>] [--name <project-name>] [--dry-run] [--json]
+npx workspai workspace archive inspect team-workspace.workspai-archive.zip [--max-download-size <size>] [--max-expanded-size <size>] [--download-timeout-ms <ms>] [--allow-private-network] [--json]
+npx workspai workspace archive verify team-workspace.workspai-archive.zip [--max-download-size <size>] [--max-expanded-size <size>] [--download-timeout-ms <ms>] [--allow-private-network] [--strict] [--json]
+npx workspai workspace archive doctor team-workspace.workspai-archive.zip [--max-download-size <size>] [--max-expanded-size <size>] [--download-timeout-ms <ms>] [--allow-private-network] [--strict] [--json]
+npx workspai workspace hydrate team-workspace.workspai-archive.zip --output ./team-workspace [--max-download-size <size>] [--max-expanded-size <size>] [--download-timeout-ms <ms>] [--allow-private-network]
+npx workspai import <path|git-url> [--workspace <path>] [--name <project-name>] [--git] [--enable-modules] [--json]
+npx workspai adopt [path] [--workspace <path>] [--name <project-name>] [--enable-modules] [--dry-run] [--json]
 npx workspai snapshot create [name] [--include-projects] [--reason <text>] [--json]
 npx workspai snapshot list [--json]
 npx workspai snapshot inspect <name> [--json]
@@ -85,6 +93,17 @@ npx workspai infra up [--workspace <path>] [--no-plan] [--build]
 npx workspai infra down [--workspace <path>] [--volumes]
 npx workspai infra status [--workspace <path>] [--json] [--strict]
 ```
+
+`workspace intelligence run` writes
+`.workspai/reports/workspace-intelligence-run-last-run.json`. Its `preflight`
+contains exactly `sync` and `baseline`, while `stages` contains exactly the 11
+ordered canonical chain steps. Exit `0` is passed, `1` is a hard execution
+failure, and `2` is a completed but evidence-blocked run. With `--strict`,
+warning-grade Analyze and Readiness verdicts can block the run without becoming
+execution failures. See
+[Unified Workspace Intelligence Runner](./workspace-intelligence-runner.md) for
+baseline creation/reuse, JSON fields, artifact invariants, skip propagation, and
+CI handling.
 
 `workspace feedback record` is a non-interactive machine interface. It requires
 exactly one JSON object on stdin and `--json`; an empty stdin or interactive TTY
@@ -122,11 +141,14 @@ for every project that happens to use a first-class framework. For example, an
 arbitrary existing FastAPI application can be adopted and modeled as a
 Python/FastAPI project, but module mutation remains disabled unless its RapidKit
 project metadata identifies one of those module-enabled kits.
+`--enable-modules` preserves module commands only when existing RapidKit
+metadata already identifies a module-enabled kit; it does not enable Core module
+mutation for an arbitrary detected framework.
 
 ## Project lifecycle
 
 ```bash
-npx workspai create project <kit> <name> [--yes] [--skip-install] [--skip-git] [--output <dir>]
+npx workspai create project <kit> <name> [--yes] [--skip-install] [--skip-git] [--dry-run] [--output <dir>] [--create-workspace|--no-workspace]
 npx workspai project commands [--json]
 npx workspai commands --scope project [--json]
 npx workspai init
@@ -142,6 +164,11 @@ Examples:
 npx workspai create project fastapi.standard my-api --yes
 npx workspai create project nextjs my-web --yes
 ```
+
+Generator-specific options include `--port`, Spring Boot
+`--java-version`/`--spring-version`/`--package-name`/`--group-id`/`--artifact-id`,
+and .NET `--dotnet-version`/`--target-framework`/`--nullable`. Use
+`npx workspai create project --help` for the live option inventory.
 
 `create frontend <id> <name>` is still accepted and routes to the same generators.
 
@@ -164,7 +191,8 @@ See [workspace-operations.md](./workspace-operations.md#workspace-infrastructure
 - `python-only` — Python-focused workspace
 - `node-only` — Node.js-focused workspace
 - `go-only` — Go-focused workspace
-- `polyglot` — Python + Node.js + Go + Java
+- `dotnet-only` — .NET-focused workspace
+- `polyglot` — Python + Node.js + Go + Java + .NET
 - `enterprise` — polyglot + governance-oriented checks
 
 ## Policy modes

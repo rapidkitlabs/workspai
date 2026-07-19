@@ -1,6 +1,69 @@
 # Release Notes
 
-## Latest Release: v0.45.0 (July 15, 2026)
+> **Historical archive:** `workspai` is the current package and command, with
+> `wspai` as an optional alias. Older entries intentionally preserve historical
+> `rapidkit` commands and `.rapidkit` paths. Use the [CLI README](./README.md) and
+> [Command Reference](./docs/commands-reference.md) for current usage.
+
+## Latest Release: v0.46.0 (July 18, 2026)
+
+### Contract-Backed Unified Workspace Intelligence Runner
+
+This minor release turns the complete Workspace Intelligence lifecycle into a
+single governed execution surface. Runtime behavior, ordered stage evidence,
+artifacts, contracts, CLI help, CI guidance, and agent grounding now share the
+same canonical source of truth.
+
+**What's New:**
+
+- **Unified intelligence execution**
+  - Added `workspace intelligence run` for the mandatory sync-through-
+    remediation lifecycle.
+  - Added deterministic per-stage status, command, timing, artifact, and failure
+    evidence for humans, CI systems, IDEs, portals, and agents.
+
+- **Semantic runner contract**
+  - Added the versioned `workspai-workspace-intelligence-run-v1` report contract.
+  - Linked the report through the runtime registry, artifact registry, published
+    contract catalog, and producer-command inventory.
+  - Added semantic enforcement for canonical stage ordering and blocking
+    outcomes in addition to JSON Schema validation.
+
+- **Transactional project lifecycle**
+  - Added rollback protection for create, adopt, import, register, and mirror
+    operations.
+  - Hardened metadata path safety, registry consistency, archives, platform
+    probes, runtime adapters, and polyglot project generators.
+
+- **Documentation and runtime alignment**
+  - Aligned CLI documentation, help, contracts, artifact catalogs, CI examples,
+    and agent-grounding material around the mandatory lifecycle.
+  - Removed accidental Python-version pins from config examples. Python 3.10
+    remains the supported minimum, with automatic newer-version detection and
+    optional explicit pins for reproducible CI.
+
+**Breaking changes:** None.
+
+**Verification:**
+
+- Monorepo checks and CLI build/test gates.
+- Generated/shared contract drift and documentation validation.
+- Unified runner contract and CLI-chain suites.
+- Lifecycle transaction, frontend execution, Python-engine state, registry,
+  mirror, archive, runtime adapter, and package-publish suites.
+
+**Upgrade:**
+
+```bash
+npm install -g workspai@0.46.0
+workspai workspace intelligence run --for-agent codex --json
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.46.0.md)
+
+---
+
+## Previous Release: v0.45.0 (July 15, 2026)
 
 ### Contract-Backed Live Command Inventory and Release-Gate Consistency
 
@@ -2174,6 +2237,6 @@ npm install -g rapidkit@0.24.0
 | [v0.11.3](releases/RELEASE_NOTES_v0.11.3.md) | Dec 3, 2025  | Bug fixes                                                                                         |
 | [v0.11.2](releases/RELEASE_NOTES_v0.11.2.md) | Dec 3, 2025  | Improvements                                                                                      |
 | [v0.11.1](releases/RELEASE_NOTES_v0.11.1.md) | Nov 28, 2025 | Features                                                                                          |
-| [v0.11.0](releases/RELEASE_NOTES_v0.11.0.md) | Nov 8, 2025  | Major release                                                                                     |
+| [v0.11.0](CHANGELOG.md#0110---2025-11-14)    | Nov 14, 2025 | Major release                                                                                     |
 
 For complete changelog, see [CHANGELOG.md](CHANGELOG.md).

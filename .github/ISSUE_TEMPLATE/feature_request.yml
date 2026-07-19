@@ -6,7 +6,10 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for sharing your idea with RapidKit 🚀
+        Thanks for sharing your idea with Workspai.
+
+        Use GitHub Discussions for early design exploration. Public command and
+        contract changes must follow packages/cli/CONTRIBUTING.md.
   - type: textarea
     id: problem
     attributes:

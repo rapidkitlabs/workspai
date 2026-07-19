@@ -6,6 +6,8 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import * as readline from 'node:readline';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { lookup } from 'node:dns/promises';
+import net from 'node:net';
 
 import fsExtra from 'fs-extra';
 import * as yauzl from 'yauzl';
@@ -123,12 +125,14 @@ export interface WorkspaceArchiveHydrateOptions {
 }
 
 export interface WorkspaceArchiveSafetyOptions {
-  /** Maximum downloaded bytes for URL inputs. Omit for no size limit. */
+  /** Maximum downloaded bytes for URL inputs. Omit to use the secure default. */
   maxDownloadBytes?: number;
-  /** Maximum total uncompressed payload bytes. Omit for no workspace-size limit. */
+  /** Maximum total uncompressed payload bytes. Omit to use the secure default. */
   maxExpandedBytes?: number;
   /** Maximum time for a remote download. Set to 0 to disable the timeout. */
   downloadTimeoutMs?: number;
+  /** Permit loopback/private/link-local archive URLs. Disabled by default. */
+  allowPrivateNetwork?: boolean;
 }
 
 export interface WorkspaceArchiveHydrateResult {
@@ -158,8 +162,98 @@ type LoadedWorkspaceArchive = {
   cleanup?: string;
 };
 
-const DEFAULT_DOWNLOAD_TIMEOUT_MS = 30 * 60 * 1000;
-const MAX_MANIFEST_BYTES_IN_MEMORY = 256 * 1024 * 1024;
+const DEFAULT_DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+const DEFAULT_MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024 * 1024;
+const DEFAULT_MAX_EXPANDED_BYTES = 20 * 1024 * 1024 * 1024;
+const DEFAULT_MAX_ARCHIVE_ENTRIES = 200_000;
+const DEFAULT_MAX_ENTRY_BYTES = 5 * 1024 * 1024 * 1024;
+const DEFAULT_MAX_COMPRESSION_RATIO = 1_000;
+const MAX_ARCHIVE_REDIRECTS = 5;
+const MAX_MANIFEST_BYTES_IN_MEMORY = 64 * 1024 * 1024;
+
+function isPrivateAddress(address: string): boolean {
+  const normalized = address.toLowerCase().split('%')[0];
+  if (net.isIPv4(normalized)) {
+    const octets = normalized.split('.').map(Number);
+    return (
+      octets[0] === 0 ||
+      octets[0] === 10 ||
+      octets[0] === 127 ||
+      (octets[0] === 169 && octets[1] === 254) ||
+      (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+      (octets[0] === 192 && octets[1] === 168) ||
+      (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) ||
+      octets[0] >= 224
+    );
+  }
+  if (net.isIPv6(normalized)) {
+    return (
+      normalized === '::' ||
+      normalized === '::1' ||
+      normalized.startsWith('fc') ||
+      normalized.startsWith('fd') ||
+      /^fe[89ab]/.test(normalized) ||
+      normalized.startsWith('ff') ||
+      normalized.startsWith('::ffff:127.') ||
+      normalized.startsWith('::ffff:10.') ||
+      normalized.startsWith('::ffff:192.168.')
+    );
+  }
+  return true;
+}
+
+async function assertSafeRemoteArchiveUrl(
+  rawUrl: string,
+  allowPrivateNetwork: boolean
+): Promise<URL> {
+  const url = new URL(rawUrl);
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error(`Workspace archive URL protocol is not supported: ${url.protocol}`);
+  }
+  if (url.protocol !== 'https:' && !allowPrivateNetwork) {
+    throw new Error(
+      'Remote workspace archives require HTTPS unless private-network access is explicitly enabled.'
+    );
+  }
+  if (url.username || url.password) {
+    throw new Error('Workspace archive URL must not contain embedded credentials.');
+  }
+  if (allowPrivateNetwork) return url;
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
+    throw new Error('Workspace archive URL resolves to a private or local network address.');
+  }
+  const addresses = net.isIP(hostname)
+    ? [{ address: hostname }]
+    : await lookup(hostname, { all: true, verbatim: true });
+  if (addresses.length === 0 || addresses.some(({ address }) => isPrivateAddress(address))) {
+    throw new Error('Workspace archive URL resolves to a private or local network address.');
+  }
+  return url;
+}
+
+async function fetchRemoteArchive(
+  input: string,
+  signal: AbortSignal,
+  allowPrivateNetwork: boolean
+): Promise<Response> {
+  let current = await assertSafeRemoteArchiveUrl(input, allowPrivateNetwork);
+  for (let redirects = 0; redirects <= MAX_ARCHIVE_REDIRECTS; redirects += 1) {
+    const response = await fetch(current, { signal, redirect: 'manual', credentials: 'omit' });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    const location = response.headers.get('location');
+    await response.body?.cancel();
+    if (!location) throw new Error('Workspace archive redirect is missing a Location header.');
+    if (redirects === MAX_ARCHIVE_REDIRECTS) {
+      throw new Error(`Workspace archive download exceeded ${MAX_ARCHIVE_REDIRECTS} redirects.`);
+    }
+    current = await assertSafeRemoteArchiveUrl(
+      new URL(location, current).href,
+      allowPrivateNetwork
+    );
+  }
+  throw new Error('Workspace archive redirect policy failed.');
+}
 
 const EXCLUDED_SEGMENTS = new Set([
   '__pycache__',
@@ -562,31 +656,32 @@ async function resolveArchivePath(
         ? setTimeout(() => controller.abort(new Error('Download timed out')), timeoutMs)
         : null;
     try {
-      const response = await fetch(input, { signal: controller.signal });
+      const response = await fetchRemoteArchive(
+        input,
+        controller.signal,
+        safety.allowPrivateNetwork === true
+      );
       if (!response.ok) {
         throw new Error(`Failed to download workspace archive: HTTP ${response.status}`);
       }
       if (!response.body) {
         throw new Error('Failed to download workspace archive: response body is empty.');
       }
+      const maxDownloadBytes = safety.maxDownloadBytes ?? DEFAULT_MAX_DOWNLOAD_BYTES;
       const declaredLength = Number(response.headers.get('content-length'));
-      if (
-        safety.maxDownloadBytes !== undefined &&
-        Number.isFinite(declaredLength) &&
-        declaredLength > safety.maxDownloadBytes
-      ) {
+      if (Number.isFinite(declaredLength) && declaredLength > maxDownloadBytes) {
         throw new Error(
-          `Workspace archive download exceeds configured limit (${declaredLength} > ${safety.maxDownloadBytes} bytes).`
+          `Workspace archive download exceeds configured limit (${declaredLength} > ${maxDownloadBytes} bytes).`
         );
       }
       let downloadedBytes = 0;
       const meter = new Transform({
         transform(chunk: Buffer, _encoding, callback) {
           downloadedBytes += chunk.length;
-          if (safety.maxDownloadBytes !== undefined && downloadedBytes > safety.maxDownloadBytes) {
+          if (downloadedBytes > maxDownloadBytes) {
             callback(
               new Error(
-                `Workspace archive download exceeds configured limit (${safety.maxDownloadBytes} bytes).`
+                `Workspace archive download exceeds configured limit (${maxDownloadBytes} bytes).`
               )
             );
             return;
@@ -795,10 +890,25 @@ async function loadWorkspaceArchive(
   try {
     zipFile = await openZipFile(resolved.archivePath);
     const entries = await listZipEntries(zipFile);
-    const totalExpandedBytes = entries.reduce((total, entry) => total + entry.size, 0);
-    if (safety.maxExpandedBytes !== undefined && totalExpandedBytes > safety.maxExpandedBytes) {
+    if (entries.length > DEFAULT_MAX_ARCHIVE_ENTRIES) {
       throw new Error(
-        `Workspace archive payload exceeds configured limit (${totalExpandedBytes} > ${safety.maxExpandedBytes} bytes).`
+        `Workspace archive contains too many entries (${entries.length} > ${DEFAULT_MAX_ARCHIVE_ENTRIES}).`
+      );
+    }
+    for (const entry of entries) {
+      if (entry.size > DEFAULT_MAX_ENTRY_BYTES) {
+        throw new Error(`Workspace archive entry is too large: ${entry.name}`);
+      }
+      const ratio = entry.size / Math.max(1, entry.compressedSize);
+      if (ratio > DEFAULT_MAX_COMPRESSION_RATIO) {
+        throw new Error(`Workspace archive entry has an unsafe compression ratio: ${entry.name}`);
+      }
+    }
+    const totalExpandedBytes = entries.reduce((total, entry) => total + entry.size, 0);
+    const maxExpandedBytes = safety.maxExpandedBytes ?? DEFAULT_MAX_EXPANDED_BYTES;
+    if (totalExpandedBytes > maxExpandedBytes) {
+      throw new Error(
+        `Workspace archive payload exceeds configured limit (${totalExpandedBytes} > ${maxExpandedBytes} bytes).`
       );
     }
     const manifestEntry = entries.find(

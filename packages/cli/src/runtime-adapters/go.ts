@@ -163,7 +163,7 @@ export class GoRuntimeAdapter implements RuntimeAdapter {
         if (prereq) return prereq;
 
         const makefilePath = path.join(projectPath, 'Makefile');
-        if (fs.existsSync(makefilePath)) {
+        if (!isWindowsPlatform() && fs.existsSync(makefilePath)) {
           return this.run('make', ['run'], projectPath);
         }
         return this.run('go', ['run', this.findGoRunTarget(projectPath)], projectPath);
@@ -210,7 +210,7 @@ export class GoRuntimeAdapter implements RuntimeAdapter {
       const prereq = await this.ensureGoInstalled(projectPath);
       if (prereq) return prereq;
 
-      if (hasMakefileTarget(projectPath, 'lint')) {
+      if (!isWindowsPlatform() && hasMakefileTarget(projectPath, 'lint')) {
         return this.run('make', ['lint'], projectPath);
       }
 
@@ -234,10 +234,10 @@ export class GoRuntimeAdapter implements RuntimeAdapter {
       const prereq = await this.ensureGoInstalled(projectPath);
       if (prereq) return prereq;
 
-      if (hasMakefileTarget(projectPath, 'fmt')) {
+      if (!isWindowsPlatform() && hasMakefileTarget(projectPath, 'fmt')) {
         return this.run('make', ['fmt'], projectPath);
       }
-      if (hasMakefileTarget(projectPath, 'format')) {
+      if (!isWindowsPlatform() && hasMakefileTarget(projectPath, 'format')) {
         return this.run('make', ['format'], projectPath);
       }
 

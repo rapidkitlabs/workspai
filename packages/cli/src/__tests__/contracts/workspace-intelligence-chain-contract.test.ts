@@ -34,6 +34,10 @@ import {
 } from '../../workspace-verify';
 import { WORKSPACE_HISTORY_PATH, WORKSPACE_HISTORY_SCHEMA_VERSION } from '../../workspace-history';
 import {
+  WORKSPACE_INTELLIGENCE_RUN_REPORT_PATH,
+  WORKSPACE_INTELLIGENCE_RUN_SCHEMA_VERSION,
+} from '../../workspace-intelligence-runner';
+import {
   WORKSPACE_CONTEXT_AGENT_REPORT_PATH,
   WORKSPACE_CONTEXT_SCHEMA_VERSION,
 } from '../../workspace-context';
@@ -246,6 +250,7 @@ describe('workspace intelligence chain contract', () => {
       skillsIndex: WORKSPACE_SKILLS_INDEX_PATH,
       agents: 'AGENTS.md',
       explain: WORKSPACE_EXPLAIN_REPORT_PATH,
+      intelligenceRun: WORKSPACE_INTELLIGENCE_RUN_REPORT_PATH,
     }).toEqual(WORKSPACE_INTELLIGENCE_ARTIFACTS);
   });
 
@@ -267,6 +272,7 @@ describe('workspace intelligence chain contract', () => {
       skillsIndex: WORKSPACE_SKILLS_INDEX_SCHEMA_VERSION,
       agents: null,
       explain: WORKSPACE_EXPLAIN_SCHEMA_VERSION,
+      intelligenceRun: WORKSPACE_INTELLIGENCE_RUN_SCHEMA_VERSION,
     }).toEqual(WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS);
   });
 

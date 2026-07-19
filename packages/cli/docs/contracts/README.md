@@ -12,7 +12,8 @@ Canonical JSON lives in **`../../contracts/`** (CLI package root, published in t
 | `npm run check:generated-contracts`       | Verify committed JSON matches generators                                                                              |
 | `npm run sync:parity-snapshot`            | Copy canonical → vscode `contracts/` mirror                                                                           |
 | `npm run check:parity-snapshot`           | Verify mirrors match canonical                                                                                        |
-| `npm run validate:contracts`              | Generate check + mirror check + contract tests                                                                        |
+| `npm run validate:contracts`              | Shared-contract checks and focused contract tests                                                                      |
+| `npm run contracts:validate`              | Comprehensive generated/shared contract, parity, runtime-conformance, and adversarial gate                            |
 | `npm run check:agent-customization-drift` | Verify generated agent customization files are committed in a consumer workspace                                      |
 
 Workflow: change code → `npm run generate:contracts` → `npm run sync:parity-snapshot` → commit npm + vscode `contracts/`.
@@ -46,6 +47,7 @@ Published under `../../contracts/` (not duplicated in this folder):
 
 Workspace intelligence (`../../contracts/workspace-intelligence/`):
 
+- `workspace-intelligence-run.v1.json` — authoritative full-chain result, stage outcomes, verdict, exit code, and durable artifact path
 - `workspace-model.v1.json`
 - `workspace-context.v1.json`
 - `workspace-dependency-graph.v1.json`
@@ -63,7 +65,8 @@ Workspace intelligence (`../../contracts/workspace-intelligence/`):
 - `doctor-fix-result.v1.json`
 - `studio-blocker-handoff.v1.json`
 
-CLI commands: see [commands-reference.md](../commands-reference.md) and [../README.md](../README.md#workspace-intelligence).
+CLI commands: see [commands-reference.md](../commands-reference.md) and the
+[CLI README](../../README.md#one-intelligence-chain).
 
 ## Core CLI JSON payloads
 

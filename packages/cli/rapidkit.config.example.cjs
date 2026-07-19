@@ -19,9 +19,9 @@ module.exports = {
     // Default author name for new workspaces
     defaultAuthor: 'Your Name or Team',
 
-    // Default Python version to use
-    // Options: '3.10' | '3.11' | '3.12'
-    pythonVersion: '3.10',
+    // Optional version pin. Python 3.10 is the minimum supported version.
+    // Omit this setting to let Workspai detect and select an installed version.
+    // pythonVersion: '3.10',
 
     // Default installation method for RapidKit Core
     // Options: 'poetry' | 'venv' | 'pipx'
@@ -53,10 +53,10 @@ module.exports = {
 
 // Example usage:
 // npx workspai my-workspace
-// -> Uses config: author='Your Name or Team', pythonVersion='3.10', installMethod='poetry'
+// -> Uses config: author='Your Name or Team', installMethod='poetry'; Python is auto-detected
 //
 // npx workspai my-workspace --author "Different Author"
-// -> Overrides: author='Different Author', but still uses pythonVersion='3.10', installMethod='poetry'
+// -> Overrides author; installMethod remains 'poetry' and Python is auto-detected
 //
 // npx workspai create project my-api
 // -> Uses config: defaultKit='fastapi.standard', adds default modules

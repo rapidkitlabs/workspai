@@ -2,6 +2,11 @@
 
 Practical workflows for OSS teams using the npm CLI. Command syntax: [commands-reference.md](./commands-reference.md). Import/adopt details: [workspace-operations.md](./workspace-operations.md).
 
+All scenarios use the same [Unified Workspace Intelligence Runner](./workspace-intelligence-runner.md):
+`sync` and baseline resolution are reported separately from the exact 11-stage
+chain. Treat exit `1` as an execution failure and exit `2` as an evidence-blocked
+completed run that requires remediation before release.
+
 ## Scenario 0 — Existing project (adopt or import)
 
 Goal: connect code you already have without reshuffling repositories.
@@ -10,7 +15,9 @@ Goal: connect code you already have without reshuffling repositories.
 
 ```bash
 npx workspai adopt /path/to/existing-app --workspace /path/to/workspace --json
-npx workspai workspace model --json
+cd /path/to/workspace
+npx workspai workspace intelligence run --for-agent codex --strict --json
+cd /path/to/existing-app
 npx workspai doctor project --json
 ```
 
@@ -49,7 +56,7 @@ Goal: get productive quickly with minimal complexity.
 ### Steps
 
 ```bash
-npx workspai my-workspace
+npx workspai create workspace my-workspace --here --yes --profile polyglot
 cd my-workspace
 npx workspai bootstrap --profile polyglot
 npx workspai setup python
@@ -59,6 +66,20 @@ cd api
 npx workspai init
 npx workspai dev
 ```
+
+Run the canonical chain from the workspace before treating its evidence as a
+release or agent input:
+
+```bash
+cd ..
+npx workspai workspace intelligence run --for-agent codex --strict --json
+```
+
+The canonical durable outputs are `.workspai/reports/workspace-model.json`,
+`.workspai/reports/workspace-context-agent.json`, `.workspai/reports/INDEX.json`,
+`.workspai/reports/workspace-intelligence-run-last-run.json`, and `AGENTS.md`.
+Use `npx workspai pipeline --json --strict` separately as the broader governance
+and release gate.
 
 ### When manual vs automatic?
 

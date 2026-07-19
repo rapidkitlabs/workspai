@@ -11,7 +11,10 @@ npx workspai workspace run test --affected --blast-radius
 npx workspai workspace run build --json --max-workers 8
 ```
 
-`--blast-radius` uses `.workspai/workspace.contract.json` (and legacy `.rapidkit/workspace-dependency-graph.json` as fallback) to expand direct `dependsOn` and publish/consume event relationships.
+`--blast-radius` resolves the canonical or legacy workspace contract first, then
+`.workspai/workspace-dependency-graph.json`, and finally the legacy
+`.rapidkit/workspace-dependency-graph.json` fallback. It expands direct
+`dependsOn` and publish/consume event relationships.
 
 ## Supported runtimes
 

@@ -89,4 +89,4 @@ node generate-demo.js new-project
 
 ---
 
-**Full Changelog:** [CHANGELOG.md](./CHANGELOG.md)
+**Full Changelog:** [CHANGELOG.md](../CHANGELOG.md)

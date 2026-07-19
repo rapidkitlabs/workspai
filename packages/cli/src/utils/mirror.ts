@@ -1,7 +1,7 @@
 import path from 'path';
 import { createWriteStream, existsSync, promises as fs } from 'fs';
 import * as fsExtra from 'fs-extra';
-import { createHash, createHmac, createVerify } from 'crypto';
+import { createHash, createHmac, createVerify, randomUUID } from 'crypto';
 import http from 'http';
 import https from 'https';
 import { execa } from 'execa';
@@ -184,6 +184,61 @@ async function writeJsonFile(filePath: string, payload: unknown): Promise<void> 
 function resolveWorkspacePath(workspacePath: string, relativeOrAbsolute: string): string {
   if (path.isAbsolute(relativeOrAbsolute)) return relativeOrAbsolute;
   return path.join(workspacePath, relativeOrAbsolute);
+}
+
+function resolveContainedMirrorTarget(mirrorArtifactsDir: string, target: string): string {
+  if (!target.trim() || path.isAbsolute(target) || /^[a-zA-Z]:[\\/]/.test(target)) {
+    throw new Error(`Mirror artifact target must be a non-empty relative path: ${target}`);
+  }
+  const root = path.resolve(mirrorArtifactsDir);
+  const resolved = path.resolve(root, target);
+  const relative = path.relative(root, resolved);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`Mirror artifact target escapes the managed artifact directory: ${target}`);
+  }
+  return resolved;
+}
+
+async function assertNoSymlinkPath(root: string, targetPath: string): Promise<void> {
+  const relative = path.relative(root, targetPath);
+  let current = root;
+  for (const segment of relative.split(path.sep).slice(0, -1)) {
+    current = path.join(current, segment);
+    const stat = await fs.lstat(current).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (!stat) break;
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Mirror artifact target traverses a symbolic link: ${current}`);
+    }
+    if (!stat.isDirectory()) {
+      throw new Error(`Mirror artifact target parent is not a directory: ${current}`);
+    }
+  }
+  const targetStat = await fs.lstat(targetPath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (targetStat?.isSymbolicLink() || (targetStat && !targetStat.isFile())) {
+    throw new Error(`Mirror artifact target must be absent or a regular file: ${targetPath}`);
+  }
+}
+
+async function assertManagedMirrorRoot(workspacePath: string, mirrorArtifactsDir: string) {
+  const workspaceRoot = path.resolve(workspacePath);
+  const relative = path.relative(workspaceRoot, path.resolve(mirrorArtifactsDir));
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Managed mirror directory escapes the workspace.');
+  }
+  let current = workspaceRoot;
+  for (const segment of relative.split(path.sep)) {
+    current = path.join(current, segment);
+    const stat = await fs.lstat(current);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error(`Managed mirror path must contain only real directories: ${current}`);
+    }
+  }
 }
 
 function getTargetRelativePath(artifact: MirrorArtifact, fallbackId: string): string {
@@ -683,6 +738,16 @@ export async function runMirrorLifecycle(
   }
 
   await fsExtra.ensureDir(mirrorArtifactsDir);
+  try {
+    await assertManagedMirrorRoot(workspacePath, mirrorArtifactsDir);
+  } catch (error) {
+    checks.push({
+      id: 'mirror.root.safety',
+      status: 'failed',
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return { checks, details };
+  }
 
   const prefetchRetries = Math.max(0, config.prefetch?.retries ?? 2);
   const prefetchBackoffMs = Math.max(0, config.prefetch?.backoffMs ?? 250);
@@ -743,9 +808,25 @@ export async function runMirrorLifecycle(
       ? resolveWorkspacePath(workspacePath, artifact.source)
       : null;
     const targetRelative = getTargetRelativePath(artifact, artifactId);
-    const targetPath = path.join(mirrorArtifactsDir, targetRelative);
+    let targetPath: string;
+    try {
+      targetPath = resolveContainedMirrorTarget(mirrorArtifactsDir, targetRelative);
+      await assertNoSymlinkPath(mirrorArtifactsDir, targetPath);
+    } catch (error) {
+      checks.push({
+        id: `mirror.target.${artifactId}`,
+        status: 'failed',
+        message: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
 
     let mirrored = false;
+    let candidatePath = targetPath;
+    let ownsCandidate = false;
+    const discardCandidate = async (): Promise<void> => {
+      if (ownsCandidate) await fs.rm(candidatePath, { force: true }).catch(() => undefined);
+    };
 
     let provenance: MirrorLockEntry['provenance'] = {
       sourceType: 'path',
@@ -758,7 +839,9 @@ export async function runMirrorLifecycle(
 
     if (sourcePath && (await fsExtra.pathExists(sourcePath))) {
       await fsExtra.ensureDir(path.dirname(targetPath));
-      await fs.copyFile(sourcePath, targetPath);
+      candidatePath = `${targetPath}.${process.pid}.${randomUUID()}.tmp`;
+      ownsCandidate = true;
+      await fs.copyFile(sourcePath, candidatePath);
       details.syncedArtifacts += 1;
       mirrored = true;
       provenance = {
@@ -826,13 +909,17 @@ export async function runMirrorLifecycle(
       }
 
       if (!mirrored) {
+        await fsExtra.ensureDir(path.dirname(targetPath));
+        candidatePath = `${targetPath}.${process.pid}.${randomUUID()}.tmp`;
+        ownsCandidate = true;
         let lastError: Error | null = null;
         let attempts = 0;
 
         for (let attempt = 1; attempt <= prefetchRetries + 1; attempt += 1) {
           attempts = attempt;
           try {
-            await downloadFileWithTimeout(artifact.url, targetPath, prefetchTimeoutMs);
+            await fs.rm(candidatePath, { force: true }).catch(() => undefined);
+            await downloadFileWithTimeout(artifact.url, candidatePath, prefetchTimeoutMs);
             details.syncedArtifacts += 1;
             mirrored = true;
             provenance = {
@@ -862,6 +949,7 @@ export async function runMirrorLifecycle(
         }
 
         if (!mirrored) {
+          await discardCandidate();
           checks.push({
             id: `mirror.prefetch.${artifactId}`,
             status: 'failed',
@@ -898,13 +986,14 @@ export async function runMirrorLifecycle(
       continue;
     }
 
-    const digest = await sha256File(targetPath);
+    const digest = await sha256File(candidatePath);
     if (artifact.sha256 && artifact.sha256.toLowerCase() !== digest.toLowerCase()) {
       checks.push({
         id: `mirror.verify.${artifactId}`,
         status: 'failed',
         message: `Checksum mismatch for ${artifactId}.`,
       });
+      await discardCandidate();
       continue;
     }
 
@@ -916,7 +1005,7 @@ export async function runMirrorLifecycle(
     });
 
     const attestationResult = artifact.attestation
-      ? await verifyDetachedAttestation(workspacePath, targetPath, artifact.attestation)
+      ? await verifyDetachedAttestation(workspacePath, candidatePath, artifact.attestation)
       : null;
 
     if (artifact.attestation) {
@@ -925,13 +1014,17 @@ export async function runMirrorLifecycle(
         status: attestationResult?.verified ? 'passed' : 'failed',
         message: attestationResult?.message || 'Attestation verification failed.',
       });
-      if (!attestationResult?.verified) continue;
+      if (!attestationResult?.verified) {
+        await discardCandidate();
+        continue;
+      }
     } else if (requireAttestation) {
       checks.push({
         id: `mirror.attest.${artifactId}`,
         status: 'failed',
         message: `Attestation is required but missing for ${artifactId}.`,
       });
+      await discardCandidate();
       continue;
     } else {
       checks.push({
@@ -943,7 +1036,7 @@ export async function runMirrorLifecycle(
 
     const sigstoreConfig = artifact.attestation?.sigstore;
     const sigstoreResult = sigstoreConfig
-      ? await verifySigstoreAttestation(workspacePath, targetPath, sigstoreConfig, {
+      ? await verifySigstoreAttestation(workspacePath, candidatePath, sigstoreConfig, {
           requireTransparencyLog: effectiveRequireTransparencyLog,
         })
       : null;
@@ -964,13 +1057,17 @@ export async function runMirrorLifecycle(
         timestamp: new Date().toISOString(),
         environment: activeEnvironment,
       });
-      if (!sigstoreResult?.verified) continue;
+      if (!sigstoreResult?.verified) {
+        await discardCandidate();
+        continue;
+      }
     } else if (requireSigstore) {
       checks.push({
         id: `mirror.sigstore.${artifactId}`,
         status: 'failed',
         message: `Sigstore attestation is required but missing for ${artifactId}.`,
       });
+      await discardCandidate();
       continue;
     } else {
       checks.push({
@@ -992,7 +1089,10 @@ export async function runMirrorLifecycle(
             ? `Sigstore identity policy passed for ${artifactId} in ${activeEnvironment}.`
             : `Sigstore identity policy failed for ${artifactId} in ${activeEnvironment}.`,
         });
-        if (!identityAllowed) continue;
+        if (!identityAllowed) {
+          await discardCandidate();
+          continue;
+        }
       }
 
       const allowedIssuers = environmentPolicy.allowedIssuers || [];
@@ -1006,7 +1106,10 @@ export async function runMirrorLifecycle(
             ? `Sigstore issuer policy passed for ${artifactId} in ${activeEnvironment}.`
             : `Sigstore issuer policy failed for ${artifactId} in ${activeEnvironment}.`,
         });
-        if (!issuerAllowed) continue;
+        if (!issuerAllowed) {
+          await discardCandidate();
+          continue;
+        }
       }
 
       const allowedRekorUrls = environmentPolicy.allowedRekorUrls || [];
@@ -1020,7 +1123,10 @@ export async function runMirrorLifecycle(
             ? `Sigstore Rekor policy passed for ${artifactId} in ${activeEnvironment}.`
             : `Sigstore Rekor policy failed for ${artifactId} in ${activeEnvironment}.`,
         });
-        if (!rekorAllowed) continue;
+        if (!rekorAllowed) {
+          await discardCandidate();
+          continue;
+        }
       }
     } else if (environmentPolicy) {
       checks.push({
@@ -1030,6 +1136,11 @@ export async function runMirrorLifecycle(
       });
     }
 
+    if (ownsCandidate) {
+      await assertNoSymlinkPath(mirrorArtifactsDir, targetPath);
+      await fs.rename(candidatePath, targetPath);
+      ownsCandidate = false;
+    }
     const stat = await fs.stat(targetPath);
     lockEntries.push({
       id: artifactId,

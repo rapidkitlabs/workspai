@@ -653,8 +653,14 @@ export class JavaRuntimeAdapter implements RuntimeAdapter {
     }
 
     const pomPath = path.join(projectPath, 'pom.xml');
-    if (fs.existsSync(pomPath) && fs.readFileSync(pomPath, 'utf-8').includes('checkstyle')) {
-      return this.runBuildTool(projectPath, ['checkstyle:check']);
+    if (fs.existsSync(pomPath)) {
+      const pom = fs.readFileSync(pomPath, 'utf-8');
+      if (pom.includes('spotless-maven-plugin')) {
+        return this.runBuildTool(projectPath, ['spotless:check']);
+      }
+      if (pom.includes('checkstyle')) {
+        return this.runBuildTool(projectPath, ['checkstyle:check']);
+      }
     }
 
     return {
@@ -669,6 +675,14 @@ export class JavaRuntimeAdapter implements RuntimeAdapter {
       return { exitCode: await this.runCommand('make', ['format'], projectPath) };
     }
 
+    const pomPath = path.join(projectPath, 'pom.xml');
+    if (
+      fs.existsSync(pomPath) &&
+      fs.readFileSync(pomPath, 'utf-8').includes('spotless-maven-plugin')
+    ) {
+      return this.runBuildTool(projectPath, ['spotless:apply']);
+    }
+
     const gradleFiles = ['build.gradle', 'build.gradle.kts']
       .map((name) => path.join(projectPath, name))
       .filter((candidate) => fs.existsSync(candidate));
@@ -679,7 +693,7 @@ export class JavaRuntimeAdapter implements RuntimeAdapter {
     return {
       exitCode: 1,
       message:
-        'No Java format tooling detected. Add a Makefile format target or configure spotless in Gradle.',
+        'No Java format tooling detected. Add a Makefile format target or configure Spotless in Maven/Gradle.',
     };
   }
 

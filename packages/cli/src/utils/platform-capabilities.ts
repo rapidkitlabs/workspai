@@ -51,14 +51,15 @@ function npmExecPathCandidate(command: string, env: NodeJS.ProcessEnv): string |
   return fs.existsSync(execPath) ? execPath : null;
 }
 
-function wellKnownPackageRunnerCliCandidates(command: string): string[] {
+function wellKnownPackageRunnerCliCandidates(command: string, nodeExecPath: string): string[] {
   if (command !== 'npm' && command !== 'npx') return [];
 
   const cli = packageRunnerCliBasename(command);
-  const nodeBinDir = path.dirname(process.execPath);
+  const nodeBinDir = path.dirname(nodeExecPath);
   const prefix = path.dirname(nodeBinDir);
 
   return [
+    path.join(nodeBinDir, 'node_modules', 'npm', 'bin', cli),
     path.join(prefix, 'lib', 'node_modules', 'npm', 'bin', cli),
     path.join(prefix, 'lib64', 'node_modules', 'npm', 'bin', cli),
     path.join('/usr', 'lib', 'node_modules', 'npm', 'bin', cli),
@@ -85,14 +86,28 @@ export function resolvePackageRunnerExecutable(
 export function resolvePackageRunnerInvocation(
   command: string,
   platform: NodeJS.Platform = process.platform,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  nodeExecPath: string = process.execPath
 ): PackageRunnerInvocation {
   const normalized = command.trim();
   if (!PACKAGE_RUNNER_COMMANDS.has(normalized)) {
     return { command: normalized, prefixArgs: [] };
   }
 
-  const nodeBinDir = path.dirname(process.execPath);
+  if (normalized === 'npm' || normalized === 'npx') {
+    const npmExecPath = npmExecPathCandidate(normalized, env);
+    if (npmExecPath) {
+      return { command: nodeExecPath, prefixArgs: [npmExecPath] };
+    }
+
+    for (const candidate of wellKnownPackageRunnerCliCandidates(normalized, nodeExecPath)) {
+      if (fs.existsSync(candidate)) {
+        return { command: nodeExecPath, prefixArgs: [candidate] };
+      }
+    }
+  }
+
+  const nodeBinDir = path.dirname(nodeExecPath);
   const extension = isWindowsPlatform(platform) ? '.cmd' : '';
   const candidates = [
     path.join(nodeBinDir, `${normalized}${extension}`),
@@ -102,17 +117,6 @@ export function resolvePackageRunnerInvocation(
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
       return { command: candidate, prefixArgs: [] };
-    }
-  }
-
-  const npmExecPath = npmExecPathCandidate(normalized, env);
-  if (npmExecPath) {
-    return { command: process.execPath, prefixArgs: [npmExecPath] };
-  }
-
-  for (const candidate of wellKnownPackageRunnerCliCandidates(normalized)) {
-    if (fs.existsSync(candidate)) {
-      return { command: process.execPath, prefixArgs: [candidate] };
     }
   }
 

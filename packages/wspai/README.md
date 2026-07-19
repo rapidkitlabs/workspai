@@ -14,3 +14,8 @@ Canonical package:
 ```bash
 npx workspai --help
 ```
+
+Documentation:
+
+- [Workspai CLI README](https://github.com/rapidkitlabs/workspai/blob/main/packages/cli/README.md)
+- [Documentation index](https://github.com/rapidkitlabs/workspai/blob/main/packages/cli/docs/README.md)

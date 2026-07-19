@@ -12,7 +12,7 @@ The `.workspai-workspace` file is the canonical marker that identifies a Workspa
 {
   "signature": "RAPIDKIT_WORKSPACE",
   "createdBy": "workspai-cli",
-  "version": "0.15.1",
+  "version": "<workspai-version>",
   "createdAt": "2026-02-01T12:23:31.993Z",
   "name": "workspace-name",
   "metadata": { ... }
@@ -36,20 +36,22 @@ The metadata layer allows each tool to store its own information without conflic
 {
   "metadata": {
     "vscode": {
-      "extensionVersion": "0.5.0",
+      "extensionVersion": "<extension-version>",
       "createdViaExtension": true,
       "lastOpenedAt": "2026-02-01T14:30:00.000Z",
       "openCount": 5
     },
     "npm": {
-      "packageVersion": "0.15.1",
+      "packageVersion": "<workspai-version>",
       "installMethod": "poetry",
       "lastUsedAt": "2026-02-01T12:23:31.993Z"
     },
     "python": {
-      "coreVersion": "0.2.1",
+      "coreVersion": "<rapidkit-core-version>",
       "pythonVersion": "3.10",
-      "venvPath": ".venv"
+      "venvPath": ".venv",
+      "coreStatus": "installed",
+      "coreReason": "workspace profile requires Python Core"
     },
     "custom": {
       "myTool": "data"
@@ -82,6 +84,8 @@ The metadata layer allows each tool to store its own information without conflic
 | `coreVersion` | `string` | RapidKit Core version |
 | `pythonVersion` | `string` | Python version used |
 | `venvPath` | `string` | Virtual environment path (relative) |
+| `coreStatus` | `"installed" \| "skipped"` | Whether the optional Python engine is installed |
+| `coreReason` | `string` | Reason for the current engine state |
 
 ## Usage Guidelines
 
@@ -91,7 +95,7 @@ The metadata layer allows each tool to store its own information without conflic
 ```typescript
 import { createNpmWorkspaceMarker, writeWorkspaceMarker } from './workspace-marker';
 
-const marker = createNpmWorkspaceMarker('my-workspace', '0.15.1', 'poetry');
+const marker = createNpmWorkspaceMarker('my-workspace', '<workspai-version>', 'poetry');
 await writeWorkspaceMarker('/path/to/workspace', marker);
 ```
 
@@ -100,7 +104,7 @@ await writeWorkspaceMarker('/path/to/workspace', marker);
 // Let npm create the marker, then add VS Code metadata
 await updateWorkspaceMetadata(workspacePath, {
   vscode: {
-    extensionVersion: '0.5.0',
+    extensionVersion: '<extension-version>',
     createdViaExtension: true,
     lastOpenedAt: new Date().toISOString(),
     openCount: 1,
@@ -127,18 +131,21 @@ if (marker) {
 
 ### Updating Metadata
 
-**Always use `updateWorkspaceMetadata()` to preserve existing metadata:**
+Prefer `updateWorkspaceMetadata()` for nested metadata updates. The marker writer
+preserves existing top-level metadata namespaces, but can replace core fields or
+an individual nested namespace value; it is not a deep-merge API.
 
 ```typescript
 // ✅ Correct - preserves other metadata
 await updateWorkspaceMetadata(workspacePath, {
   vscode: {
-    extensionVersion: '0.5.0',
+    extensionVersion: '<extension-version>',
+    createdViaExtension: false,
     lastOpenedAt: new Date().toISOString(),
   },
 });
 
-// ❌ Wrong - overwrites entire marker
+// Use direct writes only when intentionally replacing core marker fields.
 await writeWorkspaceMarker(workspacePath, newMarker);
 ```
 
@@ -172,10 +179,10 @@ Old format (Extension-specific):
 {
   "signature": "RAPIDKIT_WORKSPACE",
   "createdBy": "rapidkit-vscode",
-  "version": "0.15.1",
+  "version": "<legacy-tool-version>",
   "createdAt": "2026-02-01T12:24:21.830Z",
   "name": "alef",
-  "vscodeVersion": "0.5.0",
+  "vscodeVersion": "<legacy-extension-version>",
   "originalCreatedBy": "rapidkit-npm"
 }
 ```
@@ -185,12 +192,12 @@ New format (standardized):
 {
   "signature": "RAPIDKIT_WORKSPACE",
   "createdBy": "workspai-cli",
-  "version": "0.15.1",
+  "version": "<workspai-version>",
   "createdAt": "2026-02-01T12:24:21.830Z",
   "name": "alef",
   "metadata": {
     "vscode": {
-      "extensionVersion": "0.5.0",
+      "extensionVersion": "<extension-version>",
       "createdViaExtension": true,
       "lastOpenedAt": "2026-02-01T12:24:21.830Z",
       "openCount": 1
@@ -222,16 +229,16 @@ Result:
 {
   "signature": "RAPIDKIT_WORKSPACE",
   "createdBy": "workspai-cli",
-  "version": "0.15.1",
+  "version": "<workspai-version>",
   "createdAt": "2026-02-01T10:00:00.000Z",
   "name": "my-workspace",
   "metadata": {
     "npm": {
-      "packageVersion": "0.15.1",
+      "packageVersion": "<workspai-version>",
       "installMethod": "poetry"
     },
     "vscode": {
-      "extensionVersion": "0.5.0",
+      "extensionVersion": "<extension-version>",
       "createdViaExtension": false,
       "lastOpenedAt": "2026-02-01T11:00:00.000Z",
       "openCount": 1
@@ -253,16 +260,16 @@ Result:
 {
   "signature": "RAPIDKIT_WORKSPACE",
   "createdBy": "workspai-cli",
-  "version": "0.15.1",
+  "version": "<workspai-version>",
   "createdAt": "2026-02-01T10:00:00.000Z",
   "name": "my-workspace",
   "metadata": {
     "npm": {
-      "packageVersion": "0.15.1",
+      "packageVersion": "<workspai-version>",
       "installMethod": "poetry"
     },
     "vscode": {
-      "extensionVersion": "0.5.0",
+      "extensionVersion": "<extension-version>",
       "createdViaExtension": true,
       "lastOpenedAt": "2026-02-01T10:00:00.000Z",
       "openCount": 1

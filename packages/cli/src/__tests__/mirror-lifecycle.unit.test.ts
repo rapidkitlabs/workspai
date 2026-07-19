@@ -152,6 +152,55 @@ describe('runMirrorLifecycle unit coverage', () => {
     ).toBe(true);
   });
 
+  it('rejects artifact targets that escape the managed mirror directory', async () => {
+    const workspaceRoot = await makeWorkspace('mirror-target-traversal');
+    tempDirs.push(workspaceRoot);
+    const sourcePath = path.join(workspaceRoot, 'source.bin');
+    await writeFile(sourcePath, 'untrusted', 'utf-8');
+    await writeMirrorConfig(workspaceRoot, {
+      enabled: true,
+      mode: 'offline-first',
+      artifacts: [{ id: 'escape', source: 'source.bin', target: '../../../../escape.bin' }],
+    });
+
+    const result = await runMirrorLifecycle(workspaceRoot, { ciMode: true, offlineMode: false });
+
+    expect(result.checks).toContainEqual(
+      expect.objectContaining({ id: 'mirror.target.escape', status: 'failed' })
+    );
+    expect(await fsExtra.pathExists(path.resolve(workspaceRoot, '../../../../escape.bin'))).toBe(
+      false
+    );
+  });
+
+  it('does not replace a trusted mirror artifact when verification fails', async () => {
+    const workspaceRoot = await makeWorkspace('mirror-atomic-verification');
+    tempDirs.push(workspaceRoot);
+    const sourcePath = path.join(workspaceRoot, 'source.bin');
+    const targetPath = path.join(workspaceRoot, '.workspai', 'mirror', 'artifacts', 'stable.bin');
+    await writeFile(sourcePath, 'tampered', 'utf-8');
+    await fsExtra.outputFile(targetPath, 'trusted');
+    await writeMirrorConfig(workspaceRoot, {
+      enabled: true,
+      mode: 'offline-first',
+      artifacts: [
+        {
+          id: 'atomic',
+          source: 'source.bin',
+          target: 'stable.bin',
+          sha256: createHash('sha256').update('trusted').digest('hex'),
+        },
+      ],
+    });
+
+    const result = await runMirrorLifecycle(workspaceRoot, { ciMode: true, offlineMode: false });
+
+    expect(result.checks).toContainEqual(
+      expect.objectContaining({ id: 'mirror.verify.atomic', status: 'failed' })
+    );
+    expect(await fsExtra.readFile(targetPath, 'utf-8')).toBe('trusted');
+  });
+
   it('fails file evidence export without filePath when failOnError is enabled', async () => {
     const workspaceRoot = await makeWorkspace('mirror-file-export-missing-path');
     tempDirs.push(workspaceRoot);
