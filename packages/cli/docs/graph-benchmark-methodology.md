@@ -52,8 +52,8 @@ language, model, or tokenizer.
 
 ## Current fixture observation
 
-The 16-project development workspace produced the following result on
-2026-07-21 for `api endpoint --limit 8`:
+The 16-project development workspace reproduced the following result on
+2026-07-22 for `api endpoint --limit 8`:
 
 | Measure                         | Observed value |
 | ------------------------------- | -------------: |

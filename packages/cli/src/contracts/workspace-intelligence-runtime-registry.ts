@@ -25,6 +25,8 @@ export const WORKSPACE_INTELLIGENCE_ARTIFACTS = {
   agents: 'AGENTS.md',
   explain: '.workspai/reports/workspace-explain-last-run.json',
   intelligenceRun: '.workspai/reports/workspace-intelligence-run-last-run.json',
+  evaluationLive: '.workspai/reports/workspace-intelligence-evaluation-live.json',
+  evaluationLastRun: '.workspai/reports/workspace-intelligence-evaluation-last-run.json',
 } as const;
 
 export type WorkspaceIntelligenceArtifactId = keyof typeof WORKSPACE_INTELLIGENCE_ARTIFACTS;
@@ -50,6 +52,8 @@ export const WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS = {
   agents: null,
   explain: 'workspace-explain.v1',
   intelligenceRun: 'workspace-intelligence-run.v1',
+  evaluationLive: 'workspace-intelligence-evaluation.v1',
+  evaluationLastRun: 'workspace-intelligence-evaluation.v1',
 } as const satisfies Record<WorkspaceIntelligenceArtifactId, string | null>;
 
 export const WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS = {
@@ -72,6 +76,8 @@ export const WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS = {
   agents: null,
   explain: 'contracts/workspace-intelligence/workspace-explain.v1.json',
   intelligenceRun: 'contracts/workspace-intelligence/workspace-intelligence-run.v1.json',
+  evaluationLive: 'contracts/workspace-intelligence/workspace-intelligence-evaluation.v1.json',
+  evaluationLastRun: 'contracts/workspace-intelligence/workspace-intelligence-evaluation.v1.json',
 } as const satisfies Record<WorkspaceIntelligenceArtifactId, string | null>;
 
 export const WORKSPACE_INTELLIGENCE_COMMAND_SIGNATURES = {

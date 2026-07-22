@@ -7724,7 +7724,7 @@ program
 Workspace Actions:
   Discovery & registry     list | sync | registry | foundation
   Intelligence loop       model | snapshot | diff | impact | verify | context
-  Intelligence consumers  agent-sync | remediation-plan | explain | why | trace | feedback | mcp
+  Intelligence consumers  agent-sync | remediation-plan | explain | why | trace | feedback | eval | mcp
   Graph & observation      graph | watch
   Contracts & policy      contract | policy
   Portability             share | export | archive | hydrate | import
@@ -7961,6 +7961,9 @@ See the command reference for action-specific required inputs and output artifac
       graph: [
         '--workspace',
         '--json',
+        '--output',
+        '--from',
+        '--limit',
         '--include-paths',
         '--include-evidence',
         '--scan-depth',
@@ -8029,6 +8032,7 @@ See the command reference for action-specific required inputs and output artifac
       why: ['--workspace', '--json', '--scope', '--write'],
       trace: ['--workspace', '--json', '--from', '--write'],
       feedback: ['--workspace', '--json'],
+      eval: ['--workspace', '--json', '--from', '--output'],
       mcp: ['--workspace', '--json'],
       init: [
         '--workspace',
@@ -8786,6 +8790,49 @@ See the command reference for action-specific required inputs and output artifac
         console.log(renderGraphMermaid(graph));
         return;
       }
+      if (mode === 'jsonld' || mode === 'graphml' || mode === 'gexf') {
+        const knowledgeGraph = await buildKnowledgeGraph();
+        const {
+          renderWorkspaceKnowledgeGraphGexf,
+          renderWorkspaceKnowledgeGraphGraphMl,
+          renderWorkspaceKnowledgeGraphJsonLd,
+        } = await import('./workspace-knowledge-graph-export.js');
+        const rendered =
+          mode === 'jsonld'
+            ? renderWorkspaceKnowledgeGraphJsonLd(knowledgeGraph)
+            : mode === 'graphml'
+              ? renderWorkspaceKnowledgeGraphGraphMl(knowledgeGraph)
+              : renderWorkspaceKnowledgeGraphGexf(knowledgeGraph);
+        const output = workspaceOutputPath();
+        if (output) {
+          const outputPath = path.resolve(workspacePath, output);
+          await fsExtra.outputFile(outputPath, `${rendered}\n`, 'utf8');
+          if (actionOptions.json) {
+            console.log(
+              JSON.stringify(
+                cliOperationSuccess(
+                  `workspace graph ${mode}`,
+                  {
+                    format: mode,
+                    entityCount: knowledgeGraph.entities.length,
+                    relationCount: knowledgeGraph.relations.length,
+                    proofCount: knowledgeGraph.proofs.length,
+                  },
+                  outputPath
+                ),
+                null,
+                2
+              )
+            );
+          } else {
+            console.log(chalk.green(`✔ Workspace knowledge graph exported as ${mode}`));
+            console.log(chalk.gray(`   Written: ${outputPath}`));
+          }
+          return;
+        }
+        console.log(rendered);
+        return;
+      }
       if (mode === 'explain') {
         const project = (actionOptions.scope?.replace(/^project:/, '') || key || '').trim();
         if (!project) {
@@ -9123,7 +9170,11 @@ See the command reference for action-specific required inputs and output artifac
           '   Query: workspace graph search <query> | entities [kind] | path <from> <to> | evidence <entity-or-relation> | overlay --from <graph.json>'
         )
       );
-      console.log(chalk.gray('   Render: workspace graph dot | workspace graph mermaid'));
+      console.log(
+        chalk.gray(
+          '   Render: workspace graph dot | mermaid | jsonld | graphml | gexf [--output <file>]'
+        )
+      );
     } else if (action === 'watch') {
       const workspacePath = requireWorkspaceRootForAction('watch');
       const { runWorkspaceWatch } = await import('./workspace-watch.js');
@@ -9974,6 +10025,187 @@ See the command reference for action-specific required inputs and output artifac
       if (outputPath) {
         console.log(chalk.gray(`\nWritten: ${outputPath}`));
       }
+    } else if (action === 'eval') {
+      const workspacePath = requireWorkspaceRootForAction('eval');
+      const mode = (subaction || 'status').toLowerCase();
+      const {
+        WORKSPACE_EVALUATION_LAST_RUN_PATH,
+        WORKSPACE_EVALUATION_LIVE_PATH,
+        appendWorkspaceEvaluationEvent,
+        compareWorkspaceEvaluations,
+        createWorkspaceEvaluation,
+        finalizeWorkspaceEvaluation,
+        readWorkspaceEvaluation,
+        writeWorkspaceEvaluation,
+      } = await import('./workspace-intelligence-evaluation.js');
+
+      if (mode === 'init') {
+        const taskId = (key || '').trim();
+        const strategy = (value || 'workspace-intelligence').trim();
+        const strategies = [
+          'full-corpus',
+          'grep',
+          'vector',
+          'graph',
+          'workspace-intelligence',
+          'custom',
+        ] as const;
+        if (!taskId || !strategies.includes(strategy as (typeof strategies)[number])) {
+          console.log(
+            chalk.red('❌ workspace eval init requires <task> and an optional valid strategy.')
+          );
+          console.log(
+            chalk.gray(
+              `   Strategies: ${strategies.join(' | ')}\n   npx workspai workspace eval init repair-readiness workspace-intelligence --json`
+            )
+          );
+          process.exit(1);
+        }
+        const { readWorkspaceMarker } = await import('./workspace-marker.js');
+        const workspaceMarker = await readWorkspaceMarker(workspacePath);
+        const report = createWorkspaceEvaluation({
+          workspacePath,
+          workspaceName: workspaceMarker?.name,
+          taskId,
+          strategy: strategy as (typeof strategies)[number],
+        });
+        const outputPath = await writeWorkspaceEvaluation(workspacePath, report);
+        if (actionOptions.json) {
+          console.log(
+            JSON.stringify(cliOperationSuccess('workspace eval init', report, outputPath), null, 2)
+          );
+          return;
+        }
+        console.log(chalk.green(`✔ Evaluation started: ${taskId}`));
+        console.log(chalk.gray(`   Run: ${report.runId}`));
+        console.log(chalk.gray(`   Strategy: ${report.configuration.strategy}`));
+        console.log(chalk.gray(`   Live: ${outputPath}`));
+        return;
+      }
+
+      if (mode === 'record') {
+        if (!actionOptions.json && !hasRawFlag('--json')) {
+          console.log(chalk.red('❌ workspace eval record requires --json and a stdin event.'));
+          process.exit(1);
+        }
+        if (process.stdin.isTTY) {
+          console.log(chalk.red('❌ workspace eval record requires piped JSON on stdin.'));
+          process.exit(1);
+        }
+        const { parseFeedbackStdinPayload, readStdinAll } = await import('./workspace-feedback.js');
+        const payload = parseFeedbackStdinPayload(await readStdinAll());
+        if (!payload) {
+          console.log(chalk.red('❌ Invalid or empty evaluation event JSON on stdin.'));
+          process.exit(1);
+        }
+        try {
+          const report = await appendWorkspaceEvaluationEvent({ workspacePath, payload });
+          console.log(JSON.stringify(report, null, 2));
+        } catch (error) {
+          console.log(
+            JSON.stringify(
+              cliOperationError({
+                operation: 'workspace eval record',
+                code: 'workspace.eval.event_invalid',
+                message: error instanceof Error ? error.message : String(error),
+                context: { workspacePath },
+              }),
+              null,
+              2
+            )
+          );
+          process.exit(1);
+        }
+        return;
+      }
+
+      if (mode === 'report') {
+        const result = await finalizeWorkspaceEvaluation({ workspacePath });
+        if (actionOptions.output) {
+          await fsExtra.copy(result.outputPath, path.resolve(workspacePath, actionOptions.output));
+        }
+        if (actionOptions.json) {
+          console.log(
+            JSON.stringify(
+              cliOperationSuccess('workspace eval report', result.report, result.outputPath),
+              null,
+              2
+            )
+          );
+          return;
+        }
+        console.log(chalk.green(`✔ Evaluation finalized: ${result.report.runId}`));
+        console.log(
+          chalk.gray(
+            `   Tokens: ${result.report.summary.tokens.observedTotal} · model calls ${result.report.summary.modelCalls} · tool calls ${result.report.summary.toolCalls}`
+          )
+        );
+        console.log(
+          chalk.gray(
+            `   Outcome: ${result.report.summary.outcome.status}${result.report.summary.outcome.verified ? ' (verified)' : ' (unverified)'}`
+          )
+        );
+        console.log(chalk.gray(`   Written: ${result.outputPath}`));
+        return;
+      }
+
+      if (mode === 'compare') {
+        const fromPath = (actionOptions.from || key || '').trim();
+        if (!fromPath) {
+          console.log(chalk.red('❌ workspace eval compare requires --from <baseline-report>.'));
+          process.exit(1);
+        }
+        const current = await readWorkspaceEvaluation(
+          workspacePath,
+          WORKSPACE_EVALUATION_LAST_RUN_PATH
+        );
+        const baseline = await readWorkspaceEvaluation(workspacePath, fromPath);
+        const comparison = compareWorkspaceEvaluations(current, baseline);
+        if (actionOptions.json) {
+          console.log(JSON.stringify(comparison, null, 2));
+          return;
+        }
+        console.log(chalk.green('✔ Workspace Intelligence evaluation comparison'));
+        console.log(chalk.gray(`   Task aligned: ${comparison.taskAligned ? 'yes' : 'no'}`));
+        console.log(chalk.gray(`   Token delta: ${comparison.delta.tokens}`));
+        console.log(
+          chalk.gray(
+            `   Reduction: ${comparison.delta.reductionPercent === null ? 'unavailable' : `${comparison.delta.reductionPercent}%`}`
+          )
+        );
+        console.log(
+          chalk.gray(
+            `   Comparable verified outcome: ${comparison.comparableOutcome ? 'yes' : 'no'}`
+          )
+        );
+        return;
+      }
+
+      if (mode === 'status') {
+        let report;
+        try {
+          report = await readWorkspaceEvaluation(workspacePath, WORKSPACE_EVALUATION_LIVE_PATH);
+        } catch {
+          report = await readWorkspaceEvaluation(workspacePath, WORKSPACE_EVALUATION_LAST_RUN_PATH);
+        }
+        if (actionOptions.json) {
+          console.log(JSON.stringify(report, null, 2));
+          return;
+        }
+        console.log(chalk.green(`✔ Evaluation ${report.status}: ${report.configuration.taskId}`));
+        console.log(chalk.gray(`   Run: ${report.runId}`));
+        console.log(chalk.gray(`   Events: ${report.events.length}`));
+        console.log(
+          chalk.gray(
+            `   Tokens: ${report.summary.tokens.observedTotal} (${report.summary.tokenSources.providerReported} provider-reported calls, ${report.summary.tokenSources.estimated} estimated calls)`
+          )
+        );
+        return;
+      }
+
+      console.log(chalk.red(`Unknown eval action: ${mode}`));
+      console.log(chalk.gray('Available: init | record | status | report | compare'));
+      process.exit(1);
     } else if (action === 'feedback') {
       const workspacePath = requireWorkspaceRootForAction('feedback');
       const mode = (subaction || 'record').toLowerCase();
@@ -10397,12 +10629,17 @@ export function printHelp() {
   );
   console.log(
     grayCmd(
+      '  npx workspai workspace eval [init|record|status|report|compare]  Measure model usage and verified outcomes'
+    )
+  );
+  console.log(
+    grayCmd(
       '  npx workspai workspace mcp serve              Read-mostly stdio MCP over workspace evidence'
     )
   );
   console.log(
     grayCmd(
-      '  npx workspai workspace graph [emit|explain|search|benchmark|entities|evidence|path|overlay|dot|mermaid]  Query evidence graph'
+      '  npx workspai workspace graph [emit|explain|search|benchmark|entities|evidence|path|overlay|dot|mermaid|jsonld|graphml|gexf]  Query or export evidence graph'
     )
   );
   console.log(

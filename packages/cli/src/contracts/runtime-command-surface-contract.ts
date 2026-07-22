@@ -48,7 +48,7 @@ export type RuntimeCommandDocumentation = {
   input?: {
     transport: 'stdin';
     mediaType: 'application/json';
-    required: true;
+    required: boolean;
     schemaVersion: string;
     contractPath: string;
   };
@@ -57,7 +57,13 @@ export type RuntimeCommandDocumentation = {
     modes?: Array<{
       selector: string;
       format: 'json' | 'raw-text';
-      mediaType: 'application/json' | 'text/vnd.graphviz' | 'text/vnd.mermaid';
+      mediaType:
+        | 'application/json'
+        | 'application/ld+json'
+        | 'application/graphml+xml'
+        | 'application/gexf+xml'
+        | 'text/vnd.graphviz'
+        | 'text/vnd.mermaid';
     }>;
   };
   exitSemantics?: {
@@ -281,13 +287,22 @@ const COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
     'Inspect or establish the foundational metadata required by workspace operations.',
   'workspace snapshot':
     'Capture a versioned workspace or model baseline for comparison and recovery.',
-  'workspace graph': 'Render the current workspace dependency graph in a supported representation.',
+  'workspace graph':
+    'Query or export the evidence-backed workspace graph derived from the canonical model.',
   'workspace watch': 'Observe relevant workspace changes and publish versioned watch events.',
   'workspace remediation-plan':
     'Generate a structured remediation plan from current workspace evidence.',
   'workspace why': 'Explain why a relationship, verdict, or workspace fact exists.',
   'workspace trace': 'Trace a change or finding through its evidence and dependency relationships.',
   'workspace feedback': 'Record structured feedback about Workspace Intelligence output.',
+  'workspace eval':
+    'Measure model usage, agent activity, cost provenance, and verified task outcomes without storing prompt or response bodies.',
+  'workspace eval init':
+    'Initialize one live, versioned Workspace Intelligence evaluation run for a fixed task and retrieval strategy.',
+  'workspace eval record --json':
+    'Validate one privacy-bounded usage or outcome event from stdin and append it to the live evaluation artifact.',
+  'workspace eval report --json':
+    'Finalize the live evaluation into an authoritative last-run report for IDE, CI, and comparison consumers.',
   'workspace mcp': 'Expose Workspace Intelligence through the MCP integration boundary.',
   'workspace policy': 'Inspect or update workspace governance policy.',
   'workspace contract': 'Inspect and verify explicit workspace contracts.',
@@ -325,6 +340,34 @@ const COMMAND_DOCUMENTATION_OVERRIDES: Readonly<
       modes: [{ selector: '--json', format: 'json', mediaType: 'application/json' }],
     },
   },
+  'workspace eval': {
+    canonicalArgv: ['workspace', 'eval', 'status', '--json'],
+    input: {
+      transport: 'stdin',
+      mediaType: 'application/json',
+      required: false,
+      schemaVersion: 'model-usage-event.v1',
+      contractPath: 'contracts/workspace-intelligence/model-usage-event.v1.json',
+    },
+    output: {
+      defaultFormat: 'human-or-json',
+      modes: [
+        {
+          selector: 'init <task> [strategy] --json',
+          format: 'json',
+          mediaType: 'application/json',
+        },
+        { selector: 'record --json', format: 'json', mediaType: 'application/json' },
+        { selector: 'status --json', format: 'json', mediaType: 'application/json' },
+        { selector: 'report --json', format: 'json', mediaType: 'application/json' },
+        {
+          selector: 'compare --from <report> --json',
+          format: 'json',
+          mediaType: 'application/json',
+        },
+      ],
+    },
+  },
   'workspace graph': {
     canonicalArgv: ['workspace', 'graph', 'emit', '--json'],
     output: {
@@ -342,8 +385,23 @@ const COMMAND_DOCUMENTATION_OVERRIDES: Readonly<
         },
         { selector: 'emit --json', format: 'json', mediaType: 'application/json' },
         { selector: 'explain <project> --json', format: 'json', mediaType: 'application/json' },
+        { selector: 'entities [kind] --json', format: 'json', mediaType: 'application/json' },
+        {
+          selector: 'evidence <id-or-unique-label> --json',
+          format: 'json',
+          mediaType: 'application/json',
+        },
+        { selector: 'path <from> <to> --json', format: 'json', mediaType: 'application/json' },
+        {
+          selector: 'overlay --from <graph> --json',
+          format: 'json',
+          mediaType: 'application/json',
+        },
         { selector: 'dot', format: 'raw-text', mediaType: 'text/vnd.graphviz' },
         { selector: 'mermaid', format: 'raw-text', mediaType: 'text/vnd.mermaid' },
+        { selector: 'jsonld', format: 'raw-text', mediaType: 'application/ld+json' },
+        { selector: 'graphml', format: 'raw-text', mediaType: 'application/graphml+xml' },
+        { selector: 'gexf', format: 'raw-text', mediaType: 'application/gexf+xml' },
       ],
     },
   },

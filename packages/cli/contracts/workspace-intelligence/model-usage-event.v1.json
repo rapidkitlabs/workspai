@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/model-usage-event.v1.json",
+  "title": "Workspai Model and Agent Usage Event",
+  "description": "A privacy-bounded usage observation. Prompt and response bodies are deliberately excluded; consumers may provide hashes instead.",
+  "type": "object",
+  "required": ["schemaVersion", "eventId", "recordedAt", "kind"],
+  "properties": {
+    "schemaVersion": { "const": "model-usage-event.v1" },
+    "eventId": { "type": "string", "minLength": 1 },
+    "recordedAt": { "type": "string", "format": "date-time" },
+    "kind": { "enum": ["model-call", "tool-call", "outcome", "milestone"] },
+    "stage": { "type": "string", "minLength": 1 },
+    "modelCall": {
+      "type": "object",
+      "required": ["provider", "model", "source", "inputTokens", "outputTokens", "cachedInputTokens", "reasoningTokens", "latencyMs"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "source": { "enum": ["provider-reported", "tokenizer-counted", "estimated", "unavailable"] },
+        "tokenizer": { "type": "string", "minLength": 1 },
+        "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "cachedInputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "reasoningTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "latencyMs": { "type": ["number", "null"], "minimum": 0 },
+        "promptHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "responseHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "cost": {
+          "type": "object",
+          "required": ["amount", "currency", "source"],
+          "properties": {
+            "amount": { "type": "number", "minimum": 0 },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+            "source": { "enum": ["provider-reported", "catalog-estimated"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "toolCall": {
+      "type": "object",
+      "required": ["tool", "result", "changedSource", "durationMs"],
+      "properties": {
+        "tool": { "type": "string", "minLength": 1 },
+        "result": { "enum": ["passed", "failed", "blocked", "skipped"] },
+        "changedSource": { "type": "boolean" },
+        "durationMs": { "type": ["number", "null"], "minimum": 0 },
+        "artifact": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "outcome": {
+      "type": "object",
+      "required": ["status", "verified", "blockersResolved"],
+      "properties": {
+        "status": { "enum": ["passed", "failed", "blocked", "unknown"] },
+        "verified": { "type": "boolean" },
+        "blockersResolved": { "type": "integer", "minimum": 0 },
+        "summary": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "milestone": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "detail": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    { "if": { "properties": { "kind": { "const": "model-call" } } }, "then": { "properties": { "modelCall": {} }, "required": ["modelCall"] } },
+    { "if": { "properties": { "kind": { "const": "tool-call" } } }, "then": { "properties": { "toolCall": {} }, "required": ["toolCall"] } },
+    { "if": { "properties": { "kind": { "const": "outcome" } } }, "then": { "properties": { "outcome": {} }, "required": ["outcome"] } },
+    { "if": { "properties": { "kind": { "const": "milestone" } } }, "then": { "properties": { "milestone": {} }, "required": ["milestone"] } }
+  ],
+  "additionalProperties": false
+}

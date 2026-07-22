@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-intelligence-evaluation.v1.json",
+  "title": "Workspai Workspace Intelligence Evaluation",
+  "description": "A live or finalized, provenance-aware measurement of model usage, agent activity, and verified task outcome.",
+  "type": "object",
+  "required": ["schemaVersion", "runId", "sessionId", "status", "startedAt", "updatedAt", "workspace", "configuration", "methodology", "events", "summary"],
+  "properties": {
+    "schemaVersion": { "const": "workspace-intelligence-evaluation.v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["live", "completed", "aborted"] },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "workspace": {
+      "type": "object",
+      "required": ["name", "path"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "configuration": {
+      "type": "object",
+      "required": ["taskId", "strategy"],
+      "properties": {
+        "taskId": { "type": "string", "minLength": 1 },
+        "strategy": { "enum": ["full-corpus", "grep", "vector", "graph", "workspace-intelligence", "custom"] },
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "temperature": { "type": "number" },
+        "baselineRunId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "methodology": {
+      "type": "object",
+      "required": ["id", "claimBoundary"],
+      "properties": {
+        "id": { "const": "provider-usage-and-verified-outcome.v1" },
+        "claimBoundary": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "model-usage-event.v1.json" }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["modelCalls", "toolCalls", "tokenSources", "tokens", "latencyMs", "costs", "outcome", "efficiency"],
+      "properties": {
+        "modelCalls": { "type": "integer", "minimum": 0 },
+        "toolCalls": { "type": "integer", "minimum": 0 },
+        "tokenSources": {
+          "type": "object",
+          "required": ["providerReported", "tokenizerCounted", "estimated", "unavailable"],
+          "properties": {
+            "providerReported": { "type": "integer", "minimum": 0 },
+            "tokenizerCounted": { "type": "integer", "minimum": 0 },
+            "estimated": { "type": "integer", "minimum": 0 },
+            "unavailable": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "tokens": {
+          "type": "object",
+          "required": ["input", "output", "cachedInput", "reasoning", "observedTotal"],
+          "properties": {
+            "input": { "type": "integer", "minimum": 0 },
+            "output": { "type": "integer", "minimum": 0 },
+            "cachedInput": { "type": "integer", "minimum": 0 },
+            "reasoning": { "type": "integer", "minimum": 0 },
+            "observedTotal": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "latencyMs": { "type": "number", "minimum": 0 },
+        "costs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["currency", "amount", "providerReported", "estimated"],
+            "properties": {
+              "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+              "amount": { "type": "number", "minimum": 0 },
+              "providerReported": { "type": "number", "minimum": 0 },
+              "estimated": { "type": "number", "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "outcome": {
+          "type": "object",
+          "required": ["status", "verified", "blockersResolved"],
+          "properties": {
+            "status": { "enum": ["passed", "failed", "blocked", "unknown"] },
+            "verified": { "type": "boolean" },
+            "blockersResolved": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "efficiency": {
+          "type": "object",
+          "required": ["tokensPerVerifiedOutcome", "noProgressDecisions", "repeatedArtifactReads"],
+          "properties": {
+            "tokensPerVerifiedOutcome": { "type": ["number", "null"], "minimum": 0 },
+            "noProgressDecisions": { "type": "integer", "minimum": 0 },
+            "repeatedArtifactReads": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -30,6 +30,7 @@ export const WORKSPACE_SUBCOMMANDS = [
   'why',
   'trace',
   'feedback',
+  'eval',
   'mcp',
   'policy',
   'contract',
@@ -70,6 +71,7 @@ export const WORKSPACE_INTELLIGENCE_SUBCOMMANDS = [
   'why',
   'trace',
   'feedback',
+  'eval',
   'mcp',
 ] as const;
 

@@ -194,8 +194,29 @@ describe('shared runtime command surface contract (npm)', () => {
     );
     expect(documentation.get('workspace graph')?.output?.modes).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ selector: 'entities [kind] --json', format: 'json' }),
+        expect.objectContaining({
+          selector: 'evidence <id-or-unique-label> --json',
+          format: 'json',
+        }),
+        expect.objectContaining({ selector: 'path <from> <to> --json', format: 'json' }),
+        expect.objectContaining({
+          selector: 'overlay --from <graph> --json',
+          format: 'json',
+        }),
         expect.objectContaining({ selector: 'dot', format: 'raw-text' }),
         expect.objectContaining({ selector: 'mermaid', format: 'raw-text' }),
+        expect.objectContaining({ selector: 'jsonld', mediaType: 'application/ld+json' }),
+        expect.objectContaining({ selector: 'graphml', mediaType: 'application/graphml+xml' }),
+        expect.objectContaining({ selector: 'gexf', mediaType: 'application/gexf+xml' }),
+      ])
+    );
+    expect(documentation.get('workspace eval')?.output?.modes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ selector: 'init <task> [strategy] --json' }),
+        expect.objectContaining({ selector: 'record --json' }),
+        expect.objectContaining({ selector: 'report --json' }),
+        expect.objectContaining({ selector: 'compare --from <report> --json' }),
       ])
     );
     expect(documentation.get('pipeline')?.exitSemantics).toEqual(

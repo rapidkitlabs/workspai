@@ -56,6 +56,11 @@ import { WORKSPACE_SKILLS_INDEX_SCHEMA_VERSION } from '../../contracts/workspace
 import { WORKSPACE_EXPLAIN_SCHEMA_VERSION } from '../../contracts/workspace-explain-contract';
 import { WORKSPACE_KNOWLEDGE_GRAPH_SCHEMA_VERSION } from '../../contracts/workspace-knowledge-graph-contract';
 import { WORKSPACE_KNOWLEDGE_GRAPH_REPORT_PATH } from '../../workspace-knowledge-graph';
+import {
+  WORKSPACE_EVALUATION_LAST_RUN_PATH,
+  WORKSPACE_EVALUATION_LIVE_PATH,
+} from '../../workspace-intelligence-evaluation';
+import { WORKSPACE_INTELLIGENCE_EVALUATION_SCHEMA_VERSION } from '../../contracts/workspace-intelligence-evaluation-contract';
 
 describe('workspace intelligence chain contract', () => {
   it('forbids canonical report path literals outside the runtime registry', () => {
@@ -254,6 +259,8 @@ describe('workspace intelligence chain contract', () => {
       agents: 'AGENTS.md',
       explain: WORKSPACE_EXPLAIN_REPORT_PATH,
       intelligenceRun: WORKSPACE_INTELLIGENCE_RUN_REPORT_PATH,
+      evaluationLive: WORKSPACE_EVALUATION_LIVE_PATH,
+      evaluationLastRun: WORKSPACE_EVALUATION_LAST_RUN_PATH,
     }).toEqual(WORKSPACE_INTELLIGENCE_ARTIFACTS);
   });
 
@@ -277,6 +284,8 @@ describe('workspace intelligence chain contract', () => {
       agents: null,
       explain: WORKSPACE_EXPLAIN_SCHEMA_VERSION,
       intelligenceRun: WORKSPACE_INTELLIGENCE_RUN_SCHEMA_VERSION,
+      evaluationLive: WORKSPACE_INTELLIGENCE_EVALUATION_SCHEMA_VERSION,
+      evaluationLastRun: WORKSPACE_INTELLIGENCE_EVALUATION_SCHEMA_VERSION,
     }).toEqual(WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS);
   });
 
@@ -494,10 +503,16 @@ describe('workspace intelligence chain contract', () => {
     expect(
       contract.auxiliaryCapabilities.every((capability) => capability.chainStep === false)
     ).toBe(true);
+    expect(contract.auxiliaryCapabilities.map((capability) => capability.id)).toEqual([
+      'graph',
+      'evaluation',
+      'watch',
+      'mcp',
+    ]);
     expect(contract.invariants).toEqual(
       expect.arrayContaining([
         expect.stringContaining('unknown or unavailable'),
-        expect.stringContaining('workspace dependency graph'),
+        expect.stringContaining('workspace knowledge graph'),
         expect.stringContaining('contractRefs'),
         expect.stringContaining('when produced and when consumed'),
         expect.stringContaining('semantically coherent'),

@@ -65,7 +65,8 @@ npx workspai workspace snapshot [--workspace <path>] [--json] [--include-paths] 
 npx workspai workspace diff --from <snapshot-or-report|git[:ref]> [--workspace <path>] [--json] [--include-paths] [--include-evidence] [--scan-depth <count>] [--strict]
 npx workspai workspace impact --from <workspace-diff-report> [--workspace <path>] [--scope project:<name>] [--json] [--include-paths] [--include-evidence] [--scan-depth <count>] [--strict]
 npx workspai workspace verify [--from-impact <file>] [--workspace <path>] [--scope project:<name>] [--strict] [--json] [--include-paths] [--include-evidence] [--scan-depth <count>]
-npx workspai workspace graph [emit|explain|search|benchmark|entities|evidence|path|overlay|dot|mermaid] [key] [value] [--from <graph.json>] [--limit <1..100>] [--workspace <path>] [--scope project:<name>] [--json] [--include-paths] [--include-evidence] [--scan-depth <count>]
+npx workspai workspace graph [emit|explain|search|benchmark|entities|evidence|path|overlay|dot|mermaid|jsonld|graphml|gexf] [key] [value] [--from <graph.json>] [--output <file>] [--limit <1..100>] [--workspace <path>] [--scope project:<name>] [--json] [--include-paths] [--include-evidence] [--scan-depth <count>]
+npx workspai workspace eval [init <task> [strategy]|record|status|report|compare --from <report>] [--workspace <path>] [--output <file>] [--json]
 npx workspai workspace watch [--workspace <path>] [--json] [--once] [--scan-depth <count>]
 npx workspai workspace explain|why <target> [--workspace <path>] [--json] [--write]
 npx workspai workspace trace --from <workspace-diff-report> [--workspace <path>] [--json] [--write]
@@ -143,6 +144,18 @@ complete graph. `workspace graph benchmark <query> --limit <n> --json` compares
 that retrieval payload with the readable proof-indexed corpus using a labelled
 `characters / 4` estimate. It measures payload reduction only; it does not
 assert equivalent answer quality or model-specific billing savings.
+
+`workspace graph jsonld|graphml|gexf` exports the current derived,
+evidence-backed Knowledge Graph for semantic, graph-analysis, and interactive
+2D/3D consumers.
+Use `--output <file>` for a durable export; Mermaid and DOT remain the compact
+documentation-oriented renderings.
+
+`workspace eval` records provider/tokenizer/estimate provenance, tool activity,
+cost, latency, and verified task outcome. `eval record` accepts a
+`model-usage-event.v1` JSON document on stdin. The live and finalized artifacts
+are suitable for IDE dashboards and conform to
+`workspace-intelligence-evaluation.v1`.
 
 `workspace model --write` also materializes the derived, contract-validated
 knowledge graph at `.workspai/reports/workspace-knowledge-graph.json`. The

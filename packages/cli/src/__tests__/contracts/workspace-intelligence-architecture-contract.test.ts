@@ -52,8 +52,27 @@ describe('workspace intelligence architecture contract', () => {
     ]);
     expect(contract.auxiliaryCapabilities.map((capability) => capability.id)).toEqual([
       'graph',
+      'evaluation',
       'watch',
       'mcp',
+    ]);
+    expect(
+      contract.auxiliaryCapabilities.find((capability) => capability.id === 'graph')?.commands
+    ).toEqual(
+      expect.arrayContaining([
+        'workspace graph search',
+        'workspace graph evidence',
+        'workspace graph overlay',
+        'workspace graph jsonld',
+        'workspace graph graphml',
+        'workspace graph gexf',
+      ])
+    );
+    expect(
+      contract.auxiliaryCapabilities.find((capability) => capability.id === 'evaluation')?.produces
+    ).toEqual([
+      '.workspai/reports/workspace-intelligence-evaluation-live.json',
+      '.workspai/reports/workspace-intelligence-evaluation-last-run.json',
     ]);
 
     expect(contract.consumers.map((consumer) => consumer.id)).toEqual([

@@ -95,6 +95,20 @@ const READ_TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    name: 'getWorkspaceEvaluation',
+    description:
+      'Read the live or finalized provenance-aware model usage and verified-outcome report',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        live: {
+          type: 'boolean',
+          description: 'Read the live report instead of the finalized last-run report',
+        },
+      },
+    },
+  },
+  {
     name: 'queryWorkspaceEntities',
     description: 'List workspace knowledge entities, optionally filtered by kind',
     inputSchema: {
@@ -295,6 +309,13 @@ async function invokeTool(
       return readJsonArtifact(workspacePath, WORKSPACE_MODEL_REPORT_PATH);
     case 'getWorkspaceKnowledgeGraph':
       return readJsonArtifact(workspacePath, WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph);
+    case 'getWorkspaceEvaluation':
+      return readJsonArtifact(
+        workspacePath,
+        args.live === true
+          ? WORKSPACE_INTELLIGENCE_ARTIFACTS.evaluationLive
+          : WORKSPACE_INTELLIGENCE_ARTIFACTS.evaluationLastRun
+      );
     case 'queryWorkspaceEntities': {
       const graph = (await readJsonArtifact(
         workspacePath,

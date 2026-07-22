@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-intelligence-evaluation-comparison.v1.json",
+  "title": "Workspai Workspace Intelligence Evaluation Comparison",
+  "description": "A task-aligned comparison between two provenance-aware Workspace Intelligence evaluation runs.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "taskAligned",
+    "current",
+    "baseline",
+    "delta",
+    "comparableOutcome"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "workspace-intelligence-evaluation-comparison.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "taskAligned": { "type": "boolean" },
+    "current": { "$ref": "#/$defs/run" },
+    "baseline": { "$ref": "#/$defs/run" },
+    "delta": {
+      "type": "object",
+      "required": ["tokens", "reductionPercent", "modelCalls", "toolCalls", "latencyMs"],
+      "properties": {
+        "tokens": { "type": "number" },
+        "reductionPercent": { "type": ["number", "null"] },
+        "modelCalls": { "type": "number" },
+        "toolCalls": { "type": "number" },
+        "latencyMs": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "comparableOutcome": { "type": "boolean" }
+  },
+  "$defs": {
+    "run": {
+      "type": "object",
+      "required": ["runId", "strategy", "tokens", "verified", "status"],
+      "properties": {
+        "runId": { "type": "string", "minLength": 1 },
+        "strategy": {
+          "enum": ["full-corpus", "grep", "vector", "graph", "workspace-intelligence", "custom"]
+        },
+        "tokens": { "type": "integer", "minimum": 0 },
+        "verified": { "type": "boolean" },
+        "status": { "enum": ["passed", "failed", "blocked", "unknown"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

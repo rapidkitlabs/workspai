@@ -93,16 +93,17 @@ be traced through `proofIds`.
 
 ## Pick the command by question
 
-| You want to know…                                    | Use                                                    |
-| ---------------------------------------------------- | ------------------------------------------------------ |
-| What is relevant to a natural-language question?     | `workspace graph search <query> --limit <n> --json`    |
-| Which entities of one type exist?                    | `workspace graph entities <kind> --json`               |
-| Why does Workspai believe an item exists?            | `workspace graph evidence <entity-or-relation> --json` |
-| How are two things connected?                        | `workspace graph path <from> <to> --json`              |
-| What changed between graph revisions?                | `workspace graph overlay --from <graph.json> --json`   |
-| What is the full portable graph?                     | `workspace graph emit --json`                          |
-| How much retrieval payload did one query avoid?      | `workspace graph benchmark <query> --limit <n> --json` |
-| How should an MCP-compatible agent retrieve context? | `workspace mcp serve` → `searchWorkspaceGraph`         |
+| You want to know…                                    | Use                                                     |
+| ---------------------------------------------------- | ------------------------------------------------------- |
+| What is relevant to a natural-language question?     | `workspace graph search <query> --limit <n> --json`     |
+| Which entities of one type exist?                    | `workspace graph entities <kind> --json`                |
+| Why does Workspai believe an item exists?            | `workspace graph evidence <entity-or-relation> --json`  |
+| How are two things connected?                        | `workspace graph path <from> <to> --json`               |
+| What changed between graph revisions?                | `workspace graph overlay --from <graph.json> --json`    |
+| What is the full portable graph?                     | `workspace graph emit --json`                           |
+| How do I export to semantic or graph-analysis tools? | `workspace graph jsonld\|graphml\|gexf --output <file>` |
+| How much retrieval payload did one query avoid?      | `workspace graph benchmark <query> --limit <n> --json`  |
+| How should an MCP-compatible agent retrieve context? | `workspace mcp serve` → `searchWorkspaceGraph`          |
 
 ## What it models
 
@@ -185,6 +186,26 @@ The Knowledge Graph is consumed by:
 The complete graph is an interchange artifact, not a prompt. Agents should
 start with `INDEX.json`, use bounded search, then retrieve evidence or a path
 for the selected result.
+
+### Interchange and visualization
+
+The JSON artifact is the canonical interchange form of the derived graph; the
+Workspace Model remains the system source of truth. Other formats are
+deterministic projections of that same graph revision:
+
+```bash
+npx workspai workspace graph mermaid
+npx workspai workspace graph dot
+npx workspai workspace graph jsonld --output workspace-graph.jsonld
+npx workspai workspace graph graphml --output workspace-graph.graphml
+npx workspai workspace graph gexf --output workspace-graph.gexf
+```
+
+- Mermaid and DOT are suited to documentation and architecture diagrams.
+- JSON-LD carries semantic identities, relations, and proof references.
+- GraphML and GEXF work with graph-analysis and interactive visualization tools.
+- The canonical JSON, JSON-LD, GraphML, and GEXF outputs can drive 2D or 3D
+  viewers; a 3D view is a presentation layer, not a separate source of truth.
 
 ## AI tool output locations
 

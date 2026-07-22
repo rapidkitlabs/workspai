@@ -37,6 +37,11 @@ import { OPERATIONAL_JSON_SCHEMA_VERSIONS } from './operational-json-schemas.js'
 import { CLI_RUNTIME_COMMAND_INVENTORY_SCHEMA_VERSION } from '../utils/cli-command-surface.js';
 import { WORKSPACE_KNOWLEDGE_SEARCH_SCHEMA_VERSION } from '../workspace-knowledge-graph-query.js';
 import { WORKSPACE_GRAPH_TOKEN_EFFICIENCY_SCHEMA_VERSION } from '../workspace-graph-token-efficiency.js';
+import {
+  MODEL_USAGE_EVENT_SCHEMA_VERSION,
+  WORKSPACE_INTELLIGENCE_EVALUATION_COMPARISON_SCHEMA_VERSION,
+  WORKSPACE_INTELLIGENCE_EVALUATION_SCHEMA_VERSION,
+} from './workspace-intelligence-evaluation-contract.js';
 
 export const PUBLISHED_CONTRACT_CATALOG_SCHEMA_VERSION =
   'workspai-published-contract-catalog-v1' as const;
@@ -69,6 +74,10 @@ export function getPublishedContractVersions() {
     workspaceKnowledgeGraphChangeOverlay: WORKSPACE_KNOWLEDGE_GRAPH_CHANGE_OVERLAY_SCHEMA_VERSION,
     workspaceKnowledgeSearch: WORKSPACE_KNOWLEDGE_SEARCH_SCHEMA_VERSION,
     workspaceGraphTokenEfficiency: WORKSPACE_GRAPH_TOKEN_EFFICIENCY_SCHEMA_VERSION,
+    modelUsageEvent: MODEL_USAGE_EVENT_SCHEMA_VERSION,
+    workspaceIntelligenceEvaluation: WORKSPACE_INTELLIGENCE_EVALUATION_SCHEMA_VERSION,
+    workspaceIntelligenceEvaluationComparison:
+      WORKSPACE_INTELLIGENCE_EVALUATION_COMPARISON_SCHEMA_VERSION,
     workspaceIntelligenceHistory: WORKSPACE_HISTORY_SCHEMA_VERSION,
     agentCustomizationPackCapabilities: AGENT_CUSTOMIZATION_PACK_SCHEMA_VERSION,
     agentCustomizationPackReport: WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.agentCustomizationPack,
@@ -125,6 +134,11 @@ export function getPublishedContractCatalog() {
     workspaceKnowledgeSearch: 'contracts/workspace-intelligence/workspace-knowledge-search.v1.json',
     workspaceGraphTokenEfficiency:
       'contracts/workspace-intelligence/workspace-graph-token-efficiency.v1.json',
+    modelUsageEvent: 'contracts/workspace-intelligence/model-usage-event.v1.json',
+    workspaceIntelligenceEvaluation:
+      'contracts/workspace-intelligence/workspace-intelligence-evaluation.v1.json',
+    workspaceIntelligenceEvaluationComparison:
+      'contracts/workspace-intelligence/workspace-intelligence-evaluation-comparison.v1.json',
     workspaceIntelligenceHistory:
       'contracts/workspace-intelligence/workspace-intelligence-history.v1.json',
     agentCustomizationPackCapabilities: 'contracts/agent-customization-pack.v1.json',

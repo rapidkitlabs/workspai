@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-07-22
+
+### Added
+
+- Added a governed Workspace Intelligence evaluation workflow with
+  `workspace eval init`, `record`, `status`, `report`, and `compare` for
+  measuring retrieval payloads and model-usage observations without making
+  unsupported universal token-saving claims.
+- Added portable Knowledge Graph exports for JSON-LD, GraphML, and GEXF, plus
+  typed entity, evidence, path, search, benchmark, and change-overlay surfaces.
+- Added versioned evaluation, evaluation-comparison, and model-usage-event
+  contracts and registered their artifacts for CLI, CI, IDE, MCP, and agent
+  consumers.
+- Added a documentation content contract and stronger drift guards covering
+  Graph commands, Evaluation artifacts, runtime selectors, source-of-truth
+  boundaries, examples, and README command smoke tests.
+
+### Changed
+
+- Expanded the machine-readable Workspace Intelligence architecture and
+  runtime command-surface contracts so Graph and Evaluation capabilities are
+  discoverable from the same contract inventory used by the CLI.
+- Clarified that the Workspace Model is the system source of truth, while the
+  evidence-backed Knowledge Graph is a deterministic, model-bound derived
+  representation with multiple portable projections.
+- Reworked the root and CLI READMEs around user goals, the canonical lifecycle,
+  generated evidence, consumer paths, and verifiable claim boundaries.
+- Expanded the `wspai` alias README with installation guidance, delegation
+  semantics, canonical state behavior, and direct documentation links.
+- Bumped the monorepo root, `workspai`, and `wspai` packages to `0.48.0`, and
+  aligned the alias dependency on `workspai@0.48.0`.
+
+### Fixed
+
+- Fixed CLI validation for the documented Graph options:
+  - `workspace graph search --limit`
+  - `workspace graph overlay --from`
+- Fixed architecture-contract drift that omitted current Graph query/export
+  commands and the complete Evaluation capability and artifact inventory.
+- Removed stale documentation language that described the current graph as a
+  dependency-only or JavaScript/TypeScript-only view.
+
+### Verification
+
+- Full CLI suite: 2,071 tests passed across 191 test files, with 8 explicit
+  skips and no failures.
+- TypeScript, ESLint, documentation links/examples/drift guards, README command
+  smoke, generated contracts, shared-contract parity, and `git diff --check`
+  passed.
+- A real isolated workspace exercised Model and Graph generation, bounded
+  search, JSON-LD/GraphML/GEXF exports, Evaluation init/status/report, and the
+  complete strict Workspace Intelligence runner.
+
 ## [0.47.0] - 2026-07-21
 
 ### Added

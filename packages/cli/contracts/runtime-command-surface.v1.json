@@ -857,6 +857,82 @@
       ]
     },
     {
+      "invocation": "workspace eval",
+      "summary": "Measure model usage, agent activity, cost provenance, and verified task outcomes without storing prompt or response bodies.",
+      "canonicalArgv": [
+        "workspace",
+        "eval",
+        "status",
+        "--json"
+      ],
+      "input": {
+        "transport": "stdin",
+        "mediaType": "application/json",
+        "required": false,
+        "schemaVersion": "model-usage-event.v1",
+        "contractPath": "contracts/workspace-intelligence/model-usage-event.v1.json"
+      },
+      "output": {
+        "defaultFormat": "human-or-json",
+        "modes": [
+          {
+            "selector": "init <task> [strategy] --json",
+            "format": "json",
+            "mediaType": "application/json"
+          },
+          {
+            "selector": "record --json",
+            "format": "json",
+            "mediaType": "application/json"
+          },
+          {
+            "selector": "status --json",
+            "format": "json",
+            "mediaType": "application/json"
+          },
+          {
+            "selector": "report --json",
+            "format": "json",
+            "mediaType": "application/json"
+          },
+          {
+            "selector": "compare --from <report> --json",
+            "format": "json",
+            "mediaType": "application/json"
+          }
+        ]
+      }
+    },
+    {
+      "invocation": "workspace eval init",
+      "summary": "Initialize one live, versioned Workspace Intelligence evaluation run for a fixed task and retrieval strategy.",
+      "canonicalArgv": [
+        "workspace",
+        "eval",
+        "init"
+      ]
+    },
+    {
+      "invocation": "workspace eval record --json",
+      "summary": "Validate one privacy-bounded usage or outcome event from stdin and append it to the live evaluation artifact.",
+      "canonicalArgv": [
+        "workspace",
+        "eval",
+        "record",
+        "--json"
+      ]
+    },
+    {
+      "invocation": "workspace eval report --json",
+      "summary": "Finalize the live evaluation into an authoritative last-run report for IDE, CI, and comparison consumers.",
+      "canonicalArgv": [
+        "workspace",
+        "eval",
+        "report",
+        "--json"
+      ]
+    },
+    {
       "invocation": "workspace explain",
       "summary": "Explain a workspace relationship, project, or blocker from traceable model and evidence references.",
       "canonicalArgv": [
@@ -930,7 +1006,7 @@
     },
     {
       "invocation": "workspace graph",
-      "summary": "Render the current workspace dependency graph in a supported representation.",
+      "summary": "Query or export the evidence-backed workspace graph derived from the canonical model.",
       "canonicalArgv": [
         "workspace",
         "graph",
@@ -961,6 +1037,26 @@
             "mediaType": "application/json"
           },
           {
+            "selector": "entities [kind] --json",
+            "format": "json",
+            "mediaType": "application/json"
+          },
+          {
+            "selector": "evidence <id-or-unique-label> --json",
+            "format": "json",
+            "mediaType": "application/json"
+          },
+          {
+            "selector": "path <from> <to> --json",
+            "format": "json",
+            "mediaType": "application/json"
+          },
+          {
+            "selector": "overlay --from <graph> --json",
+            "format": "json",
+            "mediaType": "application/json"
+          },
+          {
             "selector": "dot",
             "format": "raw-text",
             "mediaType": "text/vnd.graphviz"
@@ -969,6 +1065,21 @@
             "selector": "mermaid",
             "format": "raw-text",
             "mediaType": "text/vnd.mermaid"
+          },
+          {
+            "selector": "jsonld",
+            "format": "raw-text",
+            "mediaType": "application/ld+json"
+          },
+          {
+            "selector": "graphml",
+            "format": "raw-text",
+            "mediaType": "application/graphml+xml"
+          },
+          {
+            "selector": "gexf",
+            "format": "raw-text",
+            "mediaType": "application/gexf+xml"
           }
         ]
       }
@@ -1403,6 +1514,37 @@
       ]
     },
     {
+      "artifactPath": ".workspai/reports/workspace-intelligence-evaluation-live.json",
+      "schemaVersion": "workspace-intelligence-evaluation.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-intelligence-evaluation.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "eval",
+          "init"
+        ],
+        [
+          "workspace",
+          "eval",
+          "record",
+          "--json"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/workspace-intelligence-evaluation-last-run.json",
+      "schemaVersion": "workspace-intelligence-evaluation.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-intelligence-evaluation.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "eval",
+          "report",
+          "--json"
+        ]
+      ]
+    },
+    {
       "artifactPath": ".workspai/workspace.contract.json",
       "schemaVersion": 1,
       "contractPath": "contracts/workspace-contract.v1.json",
@@ -1668,6 +1810,7 @@
     "why",
     "trace",
     "feedback",
+    "eval",
     "mcp",
     "policy",
     "contract",
@@ -1696,6 +1839,7 @@
     "why",
     "trace",
     "feedback",
+    "eval",
     "mcp"
   ],
   "workspaceIntelligenceRootCommands": [

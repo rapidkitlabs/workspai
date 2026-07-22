@@ -181,6 +181,11 @@ export const AGENT_REPORT_CATALOG: AgentReportCatalogEntry[] = [
     required: false,
   },
   {
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.evaluationLastRun,
+    label: 'Workspace Intelligence evaluation',
+    required: false,
+  },
+  {
     relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.doctor,
     label: 'Workspace doctor',
     required: false,
@@ -945,6 +950,7 @@ function buildMcpToolsResource(): string {
       'Candidate read tools:',
       `- \`getWorkspaceModel\` — read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.model}\`.`,
       `- \`getWorkspaceKnowledgeGraph\` — read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph}\`.`,
+      `- \`getWorkspaceEvaluation\` — read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.evaluationLastRun}\` (or the live evaluation when requested).`,
       '- `queryWorkspaceEntities` — filter proof-backed graph entities by kind.',
       '- `searchWorkspaceGraph` — retrieve bounded proof-backed context by text query.',
       '- `getWorkspaceGraphEvidence` — resolve evidence for an entity or relation.',
@@ -985,6 +991,14 @@ function buildMcpDesignManifest(input: { workspacePath: string; generatedAt: str
         {
           name: 'getWorkspaceKnowledgeGraph',
           reads: [WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph],
+          mutates: false,
+        },
+        {
+          name: 'getWorkspaceEvaluation',
+          reads: [
+            WORKSPACE_INTELLIGENCE_ARTIFACTS.evaluationLive,
+            WORKSPACE_INTELLIGENCE_ARTIFACTS.evaluationLastRun,
+          ],
           mutates: false,
         },
         {

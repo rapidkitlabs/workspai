@@ -195,8 +195,9 @@ describe('CLI Entry Point', () => {
           npx workspai workspace explain <target> [--write] --json  Narrative for blockers/projects (alias: why)
           npx workspai workspace trace --from <diff> [--write] --json  Diff → blast radius → gates narrative
           npx workspai workspace feedback record --json  Append agent action outcome to intelligence history
+          npx workspai workspace eval [init|record|status|report|compare]  Measure model usage and verified outcomes
           npx workspai workspace mcp serve              Read-mostly stdio MCP over workspace evidence
-          npx workspai workspace graph [emit|explain|search|benchmark|entities|evidence|path|overlay|dot|mermaid]  Query evidence graph
+          npx workspai workspace graph [emit|explain|search|benchmark|entities|evidence|path|overlay|dot|mermaid|jsonld|graphml|gexf]  Query or export evidence graph
           npx workspai workspace watch [--once] [--json]  Keep model+graph in memory; stream change events
           npx workspai workspace run <stage> [--scope project:<name>] [--reuse-passed]  Fleet init/test/build/start or custom stage
           npx workspai workspace sync [--json]      Sync registry + contract from projects
@@ -1180,6 +1181,25 @@ describe('CLI Entry Point', () => {
       );
       expect(verify.exitCode).not.toBe(2);
       expect(verify.stdout).not.toContain('workspace.option.unsupported');
+    });
+
+    it('allows documented graph query and overlay flags', async () => {
+      const workspaceRoot = await fs.mkdtemp(path.join(TEST_DIR, 'workspace-graph-flags-'));
+      await fs.writeFile(path.join(workspaceRoot, '.workspai-workspace'), '');
+
+      const search = await execa(
+        'node',
+        [CLI_PATH, 'workspace', 'graph', 'search', 'project', '--limit', '1', '--json'],
+        { cwd: workspaceRoot, reject: false }
+      );
+      expect(search.stdout).not.toContain('workspace.option.unsupported');
+
+      const overlay = await execa(
+        'node',
+        [CLI_PATH, 'workspace', 'graph', 'overlay', '--from', 'missing-graph.json', '--json'],
+        { cwd: workspaceRoot, reject: false }
+      );
+      expect(overlay.stdout).not.toContain('workspace.option.unsupported');
     });
 
     it('honors pipeline --no-agent-sync at the CLI boundary', async () => {

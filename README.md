@@ -1,253 +1,284 @@
 # Workspai
 
-## Open-Source Workspace Intelligence for Software Systems
-
 [![npm version](https://img.shields.io/npm/v/workspai.svg?style=flat-square)](https://www.npmjs.com/package/workspai)
 [![Downloads](https://img.shields.io/npm/dm/workspai.svg?style=flat-square)](https://www.npmjs.com/package/workspai)
+[![CI](https://img.shields.io/github/actions/workflow/status/rapidkitlabs/workspai/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/rapidkitlabs/workspai/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
-[![Built by Workspai](https://img.shields.io/badge/Built%20by-Workspai-0f172a?logo=github)](https://workspai.dev)
+
+## Workspace Intelligence for software systems
 
 > One workspace. One truth. Humans and AI aligned.
 
-Workspai turns scattered projects into a governed, agent-ready workspace. It
-builds one evidence-backed understanding of a software system for developers,
-CI, IDEs, release automation, and AI agents.
+Your software is more than source files in one repository. It is projects,
+services, APIs, packages, infrastructure, documentation, policies, tests, and
+release evidence—and the relationships between them.
 
-This repository is the monorepo for the Workspai CLI and related package
-boundaries.
+Workspai turns those scattered surfaces into one governed view that developers,
+CI, IDEs, MCP clients, and AI agents can share:
 
-## Give AI a system map—not a directory dump
+- **See the system:** a canonical Workspace Model across projects and runtimes.
+- **Ask with proof:** a bounded Knowledge Graph answer linked to source evidence.
+- **Act with confidence:** impact, verification, readiness, and agent context
+  produced by one contract-backed intelligence chain.
 
-Most coding tools begin by searching files. That works until the answer crosses
-a repository boundary: an API is implemented in one project, consumed in
-another, deployed by a third configuration, and constrained by an ADR or release
-gate somewhere else.
+[Quickstart](#start-in-two-minutes) ·
+[How it works](#how-workspace-intelligence-works) ·
+[Knowledge Graph](packages/cli/docs/workspace-knowledge-graph.md) ·
+[Documentation](packages/cli/docs/README.md) ·
+[Contracts](packages/cli/docs/contracts/README.md) ·
+[VS Code](https://marketplace.visualstudio.com/items?itemName=rapidkit.rapidkit-vscode)
 
-Workspai builds that missing system view locally:
+## See your workspace as a system
+
+![From Code to Shared Understanding](packages/cli/docs/From%20Code%20to%20Shared%20Understanding.png)
+
+Code search can find a symbol. Workspai can connect that symbol to the project,
+API, service, dependency, deployment evidence, affected scope, verification
+gate, and agent context around it.
 
 ```text
-16 projects · 1 workspace
-        ↓
-1,738 entities · 2,244 relations · 2,106 portable proofs
-        ↓
-bounded agent context · impact · verify · MCP · CI evidence
+Question: What implements this endpoint, and what could this change affect?
+
+Bounded result
+├── matching endpoint and implementation
+├── nearby dependencies and affected projects
+├── proof paths back to files, lines, and content hashes
+└── current verification and readiness evidence
 ```
 
-The numbers above are from the repository's current 16-project development
-fixture. They are an example, not a universal benchmark. Every entity and
-relationship remains traceable to the file, contract, or provider that produced
-it.
+Workspai does not invent missing relationships. An absent edge means “not
+proven by current evidence,” not “these projects are independent.”
 
-### See useful output in 60 seconds
+## Start in two minutes
 
-From an existing Workspai workspace:
-
-```bash
-# Build the canonical model and evidence-backed graph.
-npx workspai workspace model --write --json
-
-# Return only the proof-carrying context needed for this question.
-npx workspai workspace graph search "api endpoint" --limit 8 --json
-
-# Measure the retrieval payload against this workspace's indexed source corpus.
-npx workspai workspace graph benchmark "api endpoint" --limit 8 --json
-```
-
-The search response contains bounded entities, their nearby relations, and the
-proofs needed to verify them. The complete graph stays available as a portable
-artifact, but agents do not need to place the whole graph—or the whole
-workspace—into every prompt.
-
-### Measured on the current development fixture
-
-| Measure                              | Observed value |
-| ------------------------------------ | -------------: |
-| Registered projects                  |             16 |
-| Knowledge Graph entities             |          1,738 |
-| Knowledge Graph relations            |          2,244 |
-| Portable proofs                      |          2,106 |
-| Readable proof-source artifacts      |            392 |
-| Corpus size (`characters / 4`)       | 134,105 tokens |
-| `api endpoint --limit 8` retrieval   |   2,812 tokens |
-| Observed retrieval payload reduction |          97.9% |
-| Observed corpus/retrieval ratio      |         47.69× |
-
-Measured on 2026-07-21 against one 16-project development workspace. These are
-fixture observations—not a universal model-cost, answer-quality, or
-cross-product benchmark. The command records the exact source-model SHA-256 so
-the result can be reproduced. Read the
-[benchmark methodology](packages/cli/docs/graph-benchmark-methodology.md) before
-quoting these numbers.
-
-## Install
-
-Install the canonical CLI globally:
+Install the CLI, or keep using it through `npx`:
 
 ```bash
 npm install -g workspai
 workspai --help
 ```
 
-Or try the latest release without a global install:
+Create a managed workspace and connect an existing project without moving its
+source:
 
 ```bash
-npx workspai@latest --help
+npx workspai create workspace platform --profile polyglot --skip-python-engine --yes
+cd ~/.workspai/workspaces/platform
+npx workspai adopt /absolute/path/to/project --json
 ```
 
-The optional `wspai` package provides a shorter alias for `npx` workflows:
-
-```bash
-npx wspai --help
-```
-
-## Try Workspai
-
-Connect an existing project without moving its source:
-
-```bash
-npx workspai adopt /path/to/project --json
-cd ~/.workspai/workspaces/workspai
-```
-
-Execute the canonical Workspace Intelligence chain and persist its evidence:
+Build the shared model, evidence, and agent-ready context:
 
 ```bash
 npx workspai workspace intelligence run --for-agent codex --strict --json
 ```
 
-Workspai now has durable workspace evidence that can be reused by humans and
-tools:
+The durable result is under `.workspai/`. Exit code `0` means passed, `1` means
+execution failed, and `2` means the run completed but evidence still blocks the
+requested decision.
+
+Already have a Workspai workspace? Run only the final command.
+
+## What Workspai gives you
+
+| You need to know…                | Workspai gives you…                                                                                    |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| What is in this software system? | A canonical model of projects, runtimes, frameworks, commands, contracts, policies, and detected facts |
+| How are things connected?        | A queryable Knowledge Graph with typed entities, relations, trust, derivation, and proofs              |
+| What changed?                    | Model snapshots and deterministic diffs                                                                |
+| What could break?                | Direct and transitive impact paths across registered projects                                          |
+| Can this proceed?                | Doctor, contract, analysis, readiness, and verification evidence                                       |
+| What should an agent read?       | Bounded context, report indexes, skills, instructions, and MCP tools                                   |
+| Why is it blocked?               | Evidence-backed explanations and remediation handoffs                                                  |
+| Is context actually smaller?     | Reproducible retrieval benchmarks plus provider-aware execution evaluation                             |
+
+The first run produces a discoverable evidence set, including:
 
 ```text
-.workspai/reports/workspace-model.json
-.workspai/reports/workspace-knowledge-graph.json
-.workspai/reports/workspace-context-agent.json
-.workspai/reports/INDEX.json
-.workspai/reports/workspace-intelligence-run-last-run.json
+.workspai/
+├── workspace.json
+├── workspace.contract.json
+├── AGENT-GROUNDING.md
+├── skills/
+└── reports/
+    ├── workspace-model.json
+    ├── workspace-knowledge-graph.json
+    ├── workspace-impact-last-run.json
+    ├── workspace-verify-last-run.json
+    ├── workspace-context-agent.json
+    ├── workspace-intelligence-run-last-run.json
+    └── INDEX.json
 AGENTS.md
 ```
 
-The runner reports `sync` and baseline resolution separately from its exact
-11-stage canonical chain. Exit `0` means passed, `1` means a hard execution
-failure, and `2` means execution completed but evidence gates blocked readiness.
-See the [Unified Workspace Intelligence Runner contract](packages/cli/docs/workspace-intelligence-runner.md).
+Canonical JSON artifacts publish versioned schemas. Consumers discover exact
+versions and paths through the
+[published contract catalog](packages/cli/contracts/published-contract-catalog.v1.json)
+instead of scraping Markdown or guessing filenames.
 
-The broader governance and release pipeline is a separate gate; it does not
-replace or redefine the canonical chain:
+## How Workspace Intelligence works
+
+The Workspace Model is the canonical source of truth. The Knowledge Graph is a
+derived, revision-bound representation—not a second competing truth and not a
+prompt.
+
+```text
+Code · packages · APIs · infra · docs · CI · policies · runtime evidence
+                                │
+                     deterministic providers
+                                │
+                         facts + proofs
+                                │
+                    Canonical Workspace Model
+                         │              │
+                         │              └── Evidence-backed Knowledge Graph
+                         │                         │
+                         └──────────┬──────────────┘
+                                    │
+                  diff · impact · verify · context · explain
+                                    │
+                 Developers · CI · IDEs · MCP · AI agents
+```
+
+This separation keeps Workspai database-agnostic and model-agnostic. JSON,
+JSON-LD, Mermaid, DOT, GraphML, GEXF, MCP responses, IDE views, and agent context
+are projections of governed data; none silently replaces the model.
+
+### Why this is more than a repository graph
+
+| Repository-level intelligence                             | Workspace Intelligence                                                                    |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Starts and ends at one codebase                           | Connects one or many projects, repositories, services, infrastructure, docs, and evidence |
+| Primarily answers code navigation and retrieval questions | Also drives change impact, verification, readiness, CI, and agent grounding               |
+| A graph can become the product truth                      | The model remains canonical; the graph is a proof-carrying representation                 |
+| Missing edges can look like independence                  | Missing relationships remain explicitly unknown until evidence proves them                |
+| One consumer builds its own context                       | Humans and tools consume the same versioned artifacts and contracts                       |
+
+## Evidence, not guesses
+
+Graph entities and relations carry stable identity and proof references. A proof
+can identify its provider, source artifact, line, content hash, observation
+time, derivation, trust, confidence, and freshness.
 
 ```bash
-npx workspai pipeline --json --strict
+npx workspai workspace model --write --json
+npx workspai workspace graph search "authentication endpoint" --limit 8 --json
+npx workspai workspace graph evidence "GET /users" --json
 ```
 
-For installation options, complete workflows, and all commands, read the
-[Workspai CLI README](packages/cli/README.md).
+Use bounded search for normal agent questions. Read the complete graph only for
+interchange, offline analysis, audits, or tools that explicitly need it.
 
-## What Workspace Intelligence Provides
+## Measure context honestly
 
-| Capability            | Result                                                                                              |
-| --------------------- | --------------------------------------------------------------------------------------------------- |
-| Workspace model       | A canonical view of projects, runtimes, frameworks, dependencies, commands, policies, and contracts |
-| Evidence graph        | Stable entities, typed relations, portable proof paths, queries, and change overlays                |
-| Change and impact     | Model diffs, transitive blast radius, and affected project scope                                    |
-| Verification evidence | Structured health, contract, readiness, freshness, and release verdicts                             |
-| Agent context         | Shared instructions, reports, skills, and grounding for AI tools                                    |
-| CI and release gates  | Stable JSON artifacts and exit codes for automation                                                 |
-| Explanations          | Evidence-backed reasons for blockers, affected projects, and next actions                           |
+Workspai separates two measurements that are often mixed together:
 
-Create, import, and adopt are entry routes. They connect software to a workspace.
-The core architecture then turns that durable workspace state into outputs for
-each consumer:
+1. `workspace graph benchmark` measures deterministic retrieval payload size.
+2. `workspace eval` records observed model/tool execution, token provenance,
+   latency, cost, and independently verified outcomes.
+
+On the current 16-project development fixture, one `api endpoint --limit 8`
+query returned 2,812 estimated tokens from a 134,105-token readable corpus—a
+97.9% payload reduction. This is one reproducible fixture result, not a
+universal billing, quality, or token-saving claim.
+
+```bash
+npx workspai workspace graph benchmark "api endpoint" --limit 8 --json
+npx workspai workspace eval init repair-readiness workspace-intelligence --json
+```
+
+Read the formulas and publication boundary in
+[Graph Benchmark Methodology](packages/cli/docs/graph-benchmark-methodology.md)
+and the provider/tokenizer provenance contract in
+[Workspace Intelligence Evaluation](packages/cli/docs/workspace-intelligence-evaluation.md).
+
+## One contract-backed intelligence chain
+
+The supported chain is versioned, generated, and consumed by the CLI, CI,
+documentation, IDE integrations, and agent surfaces:
 
 ```text
-Projects and repositories
-          |
-          v
-Canonical workspace model + project topology + evidence-backed knowledge graph
-          |
-          +--> Developers: scope, health, impact, explanations
-          +--> CI: JSON evidence, verification, release gates
-          +--> IDEs: model, contracts, diagnostics, guided actions
-          +--> AI agents: context, instructions, skills, safe commands
-          +--> MCP clients: read-mostly workspace evidence
+Model → Diff → Impact → Doctor + Contract Verify + Analyze → Readiness
+      → Verify → Context → Agent Sync → Explain
 ```
 
-The canonical chain is versioned as a contract:
-
-```text
-Model -> Diff -> Impact -> Doctor + Contract Verify + Analyze -> Readiness
-      -> Verify -> Context -> Agent Sync -> Explain
-```
-
-Execute and enforce that exact order with:
+Run it as one operation:
 
 ```bash
 npx workspai workspace intelligence run --for-agent codex --strict --json
 ```
 
-See the
-[Workspace Intelligence chain contract](packages/cli/contracts/workspace-intelligence-chain.v1.json)
-and [Artifact Catalog](packages/cli/docs/contracts/ARTIFACT_CATALOG.md).
+Each stage declares its inputs, outputs, order, and continuation semantics. The
+broader `pipeline` command is a release/governance orchestrator; it complements
+this chain and does not redefine it.
 
-Ask the evidence graph for bounded, proof-carrying context instead of loading
-the whole workspace into an AI prompt:
+Read the [runner contract](packages/cli/docs/workspace-intelligence-runner.md)
+or inspect the machine-readable
+[chain schema](packages/cli/contracts/workspace-intelligence-chain.v1.json).
 
-```bash
-npx workspai workspace graph search "authentication endpoint" --limit 12 --json
-npx workspai workspace graph benchmark "authentication endpoint" --limit 12 --json
-```
+## Choose your workflow
 
-The benchmark reports an explicitly estimated retrieval-payload reduction for
-the current workspace; it does not claim universal model or answer-quality
-savings. See the [Workspace Knowledge Graph guide](packages/cli/docs/workspace-knowledge-graph.md).
+| I want to…                           | Command or guide                                                                          |
+| ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Connect an existing project in place | `npx workspai adopt /path/to/project --json`                                              |
+| Create a workspace or project        | [Creating workspaces and projects](packages/cli/docs/creating-workspaces-and-projects.md) |
+| Run the complete intelligence chain  | `npx workspai workspace intelligence run --for-agent codex --strict --json`               |
+| Ask a bounded architecture question  | `npx workspai workspace graph search "authentication endpoint" --limit 12 --json`         |
+| Trace why a relationship exists      | `npx workspai workspace graph evidence "GET /users" --json`                               |
+| Inspect a change and blast radius    | [Workspace Knowledge Graph](packages/cli/docs/workspace-knowledge-graph.md)               |
+| Verify current evidence              | `npx workspai workspace verify --strict --json`                                           |
+| Prepare agent and IDE surfaces       | `npx workspai workspace agent-sync --write --preset enterprise --json`                    |
+| Integrate CI and release gates       | [CI workflows](packages/cli/docs/ci-workflows.md)                                         |
+| Find an artifact writer or schema    | [Artifact Catalog](packages/cli/docs/contracts/ARTIFACT_CATALOG.md)                       |
+| Browse every command and flag        | [Command reference](packages/cli/docs/commands-reference.md)                              |
+
+## Open outputs for every consumer
+
+| Consumer                 | Stable surface                                                      |
+| ------------------------ | ------------------------------------------------------------------- |
+| Developers               | Human summaries, explanations, and next actions                     |
+| Automation and CI        | JSON stdout, exit codes, versioned report schemas                   |
+| AI agents                | Bounded context, `AGENTS.md`, skills, prompts, proof paths          |
+| MCP clients              | Read-oriented model, graph, context, evidence, and evaluation tools |
+| IDEs and dashboards      | Canonical reports, command inventory, watch events, live evaluation |
+| Graph and semantic tools | JSON, JSON-LD, Mermaid, DOT, GraphML, and GEXF                      |
+
+Workspai is local-first for deterministic workspace discovery and graph
+construction. Optional AI-backed features are identified separately; the core
+Workspace Intelligence model and evidence chain do not require an AI API key.
+
+## Documentation
+
+| Start here                                                                                  | Use it for                                                             |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [Documentation index](packages/cli/docs/README.md)                                          | Goal-based navigation across all user and contributor guides           |
+| [CLI README](packages/cli/README.md)                                                        | Complete package quickstart, workflows, outputs, and integrations      |
+| [Workspace Knowledge Graph](packages/cli/docs/workspace-knowledge-graph.md)                 | Queries, proofs, overlays, export formats, MCP, and current boundaries |
+| [Unified runner](packages/cli/docs/workspace-intelligence-runner.md)                        | Exact chain, baseline, failure propagation, reports, and exit codes    |
+| [Workspace Intelligence Evaluation](packages/cli/docs/workspace-intelligence-evaluation.md) | Live token/cost provenance and verified outcome comparison             |
+| [Artifact Catalog](packages/cli/docs/contracts/ARTIFACT_CATALOG.md)                         | Canonical writers, paths, schemas, and consumers                       |
+| [Glossary](packages/cli/docs/GLOSSARY.md)                                                   | Plain-language meaning of model, graph, proof, gate, and context       |
+| [README content contract](packages/cli/docs/README_CONTENT_CONTRACT.md)                     | Required product narrative, claim boundaries, and drift guard          |
 
 ## Packages
 
-Workspai already provides the capabilities below through the published CLI and
-its versioned contracts. The package roadmap is an extraction strategy: these
-capabilities will become independently installable and usable packages without
-changing their current availability in `workspai`.
+The integrated CLI already exposes these capabilities. Package boundaries are
+being hardened for independent use; they do not represent missing CLI features.
 
-| Package                            | Available today                                                                                    | Future package boundary                                                                  |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| [`packages/cli`](packages/cli)     | Published `workspai` CLI, Workspace Intelligence engine, contracts, and user documentation         | Remains the canonical orchestration layer and consumer of the independent packages       |
-| [`packages/wspai`](packages/wspai) | Published short `wspai` alias for `npx` workflows                                                  | Remains an optional compatibility/convenience entry point                                |
-| `packages/shared`                  | Shared Workspace Intelligence contracts and primitives are already used by the platform            | Becomes the independently consumable dependency-leaf foundation after conformance gates  |
-| `packages/graph`                   | Model-derived Knowledge Graph, proof, query, overlay, benchmark, CLI, agent, and MCP capabilities  | Becomes the independent `@workspai/graph` package after public API and conformance gates |
-| `packages/mcp`                     | MCP server and workspace evidence tools are available through `workspai workspace mcp serve`       | Becomes an independently installable MCP integration package                             |
-| `packages/sdk`                     | Versioned schemas, command discovery, JSON outputs, and integration contracts ship with `workspai` | Becomes a typed public SDK for programmatic consumers                                    |
+| Package                               | Status                                                                  |
+| ------------------------------------- | ----------------------------------------------------------------------- |
+| [`workspai`](packages/cli)            | Published CLI and canonical orchestration surface                       |
+| [`wspai`](packages/wspai)             | Published optional short alias for `npx` workflows                      |
+| [`@workspai/shared`](packages/shared) | Private contract and primitive foundation under conformance development |
+| [`@workspai/graph`](packages/graph)   | Private standalone graph foundation under public-API development        |
 
-`workspai` is the canonical npm package and command. `wspai` is its optional
-short alias. Package extraction will not remove these capabilities from the
-CLI: the CLI will consume the same independent packages and continue to expose
-one integrated Workspace Intelligence experience. Shared and Graph remain
-private only until their documented API, conformance, standalone-value, and
-publication gates pass.
+As these boundaries become independently publishable, the CLI will consume
+them while preserving one integrated workspace experience.
 
-## Explore
+## Develop this monorepo
 
-| Resource                         | Start here                                                                                                     |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| CLI overview and quickstart      | [packages/cli/README.md](packages/cli/README.md)                                                               |
-| Documentation index              | [packages/cli/docs/README.md](packages/cli/docs/README.md)                                                     |
-| Command reference                | [packages/cli/docs/commands-reference.md](packages/cli/docs/commands-reference.md)                             |
-| Workspace and project onboarding | [packages/cli/docs/creating-workspaces-and-projects.md](packages/cli/docs/creating-workspaces-and-projects.md) |
-| Workspace operations             | [packages/cli/docs/workspace-operations.md](packages/cli/docs/workspace-operations.md)                         |
-| Workspace Knowledge Graph        | [packages/cli/docs/workspace-knowledge-graph.md](packages/cli/docs/workspace-knowledge-graph.md)               |
-| Benchmark methodology            | [packages/cli/docs/graph-benchmark-methodology.md](packages/cli/docs/graph-benchmark-methodology.md)           |
-| Workspace Intelligence artifacts | [packages/cli/docs/contracts/ARTIFACT_CATALOG.md](packages/cli/docs/contracts/ARTIFACT_CATALOG.md)             |
-| CI workflows                     | [packages/cli/docs/ci-workflows.md](packages/cli/docs/ci-workflows.md)                                         |
-| Security policy                  | [packages/cli/docs/SECURITY.md](packages/cli/docs/SECURITY.md)                                                 |
-| VS Code extension                | [Marketplace](https://marketplace.visualstudio.com/items?itemName=rapidkit.rapidkit-vscode)                    |
-
-## Develop the Monorepo
-
-Requirements:
-
-- Node.js `>=20.19.0`
-- npm, managed through the repository's declared package manager
-- Python, Go, Java, or .NET only for workflows that exercise those runtimes
-
-Install and validate:
+Requirements: Node.js `>=20.19.0` and the package manager declared in
+`package.json`. Additional runtimes are needed only for their acceptance flows.
 
 ```bash
 npm ci
@@ -256,39 +287,17 @@ npm test
 npm run validate
 ```
 
-Run CLI package checks directly:
+Before contributing, read the
+[Development Guide](packages/cli/docs/DEVELOPMENT.md),
+[Contributing Guide](packages/cli/CONTRIBUTING.md), and
+[README content contract](packages/cli/docs/README_CONTENT_CONTRACT.md).
 
-```bash
-npm --workspace workspai run validate
-```
+## Community
 
-Run the unpublished package-foundation checks:
-
-```bash
-corepack npm --workspace @workspai/shared run check
-corepack npm --workspace @workspai/graph run check
-```
-
-See the [Development Guide](packages/cli/docs/DEVELOPMENT.md) and
-[Contributing Guide](packages/cli/CONTRIBUTING.md) before submitting a change.
-
-## Contributing and Community
-
-Contributions are welcome across Workspace Intelligence contracts, runtime
-support, generators, documentation, tests, CI, and developer experience.
-
-- Use [GitHub Issues](https://github.com/rapidkitlabs/workspai/issues) for reproducible bugs and feature requests.
-- Use [GitHub Discussions](https://github.com/rapidkitlabs/workspai/discussions) for questions and design conversations.
-- Follow the [Contributing Guide](packages/cli/CONTRIBUTING.md) for development and validation steps.
-- Report vulnerabilities through the [Security Policy](packages/cli/docs/SECURITY.md), not a public issue.
-- Review the [Changelog](packages/cli/CHANGELOG.md) for release history.
-
-## Product Boundaries
-
-Workspai is the product, npm package, and primary command surface. RapidKit Core
-is the optional Python engine contract used for Python/Core-dependent workflows.
-The Workspai VS Code extension is the visual consumer of the same CLI contracts
-and workspace artifacts.
+- [Issues](https://github.com/rapidkitlabs/workspai/issues) for reproducible bugs and feature requests
+- [Discussions](https://github.com/rapidkitlabs/workspai/discussions) for questions and design proposals
+- [Security policy](packages/cli/docs/SECURITY.md) for private vulnerability reporting
+- [Changelog](packages/cli/CHANGELOG.md) for release history
 
 ## License
 

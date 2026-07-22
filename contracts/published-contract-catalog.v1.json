@@ -75,7 +75,9 @@
         "skillsIndex": "workspace-skills-index.v1",
         "agents": null,
         "explain": "workspace-explain.v1",
-        "intelligenceRun": "workspace-intelligence-run.v1"
+        "intelligenceRun": "workspace-intelligence-run.v1",
+        "evaluationLive": "workspace-intelligence-evaluation.v1",
+        "evaluationLastRun": "workspace-intelligence-evaluation.v1"
       },
       "contractPath": null,
       "publication": "embedded-type",
@@ -169,6 +171,16 @@
           "path": ".workspai/reports/workspace-intelligence-run-last-run.json",
           "schemaVersion": "workspace-intelligence-run.v1",
           "contractPath": "contracts/workspace-intelligence/workspace-intelligence-run.v1.json"
+        },
+        "evaluationLive": {
+          "path": ".workspai/reports/workspace-intelligence-evaluation-live.json",
+          "schemaVersion": "workspace-intelligence-evaluation.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-intelligence-evaluation.v1.json"
+        },
+        "evaluationLastRun": {
+          "path": ".workspai/reports/workspace-intelligence-evaluation-last-run.json",
+          "schemaVersion": "workspace-intelligence-evaluation.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-intelligence-evaluation.v1.json"
         }
       }
     },
@@ -235,6 +247,21 @@
     "workspaceGraphTokenEfficiency": {
       "schemaVersion": "workspace-graph-token-efficiency.v1",
       "contractPath": "contracts/workspace-intelligence/workspace-graph-token-efficiency.v1.json",
+      "publication": "json-schema"
+    },
+    "modelUsageEvent": {
+      "schemaVersion": "model-usage-event.v1",
+      "contractPath": "contracts/workspace-intelligence/model-usage-event.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceIntelligenceEvaluation": {
+      "schemaVersion": "workspace-intelligence-evaluation.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-intelligence-evaluation.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceIntelligenceEvaluationComparison": {
+      "schemaVersion": "workspace-intelligence-evaluation-comparison.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-intelligence-evaluation-comparison.v1.json",
       "publication": "json-schema"
     },
     "workspaceIntelligenceHistory": {

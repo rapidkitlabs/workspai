@@ -116,6 +116,11 @@
       "required": false
     },
     {
+      "path": ".workspai/reports/workspace-intelligence-evaluation-last-run.json",
+      "label": "Workspace Intelligence evaluation",
+      "required": false
+    },
+    {
       "path": ".workspai/reports/doctor-last-run.json",
       "label": "Workspace doctor",
       "required": false

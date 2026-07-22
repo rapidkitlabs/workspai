@@ -5,7 +5,70 @@
 > `rapidkit` commands and `.rapidkit` paths. Use the [CLI README](./README.md) and
 > [Command Reference](./docs/commands-reference.md) for current usage.
 
-## Latest Release: v0.47.0 (July 21, 2026)
+## Latest Release: v0.48.0 (July 22, 2026)
+
+### Measurable Workspace Intelligence and Portable Graph Interchange
+
+This minor release makes Workspace Intelligence outcomes easier to measure,
+exchange, and consume without weakening Workspai's evidence boundaries. Teams
+can record retrieval and model-usage observations, compare governed evaluation
+runs, and export the model-bound Knowledge Graph to standard ecosystem formats.
+
+**What's New:**
+
+- **Governed evaluation workflow**
+  - Added `workspace eval init`, `record`, `status`, `report`, and `compare`.
+  - Added versioned contracts for evaluation state, comparisons, and
+    model-usage observations.
+  - Kept token and payload claims scoped to recorded evidence instead of
+    presenting fixture results as universal model savings.
+
+- **Portable and queryable graph**
+  - Added JSON-LD, GraphML, and GEXF exports alongside bounded search, typed
+    entities, evidence lookup, path traversal, benchmarks, and change overlays.
+  - Bound every representation to the canonical Workspace Model revision.
+  - Published Graph and Evaluation capabilities through runtime, architecture,
+    artifact, MCP, IDE, CI, and agent-facing contracts.
+
+- **Documentation and contract integrity**
+  - Reworked the root and CLI documentation around user goals, the canonical
+    lifecycle, generated evidence, and consumer workflows.
+  - Added a documentation content contract and stronger automated drift checks.
+  - Clarified that the Model is the system source of truth and Graph is its
+    evidence-backed, deterministic derived representation.
+
+- **Runtime correctness**
+  - Fixed validation of the documented `graph search --limit` and
+    `graph overlay --from` options.
+  - Completed the machine-readable Graph command and Evaluation artifact
+    inventories.
+
+**Breaking changes:** None.
+
+**Verification:**
+
+- 2,071 CLI tests passed across 191 test files; 8 tests remain explicitly
+  skipped.
+- TypeScript, ESLint, documentation validation, README command smoke, generated
+  contract checks, shared-contract parity, and diff hygiene passed.
+- A real isolated workspace exercised Model/Graph generation, bounded search,
+  all three portable graph exports, Evaluation init/status/report, and the
+  strict unified Workspace Intelligence runner.
+
+**Upgrade:**
+
+```bash
+npm install -g workspai@0.48.0
+workspai workspace intelligence run --for-agent codex --strict --json
+workspai workspace graph jsonld --output .workspai/reports/workspace-graph.jsonld
+workspai workspace eval status --json
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.48.0.md)
+
+---
+
+## Previous Release: v0.47.0 (July 21, 2026)
 
 ### Evidence-Backed Workspace Knowledge Graph
 

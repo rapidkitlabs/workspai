@@ -24,33 +24,37 @@ CI workflows, and AI consumers.
 
 ## Intelligence and governance
 
-| Term            | Plain-language meaning                                                                                                           |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Unified runner  | `workspace intelligence run`; the supported way to execute the complete intelligence chain in contract order.                    |
-| Preflight       | `sync` and baseline resolution. These prepare the run but are not stages in the 11-stage intelligence chain.                     |
-| Stage           | One contract-defined operation in the intelligence chain. Stage order comes from `workspace-intelligence-chain.v1.json`.         |
-| Gate            | A decision that can pass, need attention, or block automation according to evidence and policy.                                  |
-| Blocked         | The command completed, but evidence or policy prevents the requested release/action. The unified runner uses exit code `2`.      |
-| Failed          | Execution itself failed. The unified runner uses exit code `1`.                                                                  |
-| Needs attention | Evidence is usable but contains warnings or non-blocking gaps. Strict policy can promote it to a blocking result.                |
-| Fresh / stale   | Whether an artifact still matches its governed inputs and dependency closure. A recent timestamp alone does not prove freshness. |
-| Snapshot        | A stable baseline of the model used for later comparison.                                                                        |
-| Diff            | The structural change between the current model and a baseline model or snapshot.                                                |
-| Impact          | Direct and transitive consequences of a model diff, including verification scope and risk.                                       |
-| Verify          | The evidence-backed gate over the affected dependency subgraph and workspace policies.                                           |
-| Context         | A bounded, agent-oriented projection of current workspace evidence.                                                              |
-| Agent sync      | Generation of tool-specific instructions, skills, prompts, indexes, and MCP metadata from canonical evidence.                    |
+| Term             | Plain-language meaning                                                                                                           |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Unified runner   | `workspace intelligence run`; the supported way to execute the complete intelligence chain in contract order.                    |
+| Preflight        | `sync` and baseline resolution. These prepare the run but are not stages in the 11-stage intelligence chain.                     |
+| Stage            | One contract-defined operation in the intelligence chain. Stage order comes from `workspace-intelligence-chain.v1.json`.         |
+| Gate             | A decision that can pass, need attention, or block automation according to evidence and policy.                                  |
+| Blocked          | The command completed, but evidence or policy prevents the requested release/action. The unified runner uses exit code `2`.      |
+| Failed           | Execution itself failed. The unified runner uses exit code `1`.                                                                  |
+| Needs attention  | Evidence is usable but contains warnings or non-blocking gaps. Strict policy can promote it to a blocking result.                |
+| Fresh / stale    | Whether an artifact still matches its governed inputs and dependency closure. A recent timestamp alone does not prove freshness. |
+| Snapshot         | A stable baseline of the model used for later comparison.                                                                        |
+| Diff             | The structural change between the current model and a baseline model or snapshot.                                                |
+| Impact           | Direct and transitive consequences of a model diff, including verification scope and risk.                                       |
+| Verify           | The evidence-backed gate over the affected dependency subgraph and workspace policies.                                           |
+| Context          | A bounded, agent-oriented projection of current workspace evidence.                                                              |
+| Agent sync       | Generation of tool-specific instructions, skills, prompts, indexes, and MCP metadata from canonical evidence.                    |
+| Evaluation       | A provenance-aware record of model calls, tool activity, cost, latency, and verified task outcome produced by `workspace eval`.  |
+| Verified outcome | A task result supported by the workspace verification path; smaller context alone is not treated as task success.                |
 
 ## AI and integration
 
-| Term               | Plain-language meaning                                                                                                        |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| Agent grounding    | Instructions and evidence references that keep an AI agent inside the correct workspace, contracts, and command loop.         |
-| Bounded retrieval  | Returning only the most relevant entities and proof paths for a question instead of injecting the complete graph or model.    |
-| MCP                | Model Context Protocol; Workspai exposes read-oriented workspace tools through `workspace mcp serve`.                         |
-| Module recommender | The optional embedding-based FastAPI/NestJS recommendation feature. It is separate from deterministic Workspace Intelligence. |
-| Canonical path     | The current `.workspai` path that new writers and consumers should prefer.                                                    |
-| Legacy path        | A `.rapidkit` compatibility path read for older workspaces; it is not the target for new integrations.                        |
+| Term                | Plain-language meaning                                                                                                        |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Agent grounding     | Instructions and evidence references that keep an AI agent inside the correct workspace, contracts, and command loop.         |
+| Bounded retrieval   | Returning only the most relevant entities and proof paths for a question instead of injecting the complete graph or model.    |
+| Retrieval benchmark | A deterministic comparison of readable proof-source corpus size with one bounded graph response; it is not billing evidence.  |
+| Token provenance    | Whether a token value was provider-reported, counted by a named tokenizer, estimated, or unavailable.                         |
+| MCP                 | Model Context Protocol; Workspai exposes read-oriented workspace tools through `workspace mcp serve`.                         |
+| Module recommender  | The optional embedding-based FastAPI/NestJS recommendation feature. It is separate from deterministic Workspace Intelligence. |
+| Canonical path      | The current `.workspai` path that new writers and consumers should prefer.                                                    |
+| Legacy path         | A `.rapidkit` compatibility path read for older workspaces; it is not the target for new integrations.                        |
 
 ## Where to continue
 

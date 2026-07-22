@@ -7,10 +7,16 @@ const cliPath = path.join(root, 'dist', 'index.js');
 
 const commandMatrix = [
   { args: ['--help'], expect: [/Usage:/i, /workspai/i] },
+  { args: ['create', 'workspace', '--help'], expect: [/create workspace/i, /--profile/i] },
+  { args: ['adopt', '--help'], expect: [/adopt/i, /--workspace/i] },
   { args: ['setup', '--help'], expect: [/Usage: workspai setup/i] },
   { args: ['doctor', 'workspace', '--help'], expect: [/doctor workspace/i, /--fix/i] },
   { args: ['cache', '--help'], expect: [/Usage: workspai cache/i] },
   { args: ['mirror', '--help'], expect: [/workspace/i] },
+  {
+    args: ['workspace', '--help'],
+    expect: [/Intelligence consumers/i, /graph/i, /eval/i, /mcp/i],
+  },
 ];
 
 const failures = [];

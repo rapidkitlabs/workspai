@@ -12,6 +12,12 @@ const chainContract = JSON.parse(
 const runtimeContract = JSON.parse(
   fs.readFileSync(path.join(root, 'contracts', 'runtime-command-surface.v1.json'), 'utf8')
 );
+const architectureContract = JSON.parse(
+  fs.readFileSync(
+    path.join(root, 'contracts', 'workspace-intelligence-architecture.v1.json'),
+    'utf8'
+  )
+);
 const runContract = JSON.parse(
   fs.readFileSync(
     path.join(root, 'contracts', 'workspace-intelligence', 'workspace-intelligence-run.v1.json'),
@@ -40,6 +46,168 @@ const requiredSnippets = [
 ];
 
 const errors = [];
+
+const requiredCliReadmeHeadings = [
+  '## Workspace Intelligence for software systems',
+  '## Understand Workspai in one minute',
+  '## Start in two minutes',
+  '## From Code to Shared Understanding',
+  '## One Intelligence Chain',
+  '## Evidence and measurable context',
+  '## Core Workflows',
+  '## Outputs and Consumers',
+  '## Onboard Software',
+  '## Integrations',
+  '## Requirements',
+  '## Documentation',
+  '## Troubleshooting',
+];
+let previousCliReadmeHeadingIndex = -1;
+for (const heading of requiredCliReadmeHeadings) {
+  const index = readme.indexOf(heading);
+  if (index === -1) {
+    errors.push(`CLI README is missing required product section: ${heading}`);
+    continue;
+  }
+  if (index <= previousCliReadmeHeadingIndex) {
+    errors.push(`CLI README product sections are out of contract order at: ${heading}`);
+  }
+  previousCliReadmeHeadingIndex = index;
+}
+
+const normalizedCliReadme = readme.replace(/\s+/g, ' ');
+for (const semantic of [
+  'Workspai is an open-source CLI',
+  'The Workspace Model is the canonical source of truth.',
+  'derived, revision-bound representation',
+  'not "these projects are independent."',
+  'create workspace platform --profile minimal --yes',
+  '--workspace ~/.workspai/workspaces/platform',
+  'A blocked result is useful evidence, not a crashed command.',
+  'not a universal token-cost, answer-quality, or task-success claim',
+  'The canonical persisted graph is JSON.',
+]) {
+  if (!normalizedCliReadme.includes(semantic)) {
+    errors.push(`CLI README is missing required product truth: ${semantic}`);
+  }
+}
+
+const architectureCapabilities = new Map(
+  (architectureContract.auxiliaryCapabilities ?? []).map((capability) => [
+    capability.id,
+    capability,
+  ])
+);
+const requiredGraphArchitectureCommands = [
+  'workspace graph emit',
+  'workspace graph explain',
+  'workspace graph entities',
+  'workspace graph evidence',
+  'workspace graph path',
+  'workspace graph search',
+  'workspace graph benchmark',
+  'workspace graph overlay',
+  'workspace graph dot',
+  'workspace graph mermaid',
+  'workspace graph jsonld',
+  'workspace graph graphml',
+  'workspace graph gexf',
+];
+const architectureGraphCommands = architectureCapabilities.get('graph')?.commands ?? [];
+for (const command of requiredGraphArchitectureCommands) {
+  if (!architectureGraphCommands.includes(command)) {
+    errors.push(`Architecture contract is missing the documented graph command: ${command}`);
+  }
+}
+const architectureEvaluation = architectureCapabilities.get('evaluation');
+for (const artifact of [
+  '.workspai/reports/workspace-intelligence-evaluation-live.json',
+  '.workspai/reports/workspace-intelligence-evaluation-last-run.json',
+]) {
+  if (!(architectureEvaluation?.produces ?? []).includes(artifact)) {
+    errors.push(`Architecture contract is missing the evaluation artifact: ${artifact}`);
+  }
+}
+
+const runtimeDocumentation = new Map(
+  (runtimeContract.commandDocumentation ?? []).map((entry) => [entry.invocation, entry])
+);
+const graphRuntimeSelectors =
+  runtimeDocumentation.get('workspace graph')?.output?.modes?.map((mode) => mode.selector) ?? [];
+for (const selector of [
+  'entities [kind] --json',
+  'evidence <id-or-unique-label> --json',
+  'path <from> <to> --json',
+  'overlay --from <graph> --json',
+  'jsonld',
+  'graphml',
+  'gexf',
+]) {
+  if (!graphRuntimeSelectors.includes(selector)) {
+    errors.push(`Runtime command surface is missing the documented graph selector: ${selector}`);
+  }
+}
+
+const requiredRepositoryReadmeHeadings = [
+  '## Workspace Intelligence for software systems',
+  '## See your workspace as a system',
+  '## Start in two minutes',
+  '## What Workspai gives you',
+  '## How Workspace Intelligence works',
+  '## Evidence, not guesses',
+  '## Measure context honestly',
+  '## One contract-backed intelligence chain',
+  '## Choose your workflow',
+  '## Open outputs for every consumer',
+  '## Documentation',
+  '## Packages',
+];
+let previousReadmeHeadingIndex = -1;
+for (const heading of requiredRepositoryReadmeHeadings) {
+  const index = repositoryReadme.indexOf(heading);
+  if (index === -1) {
+    errors.push(`Repository README is missing required product section: ${heading}`);
+    continue;
+  }
+  if (index <= previousReadmeHeadingIndex) {
+    errors.push(`Repository README product sections are out of contract order at: ${heading}`);
+  }
+  previousReadmeHeadingIndex = index;
+}
+
+const normalizedRepositoryReadme = repositoryReadme.replace(/\s+/g, ' ');
+for (const semantic of [
+  'One workspace. One truth. Humans and AI aligned.',
+  'The Workspace Model is the canonical source of truth.',
+  'derived, revision-bound representation',
+  'not “these projects are independent.”',
+  'not a universal billing, quality, or token-saving claim',
+  'they do not represent missing CLI features',
+  'README_CONTENT_CONTRACT.md',
+]) {
+  if (!normalizedRepositoryReadme.includes(semantic)) {
+    errors.push(`Repository README is missing required product truth: ${semantic}`);
+  }
+}
+
+const readmeContentContractPath = path.join(root, 'docs', 'README_CONTENT_CONTRACT.md');
+if (!fs.existsSync(readmeContentContractPath)) {
+  errors.push('README content contract is missing');
+} else {
+  const readmeContentContract = fs.readFileSync(readmeContentContractPath, 'utf8');
+  for (const semantic of [
+    'Workspace Model is the canonical source of truth',
+    'workspace-intelligence-chain.v1.json',
+    'runtime-command-surface.v1.json',
+    'published-contract-catalog.v1.json',
+    'workspace-intelligence-architecture.v1.json',
+    'results vary by workspace and query',
+  ]) {
+    if (!readmeContentContract.includes(semantic)) {
+      errors.push(`README content contract is missing required policy: ${semantic}`);
+    }
+  }
+}
 
 const canonicalRunner = 'npx workspai workspace intelligence run --for-agent codex --strict --json';
 const canonicalReport = '.workspai/reports/workspace-intelligence-run-last-run.json';
@@ -183,6 +351,7 @@ const glossary = fs.readFileSync(path.join(root, 'docs', 'GLOSSARY.md'), 'utf8')
 const aiQuickstart = fs.readFileSync(path.join(root, 'docs', 'AI_QUICKSTART.md'), 'utf8');
 
 const requiredDocumentationLinks = [
+  'README_CONTENT_CONTRACT.md',
   'workspace-intelligence-runner.md',
   'workspace-knowledge-graph.md',
   'graph-benchmark-methodology.md',
@@ -201,12 +370,22 @@ const graphSchemaNames = [
   'workspace-knowledge-search.v1.json',
   'workspace-graph-token-efficiency.v1.json',
 ];
+const evaluationSchemaNames = [
+  'model-usage-event.v1.json',
+  'workspace-intelligence-evaluation.v1.json',
+  'workspace-intelligence-evaluation-comparison.v1.json',
+];
 if (!contractDocs.includes('published-contract-catalog.v1.json')) {
   errors.push('Contract documentation is missing complete machine-readable catalog discovery');
 }
 for (const schemaName of graphSchemaNames) {
   if (!contractDocs.includes(schemaName)) {
     errors.push(`Contract documentation is missing the graph schema: ${schemaName}`);
+  }
+}
+for (const schemaName of evaluationSchemaNames) {
+  if (!contractDocs.includes(schemaName)) {
+    errors.push(`Contract documentation is missing the evaluation schema: ${schemaName}`);
   }
 }
 

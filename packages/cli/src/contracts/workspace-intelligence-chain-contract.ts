@@ -111,9 +111,10 @@ export type WorkspaceIntelligenceChainContract = {
     rule: string;
   };
   auxiliaryCapabilities: Array<{
-    id: 'graph' | 'watch' | 'mcp';
+    id: 'graph' | 'evaluation' | 'watch' | 'mcp';
     commands: string[];
     reads: string[];
+    produces?: string[];
     role: string;
     chainStep: false;
   }>;
@@ -361,7 +362,7 @@ export function buildWorkspaceIntelligenceChainContract(): WorkspaceIntelligence
     invariants: [
       'Missing or unreadable input is unknown or unavailable; it must not be presented as verified absence.',
       'Freshness and provenance travel with evidence and must not be discarded by projections.',
-      'The current graph is a workspace dependency graph, not a complete cross-language symbol or call graph.',
+      'The current graph is an evidence-backed workspace knowledge graph with bounded source intelligence, not a complete cross-language symbol or call graph.',
       'Simple and standard presentations summarize the contract; their contractRefs must preserve complete traceability.',
       'Conditional provider outputs must be resolved through their dedicated inventory contract.',
       'Auxiliary capabilities expose or refresh intelligence but are not mandatory execution-chain steps.',
@@ -496,7 +497,7 @@ export function buildWorkspaceIntelligenceChainContract(): WorkspaceIntelligence
             'scripts',
             'framework markers',
             'package dependencies',
-            'supported source imports (currently bounded JavaScript and TypeScript scanning)',
+            'bounded multi-language source observations for supported file extensions',
           ],
           entersAt: 'model',
         },
@@ -659,11 +660,34 @@ export function buildWorkspaceIntelligenceChainContract(): WorkspaceIntelligence
         commands: [
           'workspace graph emit',
           'workspace graph explain',
+          'workspace graph entities',
+          'workspace graph evidence',
+          'workspace graph path',
+          'workspace graph search',
+          'workspace graph benchmark',
+          'workspace graph overlay',
           'workspace graph dot',
           'workspace graph mermaid',
+          'workspace graph jsonld',
+          'workspace graph graphml',
+          'workspace graph gexf',
         ],
         reads: [artifacts.model, artifacts.knowledgeGraph],
         role: 'Query the proof-backed graph derived from the canonical workspace model.',
+        chainStep: false,
+      },
+      {
+        id: 'evaluation',
+        commands: [
+          'workspace eval init',
+          'workspace eval record',
+          'workspace eval status',
+          'workspace eval report',
+          'workspace eval compare',
+        ],
+        reads: [artifacts.evaluationLive, artifacts.evaluationLastRun],
+        produces: [artifacts.evaluationLive, artifacts.evaluationLastRun],
+        role: 'Measure model usage, activity, cost provenance, and verified outcomes without storing prompt or response bodies.',
         chainStep: false,
       },
       {

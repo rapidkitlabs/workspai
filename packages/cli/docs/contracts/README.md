@@ -81,6 +81,9 @@ Workspace intelligence (`../../contracts/workspace-intelligence/`):
 - `workspace-knowledge-graph-change-overlay.v1.json` — proposed/change-set facts and relations without mutating the base graph
 - `workspace-knowledge-search.v1.json` — bounded ranked retrieval for CLI, MCP, IDE, and agent consumers
 - `workspace-graph-token-efficiency.v1.json` — reproducible corpus-versus-retrieval payload measurement
+- `model-usage-event.v1.json` — privacy-bounded model, tool, milestone, and verified-outcome events with explicit measurement provenance
+- `workspace-intelligence-evaluation.v1.json` — live/final token, cost, latency, activity, and verified-outcome evaluation
+- `workspace-intelligence-evaluation-comparison.v1.json` — task-aligned comparison of two completed evaluation strategies
 - `workspace-model-snapshot.v1.json`
 - `workspace-model-diff.v1.json`
 - `workspace-impact.v1.json`

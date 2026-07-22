@@ -16,6 +16,10 @@ import { WORKSPACE_CONTRACT_VERIFY_REPORT_PATH } from '../utils/workspace-contra
 import { WORKSPACE_EXPLAIN_REPORT_PATH } from '../contracts/workspace-explain-contract.js';
 import { buildWorkspaceVerify, WORKSPACE_VERIFY_REPORT_PATH } from '../workspace-verify.js';
 import { buildWorkspaceModel, writeWorkspaceModel } from '../workspace-model.js';
+import {
+  createWorkspaceEvaluation,
+  writeWorkspaceEvaluation,
+} from '../workspace-intelligence-evaluation.js';
 
 let workspacePath: string;
 
@@ -36,6 +40,7 @@ describe('workspace mcp serve (4.19)', () => {
     expect(names).toEqual(
       expect.arrayContaining([
         'getWorkspaceKnowledgeGraph',
+        'getWorkspaceEvaluation',
         'queryWorkspaceEntities',
         'searchWorkspaceGraph',
         'getWorkspaceGraphEvidence',
@@ -43,6 +48,23 @@ describe('workspace mcp serve (4.19)', () => {
       ])
     );
     expect(names).not.toContain('refreshWorkspaceIntelligence');
+  });
+
+  it('serves the same contract-validated evaluation artifact used by IDE dashboards', async () => {
+    const evaluation = createWorkspaceEvaluation({
+      workspacePath,
+      taskId: 'mcp-evaluation',
+      runId: 'mcp-run',
+      sessionId: 'mcp-session',
+    });
+    await writeWorkspaceEvaluation(workspacePath, evaluation);
+    await expect(
+      invokeMcpToolForTest(workspacePath, 'getWorkspaceEvaluation', { live: true })
+    ).resolves.toMatchObject({
+      schemaVersion: 'workspace-intelligence-evaluation.v1',
+      runId: 'mcp-run',
+      status: 'live',
+    });
   });
 
   it('serves contract-validated graph reads and bounded queries', async () => {
