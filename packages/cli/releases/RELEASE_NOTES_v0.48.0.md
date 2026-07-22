@@ -80,6 +80,10 @@ catalog, MCP tools, IDE capability discovery, CI evidence, and agent grounding.
 - Pinned canonical, legacy, and candidate registry paths for each locked
   transaction, preventing HOME/APPDATA drift from losing concurrent Windows
   registrations.
+- Replaced clock-derived demo-kit fixture paths with atomic temporary
+  directories and isolated structure-only NestJS tests from Git setup,
+  eliminating a Windows coverage race while retaining a bounded timeout for
+  the 28-file integration case.
 - Completed the machine-readable architecture inventory for all current Graph
   and Evaluation surfaces.
 - Replaced stale dependency-only and JavaScript/TypeScript-only graph wording

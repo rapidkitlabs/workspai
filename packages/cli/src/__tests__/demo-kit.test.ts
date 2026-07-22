@@ -27,8 +27,7 @@ describe('Demo Kit Generator', () => {
   let testDir: string;
 
   beforeEach(async () => {
-    testDir = path.join(os.tmpdir(), `demo-kit-test-${Date.now()}`);
-    await fs.mkdir(testDir, { recursive: true });
+    testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'demo-kit-test-'));
   });
 
   afterEach(async () => {
@@ -305,6 +304,7 @@ describe('Demo Kit Generator', () => {
         author: 'NestJS Dev',
         description: 'NestJS API project',
         skipInstall: true, // Skip npm install in tests
+        skipGit: true,
       };
 
       await generateDemoKit(projectPath, variables);
@@ -335,7 +335,7 @@ describe('Demo Kit Generator', () => {
       await expect(fileExists(path.join(projectPath, '.rapidkit', 'project.json'))).resolves.toBe(
         false
       );
-    });
+    }, 15_000);
 
     it('should generate NestJS project structure with src folder', async () => {
       const projectPath = path.join(testDir, 'nestjs-structure');
@@ -343,6 +343,7 @@ describe('Demo Kit Generator', () => {
         project_name: 'nestjs_structure',
         template: 'nestjs',
         skipInstall: true,
+        skipGit: true,
       };
 
       await generateDemoKit(projectPath, variables);
@@ -376,6 +377,7 @@ describe('Demo Kit Generator', () => {
         project_name: 'nestjs_rapidkit_folder',
         template: 'nestjs',
         skipInstall: true,
+        skipGit: true,
       };
 
       await generateDemoKit(projectPath, variables);
@@ -414,6 +416,7 @@ describe('Demo Kit Generator', () => {
         template: 'nestjs',
         package_manager: 'yarn',
         skipInstall: true,
+        skipGit: true,
       };
 
       await generateDemoKit(projectPath, variables);
@@ -429,6 +432,7 @@ describe('Demo Kit Generator', () => {
         template: 'nestjs',
         package_manager: 'pnpm',
         skipInstall: true,
+        skipGit: true,
       };
 
       await generateDemoKit(projectPath, variables);
@@ -443,6 +447,7 @@ describe('Demo Kit Generator', () => {
         project_name: 'nestjs_config',
         template: 'nestjs',
         skipInstall: true,
+        skipGit: true,
       };
 
       await generateDemoKit(projectPath, variables);
@@ -462,6 +467,7 @@ describe('Demo Kit Generator', () => {
         project_name: 'nestjs_test_folder',
         template: 'nestjs',
         skipInstall: true,
+        skipGit: true,
       };
 
       await generateDemoKit(projectPath, variables);
@@ -481,6 +487,7 @@ describe('Demo Kit Generator', () => {
         project_name: 'nestjs_tsconfig',
         template: 'nestjs',
         skipInstall: true,
+        skipGit: true,
       };
 
       await generateDemoKit(projectPath, variables);

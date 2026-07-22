@@ -54,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made workspace-registry transactions retain one immutable canonical, legacy,
   and candidate path snapshot while waiting for the lock, preventing concurrent
   Windows workers from losing registrations when HOME or APPDATA changes.
+- Made demo-kit fixtures use atomically unique temporary directories and kept
+  structure-only NestJS tests out of unrelated Git setup, preventing Windows
+  coverage workers from deleting or delaying one another's generated files;
+  the 28-file integration case now has an explicit bounded Windows-safe budget.
 
 ### Verification
 

@@ -44,6 +44,9 @@ runs, and export the model-bound Knowledge Graph to standard ecosystem formats.
     scaffolds remain deterministic across Linux, macOS, and Windows.
   - Pinned registry paths for the lifetime of each locked transaction so
     concurrent Windows workers cannot redirect or lose a registration.
+  - Replaced clock-derived demo-kit fixture paths with atomic temporary
+    directories and isolated template assertions from Git setup, removing a
+    Windows coverage race while keeping a bounded timeout for the 28-file case.
   - Completed the machine-readable Graph command and Evaluation artifact
     inventories.
 
