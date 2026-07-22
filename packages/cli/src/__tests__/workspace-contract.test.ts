@@ -537,18 +537,208 @@ describe('workspace contract registry', () => {
       ],
     });
 
-    const { graph } = await buildWorkspaceContractGraph({ workspacePath });
+    const { graph } = await buildWorkspaceContractGraph({
+      workspacePath,
+      now: new Date('2026-06-03T00:00:00.000Z'),
+    });
     expect(graph.kind).toBe('rapidkit.workspace.contract.graph');
+    expect(graph.generatedAt).toBe('2026-06-03T00:00:00.000Z');
+    expect(graph.semantics).toEqual({
+      legacyEdges: 'producer-to-consumer',
+      dependencyGraphEdges: 'consumer-to-dependency',
+    });
     expect(graph.summary).toMatchObject({
       projectCount: 2,
       dependencyEdges: 1,
       eventEdges: 1,
       portCount: 2,
       apiCount: 1,
+      relationshipEdges: 2,
+      inferredEdges: 0,
+      authoritativeEdges: 2,
+      orphanProjects: 0,
+      evidenceCoverageRatio: 1,
+      edgeCoverageRatio: 1,
+      connectedProjects: 2,
+      hasCycle: false,
     });
     expect(graph.edges).toEqual([
       { from: 'orders', to: 'billing', type: 'dependency', label: 'dependsOn' },
       { from: 'orders', to: 'billing', type: 'event', label: 'OrderCreated' },
     ]);
+    expect(graph.dependencyGraph.schemaVersion).toBe('workspace-dependency-graph.v1');
+    expect(
+      graph.dependencyGraph.edges.filter((edge) => edge.from === 'billing' && edge.to === 'orders')
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'service-dependsOn',
+          source: 'contract',
+          confidence: 'high',
+        }),
+        expect.objectContaining({
+          kind: 'event-pub-sub',
+          source: 'contract',
+          confidence: 'high',
+        }),
+      ])
+    );
+  });
+
+  it('enriches the graph from project evidence without requiring hand-authored edges', async () => {
+    const workspacePath = await makeTempDir('rk-contract-evidence-graph-');
+    const apiRoot = path.join(workspacePath, 'api-service');
+    const webRoot = path.join(workspacePath, 'web-app');
+    await fsExtra.outputJson(path.join(apiRoot, '.workspai', 'project.json'), {
+      runtime: 'node',
+      framework: 'nestjs',
+      kit: 'nestjs.standard',
+    });
+    await fsExtra.outputJson(path.join(apiRoot, 'package.json'), {
+      name: '@demo/api',
+      version: '1.2.3',
+      private: true,
+      scripts: { build: 'nest build', test: 'vitest run' },
+      dependencies: { '@nestjs/core': '^11.0.0' },
+      devDependencies: { vitest: '^3.0.0' },
+    });
+    await fsExtra.outputFile(path.join(apiRoot, 'src', 'main.ts'), 'export const api = true;\n');
+    await fsExtra.outputFile(path.join(apiRoot, 'openapi.yaml'), 'openapi: 3.1.0\n');
+    await fsExtra.outputFile(path.join(apiRoot, 'Dockerfile'), 'FROM node:22\n');
+    await fsExtra.outputFile(path.join(apiRoot, 'README.md'), '# API\n');
+    await fsExtra.outputFile(
+      path.join(apiRoot, '.env.example'),
+      'DATABASE_URL=postgres://public-template\nAPI_TOKEN=do-not-export-this-value\n'
+    );
+
+    await fsExtra.outputJson(path.join(webRoot, '.workspai', 'project.json'), {
+      runtime: 'node',
+      framework: 'nextjs',
+      kit: 'nextjs.standard',
+    });
+    await fsExtra.outputJson(path.join(webRoot, 'package.json'), {
+      name: '@demo/web',
+      scripts: { dev: 'next dev' },
+      dependencies: { '@demo/api': 'workspace:*', next: '^15.0.0' },
+    });
+    await fsExtra.outputFile(
+      path.join(webRoot, 'src', 'index.ts'),
+      "import '@demo/api';\nexport const web = true;\n"
+    );
+
+    await fsExtra.outputJson(path.join(workspacePath, WORKSPACE_CONTRACT_PATH), {
+      schemaVersion: 1,
+      kind: 'rapidkit.workspace.contract',
+      generatedAt: '2026-06-03T00:00:00.000Z',
+      workspace: { name: 'evidence-ws', profile: 'enterprise' },
+      projects: [
+        {
+          slug: 'api-service',
+          relativePath: 'api-service',
+          runtime: 'node',
+          framework: 'nestjs',
+          kit: 'nestjs.standard',
+          modules: [],
+          ports: [],
+          contracts: {
+            owns: [],
+            apis: [],
+            publishes: [],
+            consumes: [],
+            dependsOn: [],
+            env: [],
+          },
+        },
+        {
+          slug: 'web-app',
+          relativePath: 'web-app',
+          runtime: 'node',
+          framework: 'nextjs',
+          kit: 'nextjs.standard',
+          modules: [],
+          ports: [],
+          contracts: {
+            owns: [],
+            apis: [],
+            publishes: [],
+            consumes: [],
+            dependsOn: [],
+            env: [],
+          },
+        },
+      ],
+    });
+
+    const { graph } = await buildWorkspaceContractGraph({
+      workspacePath,
+      now: new Date('2026-06-04T00:00:00.000Z'),
+    });
+
+    expect(graph.edges).toEqual([]);
+    expect(graph.dependencyGraph.edges).toContainEqual(
+      expect.objectContaining({
+        from: 'web-app',
+        to: 'api-service',
+        kind: 'package-dep',
+        source: 'inferred',
+        confidence: 'high',
+        evidence: expect.arrayContaining([
+          expect.objectContaining({ file: 'web-app/package.json' }),
+        ]),
+      })
+    );
+    expect(graph.summary).toMatchObject({
+      projectCount: 2,
+      relationshipEdges: 1,
+      inferredEdges: 1,
+      authoritativeEdges: 0,
+      orphanProjects: 0,
+      evidenceCoverageRatio: 1,
+      edgeCoverageRatio: 1,
+      connectedProjects: 2,
+      manifestCount: 2,
+      entrypointCount: 2,
+      diagnostics: 0,
+      relationshipKinds: {
+        'code-import': 0,
+        'package-dep': 1,
+        'event-pub-sub': 0,
+        'service-dependsOn': 0,
+        'shared-resource': 0,
+      },
+      relationshipSources: { inferred: 1, contract: 0, manual: 0 },
+    });
+    const apiNode = graph.nodes.find((node) => node.id === 'api-service');
+    expect(apiNode).toMatchObject({
+      env: ['API_TOKEN', 'DATABASE_URL'],
+      files: {
+        metadata: ['.workspai/project.json'],
+        manifests: ['package.json'],
+        entrypoints: ['src/main.ts'],
+        apiSpecifications: ['openapi.yaml'],
+        infrastructure: ['Dockerfile'],
+        documentation: ['README.md'],
+      },
+      package: {
+        name: '@demo/api',
+        version: '1.2.3',
+        private: true,
+        scripts: ['build', 'test'],
+        dependencies: {
+          runtime: ['@nestjs/core'],
+          development: ['vitest'],
+          peer: [],
+          optional: [],
+        },
+        dependencyCount: 2,
+      },
+      capabilities: {
+        engine: 'npm',
+      },
+      operationalProfile: {
+        verificationPriority: 'elevated',
+      },
+    });
+    expect(JSON.stringify(graph)).not.toContain('do-not-export-this-value');
   });
 });

@@ -61,7 +61,7 @@ import {
   isWrapperLifecycleCommand,
 } from './utils/cli-lifecycle-contract.js';
 import { findRapidkitProjectRoot } from './utils/project-command-capabilities.js';
-import { readProjectMetadata } from './utils/project-metadata.js';
+import { canonicalizeProjectMetadata, readProjectMetadata } from './utils/project-metadata.js';
 import { findWorkspaceRootUp } from './utils/workspace-root.js';
 import {
   resolveGovernanceRunId,
@@ -86,6 +86,7 @@ import {
   getPublishedContractCatalog,
   getPublishedContractVersions,
 } from './contracts/published-contract-versions.js';
+import { assertWorkspaceArtifactContract } from './contracts/artifact-contract-registry.js';
 import {
   cliOperationError,
   cliOperationSuccess,
@@ -99,6 +100,8 @@ import {
   WORKSPACE_ARCHIVE_OPERATION_RESULT_SCHEMA_VERSION,
 } from './contracts/workspace-archive-contract.js';
 import {
+  WORKSPACE_INTELLIGENCE_ARTIFACTS,
+  WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
   WORKSPACE_INTELLIGENCE_COMMAND_SIGNATURES,
   WORKSPACE_INTELLIGENCE_ROOT_COMMANDS,
 } from './contracts/workspace-intelligence-runtime-registry.js';
@@ -775,6 +778,8 @@ async function beginProjectLifecycleTransaction(
   ]);
   if (options.projectPath) {
     files.add(projectMetadataPath(options.projectPath, 'project.json'));
+    files.add(projectMetadataPath(options.projectPath, 'context.json'));
+    files.add(projectMetadataPath(options.projectPath, 'file-hashes.json'));
     files.add(projectMetadataPath(options.projectPath, 'adopt.json'));
     files.add(projectMetadataPath(options.projectPath, 'adopt-readiness.json'));
   }
@@ -863,6 +868,7 @@ async function finalizeCreatedProjectWorkspace(
 
   let relationship = 'managed';
   try {
+    await canonicalizeProjectMetadata(projectPath);
     const relativeProjectPath = path.relative(workspacePath, projectPath);
     const projectIsExternal =
       relativeProjectPath.startsWith('..') || path.isAbsolute(relativeProjectPath);
@@ -4090,6 +4096,7 @@ export async function handleBootstrapCommand(
     const latestReportPath = path.join(reportDir, 'bootstrap-compliance.latest.json');
 
     const baseReport = {
+      schemaVersion: 'bootstrap-compliance.v1',
       command: 'bootstrap',
       timestamp: new Date().toISOString(),
       workspacePath,
@@ -4105,6 +4112,13 @@ export async function handleBootstrapCommand(
       mirrorLifecycle: mirrorLifecycleDetails,
       checks,
     };
+    const writeBootstrapReport = async (report: Record<string, unknown>): Promise<void> => {
+      assertWorkspaceArtifactContract(`.workspai/reports/${path.basename(reportPath)}`, report);
+      assertWorkspaceArtifactContract('.workspai/reports/bootstrap-compliance.latest.json', report);
+      await fsExtra.ensureDir(reportDir);
+      await writeJsonFile(reportPath, report);
+      await writeJsonFile(latestReportPath, report);
+    };
 
     if (strictViolation) {
       const report = enrichBootstrapComplianceReport(
@@ -4117,9 +4131,7 @@ export async function handleBootstrapCommand(
         checks
       );
 
-      await fsExtra.ensureDir(reportDir);
-      await writeJsonFile(reportPath, report);
-      await writeJsonFile(latestReportPath, report);
+      await writeBootstrapReport(report);
 
       if (jsonMode) {
         process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
@@ -4150,9 +4162,7 @@ export async function handleBootstrapCommand(
         checks
       );
 
-      await fsExtra.ensureDir(reportDir);
-      await writeJsonFile(reportPath, report);
-      await writeJsonFile(latestReportPath, report);
+      await writeBootstrapReport(report);
 
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       return 1;
@@ -4275,9 +4285,7 @@ export async function handleBootstrapCommand(
       checks
     );
 
-    await fsExtra.ensureDir(reportDir);
-    await writeJsonFile(reportPath, report);
-    await writeJsonFile(latestReportPath, report);
+    await writeBootstrapReport(report);
 
     if (workspacePath && !complianceOnly && initExitCode === 0) {
       try {
@@ -5514,9 +5522,15 @@ export async function handleMirrorCommand(args: string[]): Promise<number> {
     const reportTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const reportPath = path.join(reportsDir, `mirror-ops-${reportTimestamp}.json`);
     const latestReportPath = path.join(reportsDir, 'mirror-ops.latest.json');
+    const contractedPayload = { schemaVersion: 'mirror-ops.v1', ...payload };
+    assertWorkspaceArtifactContract(
+      `.workspai/reports/${path.basename(reportPath)}`,
+      contractedPayload
+    );
+    assertWorkspaceArtifactContract('.workspai/reports/mirror-ops.latest.json', contractedPayload);
     await fsExtra.ensureDir(reportsDir);
-    await writeJsonFile(reportPath, payload);
-    await writeJsonFile(latestReportPath, payload);
+    await writeJsonFile(reportPath, contractedPayload);
+    await writeJsonFile(latestReportPath, contractedPayload);
   }
 
   async function readMirrorInventory(): Promise<{
@@ -7633,6 +7647,7 @@ program
   .option('--write', 'Write workspace intelligence artifact to .workspai/reports')
   .option('--include-evidence', 'Read status metadata from referenced evidence reports')
   .option('--scan-depth <count>', 'Observable project discovery depth for large monorepos')
+  .option('--limit <count>', 'Bound graph search results (default 12, maximum 100)')
   .option('--cache', 'Reuse cached workspace model when inputs are unchanged (keyed by inputsHash)')
   .option(
     '--incremental',
@@ -7734,6 +7749,7 @@ See the command reference for action-specific required inputs and output artifac
       write?: boolean;
       includeEvidence?: boolean;
       scanDepth?: string;
+      limit?: string;
       forAgent?: string | boolean;
       agentSync?: boolean;
       noAgentSync?: boolean;
@@ -8479,7 +8495,7 @@ See the command reference for action-specific required inputs and output artifac
                 message: (error as Error).message,
                 context: { workspacePath, fromPath },
                 nextActions: [
-                  'npx workspai workspace snapshot create --json',
+                  'npx workspai workspace snapshot --json',
                   'npx workspai workspace diff --from .workspai/reports/workspace-model-snapshot.json --json',
                 ],
               }),
@@ -8577,7 +8593,7 @@ See the command reference for action-specific required inputs and output artifac
                 message: (error as Error).message,
                 context: { workspacePath, fromPath },
                 nextActions: [
-                  'npx workspai workspace snapshot create --json',
+                  'npx workspai workspace snapshot --json',
                   'npx workspai workspace diff --from .workspai/reports/workspace-model-snapshot.json --json',
                   'npx workspai workspace impact --from .workspai/reports/workspace-model-diff-last-run.json --json',
                 ],
@@ -8726,6 +8742,42 @@ See the command reference for action-specific required inputs and output artifac
         process.exit(1);
       }
 
+      const buildKnowledgeGraph = async () => {
+        const { buildWorkspaceKnowledgeGraph } = await import('./workspace-knowledge-graph.js');
+        const { hashWorkspaceModel } = await import('./workspace-model-hash.js');
+        const { readWorkspaceContract } = await import('./utils/workspace-contract.js');
+        let contract = null;
+        try {
+          contract = (await readWorkspaceContract({ workspacePath })).contract;
+        } catch {
+          // Observed workspaces can still produce a knowledge graph without an authored contract.
+        }
+        return buildWorkspaceKnowledgeGraph({
+          workspacePath,
+          workspace: {
+            name: model.workspace.name,
+            ...(model.workspace.profile ? { profile: model.workspace.profile } : {}),
+          },
+          projects: model.projects.map((project) => ({
+            id: project.name,
+            path: project.path,
+            ...(project.absolutePath ? { absolutePath: project.absolutePath } : {}),
+            runtime: project.runtime,
+            framework: project.framework,
+            ...(project.kit ? { kit: project.kit } : {}),
+          })),
+          projectTopology: graph,
+          contract,
+          now: new Date(model.generatedAt),
+          source: {
+            kind: 'workspace-model',
+            artifact: WORKSPACE_INTELLIGENCE_ARTIFACTS.model,
+            hashAlgorithm: 'sha256',
+            hash: hashWorkspaceModel(model),
+          },
+        });
+      };
+
       if (mode === 'dot') {
         console.log(renderGraphDot(graph));
         return;
@@ -8802,9 +8854,250 @@ See the command reference for action-specific required inputs and output artifac
         return;
       }
 
+      if (mode === 'entities') {
+        const knowledgeGraph = await buildKnowledgeGraph();
+        const { queryKnowledgeEntities } = await import('./workspace-knowledge-graph-query.js');
+        const entities = queryKnowledgeEntities(knowledgeGraph, key);
+        if (actionOptions.json) {
+          console.log(
+            JSON.stringify(
+              {
+                schemaVersion: knowledgeGraph.schemaVersion,
+                generatedAt: knowledgeGraph.generatedAt,
+                kind: key ?? null,
+                count: entities.length,
+                entities,
+              },
+              null,
+              2
+            )
+          );
+          return;
+        }
+        console.log(chalk.green(`✔ Workspace graph entities${key ? `: ${key}` : ''}`));
+        console.log(chalk.gray(`   Count: ${entities.length}`));
+        for (const entity of entities) {
+          console.log(chalk.gray(`   • ${entity.kind}: ${entity.label} [${entity.id}]`));
+        }
+        return;
+      }
+
+      if (mode === 'search' || mode === 'benchmark') {
+        const query = (key || '').trim();
+        if (!query) {
+          console.log(chalk.red(`❌ workspace graph ${mode} requires a search query.`));
+          console.log(
+            chalk.gray(`   npx workspai workspace graph ${mode} "authentication endpoint" --json`)
+          );
+          process.exit(1);
+        }
+        const limitValue = Number.parseInt(
+          actionOptions.limit ?? rawFlagValue('--limit') ?? '12',
+          10
+        );
+        if (!Number.isFinite(limitValue) || limitValue < 1 || limitValue > 100) {
+          console.log(chalk.red('❌ --limit must be an integer between 1 and 100.'));
+          process.exit(1);
+        }
+        const knowledgeGraph = await buildKnowledgeGraph();
+        if (mode === 'benchmark') {
+          const { buildWorkspaceGraphTokenEfficiencyReport } =
+            await import('./workspace-graph-token-efficiency.js');
+          const report = await buildWorkspaceGraphTokenEfficiencyReport({
+            workspacePath,
+            graph: knowledgeGraph,
+            query,
+            limit: limitValue,
+          });
+          if (actionOptions.json) {
+            console.log(JSON.stringify(report, null, 2));
+          } else {
+            console.log(chalk.green(`✔ Graph retrieval benchmark: ${query}`));
+            console.log(
+              chalk.gray(
+                `   Estimated tokens: ${report.corpus.estimatedTokens} corpus → ${report.retrieval.estimatedTokens} bounded retrieval`
+              )
+            );
+            console.log(
+              chalk.gray(
+                `   Estimated payload reduction: ${report.savings.reductionRatio}× (${report.savings.reductionPercent}%)`
+              )
+            );
+            console.log(chalk.gray(`   Matches: ${report.retrieval.matchCount}`));
+            console.log(chalk.yellow(`   ${report.methodology.claimBoundary}`));
+          }
+          return;
+        }
+        const { searchKnowledgeGraph } = await import('./workspace-knowledge-graph-query.js');
+        const result = searchKnowledgeGraph(knowledgeGraph, { query, limit: limitValue });
+        if (actionOptions.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          console.log(chalk.green(`✔ Workspace graph search: ${query}`));
+          console.log(
+            chalk.gray(
+              `   ${result.entities.length}/${result.totalMatches} match(es)${result.truncated ? ' (bounded)' : ''}`
+            )
+          );
+          for (const entity of result.entities) {
+            console.log(chalk.gray(`   • ${entity.kind}: ${entity.label} [${entity.id}]`));
+          }
+        }
+        return;
+      }
+
+      if (mode === 'evidence') {
+        const query = (key || '').trim();
+        if (!query) {
+          console.log(chalk.red('❌ workspace graph evidence requires an entity or relation id.'));
+          process.exit(1);
+        }
+        const knowledgeGraph = await buildKnowledgeGraph();
+        const { queryKnowledgeEvidence } = await import('./workspace-knowledge-graph-query.js');
+        const result = queryKnowledgeEvidence(knowledgeGraph, query);
+        if (actionOptions.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else if (result.found) {
+          console.log(chalk.green(`✔ Graph evidence: ${query}`));
+          for (const proof of result.proofs) {
+            console.log(
+              chalk.gray(
+                `   • ${proof.artifact}${proof.pointer ? `#${proof.pointer}` : ''} [${proof.provider}/${proof.trust}/${proof.confidence}]`
+              )
+            );
+          }
+        } else {
+          console.log(
+            chalk.red(
+              result.candidates.length > 0
+                ? `❌ Graph query is ambiguous: ${query}`
+                : `❌ Graph entity or relation not found: ${query}`
+            )
+          );
+          for (const candidate of result.candidates.slice(0, 10)) {
+            console.log(chalk.gray(`   • ${candidate}`));
+          }
+        }
+        if (!result.found) process.exit(1);
+        return;
+      }
+
+      if (mode === 'path') {
+        const from = (key || '').trim();
+        const to = (value || '').trim();
+        if (!from || !to) {
+          console.log(chalk.red('❌ workspace graph path requires <from> and <to>.'));
+          console.log(chalk.gray('   npx workspai workspace graph path <from> <to> --json'));
+          process.exit(1);
+        }
+        const knowledgeGraph = await buildKnowledgeGraph();
+        const { queryKnowledgePath } = await import('./workspace-knowledge-graph-query.js');
+        const result = queryKnowledgePath(knowledgeGraph, from, to);
+        if (actionOptions.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else if (result.found) {
+          console.log(chalk.green(`✔ Graph proof path: ${from} → ${to}`));
+          for (const hop of result.hops) {
+            console.log(
+              chalk.gray(
+                `   • ${hop.from} ${hop.direction === 'forward' ? '→' : '←'} ${hop.to} [${hop.kind}]`
+              )
+            );
+          }
+          console.log(chalk.gray(`   Proofs: ${result.proofs.length}`));
+        } else {
+          console.log(chalk.red(`❌ No graph path found between ${from} and ${to}.`));
+        }
+        if (!result.found) process.exit(1);
+        return;
+      }
+
+      if (mode === 'overlay') {
+        const fromPath = (actionOptions.from || key || '').trim();
+        if (!fromPath) {
+          console.log(chalk.red('❌ workspace graph overlay requires --from <graph.json>.'));
+          console.log(
+            chalk.gray('   npx workspai workspace graph overlay --from <graph.json> --json')
+          );
+          process.exit(1);
+        }
+        const absoluteFromPath = path.resolve(workspacePath, fromPath);
+        let source: unknown;
+        try {
+          source = JSON.parse(await fsExtra.readFile(absoluteFromPath, 'utf8')) as unknown;
+        } catch (error) {
+          console.log(
+            chalk.red(
+              `❌ Could not read the base knowledge graph: ${error instanceof Error ? error.message : String(error)}`
+            )
+          );
+          process.exit(1);
+        }
+        const sourceRecord =
+          source && typeof source === 'object' ? (source as Record<string, unknown>) : {};
+        const nestedGraph = sourceRecord.graph;
+        const nestedGraphRecord =
+          nestedGraph && typeof nestedGraph === 'object'
+            ? (nestedGraph as Record<string, unknown>)
+            : {};
+        const baseCandidate =
+          sourceRecord.schemaVersion === WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.knowledgeGraph
+            ? sourceRecord
+            : (sourceRecord.knowledgeGraph ?? nestedGraphRecord.knowledgeGraph);
+        if (
+          !baseCandidate ||
+          typeof baseCandidate !== 'object' ||
+          (baseCandidate as Record<string, unknown>).schemaVersion !==
+            WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.knowledgeGraph
+        ) {
+          console.log(
+            chalk.red(
+              `❌ Base file does not contain a ${WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.knowledgeGraph} document.`
+            )
+          );
+          process.exit(1);
+        }
+        const knowledgeGraph = await buildKnowledgeGraph();
+        const { buildWorkspaceKnowledgeGraphChangeOverlay } =
+          await import('./workspace-knowledge-graph-change-overlay.js');
+        const overlay = buildWorkspaceKnowledgeGraphChangeOverlay(
+          baseCandidate as typeof knowledgeGraph,
+          knowledgeGraph
+        );
+        if (actionOptions.json) {
+          console.log(JSON.stringify(overlay, null, 2));
+          return;
+        }
+        console.log(chalk.green('✔ Workspace graph change overlay'));
+        console.log(chalk.gray(`   Base: ${fromPath}`));
+        console.log(chalk.gray(`   Risk: ${overlay.summary.risk}`));
+        console.log(
+          chalk.gray(
+            `   Entities: +${overlay.summary.entityAdds} -${overlay.summary.entityRemovals} ~${overlay.summary.entityChanges}`
+          )
+        );
+        console.log(
+          chalk.gray(
+            `   Relations: +${overlay.summary.relationAdds} -${overlay.summary.relationRemovals} ~${overlay.summary.relationChanges}`
+          )
+        );
+        console.log(
+          chalk.gray(
+            `   Proofs: +${overlay.summary.proofAdds} -${overlay.summary.proofRemovals} ~${overlay.summary.proofChanges}`
+          )
+        );
+        console.log(
+          chalk.gray(
+            `   Impacted: ${overlay.summary.impactedEntities} entities · ${overlay.summary.changedArtifacts} proof artifacts`
+          )
+        );
+        return;
+      }
+
       const emit = buildGraphEmit(graph);
+      const knowledgeGraph = await buildKnowledgeGraph();
       if (actionOptions.json) {
-        console.log(JSON.stringify(emit, null, 2));
+        console.log(JSON.stringify({ ...emit, knowledgeGraph }, null, 2));
         return;
       }
       console.log(chalk.green('✔ Workspace dependency graph'));
@@ -8820,6 +9113,16 @@ See the command reference for action-specific required inputs and output artifac
         )
       );
       console.log(chalk.gray(`   Hotspots: ${emit.hotspots.join(', ') || 'none'}`));
+      console.log(
+        chalk.gray(
+          `   Knowledge: ${knowledgeGraph.quality.entityCount} entities · ${knowledgeGraph.quality.relationCount} relations · ${knowledgeGraph.quality.proofCount} proofs · ${knowledgeGraph.providers.length} providers`
+        )
+      );
+      console.log(
+        chalk.gray(
+          '   Query: workspace graph search <query> | entities [kind] | path <from> <to> | evidence <entity-or-relation> | overlay --from <graph.json>'
+        )
+      );
       console.log(chalk.gray('   Render: workspace graph dot | workspace graph mermaid'));
     } else if (action === 'watch') {
       const workspacePath = requireWorkspaceRootForAction('watch');
@@ -9066,19 +9369,57 @@ See the command reference for action-specific required inputs and output artifac
           console.log(chalk.gray(`   Projects: ${result.graph.summary.projectCount}`));
           console.log(chalk.gray(`   Dependencies: ${result.graph.summary.dependencyEdges}`));
           console.log(chalk.gray(`   Event links: ${result.graph.summary.eventEdges}`));
+          console.log(
+            chalk.gray(
+              `   Evidence-backed relationships: ${result.graph.summary.relationshipEdges} (${result.graph.summary.inferredEdges} inferred, ${result.graph.summary.authoritativeEdges} authoritative)`
+            )
+          );
+          console.log(
+            chalk.gray(
+              `   Connected projects: ${result.graph.summary.connectedProjects}/${result.graph.summary.projectCount} · Edge coverage: ${Math.round(result.graph.summary.edgeCoverageRatio * 100)}% · Evidence coverage: ${Math.round(result.graph.summary.evidenceCoverageRatio * 100)}%`
+            )
+          );
+          console.log(
+            chalk.gray(
+              `   Orphans: ${result.graph.summary.orphanProjects} · Hotspots: ${result.graph.summary.hotspotProjects} · Low-confidence edges: ${result.graph.summary.lowConfidenceEdges} · Cycles: ${result.graph.summary.hasCycle ? 'yes' : 'no'}`
+            )
+          );
+          console.log(
+            chalk.gray(
+              `   Knowledge: ${result.graph.summary.entityCount} entities · ${result.graph.summary.knowledgeRelations} relations · ${result.graph.summary.proofCount} proofs · ${result.graph.summary.providerCount} providers · ${result.graph.summary.knowledgeUnknowns} unknown(s)`
+            )
+          );
           console.log(chalk.gray(`   Ports: ${result.graph.summary.portCount}`));
           for (const node of result.graph.nodes) {
             const ports =
               node.ports.map((port) => `${port.name}:${port.port}`).join(', ') || 'none';
+            const profile = node.operationalProfile
+              ? ` risk=${node.operationalProfile.weight}/${node.operationalProfile.verificationPriority}`
+              : '';
             console.log(
               chalk.gray(
-                `   • ${node.id} (${node.runtime || 'unknown'}${node.framework ? `/${node.framework}` : ''}) ports=${ports}`
+                `   • ${node.id} (${node.runtime || 'unknown'}${node.framework ? `/${node.framework}` : ''}) ports=${ports} manifests=${node.files.manifests.length}${profile}`
               )
             );
           }
           for (const edge of result.graph.edges) {
             const label = edge.type === 'event' ? `event:${edge.label}` : edge.label;
             console.log(chalk.gray(`     ${edge.from} -> ${edge.to} [${label}]`));
+          }
+          if (result.graph.dependencyGraph.edges.length > 0) {
+            console.log(
+              chalk.gray('   Evidence-backed dependency direction (consumer -> dependency):')
+            );
+            for (const edge of result.graph.dependencyGraph.edges) {
+              console.log(
+                chalk.gray(
+                  `     ${edge.from} -> ${edge.to} [${edge.kind}/${edge.source}/${edge.confidence}] evidence=${edge.evidence.length}`
+                )
+              );
+            }
+          }
+          for (const diagnostic of result.graph.dependencyGraph.diagnostics || []) {
+            console.log(chalk.gray(`   ${diagnostic.severity}: ${diagnostic.message}`));
           }
           return;
         }
@@ -10061,7 +10402,7 @@ export function printHelp() {
   );
   console.log(
     grayCmd(
-      '  npx workspai workspace graph [emit|explain|dot|mermaid]  Inspect/visualize dependency graph'
+      '  npx workspai workspace graph [emit|explain|search|benchmark|entities|evidence|path|overlay|dot|mermaid]  Query evidence graph'
     )
   );
   console.log(

@@ -196,7 +196,7 @@ describe('CLI Entry Point', () => {
           npx workspai workspace trace --from <diff> [--write] --json  Diff → blast radius → gates narrative
           npx workspai workspace feedback record --json  Append agent action outcome to intelligence history
           npx workspai workspace mcp serve              Read-mostly stdio MCP over workspace evidence
-          npx workspai workspace graph [emit|explain|dot|mermaid]  Inspect/visualize dependency graph
+          npx workspai workspace graph [emit|explain|search|benchmark|entities|evidence|path|overlay|dot|mermaid]  Query evidence graph
           npx workspai workspace watch [--once] [--json]  Keep model+graph in memory; stream change events
           npx workspai workspace run <stage> [--scope project:<name>] [--reuse-passed]  Fleet init/test/build/start or custom stage
           npx workspai workspace sync [--json]      Sync registry + contract from projects

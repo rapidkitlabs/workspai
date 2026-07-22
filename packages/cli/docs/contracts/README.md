@@ -2,6 +2,24 @@
 
 Contract documentation for JSON payloads, support matrices, and cross-repo parity.
 
+## Complete contract discovery
+
+The complete machine-readable inventory is
+[`../../contracts/published-contract-catalog.v1.json`](../../contracts/published-contract-catalog.v1.json).
+It is the source of truth for every published schema/capability path; the lists
+below are grouped entry points, not a substitute for that catalog.
+
+Installed consumers can discover the active package version and contract map
+without scraping Markdown:
+
+```bash
+npx workspai --version --json
+```
+
+Resolve contract files from the installed `workspai/contracts/` directory and
+validate payloads against the exact catalog revision shipped with that CLI.
+Do not copy a schema from `main` and assume it matches an older installed CLI.
+
 ## Monorepo workflow
 
 Canonical JSON lives in **`../../contracts/`** (CLI package root, published in the tarball).
@@ -12,7 +30,7 @@ Canonical JSON lives in **`../../contracts/`** (CLI package root, published in t
 | `npm run check:generated-contracts`       | Verify committed JSON matches generators                                                                              |
 | `npm run sync:parity-snapshot`            | Copy canonical → vscode `contracts/` mirror                                                                           |
 | `npm run check:parity-snapshot`           | Verify mirrors match canonical                                                                                        |
-| `npm run validate:contracts`              | Shared-contract checks and focused contract tests                                                                      |
+| `npm run validate:contracts`              | Shared-contract checks and focused contract tests                                                                     |
 | `npm run contracts:validate`              | Comprehensive generated/shared contract, parity, runtime-conformance, and adversarial gate                            |
 | `npm run check:agent-customization-drift` | Verify generated agent customization files are committed in a consumer workspace                                      |
 
@@ -20,19 +38,23 @@ Workflow: change code → `npm run generate:contracts` → `npm run sync:parity-
 
 ## Documents in this folder
 
-| File                                                           | Purpose                                                     |
-| -------------------------------------------------------------- | ----------------------------------------------------------- |
-| [ARTIFACT_CATALOG.md](./ARTIFACT_CATALOG.md)                   | On-disk artifact paths, schema versions, and consumer rules |
-| [COMMAND_OWNERSHIP_MATRIX.md](./COMMAND_OWNERSHIP_MATRIX.md)   | Which commands the npm wrapper owns vs Python Core          |
+| File                                                           | Purpose                                                           |
+| -------------------------------------------------------------- | ----------------------------------------------------------------- |
+| [ARTIFACT_CATALOG.md](./ARTIFACT_CATALOG.md)                   | On-disk artifact paths, schema versions, and consumer rules       |
+| [COMMAND_OWNERSHIP_MATRIX.md](./COMMAND_OWNERSHIP_MATRIX.md)   | Which commands the npm wrapper owns vs Python Core                |
 | [NAMING_AND_COEXISTENCE.md](./NAMING_AND_COEXISTENCE.md)       | Workspace Intelligence command naming and generated surface rules |
-| [RUNTIME_SUPPORT_MATRIX.md](./RUNTIME_SUPPORT_MATRIX.md)       | Scaffold, import, lifecycle, and module support tiers       |
-| [RUNTIME_ACCEPTANCE_MATRIX.md](./RUNTIME_ACCEPTANCE_MATRIX.md) | Runtime acceptance matrix expectations                      |
-| [rapidkit-cli-contracts.json](./rapidkit-cli-contracts.json)   | Core CLI JSON schema fragments                              |
+| [RUNTIME_SUPPORT_MATRIX.md](./RUNTIME_SUPPORT_MATRIX.md)       | Scaffold, import, lifecycle, and module support tiers             |
+| [RUNTIME_ACCEPTANCE_MATRIX.md](./RUNTIME_ACCEPTANCE_MATRIX.md) | Runtime acceptance matrix expectations                            |
+| [rapidkit-cli-contracts.json](./rapidkit-cli-contracts.json)   | Core CLI JSON schema fragments                                    |
 
 ## Workspace intelligence schemas
 
 Published under `../../contracts/` (not duplicated in this folder):
 
+- `published-contract-catalog.v1.json` — complete machine-readable contract inventory
+- `workspace-contract.v1.json` — canonical workspace project/relationship contract
+- `runtime-command-surface.v1.json` and `cli-runtime-command-inventory.v1.snapshot.json` — supported command/capability discovery
+- `workspace-intelligence-architecture.v1.json` and `workspace-intelligence-chain.v1.json` — architecture boundaries and ordered loop
 - `workspace-registry.v1.json` — canonical project registry summary (see [ARTIFACT_CATALOG.md](./ARTIFACT_CATALOG.md))
 - `release-readiness.v1.json` — release readiness gate evidence
 - `workspace-run-last.v1.json` — multi-stage workspace run evidence
@@ -44,6 +66,10 @@ Published under `../../contracts/` (not duplicated in this folder):
 - `project-entry-capability.v1.json` — open-ended adopt/import contract for readable projects
 - `create-planner-capabilities.v1.json` — native, official, and existing capability lanes
 - `agent-customization-pack.v1.json` — generated instructions, prompts, skills, agents, optional hooks, MCP-ready design metadata, target matrix, and drift state for AI agent surfaces
+- `workspace-list.v1.json`, `workspace-sync.v1.json`, and `compatibility-matrix.v1.json` — workspace discovery, synchronization, and platform compatibility
+- `project-archive.v1.json`, `workspace-snapshot.v1.json`, and `workspace-snapshot.v2.json` — recoverable lifecycle records
+- `infra-plan.v1.json`, `private-product-manifest.v1.json`, and `product-factory-plan.v1.json` — infrastructure and product planning payloads
+- `workspace-model-cache.v1.json`, `workspace-watch-event.v1.json`, `doctor-project-scan.v2.json`, and `doctor-workspace-cache.v2.json` — cache/watch/diagnostic support contracts
 
 Workspace intelligence (`../../contracts/workspace-intelligence/`):
 
@@ -51,6 +77,10 @@ Workspace intelligence (`../../contracts/workspace-intelligence/`):
 - `workspace-model.v1.json`
 - `workspace-context.v1.json`
 - `workspace-dependency-graph.v1.json`
+- `workspace-knowledge-graph.v1.json` — proof-backed entities, relations, evidence, providers, and model binding
+- `workspace-knowledge-graph-change-overlay.v1.json` — proposed/change-set facts and relations without mutating the base graph
+- `workspace-knowledge-search.v1.json` — bounded ranked retrieval for CLI, MCP, IDE, and agent consumers
+- `workspace-graph-token-efficiency.v1.json` — reproducible corpus-versus-retrieval payload measurement
 - `workspace-model-snapshot.v1.json`
 - `workspace-model-diff.v1.json`
 - `workspace-impact.v1.json`
@@ -64,6 +94,12 @@ Workspace intelligence (`../../contracts/workspace-intelligence/`):
 - `blocker-resolution.v1.json`
 - `doctor-fix-result.v1.json`
 - `studio-blocker-handoff.v1.json`
+- `mcp-design.v1.json` and `agent-hooks.v1.json` — generated MCP/IDE integration surfaces
+
+These schemas describe durable artifacts or bounded query results. A command's
+stdout may wrap an artifact with operation metadata such as `status`,
+`outputPath`, or a structured error; that envelope follows
+`cli-operation-result.v1.json` and does not change the nested artifact contract.
 
 CLI commands: see [commands-reference.md](../commands-reference.md) and the
 [CLI README](../../README.md#one-intelligence-chain).

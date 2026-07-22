@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-knowledge-graph-change-overlay.v1.json",
+  "title": "Workspai Workspace Knowledge Graph Change Overlay",
+  "description": "Portable graph-to-graph entity and relation changes with bounded impact and proof artifact projection.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "workspace",
+    "base",
+    "head",
+    "entities",
+    "relations",
+    "proofs",
+    "impactedEntityIds",
+    "changedArtifacts",
+    "summary"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "workspace-knowledge-graph-change-overlay.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "workspace": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "profile": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "base": { "$ref": "#/$defs/graphRevision" },
+    "head": { "$ref": "#/$defs/graphRevision" },
+    "entities": {
+      "allOf": [
+        { "$ref": "#/$defs/changeSet" },
+        {
+          "properties": {
+            "added": {
+              "type": "array",
+              "items": { "$ref": "workspace-knowledge-graph.v1.json#/properties/entities/items" }
+            },
+            "removed": {
+              "type": "array",
+              "items": { "$ref": "workspace-knowledge-graph.v1.json#/properties/entities/items" }
+            },
+            "changed": { "type": "array", "items": { "$ref": "#/$defs/entityChange" } }
+          }
+        }
+      ]
+    },
+    "relations": {
+      "allOf": [
+        { "$ref": "#/$defs/changeSet" },
+        {
+          "properties": {
+            "added": {
+              "type": "array",
+              "items": { "$ref": "workspace-knowledge-graph.v1.json#/properties/relations/items" }
+            },
+            "removed": {
+              "type": "array",
+              "items": { "$ref": "workspace-knowledge-graph.v1.json#/properties/relations/items" }
+            },
+            "changed": { "type": "array", "items": { "$ref": "#/$defs/relationChange" } }
+          }
+        }
+      ]
+    },
+    "proofs": {
+      "allOf": [
+        { "$ref": "#/$defs/changeSet" },
+        {
+          "properties": {
+            "added": {
+              "type": "array",
+              "items": { "$ref": "workspace-knowledge-graph.v1.json#/properties/proofs/items" }
+            },
+            "removed": {
+              "type": "array",
+              "items": { "$ref": "workspace-knowledge-graph.v1.json#/properties/proofs/items" }
+            },
+            "changed": { "type": "array", "items": { "$ref": "#/$defs/proofChange" } }
+          }
+        }
+      ]
+    },
+    "impactedEntityIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "changedArtifacts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "not": { "pattern": "^(?:/|[A-Za-z]:[\\\\/])" }
+      },
+      "uniqueItems": true
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "entityAdds",
+        "entityRemovals",
+        "entityChanges",
+        "relationAdds",
+        "relationRemovals",
+        "relationChanges",
+        "proofAdds",
+        "proofRemovals",
+        "proofChanges",
+        "impactedEntities",
+        "changedArtifacts",
+        "risk"
+      ],
+      "properties": {
+        "entityAdds": { "type": "integer", "minimum": 0 },
+        "entityRemovals": { "type": "integer", "minimum": 0 },
+        "entityChanges": { "type": "integer", "minimum": 0 },
+        "relationAdds": { "type": "integer", "minimum": 0 },
+        "relationRemovals": { "type": "integer", "minimum": 0 },
+        "relationChanges": { "type": "integer", "minimum": 0 },
+        "proofAdds": { "type": "integer", "minimum": 0 },
+        "proofRemovals": { "type": "integer", "minimum": 0 },
+        "proofChanges": { "type": "integer", "minimum": 0 },
+        "impactedEntities": { "type": "integer", "minimum": 0 },
+        "changedArtifacts": { "type": "integer", "minimum": 0 },
+        "risk": { "enum": ["none", "low", "medium", "high"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "graphRevision": {
+      "type": "object",
+      "required": ["schemaVersion", "generatedAt", "fingerprint"],
+      "properties": {
+        "schemaVersion": { "const": "workspace-knowledge-graph.v1" },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "changeSet": {
+      "type": "object",
+      "required": ["added", "removed", "changed"]
+    },
+    "entityChange": {
+      "type": "object",
+      "required": ["id", "before", "after", "changedFields"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "before": { "$ref": "workspace-knowledge-graph.v1.json#/properties/entities/items" },
+        "after": { "$ref": "workspace-knowledge-graph.v1.json#/properties/entities/items" },
+        "changedFields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "relationChange": {
+      "type": "object",
+      "required": ["id", "before", "after", "changedFields"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "before": { "$ref": "workspace-knowledge-graph.v1.json#/properties/relations/items" },
+        "after": { "$ref": "workspace-knowledge-graph.v1.json#/properties/relations/items" },
+        "changedFields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "proofChange": {
+      "type": "object",
+      "required": ["id", "before", "after", "changedFields"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "before": { "$ref": "workspace-knowledge-graph.v1.json#/properties/proofs/items" },
+        "after": { "$ref": "workspace-knowledge-graph.v1.json#/properties/proofs/items" },
+        "changedFields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

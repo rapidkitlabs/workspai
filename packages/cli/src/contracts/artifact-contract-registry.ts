@@ -11,7 +11,8 @@ import {
 
 export type WorkspaceArtifactContractDescriptor = {
   artifactPath: string;
-  schemaVersion: string;
+  schemaVersion: string | number;
+  schemaVersionField?: 'schemaVersion' | 'schema_version' | 'schema' | 'version';
   contractPath: string;
   producerCommands: string[][];
 };
@@ -34,6 +35,11 @@ const descriptors = Object.keys(WORKSPACE_INTELLIGENCE_ARTIFACTS).flatMap((id) =
 
 const supplementalDescriptors: WorkspaceArtifactContractInput[] = [
   {
+    artifactPath: '.workspai/workspace.contract.json',
+    schemaVersion: 1,
+    contractPath: 'contracts/workspace-contract.v1.json',
+  },
+  {
     artifactPath: '.workspai/cache/workspace-model.v1.json',
     schemaVersion: 'workspace-model-cache.v1',
     contractPath: 'contracts/workspace-model-cache.v1.json',
@@ -42,6 +48,37 @@ const supplementalDescriptors: WorkspaceArtifactContractInput[] = [
     artifactPath: '.workspai/workspace-registry.v1.json',
     schemaVersion: 'workspace-registry.v1',
     contractPath: 'contracts/workspace-registry.v1.json',
+  },
+  {
+    artifactPath: '.workspai/compatibility-matrix.json',
+    schemaVersion: 'rapidkit.compatibility-matrix.v1',
+    contractPath: 'contracts/compatibility-matrix.v1.json',
+  },
+  {
+    artifactPath: '.workspai/reports/doctor-workspace-cache.json',
+    schemaVersion: 'doctor-workspace-cache-v2',
+    contractPath: 'contracts/doctor-workspace-cache.v2.json',
+  },
+  {
+    artifactPath: '.workspai/reports/bootstrap-compliance.latest.json',
+    schemaVersion: 'bootstrap-compliance.v1',
+    contractPath: 'contracts/bootstrap-compliance.v1.json',
+  },
+  {
+    artifactPath: '.workspai/reports/mirror-ops.latest.json',
+    schemaVersion: 'mirror-ops.v1',
+    contractPath: 'contracts/mirror-ops.v1.json',
+  },
+  {
+    artifactPath: '.workspai/reports/transparency-evidence.latest.json',
+    schemaVersion: 'transparency-evidence.v1',
+    contractPath: 'contracts/transparency-evidence.v1.json',
+  },
+  {
+    artifactPath: '.workspai/reports/share-bundle.json',
+    schemaVersion: '1.1',
+    schemaVersionField: 'schema_version',
+    contractPath: 'contracts/workspace-share-bundle.v1.json',
   },
   {
     artifactPath: '.workspai/reports/doctor-project-last-run.json',
@@ -111,11 +148,21 @@ const supplementalDescriptors: WorkspaceArtifactContractInput[] = [
 ];
 
 const SUPPLEMENTAL_ARTIFACT_PRODUCERS: Readonly<Record<string, readonly string[][]>> = {
+  '.workspai/workspace.contract.json': [
+    ['workspace', 'sync'],
+    ['workspace', 'contract', 'sync'],
+  ],
   [WORKSPACE_INTELLIGENCE_ARTIFACTS.intelligenceRun]: [['workspace', 'intelligence', 'run']],
   [WORKSPACE_INTELLIGENCE_ARTIFACTS.snapshot]: [['workspace', 'snapshot']],
   [WORKSPACE_INTELLIGENCE_ARTIFACTS.history]: [['workspace', 'feedback', 'record', '--json']],
   '.workspai/cache/workspace-model.v1.json': [['workspace', 'model']],
   '.workspai/workspace-registry.v1.json': [['workspace', 'sync']],
+  '.workspai/compatibility-matrix.json': [['bootstrap']],
+  '.workspai/reports/doctor-workspace-cache.json': [['doctor', 'workspace']],
+  '.workspai/reports/bootstrap-compliance.latest.json': [['bootstrap']],
+  '.workspai/reports/mirror-ops.latest.json': [['mirror', 'status']],
+  '.workspai/reports/transparency-evidence.latest.json': [['mirror', 'sync']],
+  '.workspai/reports/share-bundle.json': [['workspace', 'share']],
   '.workspai/reports/doctor-project-last-run.json': [['doctor', 'project']],
   '.workspai/reports/doctor-remediation-plan-last-run.json': [['workspace', 'remediation-plan']],
   '.workspai/reports/artifact-remediation-plan-last-run.json': [['workspace', 'remediation-plan']],
@@ -124,6 +171,7 @@ const SUPPLEMENTAL_ARTIFACT_PRODUCERS: Readonly<Record<string, readonly string[]
   '.workspai/reports/autopilot-release-last-run.json': [['autopilot', 'release']],
   '.workspai/reports/autopilot-release.json': [['autopilot', 'release']],
   '.workspai/reports/workspace-run-last.json': [['workspace', 'run']],
+  '.workspai/reports/workspai-mcp-design.json': [['workspace', 'agent-sync', '--write']],
   '.workspai/reports/workspace-why-last-run.json': [['workspace', 'why']],
   '.workspai/reports/workspace-trace-last-run.json': [['workspace', 'trace']],
   '.vscode/workspai-agent-hooks.json': [['workspace', 'agent-sync']],
@@ -154,10 +202,31 @@ function normalizeArtifactPath(artifactPath: string): string {
   return artifactPath.split(path.sep).join('/').replace(/^\.\//, '');
 }
 
+const WORKSPACE_ARTIFACT_PATTERN_CONTRACTS = [
+  {
+    pattern: /^\.workspai\/reports\/bootstrap-compliance-[^/]+\.json$/,
+    canonicalPath: '.workspai/reports/bootstrap-compliance.latest.json',
+  },
+  {
+    pattern: /^\.workspai\/reports\/mirror-ops-[^/]+\.json$/,
+    canonicalPath: '.workspai/reports/mirror-ops.latest.json',
+  },
+  {
+    pattern: /^\.workspai\/reports\/transparency-evidence-[^/]+\.json$/,
+    canonicalPath: '.workspai/reports/transparency-evidence.latest.json',
+  },
+] as const;
+
 export function workspaceArtifactContractFor(
   artifactPath: string
 ): WorkspaceArtifactContractDescriptor | null {
-  return WORKSPACE_ARTIFACT_CONTRACTS[normalizeArtifactPath(artifactPath)] ?? null;
+  const normalized = normalizeArtifactPath(artifactPath);
+  const exact = WORKSPACE_ARTIFACT_CONTRACTS[normalized];
+  if (exact) return exact;
+  const pattern = WORKSPACE_ARTIFACT_PATTERN_CONTRACTS.find((entry) =>
+    entry.pattern.test(normalized)
+  );
+  return pattern ? (WORKSPACE_ARTIFACT_CONTRACTS[pattern.canonicalPath] ?? null) : null;
 }
 
 export function assertWorkspaceArtifactContract(
@@ -168,9 +237,10 @@ export function assertWorkspaceArtifactContract(
   const descriptor = workspaceArtifactContractFor(artifactPath);
   if (!descriptor) return;
 
+  const schemaVersionField = descriptor.schemaVersionField ?? 'schemaVersion';
   const schemaVersion =
-    payload && typeof payload === 'object' && 'schemaVersion' in payload
-      ? (payload as { schemaVersion?: unknown }).schemaVersion
+    payload && typeof payload === 'object'
+      ? (payload as Record<string, unknown>)[schemaVersionField]
       : undefined;
   if (schemaVersion !== descriptor.schemaVersion) {
     throw new Error(

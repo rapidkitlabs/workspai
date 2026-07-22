@@ -920,6 +920,25 @@ async function buildSecurityHygieneProbe(input: SurfaceInput): Promise<DoctorSur
   );
   const vulnerabilityCount = Number(input.vulnerabilities ?? 0);
   const hasVulnerabilities = vulnerabilityCount > 0;
+  const runtime = normalizeRuntime(input.runtimeFamily);
+  const vulnerabilityRepair =
+    hasVulnerabilities && runtime === 'node'
+      ? buildCommandRepairCapability({
+          issueId: 'surface-security-hygiene',
+          title: 'Apply non-breaking npm vulnerability fixes',
+          projectPath: input.projectPath,
+          command: 'npm audit fix --audit-level=moderate',
+          files: ['package.json', 'package-lock.json', 'npm-shrinkwrap.json'],
+          reason:
+            'Apply npm-authored vulnerability remediations without --force, then regenerate Doctor and release-readiness evidence.',
+          risk: 'guarded',
+          requiresReview: true,
+          limitations: [
+            'Never add --force automatically; unresolved advisories require an evidence-backed dependency upgrade plan.',
+            'Review lockfile changes and rerun the complete Workspace Intelligence verification loop.',
+          ],
+        })
+      : undefined;
 
   const pass = gitignoreCoversSecrets && !hasVulnerabilities;
   return {
@@ -943,7 +962,8 @@ async function buildSecurityHygieneProbe(input: SurfaceInput): Promise<DoctorSur
           : 'Consider adding a security audit script for CI parity.'
         : 'Add .gitignore entries for env files, build output, dependency directories, and local reports.',
     repairCapability: hasVulnerabilities
-      ? buildManualRepair({
+      ? (vulnerabilityRepair ??
+        buildManualRepair({
           issueId: 'surface-security-hygiene',
           title: 'Review dependency vulnerability fix',
           projectPath: input.projectPath,
@@ -953,7 +973,7 @@ async function buildSecurityHygieneProbe(input: SurfaceInput): Promise<DoctorSur
           limitations: [
             'Avoid npm audit fix --force unless a maintainer explicitly accepts breaking changes.',
           ],
-        })
+        }))
       : gitignoreCoversSecrets
         ? undefined
         : await buildGitignoreRepair(input.projectPath),

@@ -25,6 +25,15 @@ import {
 } from './contracts/workspace-intelligence-runtime-registry.js';
 import { assertJsonSchemaContract } from './utils/json-schema-contract.js';
 import { toWorkspaiArtifactPath } from './utils/workspace-paths.js';
+import type { WorkspaceKnowledgeGraph } from './contracts/workspace-knowledge-graph-contract.js';
+import type { WorkspaceModel } from './workspace-model.js';
+import { assertWorkspaceKnowledgeGraphSourceBinding } from './workspace-knowledge-graph.js';
+import {
+  queryKnowledgeEntities,
+  queryKnowledgeEvidence,
+  queryKnowledgePath,
+  searchKnowledgeGraph,
+} from './workspace-knowledge-graph-query.js';
 
 const AGENT_REPORTS_INDEX_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex;
 const ARTIFACT_SCHEMA_CONTRACT_BY_PATH = new Map<string, string>(
@@ -79,6 +88,50 @@ const READ_TOOLS: McpTool[] = [
     name: 'getWorkspaceModel',
     description: 'Read workspace-model.json',
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'getWorkspaceKnowledgeGraph',
+    description: 'Read the current proof-backed workspace knowledge graph artifact',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'queryWorkspaceEntities',
+    description: 'List workspace knowledge entities, optionally filtered by kind',
+    inputSchema: {
+      type: 'object',
+      properties: { kind: { type: 'string', description: 'Optional entity kind' } },
+    },
+  },
+  {
+    name: 'searchWorkspaceGraph',
+    description: 'Return bounded, proof-carrying workspace context matching a text query',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Text, path, symbol, service, or concept to find' },
+        kind: { type: 'string', description: 'Optional entity kind filter' },
+        limit: { type: 'integer', minimum: 1, maximum: 100, default: 12 },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'getWorkspaceGraphEvidence',
+    description: 'Resolve portable evidence for a knowledge graph entity or relation',
+    inputSchema: {
+      type: 'object',
+      properties: { query: { type: 'string' } },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'findWorkspaceGraphPath',
+    description: 'Find a shortest proof-carrying path between two workspace entities',
+    inputSchema: {
+      type: 'object',
+      properties: { from: { type: 'string' }, to: { type: 'string' } },
+      required: ['from', 'to'],
+    },
   },
   {
     name: 'getEvidenceIndex',
@@ -164,6 +217,14 @@ async function readJsonArtifact(
   if (schemaContract) {
     assertJsonSchemaContract(payload, schemaContract, `MCP artifact ${canonicalRelativePath}`);
   }
+  if (canonicalRelativePath === WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph) {
+    const modelPath = path.join(workspacePath, WORKSPACE_MODEL_REPORT_PATH);
+    if (!(await fsExtra.pathExists(modelPath))) {
+      throw new Error('Workspace knowledge graph cannot be consumed without its source model.');
+    }
+    const model = (await fsExtra.readJson(modelPath)) as WorkspaceModel;
+    assertWorkspaceKnowledgeGraphSourceBinding(payload as WorkspaceKnowledgeGraph, model);
+  }
   return payload;
 }
 
@@ -232,6 +293,50 @@ async function invokeTool(
   switch (name) {
     case 'getWorkspaceModel':
       return readJsonArtifact(workspacePath, WORKSPACE_MODEL_REPORT_PATH);
+    case 'getWorkspaceKnowledgeGraph':
+      return readJsonArtifact(workspacePath, WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph);
+    case 'queryWorkspaceEntities': {
+      const graph = (await readJsonArtifact(
+        workspacePath,
+        WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph
+      )) as WorkspaceKnowledgeGraph | null;
+      if (!graph) return null;
+      const kind = String(args.kind ?? '').trim();
+      return {
+        schemaVersion: graph.schemaVersion,
+        generatedAt: graph.generatedAt,
+        entities: queryKnowledgeEntities(graph, kind || undefined),
+      };
+    }
+    case 'searchWorkspaceGraph': {
+      const graph = (await readJsonArtifact(
+        workspacePath,
+        WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph
+      )) as WorkspaceKnowledgeGraph | null;
+      if (!graph) return null;
+      const rawLimit = typeof args.limit === 'number' ? args.limit : Number(args.limit ?? 12);
+      return searchKnowledgeGraph(graph, {
+        query: String(args.query ?? ''),
+        ...(typeof args.kind === 'string' && args.kind.trim() ? { kind: args.kind.trim() } : {}),
+        limit: Number.isFinite(rawLimit) ? rawLimit : 12,
+      });
+    }
+    case 'getWorkspaceGraphEvidence': {
+      const graph = (await readJsonArtifact(
+        workspacePath,
+        WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph
+      )) as WorkspaceKnowledgeGraph | null;
+      if (!graph) return null;
+      return queryKnowledgeEvidence(graph, String(args.query ?? ''));
+    }
+    case 'findWorkspaceGraphPath': {
+      const graph = (await readJsonArtifact(
+        workspacePath,
+        WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph
+      )) as WorkspaceKnowledgeGraph | null;
+      if (!graph) return null;
+      return queryKnowledgePath(graph, String(args.from ?? ''), String(args.to ?? ''));
+    }
     case 'getEvidenceIndex':
       return readJsonArtifact(workspacePath, AGENT_REPORTS_INDEX_PATH);
     case 'getBlockers':

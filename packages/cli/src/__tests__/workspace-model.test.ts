@@ -10,6 +10,8 @@ import {
   writeWorkspaceModel,
 } from '../workspace-model.js';
 import { buildWorkspaceModelSnapshot } from '../workspace-intelligence.js';
+import { WORKSPACE_INTELLIGENCE_ARTIFACTS } from '../contracts/workspace-intelligence-runtime-registry.js';
+import { hashWorkspaceModel } from '../workspace-model-hash.js';
 
 describe('workspace intelligence model', () => {
   const tempDirs: string[] = [];
@@ -505,5 +507,50 @@ describe('workspace intelligence model', () => {
     const saved = await fsExtra.readJson(outputPath);
     expect(saved.schemaVersion).toBe('workspace-model.v1');
     expect(saved.workspace.root).toBe(workspacePath);
+    const knowledgeGraph = await fsExtra.readJson(
+      path.join(workspacePath, WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph)
+    );
+    expect(knowledgeGraph).toMatchObject({
+      schemaVersion: 'workspace-knowledge-graph.v1',
+      source: {
+        kind: 'workspace-model',
+        artifact: WORKSPACE_MODEL_REPORT_PATH,
+        hashAlgorithm: 'sha256',
+        hash: hashWorkspaceModel(saved),
+      },
+      workspace: { name: model.workspace.name },
+      quality: {
+        entityProofCoverageRatio: 1,
+        relationProofCoverageRatio: 1,
+        portable: true,
+        secretValuesEmitted: false,
+      },
+    });
+  });
+
+  it('rolls back model and knowledge graph as one publication transaction', async () => {
+    const workspacePath = await makeTempDir('rk-model-transaction-');
+    const first = await buildWorkspaceModel({
+      workspacePath,
+      now: new Date('2026-06-14T00:00:00.000Z'),
+    });
+    await writeWorkspaceModel(first, workspacePath);
+    const modelPath = path.join(workspacePath, WORKSPACE_MODEL_REPORT_PATH);
+    const graphPath = path.join(workspacePath, WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph);
+    const beforeModel = await fsExtra.readFile(modelPath, 'utf8');
+    const beforeGraph = await fsExtra.readFile(graphPath, 'utf8');
+    const second = { ...first, generatedAt: '2026-06-15T00:00:00.000Z' };
+
+    process.env.WORKSPAI_TEST_FAIL_ARTIFACT_SET_AFTER = '1';
+    try {
+      await expect(writeWorkspaceModel(second, workspacePath)).rejects.toThrow(
+        'Injected artifact-set failure'
+      );
+    } finally {
+      delete process.env.WORKSPAI_TEST_FAIL_ARTIFACT_SET_AFTER;
+    }
+
+    expect(await fsExtra.readFile(modelPath, 'utf8')).toBe(beforeModel);
+    expect(await fsExtra.readFile(graphPath, 'utf8')).toBe(beforeGraph);
   });
 });

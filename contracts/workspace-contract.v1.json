@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-contract.v1.json",
+  "title": "Workspai Workspace Contract",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "generatedAt", "workspace", "projects"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "rapidkit.workspace.contract" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "workspace": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "profile": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["slug", "relativePath", "modules", "ports", "contracts"],
+        "properties": {
+          "slug": { "type": "string", "minLength": 1 },
+          "relativePath": { "type": "string", "minLength": 1 },
+          "source": { "enum": ["workspace", "local-folder", "git-url", "adopted-local"] },
+          "relationship": { "enum": ["imported", "adopted"] },
+          "externalPath": { "type": "string", "minLength": 1 },
+          "runtime": { "type": "string", "minLength": 1 },
+          "framework": { "type": "string", "minLength": 1 },
+          "kit": { "type": "string", "minLength": 1 },
+          "modules": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+          "ports": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "port", "protocol"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                "protocol": { "enum": ["http", "https", "grpc", "tcp", "udp"] }
+              },
+              "additionalProperties": false
+            }
+          },
+          "contracts": {
+            "type": "object",
+            "required": ["owns", "apis", "publishes", "consumes", "dependsOn", "env"],
+            "properties": {
+              "owns": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+              "apis": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "basePath"],
+                  "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "basePath": { "type": "string", "pattern": "^/" }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "publishes": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+              "consumes": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+              "dependsOn": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+              "env": { "type": "array", "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" }, "uniqueItems": true }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

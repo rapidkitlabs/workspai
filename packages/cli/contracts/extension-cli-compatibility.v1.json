@@ -1,8 +1,9 @@
 {
   "schemaVersion": "rapidkit-extension-cli-compatibility.v1",
   "cli": "workspai",
-  "minimumVerifiedCliVersion": "0.46.0",
+  "minimumVerifiedCliVersion": "0.47.0",
   "publishedContractSchemas": {
+    "workspaceContract": 1,
     "runtimeCommandSurface": "rapidkit-runtime-command-surface-v1",
     "cliRuntimeCommandInventory": "workspai-cli-runtime-command-inventory-v1",
     "cliOperationResult": "workspai-cli-operation-result-v1",
@@ -15,6 +16,7 @@
     "workspaceIntelligenceChain": "workspai-workspace-intelligence-chain-v1",
     "workspaceIntelligenceArtifacts": {
       "model": "workspace-model.v1",
+      "knowledgeGraph": "workspace-knowledge-graph.v1",
       "snapshot": "workspace-model-snapshot.v1",
       "diff": "workspace-model-diff.v1",
       "impact": "workspace-impact.v1",
@@ -41,6 +43,10 @@
     "workspaceVerify": "workspace-verify.v1",
     "workspaceContext": "workspace-context.v1",
     "workspaceDependencyGraph": "workspace-dependency-graph.v1",
+    "workspaceKnowledgeGraph": "workspace-knowledge-graph.v1",
+    "workspaceKnowledgeGraphChangeOverlay": "workspace-knowledge-graph-change-overlay.v1",
+    "workspaceKnowledgeSearch": "workspace-knowledge-search.v1",
+    "workspaceGraphTokenEfficiency": "workspace-graph-token-efficiency.v1",
     "workspaceIntelligenceHistory": "workspace-intelligence-history.v1",
     "agentCustomizationPackCapabilities": "workspai-agent-customization-pack-capabilities.v1",
     "agentCustomizationPackReport": "rapidkit-agent-customization-pack.v1",

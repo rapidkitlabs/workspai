@@ -19,6 +19,19 @@ import {
   WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS,
   WORKSPACE_INTELLIGENCE_ARTIFACTS,
 } from '../contracts/workspace-intelligence-runtime-registry.js';
+import {
+  resolveProjectCommandCapabilities,
+  type ProjectCommandCapabilities,
+} from './project-command-capabilities.js';
+import {
+  WORKSPACE_GRAPH_EDGE_KINDS,
+  WORKSPACE_GRAPH_EDGE_SOURCES,
+  type WorkspaceDependencyGraph,
+  type WorkspaceGraphEdgeKind,
+  type WorkspaceGraphEdgeSource,
+  type WorkspaceGraphNodeOperationalProfile,
+} from '../contracts/workspace-dependency-graph-contract.js';
+import type { WorkspaceKnowledgeGraph } from '../contracts/workspace-knowledge-graph-contract.js';
 
 export const WORKSPACE_CONTRACT_PATH = '.workspai/workspace.contract.json';
 export const WORKSPACE_CONTRACT_VERIFY_REPORT_PATH =
@@ -118,6 +131,39 @@ export interface WorkspaceContractGraphNode {
   apis: WorkspaceContractApi[];
   owns: string[];
   env: string[];
+  contracts: WorkspaceContractProject['contracts'];
+  capabilities: {
+    engine: ProjectCommandCapabilities['engine'];
+    supportTier: ProjectCommandCapabilities['frameworkSupportTier'];
+    runtimeSupportTier: ProjectCommandCapabilities['runtimeSupportTier'];
+    doctorSupport: ProjectCommandCapabilities['runtimeDoctorSupport'];
+    moduleSupport: boolean;
+    fleetStages: string[];
+    localOnlyCommands: string[];
+    supportedCommands: string[];
+  };
+  files: {
+    metadata: string[];
+    manifests: string[];
+    entrypoints: string[];
+    apiSpecifications: string[];
+    infrastructure: string[];
+    documentation: string[];
+  };
+  package?: {
+    name?: string;
+    version?: string;
+    private?: boolean;
+    scripts: string[];
+    dependencies: {
+      runtime: string[];
+      development: string[];
+      peer: string[];
+      optional: string[];
+    };
+    dependencyCount: number;
+  };
+  operationalProfile?: WorkspaceGraphNodeOperationalProfile;
 }
 
 export interface WorkspaceContractGraphEdge {
@@ -134,12 +180,44 @@ export interface WorkspaceContractGraph {
   generatedAt: string;
   nodes: WorkspaceContractGraphNode[];
   edges: WorkspaceContractGraphEdge[];
+  /**
+   * Evidence-backed canonical dependency projection. The legacy `edges` field
+   * remains producer-to-consumer for compatibility; this projection follows
+   * workspace-dependency-graph.v1 semantics (`from` depends on `to`).
+   */
+  dependencyGraph: WorkspaceDependencyGraph;
+  /** Rich evidence-backed workspace view; dependencyGraph is its project topology projection. */
+  knowledgeGraph: WorkspaceKnowledgeGraph;
+  semantics: {
+    legacyEdges: 'producer-to-consumer';
+    dependencyGraphEdges: 'consumer-to-dependency';
+  };
   summary: {
     projectCount: number;
     dependencyEdges: number;
     eventEdges: number;
     portCount: number;
     apiCount: number;
+    relationshipEdges: number;
+    inferredEdges: number;
+    authoritativeEdges: number;
+    orphanProjects: number;
+    hotspotProjects: number;
+    evidenceCoverageRatio: number;
+    edgeCoverageRatio: number;
+    connectedProjects: number;
+    lowConfidenceEdges: number;
+    hasCycle: boolean;
+    manifestCount: number;
+    entrypointCount: number;
+    diagnostics: number;
+    relationshipKinds: Record<WorkspaceGraphEdgeKind, number>;
+    relationshipSources: Record<WorkspaceGraphEdgeSource, number>;
+    entityCount: number;
+    knowledgeRelations: number;
+    proofCount: number;
+    providerCount: number;
+    knowledgeUnknowns: number;
   };
 }
 
@@ -723,27 +801,355 @@ export async function readWorkspaceContract(input: {
   return { contractPath, contract };
 }
 
+const GRAPH_FILE_CANDIDATES = {
+  metadata: [
+    '.workspai/project.json',
+    '.workspai/context.json',
+    '.rapidkit/project.json',
+    '.rapidkit/context.json',
+  ],
+  manifests: [
+    'package.json',
+    'package-lock.json',
+    'pnpm-lock.yaml',
+    'yarn.lock',
+    'pyproject.toml',
+    'poetry.lock',
+    'requirements.txt',
+    'go.mod',
+    'go.sum',
+    'pom.xml',
+    'build.gradle',
+    'build.gradle.kts',
+    'Cargo.toml',
+    'Gemfile',
+    'composer.json',
+  ],
+  entrypoints: [
+    'src/main.ts',
+    'src/index.ts',
+    'src/app.ts',
+    'src/main.js',
+    'src/index.js',
+    'main.py',
+    'app/main.py',
+    'manage.py',
+    'main.go',
+    'cmd/main.go',
+    'Program.cs',
+  ],
+  apiSpecifications: [
+    'openapi.yaml',
+    'openapi.yml',
+    'openapi.json',
+    'swagger.yaml',
+    'swagger.yml',
+    'swagger.json',
+  ],
+  infrastructure: [
+    'Dockerfile',
+    'docker-compose.yml',
+    'docker-compose.yaml',
+    'compose.yml',
+    'compose.yaml',
+    'k8s',
+    'kubernetes',
+    'terraform',
+  ],
+  documentation: ['README.md', 'ARCHITECTURE.md', 'CONTRIBUTING.md', 'docs'],
+} as const;
+
+function resolveContractProjectRoot(
+  workspacePath: string,
+  project: WorkspaceContractProject
+): string {
+  return project.externalPath
+    ? path.resolve(project.externalPath)
+    : path.resolve(workspacePath, project.relativePath);
+}
+
+async function discoverContractGraphFiles(
+  projectRoot: string
+): Promise<WorkspaceContractGraphNode['files']> {
+  const result: WorkspaceContractGraphNode['files'] = {
+    metadata: [],
+    manifests: [],
+    entrypoints: [],
+    apiSpecifications: [],
+    infrastructure: [],
+    documentation: [],
+  };
+  for (const [group, candidates] of Object.entries(GRAPH_FILE_CANDIDATES) as Array<
+    [keyof typeof GRAPH_FILE_CANDIDATES, readonly string[]]
+  >) {
+    for (const candidate of candidates) {
+      if (await fsExtra.pathExists(path.join(projectRoot, candidate))) {
+        result[group].push(candidate);
+      }
+    }
+  }
+  try {
+    const rootEntries = await fsExtra.readdir(projectRoot, { withFileTypes: true });
+    for (const entry of rootEntries) {
+      if (entry.isFile() && (entry.name.endsWith('.csproj') || entry.name.endsWith('.sln'))) {
+        result.manifests.push(entry.name);
+      }
+      if (entry.isFile() && entry.name.endsWith('.tf')) {
+        result.infrastructure.push(entry.name);
+      }
+    }
+  } catch {
+    // Missing/unreadable project roots remain visible as contract nodes.
+  }
+  for (const values of Object.values(result)) {
+    values.sort((a, b) => a.localeCompare(b));
+  }
+  return result;
+}
+
+function sortedDependencyNames(value: unknown): string[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  return Object.keys(value as Record<string, unknown>).sort((a, b) => a.localeCompare(b));
+}
+
+async function readContractGraphPackage(
+  projectRoot: string
+): Promise<WorkspaceContractGraphNode['package']> {
+  try {
+    const payload = (await fsExtra.readJson(path.join(projectRoot, 'package.json'))) as Record<
+      string,
+      unknown
+    >;
+    const dependencies = {
+      runtime: sortedDependencyNames(payload.dependencies),
+      development: sortedDependencyNames(payload.devDependencies),
+      peer: sortedDependencyNames(payload.peerDependencies),
+      optional: sortedDependencyNames(payload.optionalDependencies),
+    };
+    return {
+      ...(typeof payload.name === 'string' ? { name: payload.name } : {}),
+      ...(typeof payload.version === 'string' ? { version: payload.version } : {}),
+      ...(typeof payload.private === 'boolean' ? { private: payload.private } : {}),
+      scripts: sortedDependencyNames(payload.scripts),
+      dependencies,
+      dependencyCount: new Set(Object.values(dependencies).flat()).size,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+async function readContractGraphEnvironmentKeys(projectRoot: string): Promise<string[]> {
+  for (const candidate of ['.env.example', '.env.sample', '.env.template']) {
+    try {
+      const contents = await fsExtra.readFile(path.join(projectRoot, candidate), 'utf8');
+      return contents
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0 && !line.startsWith('#') && line.includes('='))
+        .map((line) => line.slice(0, line.indexOf('=')).trim())
+        .filter((key) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key))
+        .sort((a, b) => a.localeCompare(b));
+    } catch {
+      // Try the next public environment template; never inspect .env values.
+    }
+  }
+  return [];
+}
+
+function resolveContractGraphCapabilities(
+  projectRoot: string,
+  project: WorkspaceContractProject
+): ProjectCommandCapabilities {
+  try {
+    const capabilities = resolveProjectCommandCapabilities(projectRoot);
+    if (capabilities.engine !== 'unknown') return capabilities;
+    const engine = fsExtra.pathExistsSync(path.join(projectRoot, 'package.json'))
+      ? 'npm'
+      : fsExtra.pathExistsSync(path.join(projectRoot, 'pyproject.toml'))
+        ? 'python'
+        : fsExtra.pathExistsSync(path.join(projectRoot, 'requirements.txt'))
+          ? 'pip'
+          : 'unknown';
+    return {
+      ...capabilities,
+      engine,
+      runtime: project.runtime ?? capabilities.runtime,
+      framework: project.framework ?? capabilities.framework,
+      frameworkDisplayName: project.framework ?? capabilities.frameworkDisplayName,
+    };
+  } catch {
+    return {
+      schemaVersion: 1,
+      scope: 'project',
+      projectRoot: null,
+      engine: 'unknown',
+      runtime: 'unknown',
+      framework: 'unknown',
+      frameworkDisplayName: 'Unknown',
+      frameworkConfidence: 'low',
+      frameworkSupportTier: 'observed',
+      runtimeSupportTier: 'observed',
+      runtimeDoctorSupport: 'observed',
+      moduleSupport: false,
+      fleetStages: [],
+      localOnlyCommands: [],
+      commandMap: {},
+      supportedCommands: [],
+      unsupportedCommands: [],
+      globalCommands: [],
+    };
+  }
+}
+
+function emptyDependencyGraph(
+  contract: WorkspaceContract,
+  generatedAt: string,
+  message: string
+): WorkspaceDependencyGraph {
+  const nodes = contract.projects.map((project) => ({
+    id: project.slug,
+    path: project.relativePath,
+    runtime: project.runtime,
+    framework: project.framework,
+  }));
+  return {
+    schemaVersion: 'workspace-dependency-graph.v1',
+    generatedAt,
+    nodes,
+    edges: [],
+    stats: {
+      nodeCount: nodes.length,
+      edgeCount: 0,
+      inferredEdges: 0,
+      contractEdges: 0,
+      manualEdges: 0,
+      authoritativeEdges: 0,
+      lowConfidenceEdges: 0,
+      orphanCount: nodes.length,
+      connectedNodeCount: 0,
+      density: 0,
+      edgeCoverageRatio: nodes.length === 0 ? 1 : 0,
+      evidenceCoverageRatio: 1,
+      hotspotCount: 0,
+      hasCycle: false,
+    },
+    diagnostics: [
+      {
+        code: 'graph.enrichment.failed',
+        severity: 'warning',
+        message,
+        recommendation:
+          'Review project manifests and graph overrides, then rerun workspace contract graph.',
+      },
+    ],
+  };
+}
+
 export async function buildWorkspaceContractGraph(input: {
   workspacePath: string;
   contractPath?: string;
+  now?: Date;
 }): Promise<{ contractPath: string; graph: WorkspaceContractGraph }> {
   const { contractPath, contract } = await readWorkspaceContract(input);
-  const nodes: WorkspaceContractGraphNode[] = contract.projects.map((project) => ({
-    id: project.slug,
-    label: project.slug,
-    relativePath: project.relativePath,
-    source: project.source,
-    relationship: project.relationship,
-    externalPath: project.externalPath,
-    runtime: project.runtime,
-    framework: project.framework,
-    kit: project.kit,
-    modules: project.modules,
-    ports: project.ports,
-    apis: project.contracts.apis,
-    owns: project.contracts.owns,
-    env: project.contracts.env,
-  }));
+  const now = input.now ?? new Date();
+  const generatedAt = now.toISOString();
+  let dependencyGraph: WorkspaceDependencyGraph;
+  try {
+    const { inferWorkspaceDependencyGraph } = await import('../workspace-dependency-graph.js');
+    dependencyGraph = await inferWorkspaceDependencyGraph({
+      workspacePath: input.workspacePath,
+      contract,
+      now,
+      model: {
+        projects: contract.projects.map((project) => ({
+          name: project.slug,
+          path: project.relativePath,
+          ...(project.externalPath ? { absolutePath: project.externalPath } : {}),
+          ...(project.runtime ? { runtime: project.runtime } : {}),
+          ...(project.framework ? { framework: project.framework } : {}),
+          ...(project.framework ? { kind: project.framework } : {}),
+        })),
+      },
+    });
+  } catch (error) {
+    dependencyGraph = emptyDependencyGraph(
+      contract,
+      generatedAt,
+      `Graph enrichment failed: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  const operationalProfiles = new Map(
+    dependencyGraph.nodes.map((node) => [node.id, node.operationalProfile])
+  );
+  const { buildWorkspaceKnowledgeGraph } = await import('../workspace-knowledge-graph.js');
+  const knowledgeGraph = await buildWorkspaceKnowledgeGraph({
+    workspacePath: input.workspacePath,
+    workspace: contract.workspace,
+    contract,
+    projectTopology: dependencyGraph,
+    now,
+    projects: contract.projects.map((project) => ({
+      id: project.slug,
+      path: project.relativePath,
+      ...(project.externalPath ? { absolutePath: project.externalPath } : {}),
+      ...(project.runtime ? { runtime: project.runtime } : {}),
+      ...(project.framework ? { framework: project.framework } : {}),
+      ...(project.kit ? { kit: project.kit } : {}),
+    })),
+  });
+  const nodes: WorkspaceContractGraphNode[] = await Promise.all(
+    contract.projects.map(async (project) => {
+      const projectRoot = resolveContractProjectRoot(input.workspacePath, project);
+      const [files, packageMetadata, environmentKeys] = await Promise.all([
+        discoverContractGraphFiles(projectRoot),
+        readContractGraphPackage(projectRoot),
+        readContractGraphEnvironmentKeys(projectRoot),
+      ]);
+      const capabilities = resolveContractGraphCapabilities(projectRoot, project);
+      return {
+        id: project.slug,
+        label: project.slug,
+        relativePath: project.relativePath,
+        source: project.source,
+        relationship: project.relationship,
+        externalPath: project.externalPath,
+        runtime: project.runtime ?? capabilities.runtime,
+        framework: project.framework ?? capabilities.framework,
+        kit: project.kit,
+        modules: project.modules,
+        ports: project.ports,
+        apis: project.contracts.apis,
+        owns: project.contracts.owns,
+        env: [...new Set([...project.contracts.env, ...environmentKeys])].sort((a, b) =>
+          a.localeCompare(b)
+        ),
+        contracts: {
+          owns: [...project.contracts.owns],
+          apis: [...project.contracts.apis],
+          publishes: [...project.contracts.publishes],
+          consumes: [...project.contracts.consumes],
+          dependsOn: [...project.contracts.dependsOn],
+          env: [...project.contracts.env],
+        },
+        capabilities: {
+          engine: capabilities.engine,
+          supportTier: capabilities.frameworkSupportTier,
+          runtimeSupportTier: capabilities.runtimeSupportTier,
+          doctorSupport: capabilities.runtimeDoctorSupport,
+          moduleSupport: capabilities.moduleSupport,
+          fleetStages: [...capabilities.fleetStages],
+          localOnlyCommands: [...capabilities.localOnlyCommands],
+          supportedCommands: [...capabilities.supportedCommands],
+        },
+        files,
+        ...(packageMetadata ? { package: packageMetadata } : {}),
+        ...(operationalProfiles.get(project.slug)
+          ? { operationalProfile: operationalProfiles.get(project.slug) }
+          : {}),
+      };
+    })
+  );
   const knownProjects = new Set(nodes.map((node) => node.id));
   const publishersByEvent = new Map<string, Set<string>>();
   const edges: WorkspaceContractGraphEdge[] = [];
@@ -786,19 +1192,55 @@ export async function buildWorkspaceContractGraph(input: {
     schemaVersion: 1,
     kind: 'rapidkit.workspace.contract.graph',
     workspace: contract.workspace,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     nodes: nodes.sort((a, b) => a.id.localeCompare(b.id)),
     edges: edges.sort((a, b) =>
       `${a.from}:${a.to}:${a.type}:${a.label}`.localeCompare(
         `${b.from}:${b.to}:${b.type}:${b.label}`
       )
     ),
+    dependencyGraph,
+    knowledgeGraph,
+    semantics: {
+      legacyEdges: 'producer-to-consumer',
+      dependencyGraphEdges: 'consumer-to-dependency',
+    },
     summary: {
       projectCount: nodes.length,
       dependencyEdges: edges.filter((edge) => edge.type === 'dependency').length,
       eventEdges: edges.filter((edge) => edge.type === 'event').length,
       portCount: nodes.reduce((total, node) => total + node.ports.length, 0),
       apiCount: nodes.reduce((total, node) => total + node.apis.length, 0),
+      relationshipEdges: dependencyGraph.stats.edgeCount,
+      inferredEdges: dependencyGraph.stats.inferredEdges,
+      authoritativeEdges: dependencyGraph.stats.authoritativeEdges,
+      orphanProjects: dependencyGraph.stats.orphanCount,
+      hotspotProjects: dependencyGraph.stats.hotspotCount,
+      evidenceCoverageRatio: dependencyGraph.stats.evidenceCoverageRatio,
+      edgeCoverageRatio: dependencyGraph.stats.edgeCoverageRatio,
+      connectedProjects: dependencyGraph.stats.connectedNodeCount,
+      lowConfidenceEdges: dependencyGraph.stats.lowConfidenceEdges,
+      hasCycle: dependencyGraph.stats.hasCycle,
+      manifestCount: nodes.reduce((total, node) => total + node.files.manifests.length, 0),
+      entrypointCount: nodes.reduce((total, node) => total + node.files.entrypoints.length, 0),
+      diagnostics: dependencyGraph.diagnostics?.length ?? 0,
+      relationshipKinds: Object.fromEntries(
+        WORKSPACE_GRAPH_EDGE_KINDS.map((kind) => [
+          kind,
+          dependencyGraph.edges.filter((edge) => edge.kind === kind).length,
+        ])
+      ) as Record<WorkspaceGraphEdgeKind, number>,
+      relationshipSources: Object.fromEntries(
+        WORKSPACE_GRAPH_EDGE_SOURCES.map((source) => [
+          source,
+          dependencyGraph.edges.filter((edge) => edge.source === source).length,
+        ])
+      ) as Record<WorkspaceGraphEdgeSource, number>,
+      entityCount: knowledgeGraph.quality.entityCount,
+      knowledgeRelations: knowledgeGraph.quality.relationCount,
+      proofCount: knowledgeGraph.quality.proofCount,
+      providerCount: knowledgeGraph.providers.length,
+      knowledgeUnknowns: knowledgeGraph.quality.unknownCount,
     },
   };
 

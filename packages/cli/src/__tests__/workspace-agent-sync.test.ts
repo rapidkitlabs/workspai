@@ -302,4 +302,57 @@ describe('workspace agent sync', () => {
 
     expect(result.strictViolations.join('\n')).toContain('Missing required reports');
   });
+
+  it('does not treat the accepted model snapshot baseline as TTL-stale', async () => {
+    const workspacePath = await makeWorkspace();
+    await fsExtra.outputJson(
+      path.join(workspacePath, '.workspai', 'reports', 'workspace-model-snapshot.json'),
+      {
+        schemaVersion: 'workspace-model-snapshot.v1',
+        generatedAt: '2020-01-01T00:00:00.000Z',
+        modelHash: 'a'.repeat(64),
+        modelRef: '.workspai/reports/workspace-model.json',
+        model: { schemaVersion: 'workspace-model.v1' },
+      }
+    );
+
+    const result = await syncWorkspaceAgentGrounding({
+      workspacePath,
+      write: false,
+      staleAfterHours: 1,
+      now: new Date(),
+    });
+
+    expect(result.staleReports).not.toContain('.workspai/reports/workspace-model-snapshot.json');
+  });
+
+  it('rolls back every generated surface when agent-sync fails before its pack commit', async () => {
+    const workspacePath = await makeWorkspace();
+    const agentsPath = path.join(workspacePath, 'AGENTS.md');
+    await fsExtra.writeFile(agentsPath, '# operator-owned preimage\n');
+
+    process.env.WORKSPAI_TEST_FAIL_AGENT_SYNC_BEFORE_PACK = '1';
+    try {
+      await expect(
+        syncWorkspaceAgentGrounding({
+          workspacePath,
+          write: true,
+          preset: 'enterprise',
+          targets: ['all'],
+        })
+      ).rejects.toThrow('Injected agent-sync failure');
+    } finally {
+      delete process.env.WORKSPAI_TEST_FAIL_AGENT_SYNC_BEFORE_PACK;
+    }
+
+    expect(await fsExtra.readFile(agentsPath, 'utf8')).toBe('# operator-owned preimage\n');
+    expect(
+      await fsExtra.pathExists(path.join(workspacePath, AGENT_CUSTOMIZATION_PACK_REPORT_PATH))
+    ).toBe(false);
+    expect(
+      await fsExtra.pathExists(
+        path.join(workspacePath, '.github', 'agents', 'workspai-repair.agent.md')
+      )
+    ).toBe(false);
+  });
 });

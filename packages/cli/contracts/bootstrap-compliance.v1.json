@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/bootstrap-compliance.v1.json",
+  "type": "object",
+  "required": ["schemaVersion", "command", "timestamp", "result", "checks"],
+  "properties": {
+    "schemaVersion": { "const": "bootstrap-compliance.v1" },
+    "command": { "const": "bootstrap" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "result": { "enum": ["ok", "ok_with_warnings", "blocked", "failed"] },
+    "checks": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": true
+}

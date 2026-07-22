@@ -94,6 +94,55 @@ npx workspai workspace contract graph
 
 Contract file: `.workspai/workspace.contract.json`. Verification checks schema, duplicate slugs, port collisions, and unknown dependencies.
 
+`workspace contract graph --json` preserves its original `nodes`, `edges`, and
+summary fields for existing consumers, and now adds an evidence-backed
+`dependencyGraph` using the public `workspace-dependency-graph.v1` contract. It
+discovers package/workspace dependencies and supported cross-project imports,
+records relationship provenance and confidence, and reports graph coverage,
+orphans, hotspots, and cycles. Project nodes also expose safe package metadata,
+public environment-template keys, command capabilities, key manifests,
+entrypoints, API specifications, infrastructure, documentation, and an
+operational verification profile. Environment values are never emitted.
+
+The same response also exposes `knowledgeGraph` under the public
+`workspace-knowledge-graph.v1` contract. It is a provider-neutral,
+proof-carrying view spanning source structure, packages, service and API
+contracts, infrastructure, delivery pipelines, docs/ADRs, ownership, tests,
+runtime resources, and safe configuration keys. Use the dedicated query and
+change-overlay surfaces when the full document is larger than a human needs:
+
+```bash
+npx workspai workspace graph entities endpoint --json
+npx workspai workspace graph search "authentication endpoint" --limit 12 --json
+npx workspai workspace graph benchmark "authentication endpoint" --limit 12 --json
+npx workspai workspace graph evidence "GET /users" --json
+npx workspai workspace graph path frontend-api "GET /users" --json
+npx workspai workspace graph emit --json > .workspai/reports/knowledge-baseline.json
+npx workspai workspace graph overlay --from .workspai/reports/knowledge-baseline.json --json
+```
+
+The Model step persists the same projection to
+`.workspai/reports/workspace-knowledge-graph.json`. It is registered in the
+artifact contract registry and agent report index, required by the unified
+runner's Model stage, referenced from `workspace-context-agent.json`, and
+queryable through the read-mostly MCP server. This keeps CLI, CI, IDE and agent
+consumers on one contract revision without injecting the full graph into every
+agent prompt.
+
+The overlay follows
+`workspace-knowledge-graph-change-overlay.v1`: graph revisions are identified
+by content-derived fingerprints (timestamps do not create false changes), and
+changed artifacts are portable proof paths rather than machine-local absolute
+paths. Proof additions, removals, and content-hash changes are first-class
+overlay changes, so a source edit is visible even when the entity and relation
+shape remains stable. The builder performs one bounded inventory pass per project and reuses
+in-memory content hashes; query indexes live only for the immutable graph
+instance, so replacing the graph is the invalidation boundary.
+
+Direction is explicit: legacy `edges` remain producer-to-consumer for backward
+compatibility; `dependencyGraph.edges` use consumer-to-dependency semantics so
+impact and blast-radius consumers share one canonical interpretation.
+
 Workspai keeps the contract alive during `create project` and `workspace sync` without overwriting manual API/event/owner declarations.
 
 On a freshly cloned or moved workspace, `workspace sync` also repairs the

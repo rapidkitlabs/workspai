@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-share-bundle.v1.json",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "generated_by", "workspace", "summary", "reports", "projects"],
+  "properties": {
+    "schema_version": { "const": "1.1" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "generated_by": { "const": "workspai" },
+    "workspace": { "type": "object" },
+    "summary": { "type": "object" },
+    "reports": { "type": "object" },
+    "projects": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": true
+}

@@ -79,7 +79,7 @@ export type RuntimeCommandSurfaceContract = {
   commandDocumentation: RuntimeCommandDocumentation[];
   artifactContracts: Array<{
     artifactPath: string;
-    schemaVersion: string;
+    schemaVersion: string | number;
     contractPath: string;
     producerCommands: string[][];
   }>;
@@ -189,6 +189,8 @@ const COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
     'Combine supported governed configuration or project state through the owning runtime operation.',
   mirror:
     'Manage local package or dependency mirrors used by offline and controlled development workflows.',
+  'mirror status': 'Inspect mirror configuration, lock state, and cached artifact inventory.',
+  'mirror sync': 'Synchronize governed mirror artifacts and publish integrity evidence.',
   modules: 'List supported project modules and their runtime-specific capability state.',
   optimize: 'Apply supported project optimization operations through the detected runtime adapter.',
   pipeline:
@@ -232,6 +234,8 @@ const COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
     'Dispatch workspace discovery, intelligence, governance, portability, and fleet lifecycle operations.',
   'workspace agent-sync':
     'Project current workspace context into governed agent instructions, reports, skills, and integration files.',
+  'workspace agent-sync --write':
+    'Publish the governed agent surface generation as a recoverable workspace transaction.',
   'workspace agent-sync --write --json --preset enterprise':
     'Generate the enterprise agent-grounding pack, persist every governed artifact, and emit a structured result.',
   'workspace context':
@@ -240,6 +244,8 @@ const COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
     'Persist structured agent context without mutating downstream agent instruction surfaces.',
   'workspace contract verify --strict --json':
     'Strictly validate workspace contracts and emit a structured evidence artifact that blocks on violations.',
+  'workspace contract sync':
+    'Reconcile discovered projects into the canonical workspace contract and registry summary.',
   'workspace diff':
     'Compare the current canonical workspace model with a snapshot or source-control baseline.',
   'workspace diff --from .workspai/reports/workspace-model-snapshot.json --json':
@@ -324,6 +330,16 @@ const COMMAND_DOCUMENTATION_OVERRIDES: Readonly<
     output: {
       defaultFormat: 'human-or-json',
       modes: [
+        {
+          selector: 'search <query> --limit <count> --json',
+          format: 'json',
+          mediaType: 'application/json',
+        },
+        {
+          selector: 'benchmark <query> --limit <count> --json',
+          format: 'json',
+          mediaType: 'application/json',
+        },
         { selector: 'emit --json', format: 'json', mediaType: 'application/json' },
         { selector: 'explain <project> --json', format: 'json', mediaType: 'application/json' },
         { selector: 'dot', format: 'raw-text', mediaType: 'text/vnd.graphviz' },

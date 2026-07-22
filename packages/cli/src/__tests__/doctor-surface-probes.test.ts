@@ -97,7 +97,9 @@ describe('doctor enterprise surface probes', () => {
       severity: 'error',
       repairCapability: {
         issueId: 'surface-security-hygiene',
-        status: 'manual',
+        status: 'available',
+        fixKind: 'command',
+        canAutoFix: true,
       },
     });
     expect(probes.find((probe) => probe.id === 'surface-test-contract')?.status).toBe('warn');
@@ -425,6 +427,40 @@ describe('doctor enterprise surface probes', () => {
         },
       },
     });
+  });
+
+  it('offers a guarded non-force npm vulnerability repair for Node projects', async () => {
+    const projectPath = await makeProject({
+      'package.json': { name: 'web', version: '1.0.0' },
+      'package-lock.json': '{}',
+      '.gitignore': '.env\n.env.*\n!.env.example\n',
+    });
+
+    const probes = await buildEnterpriseSurfaceProbes({
+      projectPath,
+      runtimeFamily: 'node',
+      projectKind: 'frontend',
+      packageJsonData: (await fsExtra.readJSON(path.join(projectPath, 'package.json'))) as Record<
+        string,
+        unknown
+      >,
+      hasTests: true,
+      vulnerabilities: 2,
+    });
+
+    expect(probes.find((probe) => probe.id === 'surface-security-hygiene')).toMatchObject({
+      status: 'fail',
+      repairCapability: {
+        status: 'available',
+        fixKind: 'command',
+        risk: 'guarded',
+        canAutoFix: true,
+        command: `cd "${projectPath}" && npm audit fix --audit-level=moderate`,
+      },
+    });
+    expect(
+      probes.find((probe) => probe.id === 'surface-security-hygiene')?.repairCapability?.command
+    ).not.toContain('--force');
   });
 
   it('passes deterministic dependency and container hygiene when baselines exist', async () => {

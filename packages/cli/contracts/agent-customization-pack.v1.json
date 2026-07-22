@@ -107,7 +107,12 @@
     },
     {
       "path": ".workspai/reports/workspace-model.json",
-      "label": "Workspace model graph",
+      "label": "Workspace model",
+      "required": false
+    },
+    {
+      "path": ".workspai/reports/workspace-knowledge-graph.json",
+      "label": "Workspace knowledge graph",
       "required": false
     },
     {

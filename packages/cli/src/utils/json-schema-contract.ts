@@ -9,6 +9,43 @@ import type { AnySchema, ErrorObject, ValidateFunction } from 'ajv';
 
 const validatorCache = new Map<string, ValidateFunction>();
 
+function externalSchemaRefs(value: unknown, refs = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) {
+    for (const item of value) externalSchemaRefs(item, refs);
+    return refs;
+  }
+  if (!value || typeof value !== 'object') return refs;
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (key === '$ref' && typeof item === 'string' && !item.startsWith('#')) {
+      refs.add(item.split('#', 1)[0] ?? item);
+    } else {
+      externalSchemaRefs(item, refs);
+    }
+  }
+  return refs;
+}
+
+function registerReferencedSchemas(
+  ajv: InstanceType<typeof Ajv> | InstanceType<typeof Ajv2020>,
+  schema: AnySchema,
+  relativeContractPath: string,
+  visited = new Set<string>()
+): void {
+  for (const reference of externalSchemaRefs(schema)) {
+    if (!reference || /^https?:\/\//i.test(reference)) continue;
+    const referencedRelativePath = path
+      .join(path.dirname(relativeContractPath), reference)
+      .split(path.sep)
+      .join('/');
+    const referencedPath = resolveContractPath(referencedRelativePath);
+    if (visited.has(referencedPath)) continue;
+    visited.add(referencedPath);
+    const referencedSchema = JSON.parse(fs.readFileSync(referencedPath, 'utf8')) as AnySchema;
+    registerReferencedSchemas(ajv, referencedSchema, referencedRelativePath, visited);
+    ajv.addSchema(referencedSchema);
+  }
+}
+
 function resolveContractPath(relativeContractPath: string): string {
   const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
@@ -44,6 +81,7 @@ function validatorFor(relativeContractPath: string): ValidateFunction {
   const AjvConstructor = schema.$schema?.includes('2020-12') ? Ajv2020 : Ajv;
   const ajv = new AjvConstructor({ allErrors: true, strict: true, allowUnionTypes: true });
   addFormats(ajv);
+  registerReferencedSchemas(ajv, schema, relativeContractPath);
   const validator = ajv.compile(schema);
   validatorCache.set(contractPath, validator);
   return validator;

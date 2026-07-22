@@ -1,4 +1,5 @@
 import path from 'path';
+import fsExtra from 'fs-extra';
 
 import {
   buildWorkspaceModel,
@@ -24,6 +25,8 @@ import {
   WORKSPACE_INTELLIGENCE_ARTIFACTS,
 } from './contracts/workspace-intelligence-runtime-registry.js';
 import { writeWorkspaceArtifactJson } from './utils/artifact-path-compat.js';
+import { assertWorkspaceKnowledgeGraphSourceBinding } from './workspace-knowledge-graph.js';
+import type { WorkspaceKnowledgeGraph } from './contracts/workspace-knowledge-graph-contract.js';
 
 export const WORKSPACE_CONTEXT_SCHEMA_VERSION =
   WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.agentContext;
@@ -61,6 +64,15 @@ export type WorkspaceAgentContext = {
   agent: WorkspaceContextAgent;
   workspaceSummary: string;
   modelRef: string;
+  knowledgeGraph: {
+    artifact: string;
+    schemaVersion: typeof WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.knowledgeGraph;
+    available: boolean;
+    entityCount?: number;
+    relationCount?: number;
+    proofCount?: number;
+    queryCommands: string[];
+  };
   intelligenceChain: {
     schemaVersion: typeof WORKSPACE_INTELLIGENCE_CHAIN_SCHEMA_VERSION;
     contractPath: string;
@@ -198,6 +210,27 @@ function buildSafeCommands(
       scope: 'workspace',
       args: 'workspace model --json',
       description: 'Read the canonical workspace intelligence model.',
+      ...commandContext,
+    }),
+    command({
+      id: 'workspace.graph.entities',
+      scope: 'workspace',
+      args: 'workspace graph entities --json',
+      description: 'Query proof-backed workspace entities without loading the full graph.',
+      ...commandContext,
+    }),
+    command({
+      id: 'workspace.graph.evidence',
+      scope: 'workspace',
+      args: 'workspace graph evidence <entity-or-relation> --json',
+      description: 'Resolve portable evidence for a graph entity or relation.',
+      ...commandContext,
+    }),
+    command({
+      id: 'workspace.graph.path',
+      scope: 'workspace',
+      args: 'workspace graph path <from> <to> --json',
+      description: 'Find a shortest proof-carrying path between workspace entities.',
       ...commandContext,
     }),
     command({
@@ -395,6 +428,24 @@ export async function buildWorkspaceAgentContext(
     };
   });
   const evidence = evidenceState(model);
+  const knowledgeGraphPath = path.join(
+    input.workspacePath,
+    WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph
+  );
+  const knowledgeGraph = (await fsExtra.pathExists(knowledgeGraphPath))
+    ? ((await fsExtra
+        .readJson(knowledgeGraphPath)
+        .catch(() => null)) as WorkspaceKnowledgeGraph | null)
+    : null;
+  let knowledgeGraphAvailable = false;
+  if (knowledgeGraph?.schemaVersion === WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.knowledgeGraph) {
+    try {
+      assertWorkspaceKnowledgeGraphSourceBinding(knowledgeGraph, model);
+      knowledgeGraphAvailable = true;
+    } catch {
+      // A stale or independently-produced graph is not valid context for this model generation.
+    }
+  }
   const workspaceSummary = summarizeWorkspace(model);
   const safeCommands = buildSafeCommands(model, activeProject, now);
   const commandFacts = safeCommands.map((safeCommand) =>
@@ -433,6 +484,26 @@ export async function buildWorkspaceAgentContext(
     agent,
     workspaceSummary,
     modelRef: WORKSPACE_INTELLIGENCE_ARTIFACTS.model,
+    knowledgeGraph: {
+      artifact: WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph,
+      schemaVersion: WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.knowledgeGraph,
+      available: knowledgeGraphAvailable,
+      ...(typeof knowledgeGraph?.quality?.entityCount === 'number'
+        ? { entityCount: knowledgeGraph.quality.entityCount }
+        : {}),
+      ...(typeof knowledgeGraph?.quality?.relationCount === 'number'
+        ? { relationCount: knowledgeGraph.quality.relationCount }
+        : {}),
+      ...(typeof knowledgeGraph?.quality?.proofCount === 'number'
+        ? { proofCount: knowledgeGraph.quality.proofCount }
+        : {}),
+      queryCommands: [
+        displayRapidkitCommand('workspace graph search <query> --limit 12 --json'),
+        displayRapidkitCommand('workspace graph entities [kind] --json'),
+        displayRapidkitCommand('workspace graph evidence <entity-or-relation> --json'),
+        displayRapidkitCommand('workspace graph path <from> <to> --json'),
+      ],
+    },
     intelligenceChain: {
       schemaVersion: intelligenceChain.schemaVersion,
       contractPath: intelligenceChain.contractPath,
@@ -465,6 +536,8 @@ export async function buildWorkspaceAgentContext(
     validation,
     agentInstructions: [
       `Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` first, then this context pack and linked evidence reports.`,
+      'Use `workspace graph search <query> --limit 12 --json` for bounded, proof-backed retrieval before loading the full graph.',
+      `Load \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph}\` only when a complete graph export is explicitly required.`,
       'Use this context as the workspace source of truth before inspecting random files.',
       'Prefer workspace-level evidence over generic framework assumptions.',
       'Use `display` commands when explaining steps to a human.',

@@ -22,6 +22,32 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+function registerRelativeSchemaDependencies(ajv, schema, schemaPath, visited = new Set()) {
+  const visit = (value) => {
+    if (!value || typeof value !== 'object') return;
+    if (typeof value.$ref === 'string' && !value.$ref.startsWith('#')) {
+      let referencePath;
+      try {
+        const referenceUrl = new URL(value.$ref, schema.$id);
+        referencePath = path.join(path.dirname(schemaPath), path.basename(referenceUrl.pathname));
+      } catch {
+        referencePath = path.resolve(path.dirname(schemaPath), value.$ref.split('#')[0]);
+      }
+      if (fs.existsSync(referencePath)) {
+        const normalizedPath = path.resolve(referencePath);
+        if (!visited.has(normalizedPath)) {
+          visited.add(normalizedPath);
+          const referencedSchema = readJson(normalizedPath);
+          registerRelativeSchemaDependencies(ajv, referencedSchema, normalizedPath, visited);
+          ajv.addSchema(referencedSchema);
+        }
+      }
+    }
+    for (const child of Array.isArray(value) ? value : Object.values(value)) visit(child);
+  };
+  visit(schema);
+}
+
 if (!fs.existsSync(cliPath)) {
   fail('dist/index.js is missing; run the build before this conformance gate');
 }
@@ -51,10 +77,12 @@ function validateArtifact(relativePath) {
       `${relativePath} schemaVersion is ${String(payload.schemaVersion)}, expected ${descriptor.schemaVersion}`
     );
   }
-  const schema = readJson(path.join(packageRoot, descriptor.schemaContract));
+  const schemaPath = path.join(packageRoot, descriptor.schemaContract);
+  const schema = readJson(schemaPath);
   const AjvConstructor = schema.$schema?.includes('2020-12') ? Ajv2020 : Ajv;
   const ajv = new AjvConstructor({ allErrors: true, strict: true, allowUnionTypes: true });
   addFormats(ajv);
+  registerRelativeSchemaDependencies(ajv, schema, schemaPath);
   const valid = ajv.validate(schema, payload);
   if (!valid) {
     fail(

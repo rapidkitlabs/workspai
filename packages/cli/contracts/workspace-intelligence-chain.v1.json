@@ -103,6 +103,12 @@
         "schemaContract": "contracts/workspace-intelligence/workspace-model.v1.json"
       },
       {
+        "id": "knowledgeGraph",
+        "path": ".workspai/reports/workspace-knowledge-graph.json",
+        "schemaVersion": "workspace-knowledge-graph.v1",
+        "schemaContract": "contracts/workspace-intelligence/workspace-knowledge-graph.v1.json"
+      },
+      {
         "id": "snapshot",
         "path": ".workspai/reports/workspace-model-snapshot.json",
         "schemaVersion": "workspace-model-snapshot.v1",
@@ -310,6 +316,7 @@
         "label": "System understanding",
         "artifacts": [
           ".workspai/reports/workspace-model.json",
+          ".workspai/reports/workspace-knowledge-graph.json",
           ".workspai/reports/workspace-model-diff-last-run.json",
           ".workspai/reports/workspace-impact-last-run.json"
         ],
@@ -493,9 +500,10 @@
         "workspace graph mermaid"
       ],
       "reads": [
-        ".workspai/reports/workspace-model.json#graph"
+        ".workspai/reports/workspace-model.json",
+        ".workspai/reports/workspace-knowledge-graph.json"
       ],
-      "role": "Inspect or render the graph already embedded in the workspace model.",
+      "role": "Query the proof-backed graph derived from the canonical workspace model.",
       "chainStep": false
     },
     {
@@ -726,7 +734,8 @@
       ],
       "consumesArtifacts": [],
       "produces": [
-        ".workspai/reports/workspace-model.json"
+        ".workspai/reports/workspace-model.json",
+        ".workspai/reports/workspace-knowledge-graph.json"
       ],
       "dependsOn": [],
       "exitPolicy": "stop-on-error",
@@ -1206,6 +1215,7 @@
         ".workspai/reports/workspace-impact-last-run.json",
         ".workspai/reports/workspace-explain-last-run.json",
         ".workspai/reports/workspace-model.json",
+        ".workspai/reports/workspace-knowledge-graph.json",
         ".workspai/reports/agent-customization-pack.json",
         ".workspai/reports/workspace-skills-index.json"
       ],
@@ -1218,6 +1228,7 @@
     "ideAndCi": {
       "requiredArtifacts": [
         ".workspai/reports/workspace-model.json",
+        ".workspai/reports/workspace-knowledge-graph.json",
         ".workspai/reports/workspace-impact-last-run.json",
         ".workspai/reports/workspace-verify-last-run.json"
       ],

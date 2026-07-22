@@ -14,7 +14,7 @@ Supported fields include:
 {
   "defaultKit": "fastapi.standard",
   "defaultInstallMethod": "poetry",
-  "pythonVersion": "3.11",
+  "pythonVersion": "3.10",
   "author": "Platform Team",
   "license": "MIT",
   "skipGit": false,
@@ -56,7 +56,7 @@ Example:
 module.exports = {
   workspace: {
     defaultAuthor: 'Platform Team',
-    pythonVersion: '3.11',
+    pythonVersion: '3.10',
     installMethod: 'poetry',
   },
   projects: {
@@ -65,6 +65,10 @@ module.exports = {
   },
 };
 ```
+
+Python-backed workflows require Python 3.10 or newer. `pythonVersion` selects a
+project target; it does not make Python a dependency for Node-only or other
+Python-free Workspai workflows.
 
 ## Command coverage
 

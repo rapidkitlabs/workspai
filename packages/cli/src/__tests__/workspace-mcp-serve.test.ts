@@ -15,6 +15,7 @@ import {
 import { WORKSPACE_CONTRACT_VERIFY_REPORT_PATH } from '../utils/workspace-contract.js';
 import { WORKSPACE_EXPLAIN_REPORT_PATH } from '../contracts/workspace-explain-contract.js';
 import { buildWorkspaceVerify, WORKSPACE_VERIFY_REPORT_PATH } from '../workspace-verify.js';
+import { buildWorkspaceModel, writeWorkspaceModel } from '../workspace-model.js';
 
 let workspacePath: string;
 
@@ -32,7 +33,74 @@ describe('workspace mcp serve (4.19)', () => {
     expect(names).toContain('listOperationalSkills');
     expect(names).toContain('getWorkspaceExplain');
     expect(names).toContain('getProjectContext');
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'getWorkspaceKnowledgeGraph',
+        'queryWorkspaceEntities',
+        'searchWorkspaceGraph',
+        'getWorkspaceGraphEvidence',
+        'findWorkspaceGraphPath',
+      ])
+    );
     expect(names).not.toContain('refreshWorkspaceIntelligence');
+  });
+
+  it('serves contract-validated graph reads and bounded queries', async () => {
+    await fsExtra.outputJson(path.join(workspacePath, 'api', 'package.json'), {
+      name: '@example/api',
+      version: '1.0.0',
+    });
+    const model = await buildWorkspaceModel({
+      workspacePath,
+      now: new Date('2026-07-21T12:00:00.000Z'),
+    });
+    await writeWorkspaceModel(model, workspacePath);
+
+    await expect(
+      invokeMcpToolForTest(workspacePath, 'getWorkspaceKnowledgeGraph')
+    ).resolves.toMatchObject({ schemaVersion: 'workspace-knowledge-graph.v1' });
+    const entities = (await invokeMcpToolForTest(workspacePath, 'queryWorkspaceEntities', {
+      kind: 'project',
+    })) as { entities: Array<{ label: string }> };
+    expect(entities.entities.map((entity) => entity.label)).toContain('api');
+    await expect(
+      invokeMcpToolForTest(workspacePath, 'searchWorkspaceGraph', {
+        query: 'example api',
+        limit: 1,
+      })
+    ).resolves.toMatchObject({
+      schemaVersion: 'workspace-knowledge-search.v1',
+      entities: [{ label: '@example/api' }],
+    });
+    await expect(
+      invokeMcpToolForTest(workspacePath, 'getWorkspaceGraphEvidence', { query: 'api' })
+    ).resolves.toMatchObject({ found: true, proofs: expect.any(Array) });
+    await expect(
+      invokeMcpToolForTest(workspacePath, 'findWorkspaceGraphPath', {
+        from: 'api',
+        to: '@example/api',
+      })
+    ).resolves.toMatchObject({ found: true, hops: expect.any(Array) });
+  });
+
+  it('fails closed when the graph source hash no longer matches the workspace model', async () => {
+    await fsExtra.outputJson(path.join(workspacePath, 'api', 'package.json'), {
+      name: '@example/api',
+      version: '1.0.0',
+    });
+    const model = await buildWorkspaceModel({ workspacePath });
+    await writeWorkspaceModel(model, workspacePath);
+    const modelPath = path.join(workspacePath, '.workspai', 'reports', 'workspace-model.json');
+    const persistedModel = await fsExtra.readJson(modelPath);
+    persistedModel.workspace.name = 'changed-after-graph-publication';
+    await fsExtra.writeJson(modelPath, persistedModel);
+
+    await expect(invokeMcpToolForTest(workspacePath, 'getWorkspaceKnowledgeGraph')).rejects.toThrow(
+      /source hash does not match/i
+    );
+    await expect(
+      invokeMcpToolForTest(workspacePath, 'queryWorkspaceEntities', { kind: 'project' })
+    ).rejects.toThrow(/source hash does not match/i);
   });
 
   it('parses blocker and trace explain targets for MCP consumers', () => {

@@ -19,7 +19,6 @@ import {
 } from './contracts/workspace-dependency-graph-contract.js';
 import { computeGraphCentrality } from './workspace-graph-centrality.js';
 import { computeInputsHash } from './contracts/freshness-metadata-contract.js';
-import type { WorkspaceModel } from './workspace-model.js';
 import {
   WORKSPACE_CONTRACT_PATH,
   type WorkspaceContract,
@@ -74,11 +73,30 @@ const SOURCE_PRECEDENCE: Record<WorkspaceGraphEdgeSource, number> = {
 
 export type InferWorkspaceDependencyGraphOptions = {
   workspacePath: string;
-  model: WorkspaceModel;
+  model: WorkspaceDependencyGraphModel;
   contract?: WorkspaceContract | null;
   now?: Date;
   /** Bound the per-project source scan so inference stays predictable on monorepos. */
   maxImportFilesPerProject?: number;
+};
+
+/**
+ * Smallest model projection required by graph inference. Keeping this boundary
+ * explicit lets contract inspection and future standalone graph consumers use
+ * the canonical inference engine without manufacturing a complete Workspace
+ * Model or coupling the engine to model-only policy/evidence fields.
+ */
+export type WorkspaceDependencyGraphModelProject = {
+  name: string;
+  path: string;
+  absolutePath?: string;
+  runtime?: string;
+  framework?: string;
+  kind?: string;
+};
+
+export type WorkspaceDependencyGraphModel = {
+  projects: WorkspaceDependencyGraphModelProject[];
 };
 
 type CandidateEdge = {
@@ -107,7 +125,7 @@ function relativeFromWorkspace(workspacePath: string, target: string): string {
   return toPosix(path.relative(workspacePath, target) || '.');
 }
 
-function buildNodes(model: WorkspaceModel): WorkspaceGraphNode[] {
+function buildNodes(model: WorkspaceDependencyGraphModel): WorkspaceGraphNode[] {
   const byId = new Map<string, WorkspaceGraphNode>();
   for (const project of model.projects) {
     if (byId.has(project.name)) {
@@ -127,7 +145,10 @@ function buildNodes(model: WorkspaceModel): WorkspaceGraphNode[] {
   return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
-function buildProjectIndex(workspacePath: string, model: WorkspaceModel): ProjectIndex {
+function buildProjectIndex(
+  workspacePath: string,
+  model: WorkspaceDependencyGraphModel
+): ProjectIndex {
   const idToDir = new Map<string, string>();
   const dirToId = new Map<string, string>();
   for (const project of model.projects) {

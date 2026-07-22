@@ -69,7 +69,12 @@
           "type": "object",
           "properties": {
             "id": { "const": "model" },
-            "artifacts": { "const": [".workspai/reports/workspace-model.json"] }
+            "artifacts": {
+              "const": [
+                ".workspai/reports/workspace-model.json",
+                ".workspai/reports/workspace-knowledge-graph.json"
+              ]
+            }
           }
         },
         {

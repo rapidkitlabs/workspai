@@ -1,0 +1,510 @@
+import os from 'os';
+import path from 'path';
+import fsExtra from 'fs-extra';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { buildWorkspaceKnowledgeGraph } from '../workspace-knowledge-graph.js';
+import {
+  queryKnowledgeEntities,
+  queryKnowledgeEvidence,
+  queryKnowledgePath,
+  searchKnowledgeGraph,
+} from '../workspace-knowledge-graph-query.js';
+import type { WorkspaceDependencyGraph } from '../contracts/workspace-dependency-graph-contract.js';
+import { buildWorkspaceKnowledgeGraphChangeOverlay } from '../workspace-knowledge-graph-change-overlay.js';
+import { buildWorkspaceGraphTokenEfficiencyReport } from '../workspace-graph-token-efficiency.js';
+import type { WorkspaceContract } from '../utils/workspace-contract.js';
+
+const NOW = new Date('2026-07-21T12:00:00.000Z');
+
+describe('workspace knowledge graph', () => {
+  const tempDirs: string[] = [];
+
+  afterEach(async () => {
+    while (tempDirs.length > 0) {
+      const directory = tempDirs.pop();
+      if (directory) await fsExtra.remove(directory);
+    }
+  });
+
+  async function fixture(): Promise<string> {
+    const root = await fsExtra.mkdtemp(path.join(os.tmpdir(), 'workspai-knowledge-'));
+    tempDirs.push(root);
+    await fsExtra.outputJson(path.join(root, '.workspai', 'workspace.contract.json'), {
+      schemaVersion: 1,
+      kind: 'rapidkit.workspace.contract',
+      workspace: { name: 'platform' },
+      projects: [],
+    });
+    await fsExtra.outputJson(path.join(root, 'api', '.workspai', 'project.json'), {
+      runtime: 'node',
+      framework: 'nestjs',
+    });
+    await fsExtra.outputJson(path.join(root, 'api', 'package.json'), {
+      name: '@platform/api',
+      version: '1.0.0',
+      dependencies: { '@nestjs/core': '^11.0.0' },
+    });
+    await fsExtra.outputFile(
+      path.join(root, 'api', '.env.example'),
+      'DATABASE_URL=postgres://user:secret@db/app\nJWT_SECRET=never-export-this\n'
+    );
+    await fsExtra.outputFile(
+      path.join(root, 'api', 'test', 'health.spec.ts'),
+      'test("ok",()=>{});\n'
+    );
+    await fsExtra.outputFile(
+      path.join(root, 'api', 'src', 'health.controller.ts'),
+      "import { Controller, Get } from '@nestjs/common';\nexport class HealthController {\n  @Get('/health')\n  health() { return 'ok'; }\n}\n"
+    );
+    await fsExtra.outputFile(
+      path.join(root, 'api', '.rapidkit', 'vendor', 'generated.controller.ts'),
+      "export class GeneratedController { @Get('/generated-copy') copy() {} }\n"
+    );
+    await fsExtra.outputFile(
+      path.join(root, 'api', 'openapi.yaml'),
+      [
+        'openapi: 3.1.0',
+        'info:',
+        '  title: Platform API',
+        '  version: 1.0.0',
+        'paths:',
+        '  /users:',
+        '    get:',
+        '      operationId: listUsers',
+        '      tags: [users]',
+        '      responses:',
+        "        '200':",
+        '          content:',
+        '            application/json:',
+        '              schema:',
+        "                $ref: '#/components/schemas/User'",
+        'components:',
+        '  schemas:',
+        '    User:',
+        '      type: object',
+      ].join('\n')
+    );
+    await fsExtra.outputFile(
+      path.join(root, 'api', 'k8s', 'deployment.yaml'),
+      [
+        'apiVersion: apps/v1',
+        'kind: Deployment',
+        'metadata:',
+        '  name: api',
+        '  namespace: production',
+      ].join('\n')
+    );
+    await fsExtra.outputFile(
+      path.join(root, 'api', 'docs', 'adr', 'ADR-0001-database.md'),
+      '# Use PostgreSQL\n\nStatus: accepted\n'
+    );
+    await fsExtra.outputFile(path.join(root, 'api', 'README.md'), '# Platform API\n');
+    await fsExtra.outputFile(
+      path.join(root, 'api', 'schema.graphql'),
+      'type Query { health: String! }\ntype User { id: ID! }\n'
+    );
+    await fsExtra.outputFile(
+      path.join(root, 'api', 'service.proto'),
+      'syntax = "proto3";\nservice Users { rpc List (User) returns (User); }\nmessage User { string id = 1; }\n'
+    );
+    await fsExtra.outputFile(
+      path.join(root, 'api', 'asyncapi.yaml'),
+      'asyncapi: 3.0.0\ninfo:\n  title: Platform Events\nchannels:\n  user.created: {}\n'
+    );
+    await fsExtra.outputFile(
+      path.join(root, 'api', 'Dockerfile'),
+      'FROM node:22-alpine AS runtime\nCMD ["node", "dist/main.js"]\n'
+    );
+    await fsExtra.outputFile(
+      path.join(root, 'api', 'infra', 'main.tf'),
+      'resource "aws_sqs_queue" "events" { name = "events" }\n'
+    );
+    await fsExtra.outputFile(
+      path.join(root, 'platform.tf'),
+      'resource "aws_rds_cluster" "primary" { engine = "postgresql" }\n'
+    );
+
+    await fsExtra.outputJson(path.join(root, 'web', '.workspai', 'project.json'), {
+      runtime: 'python',
+      framework: 'fastapi',
+    });
+    await fsExtra.outputFile(
+      path.join(root, 'web', 'pyproject.toml'),
+      '[project]\nname = "platform-web"\nversion = "2.0.0"\ndependencies = ["fastapi"]\n'
+    );
+    await fsExtra.outputFile(
+      path.join(root, 'docker-compose.yml'),
+      [
+        'services:',
+        '  api:',
+        '    image: platform/api:latest',
+        '    environment:',
+        '      - API_TOKEN=compose-secret-must-not-leak',
+        '    depends_on:',
+        '      - db',
+        '  db:',
+        '    image: postgres:17',
+      ].join('\n')
+    );
+    await fsExtra.outputFile(
+      path.join(root, '.github', 'workflows', 'ci.yml'),
+      'name: CI\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n'
+    );
+    await fsExtra.outputFile(
+      path.join(root, '.github', 'CODEOWNERS'),
+      'api/** @platform/backend\n'
+    );
+    return root;
+  }
+
+  function topology(): WorkspaceDependencyGraph {
+    return {
+      schemaVersion: 'workspace-dependency-graph.v1',
+      generatedAt: NOW.toISOString(),
+      nodes: [
+        { id: 'api', path: 'api', runtime: 'node', framework: 'nestjs' },
+        { id: 'web', path: 'web', runtime: 'python', framework: 'fastapi' },
+      ],
+      edges: [
+        {
+          from: 'web',
+          to: 'api',
+          kind: 'service-dependsOn',
+          source: 'contract',
+          confidence: 'high',
+          evidence: [
+            {
+              file: '.workspai/workspace.contract.json',
+              detail: 'web dependsOn api',
+            },
+          ],
+        },
+      ],
+      stats: {
+        nodeCount: 2,
+        edgeCount: 1,
+        inferredEdges: 0,
+        contractEdges: 1,
+        manualEdges: 0,
+        authoritativeEdges: 1,
+        lowConfidenceEdges: 0,
+        orphanCount: 0,
+        connectedNodeCount: 2,
+        density: 0.5,
+        edgeCoverageRatio: 1,
+        evidenceCoverageRatio: 1,
+        hotspotCount: 0,
+        hasCycle: false,
+      },
+    };
+  }
+
+  function contract(): WorkspaceContract {
+    return {
+      schemaVersion: 1,
+      kind: 'rapidkit.workspace.contract',
+      generatedAt: NOW.toISOString(),
+      workspace: { name: 'platform', profile: 'enterprise' },
+      projects: [
+        {
+          slug: 'api',
+          relativePath: 'api',
+          runtime: 'node',
+          framework: 'nestjs',
+          modules: [],
+          ports: [{ name: 'http', port: 3000, protocol: 'http' }],
+          contracts: {
+            owns: ['users'],
+            apis: [{ name: 'Contract API', basePath: '/api' }],
+            publishes: ['user.created'],
+            consumes: [],
+            dependsOn: [],
+            env: ['DATABASE_URL'],
+          },
+        },
+        {
+          slug: 'web',
+          relativePath: 'web',
+          runtime: 'python',
+          framework: 'fastapi',
+          modules: [],
+          ports: [{ name: 'http', port: 8000, protocol: 'http' }],
+          contracts: {
+            owns: [],
+            apis: [],
+            publishes: [],
+            consumes: ['user.created'],
+            dependsOn: ['api'],
+            env: [],
+          },
+        },
+      ],
+    };
+  }
+
+  it('returns bounded proof-carrying search context without emitting the whole graph', async () => {
+    const root = await fixture();
+    const graph = await buildWorkspaceKnowledgeGraph({
+      workspacePath: root,
+      workspace: { name: 'platform' },
+      projects: [
+        { id: 'api', path: 'api', runtime: 'node', framework: 'nestjs' },
+        { id: 'web', path: 'web', runtime: 'python', framework: 'fastapi' },
+      ],
+      projectTopology: topology(),
+      contract: contract(),
+      now: NOW,
+    });
+
+    const result = searchKnowledgeGraph(graph, { query: 'health endpoint', limit: 2 });
+
+    expect(result.schemaVersion).toBe('workspace-knowledge-search.v1');
+    expect(result.entities.length).toBeLessThanOrEqual(2);
+    expect(result.entities.some((entity) => /health/i.test(entity.label))).toBe(true);
+    expect(result.proofs.length).toBeGreaterThan(0);
+    expect(JSON.stringify(result).length).toBeLessThan(JSON.stringify(graph).length);
+  });
+
+  it('reports reproducible retrieval-payload savings without claiming model billing savings', async () => {
+    const root = await fixture();
+    const graph = await buildWorkspaceKnowledgeGraph({
+      workspacePath: root,
+      workspace: { name: 'platform' },
+      projects: [
+        { id: 'api', path: 'api', runtime: 'node', framework: 'nestjs' },
+        { id: 'web', path: 'web', runtime: 'python', framework: 'fastapi' },
+      ],
+      projectTopology: topology(),
+      contract: contract(),
+      now: NOW,
+    });
+
+    const report = await buildWorkspaceGraphTokenEfficiencyReport({
+      workspacePath: root,
+      graph,
+      query: 'health endpoint',
+      limit: 1,
+      now: NOW,
+    });
+
+    expect(report).toMatchObject({
+      schemaVersion: 'workspace-graph-token-efficiency.v1',
+      generatedAt: NOW.toISOString(),
+      methodology: {
+        id: 'indexed-corpus-vs-bounded-retrieval.v1',
+        estimated: true,
+        charsPerToken: 4,
+      },
+      retrieval: { matchCount: 1 },
+    });
+    expect(report.corpus.artifactCount).toBeGreaterThan(0);
+    expect(report.corpus.characterCount).toBeGreaterThan(report.retrieval.characterCount);
+    expect(report.savings.reductionPercent).toBeGreaterThan(0);
+    expect(report.methodology.claimBoundary).toMatch(/does not claim.*billing savings/i);
+  });
+
+  it('builds a portable polyglot entity graph with proof-carrying relations', async () => {
+    const workspacePath = await fixture();
+    const graph = await buildWorkspaceKnowledgeGraph({
+      workspacePath,
+      workspace: { name: 'platform', profile: 'enterprise' },
+      projects: [
+        { id: 'api', path: 'api', runtime: 'node', framework: 'nestjs' },
+        { id: 'web', path: 'web', runtime: 'python', framework: 'fastapi' },
+      ],
+      projectTopology: topology(),
+      contract: contract(),
+      now: NOW,
+    });
+
+    expect(graph.schemaVersion).toBe('workspace-knowledge-graph.v1');
+    expect(graph.generatedAt).toBe(NOW.toISOString());
+    expect(graph.providers.map((provider) => provider.id)).toEqual([
+      'architecture-decisions',
+      'ci-workflow',
+      'codeowners',
+      'compose',
+      'documentation',
+      'infrastructure-as-code',
+      'interface-contracts',
+      'kubernetes',
+      'openapi',
+      'source-structure',
+      'workspace-foundation',
+      'workspace-service-contract',
+    ]);
+    expect(new Set(graph.entities.map((entity) => entity.kind))).toEqual(
+      new Set([
+        'workspace',
+        'project',
+        'package',
+        'module',
+        'file',
+        'symbol',
+        'environment',
+        'test-suite',
+        'api',
+        'endpoint',
+        'schema',
+        'service',
+        'container',
+        'database',
+        'queue',
+        'deployment',
+        'pipeline',
+        'owner',
+        'document',
+        'decision',
+      ])
+    );
+    expect(graph.relations.some((relation) => relation.kind === 'depends-on')).toBe(true);
+    expect(graph.relations.some((relation) => relation.kind === 'exposes')).toBe(true);
+    expect(graph.relations.some((relation) => relation.kind === 'references')).toBe(true);
+    expect(graph.relations.some((relation) => relation.kind === 'deploys')).toBe(true);
+    expect(graph.relations.some((relation) => relation.kind === 'owns')).toBe(true);
+    expect(graph.relations.some((relation) => relation.kind === 'publishes')).toBe(true);
+    expect(graph.relations.some((relation) => relation.kind === 'consumes')).toBe(true);
+    expect(graph.providers.every((provider) => provider.discoveredEntities > 0)).toBe(true);
+    expect(graph.quality).toMatchObject({
+      portable: true,
+      secretValuesEmitted: false,
+      entityProofCoverageRatio: 1,
+      relationProofCoverageRatio: 1,
+      providerSuccessRatio: 1,
+    });
+    expect(graph.proofs.every((proof) => !path.isAbsolute(proof.artifact))).toBe(true);
+    expect(JSON.stringify(graph)).not.toContain('never-export-this');
+    expect(JSON.stringify(graph)).not.toContain('postgres://user:secret');
+    expect(JSON.stringify(graph)).not.toContain('compose-secret-must-not-leak');
+    expect(JSON.stringify(graph)).toContain('API_TOKEN');
+    expect(graph.proofs.some((proof) => proof.artifact.includes('.rapidkit/vendor'))).toBe(false);
+    expect(graph.entities.some((entity) => entity.label.includes('generated-copy'))).toBe(false);
+
+    const ajv = new Ajv2020({ allErrors: true, strict: false });
+    addFormats(ajv);
+    const dependencySchema = await fsExtra.readJson(
+      path.resolve('contracts/workspace-intelligence/workspace-dependency-graph.v1.json')
+    );
+    const knowledgeSchema = await fsExtra.readJson(
+      path.resolve('contracts/workspace-intelligence/workspace-knowledge-graph.v1.json')
+    );
+    ajv.addSchema(dependencySchema);
+    const validate = ajv.compile(knowledgeSchema);
+    expect(validate(graph), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  it('creates a deterministic, proof-aware change overlay with bounded impact', async () => {
+    const workspacePath = await fixture();
+    const base = await buildWorkspaceKnowledgeGraph({
+      workspacePath,
+      workspace: { name: 'platform' },
+      projects: [
+        { id: 'api', path: 'api', runtime: 'node', framework: 'nestjs' },
+        { id: 'web', path: 'web', runtime: 'python', framework: 'fastapi' },
+      ],
+      projectTopology: topology(),
+      contract: contract(),
+      now: NOW,
+    });
+    const openApiPath = path.join(workspacePath, 'api', 'openapi.yaml');
+    const openApi = await fsExtra.readFile(openApiPath, 'utf8');
+    await fsExtra.outputFile(
+      openApiPath,
+      openApi.replace(
+        'components:',
+        '  /health:\n    get:\n      operationId: health\n      responses: {}\ncomponents:'
+      )
+    );
+    const head = await buildWorkspaceKnowledgeGraph({
+      workspacePath,
+      workspace: { name: 'platform' },
+      projects: [
+        { id: 'api', path: 'api', runtime: 'node', framework: 'nestjs' },
+        { id: 'web', path: 'web', runtime: 'python', framework: 'fastapi' },
+      ],
+      projectTopology: topology(),
+      contract: contract(),
+      now: new Date('2026-07-21T12:01:00.000Z'),
+    });
+    const overlay = buildWorkspaceKnowledgeGraphChangeOverlay(base, head, NOW);
+
+    expect(overlay.schemaVersion).toBe('workspace-knowledge-graph-change-overlay.v1');
+    expect(overlay.entities.added.map((entity) => entity.label)).toContain('GET /health');
+    expect(overlay.changedArtifacts).toContain('api/openapi.yaml');
+    expect(overlay.summary).toMatchObject({
+      entityAdds: 1,
+      relationAdds: 2,
+      risk: 'medium',
+    });
+    expect(overlay.summary.proofChanges).toBeGreaterThan(0);
+    expect(
+      overlay.proofs.changed.some((change) => change.changedFields.includes('contentHash'))
+    ).toBe(true);
+    expect(
+      overlay.relations.added.some(
+        (relation) => relation.kind === 'implements' && relation.trust === 'corroborated'
+      )
+    ).toBe(true);
+    expect(overlay.impactedEntityIds.length).toBeGreaterThanOrEqual(2);
+
+    const ajv = new Ajv2020({ allErrors: true, strict: false });
+    addFormats(ajv);
+    ajv.addSchema(
+      await fsExtra.readJson(
+        path.resolve('contracts/workspace-intelligence/workspace-dependency-graph.v1.json')
+      )
+    );
+    ajv.addSchema(
+      await fsExtra.readJson(
+        path.resolve('contracts/workspace-intelligence/workspace-knowledge-graph.v1.json')
+      )
+    );
+    const validate = ajv.compile(
+      await fsExtra.readJson(
+        path.resolve(
+          'contracts/workspace-intelligence/workspace-knowledge-graph-change-overlay.v1.json'
+        )
+      )
+    );
+    expect(validate(overlay), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  it('supports entity, evidence and shortest proof-path queries', async () => {
+    const workspacePath = await fixture();
+    const graph = await buildWorkspaceKnowledgeGraph({
+      workspacePath,
+      workspace: { name: 'platform' },
+      projects: [
+        { id: 'api', path: 'api', runtime: 'node', framework: 'nestjs' },
+        { id: 'web', path: 'web', runtime: 'python', framework: 'fastapi' },
+      ],
+      projectTopology: topology(),
+      contract: contract(),
+      now: NOW,
+    });
+
+    expect(queryKnowledgeEntities(graph, 'endpoint').map((entity) => entity.label)).toEqual([
+      'GET /health',
+      'GET /users',
+    ]);
+    const evidence = queryKnowledgeEvidence(graph, 'GET /users');
+    expect(evidence.found).toBe(true);
+    expect(evidence.proofs[0]).toMatchObject({
+      provider: 'openapi',
+      artifact: 'api/openapi.yaml',
+      pointer: '/paths/~1users/get',
+      trust: 'authoritative',
+    });
+    const webProject = graph.entities.find(
+      (entity) => entity.kind === 'project' && entity.projectId === 'web'
+    );
+    expect(webProject).toBeDefined();
+    const pathResult = queryKnowledgePath(graph, webProject?.id ?? '', 'GET /users');
+    expect(pathResult.found).toBe(true);
+    expect(pathResult.hops.map((hop) => hop.kind)).toEqual(['depends-on', 'exposes', 'contains']);
+    expect(pathResult.proofs.length).toBeGreaterThanOrEqual(3);
+  });
+});

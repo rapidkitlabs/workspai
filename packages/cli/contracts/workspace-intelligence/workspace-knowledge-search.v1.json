@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-knowledge-search.v1.json",
+  "title": "Workspai Bounded Knowledge Graph Search",
+  "description": "A deterministic, bounded, proof-carrying retrieval projection intended for agents, MCP clients, IDEs, and CI consumers.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "query",
+    "kind",
+    "limit",
+    "totalMatches",
+    "truncated",
+    "entities",
+    "relatedEntities",
+    "relations",
+    "proofs"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "workspace-knowledge-search.v1" },
+    "query": { "type": "string", "minLength": 1 },
+    "kind": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "workspace-knowledge-graph.v1.json#/properties/entities/items/properties/kind" }
+      ]
+    },
+    "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+    "totalMatches": { "type": "integer", "minimum": 0 },
+    "truncated": { "type": "boolean" },
+    "entities": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "workspace-knowledge-graph.v1.json#/properties/entities/items" }
+    },
+    "relatedEntities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "label"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "$ref": "workspace-knowledge-graph.v1.json#/properties/entities/items/properties/kind" },
+          "label": { "type": "string", "minLength": 1 },
+          "projectId": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": { "$ref": "workspace-knowledge-graph.v1.json#/properties/relations/items" }
+    },
+    "proofs": {
+      "type": "array",
+      "items": { "$ref": "workspace-knowledge-graph.v1.json#/properties/proofs/items" }
+    }
+  },
+  "additionalProperties": false
+}

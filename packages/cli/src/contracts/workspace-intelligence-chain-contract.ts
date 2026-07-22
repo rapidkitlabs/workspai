@@ -545,7 +545,7 @@ export function buildWorkspaceIntelligenceChainContract(): WorkspaceIntelligence
         {
           id: 'understanding',
           label: 'System understanding',
-          artifacts: [artifacts.model, artifacts.diff, artifacts.impact],
+          artifacts: [artifacts.model, artifacts.knowledgeGraph, artifacts.diff, artifacts.impact],
           producedBy: ['model', 'diff', 'impact'],
           inventory: 'complete-for-chain',
         },
@@ -662,8 +662,8 @@ export function buildWorkspaceIntelligenceChainContract(): WorkspaceIntelligence
           'workspace graph dot',
           'workspace graph mermaid',
         ],
-        reads: [`${artifacts.model}#graph`],
-        role: 'Inspect or render the graph already embedded in the workspace model.',
+        reads: [artifacts.model, artifacts.knowledgeGraph],
+        role: 'Query the proof-backed graph derived from the canonical workspace model.',
         chainStep: false,
       },
       {
@@ -818,6 +818,7 @@ export function buildWorkspaceIntelligenceChainContract(): WorkspaceIntelligence
           artifacts.impact,
           artifacts.explain,
           artifacts.model,
+          artifacts.knowledgeGraph,
           artifacts.agentCustomizationPack,
           artifacts.skillsIndex,
         ],
@@ -825,7 +826,12 @@ export function buildWorkspaceIntelligenceChainContract(): WorkspaceIntelligence
         rule: 'Agents must cite current artifacts, preserve verified versus inferred status, and re-run the producing step when evidence is missing or stale.',
       },
       ideAndCi: {
-        requiredArtifacts: [artifacts.model, artifacts.impact, artifacts.verify],
+        requiredArtifacts: [
+          artifacts.model,
+          artifacts.knowledgeGraph,
+          artifacts.impact,
+          artifacts.verify,
+        ],
         rule: 'IDEs and CI must consume structured artifacts and verdict exit semantics rather than parse human help or terminal prose.',
       },
       docsAndDiagrams: {

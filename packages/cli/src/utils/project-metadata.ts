@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import fsExtra from 'fs-extra';
 
 import {
   detectBackendFrameworkFromProject,
@@ -8,7 +9,35 @@ import {
 } from './backend-framework-contract.js';
 import { resolveKitDefinition } from './kit-registry.js';
 import { readRapidkitProjectJson, type RapidkitProjectJson } from './runtime-detection.js';
-import { projectMetadataCandidates } from './workspace-paths.js';
+import { projectMetadataCandidates, projectMetadataPath } from './workspace-paths.js';
+
+const CANONICAL_PROJECT_METADATA_FILES = [
+  'project.json',
+  'context.json',
+  'file-hashes.json',
+] as const;
+
+export async function canonicalizeProjectMetadata(projectRoot: string): Promise<string[]> {
+  const root = path.resolve(projectRoot);
+  const written: string[] = [];
+  for (const fileName of CANONICAL_PROJECT_METADATA_FILES) {
+    const canonicalPath = projectMetadataPath(root, fileName);
+    if (await fsExtra.pathExists(canonicalPath)) continue;
+    const legacyPath = path.join(root, '.rapidkit', fileName);
+    if (!(await fsExtra.pathExists(legacyPath))) continue;
+    const payload = await fsExtra.readJson(legacyPath);
+    await fsExtra.ensureDir(path.dirname(canonicalPath));
+    const temporaryPath = `${canonicalPath}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      await fsExtra.writeJson(temporaryPath, payload, { spaces: 2 });
+      await fsExtra.move(temporaryPath, canonicalPath, { overwrite: false });
+      written.push(canonicalPath);
+    } finally {
+      await fsExtra.remove(temporaryPath).catch(() => undefined);
+    }
+  }
+  return written;
+}
 
 export type RapidkitContextJson = Record<string, unknown> | null;
 

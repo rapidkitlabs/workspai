@@ -51,8 +51,9 @@ import {
 } from './contracts/fact-freshness-contract.js';
 import {
   firstExistingWorkspaceArtifactPath,
-  writeWorkspaceArtifactJson,
+  writeWorkspaceArtifactJsonSet,
 } from './utils/artifact-path-compat.js';
+import { hashWorkspaceModel } from './workspace-model-hash.js';
 
 export const WORKSPACE_MODEL_SCHEMA_VERSION = WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.model;
 export const WORKSPACE_MODEL_REPORT_PATH = WORKSPACE_INTELLIGENCE_ARTIFACTS.model;
@@ -1604,9 +1605,45 @@ export async function writeWorkspaceModel(
   model: WorkspaceModel,
   workspacePath: string
 ): Promise<string> {
-  return writeWorkspaceArtifactJson(
+  const contract = model.contracts.exists ? await loadWorkspaceContractSafely(workspacePath) : null;
+  const { buildWorkspaceKnowledgeGraph } = await import('./workspace-knowledge-graph.js');
+  const persistedModel = attachRunCorrelation(model);
+  const knowledgeGraph = await buildWorkspaceKnowledgeGraph({
+    workspacePath,
+    workspace: {
+      name: model.workspace.name,
+      ...(model.workspace.profile ? { profile: model.workspace.profile } : {}),
+    },
+    projects: model.projects.map((project) => ({
+      id: project.name,
+      path: project.path,
+      ...(project.absolutePath ? { absolutePath: project.absolutePath } : {}),
+      runtime: project.runtime,
+      framework: project.framework,
+      ...(project.kit ? { kit: project.kit } : {}),
+    })),
+    projectTopology:
+      model.graph ??
+      (await inferModelDependencyGraph(workspacePath, model, {
+        contractExists: model.contracts.exists,
+        now: new Date(model.generatedAt),
+      })),
+    contract,
+    now: new Date(model.generatedAt),
+    source: {
+      kind: 'workspace-model',
+      artifact: WORKSPACE_MODEL_REPORT_PATH,
+      hashAlgorithm: 'sha256',
+      hash: hashWorkspaceModel(persistedModel),
+    },
+  });
+  const [, modelPath] = await writeWorkspaceArtifactJsonSet(
     workspacePath,
     WORKSPACE_MODEL_REPORT_PATH,
-    attachRunCorrelation(model)
+    [
+      { relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph, payload: knowledgeGraph },
+      { relativePath: WORKSPACE_MODEL_REPORT_PATH, payload: persistedModel },
+    ]
   );
+  return modelPath;
 }

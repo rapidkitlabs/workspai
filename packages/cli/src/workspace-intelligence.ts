@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import path from 'path';
 
 import fsExtra from 'fs-extra';
@@ -25,6 +24,8 @@ import {
 } from './contracts/workspace-intelligence-runtime-registry.js';
 import { writeWorkspaceArtifactJson } from './utils/artifact-path-compat.js';
 import { assertJsonSchemaContract } from './utils/json-schema-contract.js';
+export { hashWorkspaceModel } from './workspace-model-hash.js';
+import { hashWorkspaceModel, stableStringify } from './workspace-model-hash.js';
 
 export const WORKSPACE_MODEL_SNAPSHOT_SCHEMA_VERSION =
   WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.snapshot;
@@ -222,69 +223,6 @@ export type BuildWorkspaceImpactOptions = DiffWorkspaceModelOptions & {
   diff?: WorkspaceModelDiff;
 };
 
-function stableSort(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => stableSort(item));
-  }
-  if (value && typeof value === 'object') {
-    const output: Record<string, unknown> = {};
-    for (const key of Object.keys(value).sort()) {
-      output[key] = stableSort((value as Record<string, unknown>)[key]);
-    }
-    return output;
-  }
-  return value;
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(stableSort(value));
-}
-
-function hashModel(model: WorkspaceModel): string {
-  // `runId` is a write-time log-correlation field that may be present on a loaded
-  // baseline model; strip it (like generatedAt) so the hash stays deterministic.
-  const {
-    runId: _ignoredRunId,
-    evidence: _ignoredEvidence,
-    facts: _ignoredFacts,
-    factFreshness: _ignoredFactFreshness,
-    projects,
-    ...modelWithoutLiveState
-  } = model as WorkspaceModel & {
-    runId?: string;
-  };
-  const structuralProjects = projects.map((project) => {
-    const { evidence: _ignoredProjectEvidence, ...structuralProject } = project;
-    return structuralProject;
-  });
-  const normalized = {
-    ...modelWithoutLiveState,
-    generatedAt: '<ignored>',
-    projects: structuralProjects,
-    // The embedded dependency graph (workspace-dependency-graph.v1) carries its own
-    // write-time `generatedAt`; normalize it like the model's so the structural graph
-    // content participates in the hash but the timestamp never causes false drift.
-    graph: model.graph ? { ...model.graph, generatedAt: '<ignored>' } : undefined,
-    validation: model.validation
-      ? {
-          ...model.validation,
-          issues: model.validation.issues
-            .map((issue) => ({ ...issue }))
-            .sort((a, b) => {
-              const left = `${a.severity}:${a.code}:${a.target}:${a.message}`;
-              const right = `${b.severity}:${b.code}:${b.target}:${b.message}`;
-              return left.localeCompare(right);
-            }),
-        }
-      : undefined,
-  };
-  return crypto.createHash('sha256').update(stableStringify(normalized)).digest('hex');
-}
-
-export function hashWorkspaceModel(model: WorkspaceModel): string {
-  return hashModel(model);
-}
-
 function resolveWorkspaceRelativePath(workspacePath: string, filePath: string): string {
   return path.isAbsolute(filePath) ? filePath : path.join(workspacePath, filePath);
 }
@@ -308,7 +246,7 @@ async function readModelFromPath(
     if (!snapshot.model || snapshot.model.schemaVersion !== WORKSPACE_MODEL_SCHEMA_VERSION) {
       throw new Error(`Invalid workspace model snapshot: ${filePath}`);
     }
-    const computedHash = hashModel(snapshot.model);
+    const computedHash = hashWorkspaceModel(snapshot.model);
     if (snapshot.modelHash !== computedHash) {
       throw new Error(`Workspace model snapshot hash mismatch: ${filePath}`);
     }
@@ -322,7 +260,7 @@ async function readModelFromPath(
       `Workspace model ${filePath}`
     );
     const model = record as WorkspaceModel;
-    return { model, hash: hashModel(model) };
+    return { model, hash: hashWorkspaceModel(model) };
   }
 
   if (record.schemaVersion === WORKSPACE_MODEL_DIFF_SCHEMA_VERSION) {
@@ -360,7 +298,7 @@ async function readDiffFromPath(filePath: string): Promise<WorkspaceModelDiff | 
   ) {
     throw new Error(`Invalid workspace model diff report: ${filePath}`);
   }
-  if (diff.toHash !== hashModel(diff.currentModel)) {
+  if (diff.toHash !== hashWorkspaceModel(diff.currentModel)) {
     throw new Error(`Workspace model diff current-model hash mismatch: ${filePath}`);
   }
   return diff;
@@ -382,7 +320,7 @@ export async function buildWorkspaceModelSnapshot(
   return {
     schemaVersion: WORKSPACE_MODEL_SNAPSHOT_SCHEMA_VERSION,
     generatedAt: (options.now ?? new Date()).toISOString(),
-    modelHash: hashModel(model),
+    modelHash: hashWorkspaceModel(model),
     modelRef: WORKSPACE_MODEL_REPORT_PATH,
     model,
   };
@@ -602,7 +540,7 @@ export async function diffWorkspaceModel(
       observableScanDepth: options.observableScanDepth,
       now: options.now,
     }));
-  const currentHash = hashModel(currentModel);
+  const currentHash = hashWorkspaceModel(currentModel);
   const changes = [
     ...compareWorkspace(previous.model, currentModel),
     ...compareProjects(previous.model, currentModel),

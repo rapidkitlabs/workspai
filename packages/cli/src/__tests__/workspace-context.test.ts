@@ -76,6 +76,23 @@ describe('workspace agent context', () => {
     });
     expect(context.projects.find((project) => project.name === 'web')?.safeCommands).toEqual([]);
     expect(context.workspaceSummary).toContain('full-stack-workspace');
+    expect(context.knowledgeGraph).toMatchObject({
+      artifact: '.workspai/reports/workspace-knowledge-graph.json',
+      schemaVersion: 'workspace-knowledge-graph.v1',
+      available: false,
+      queryCommands: expect.arrayContaining([
+        expect.stringContaining('workspace graph entities'),
+        expect.stringContaining('workspace graph evidence'),
+        expect.stringContaining('workspace graph path'),
+      ]),
+    });
+    expect(context.safeCommands.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        'workspace.graph.entities',
+        'workspace.graph.evidence',
+        'workspace.graph.path',
+      ])
+    );
     expect(context.agentInstructions.join('\n')).toContain('Use `display` commands');
     expect(context.agentInstructions.join('\n')).toContain('freshness.verifyBeforeUse');
     expect(context.unsafeAssumptions.join('\n')).toContain('Do not claim a command passed');

@@ -1201,6 +1201,10 @@
           "attributeName": "scanDepth"
         },
         {
+          "flags": "--limit <count>",
+          "attributeName": "limit"
+        },
+        {
           "flags": "--cache",
           "attributeName": "cache"
         },

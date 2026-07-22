@@ -16,6 +16,7 @@ import { isDoctorEvidencePayloadCompatible } from './utils/doctor-evidence-contr
 import { discoverWorkspaceProjects as discoverWorkspaceProjectsShared } from './utils/workspace-discovery.js';
 import { buildCleanGitEnv } from './utils/git-worktree.js';
 import { projectMetadataCandidates, workspaceMetadataCandidates } from './utils/workspace-paths.js';
+import { assertWorkspaceArtifactContract } from './contracts/artifact-contract-registry.js';
 
 interface WorkspaceProject {
   name: string;
@@ -2042,6 +2043,9 @@ export async function createWorkspaceShareBundle(
     ? path.resolve(options.outputPath)
     : path.join(workspaceReportsDirs[0], 'share-bundle.json');
 
+  if (!options?.outputPath) {
+    assertWorkspaceArtifactContract('.workspai/reports/share-bundle.json', bundle);
+  }
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.writeFile(outputPath, JSON.stringify(bundle, null, 2), 'utf8');
 

@@ -65,7 +65,7 @@ npx workspai workspace snapshot [--workspace <path>] [--json] [--include-paths] 
 npx workspai workspace diff --from <snapshot-or-report|git[:ref]> [--workspace <path>] [--json] [--include-paths] [--include-evidence] [--scan-depth <count>] [--strict]
 npx workspai workspace impact --from <workspace-diff-report> [--workspace <path>] [--scope project:<name>] [--json] [--include-paths] [--include-evidence] [--scan-depth <count>] [--strict]
 npx workspai workspace verify [--from-impact <file>] [--workspace <path>] [--scope project:<name>] [--strict] [--json] [--include-paths] [--include-evidence] [--scan-depth <count>]
-npx workspai workspace graph [emit|explain|dot|mermaid] [key] [--workspace <path>] [--scope project:<name>] [--json] [--include-paths] [--include-evidence] [--scan-depth <count>]
+npx workspai workspace graph [emit|explain|search|benchmark|entities|evidence|path|overlay|dot|mermaid] [key] [value] [--from <graph.json>] [--limit <1..100>] [--workspace <path>] [--scope project:<name>] [--json] [--include-paths] [--include-evidence] [--scan-depth <count>]
 npx workspai workspace watch [--workspace <path>] [--json] [--once] [--scan-depth <count>]
 npx workspai workspace explain|why <target> [--workspace <path>] [--json] [--write]
 npx workspai workspace trace --from <workspace-diff-report> [--workspace <path>] [--json] [--write]
@@ -94,6 +94,17 @@ npx workspai infra down [--workspace <path>] [--volumes]
 npx workspai infra status [--workspace <path>] [--json] [--strict]
 ```
 
+The contract graph includes its backward-compatible service projection, the
+canonical `workspace-dependency-graph.v1` project topology, and the portable
+`workspace-knowledge-graph.v1` evidence graph. The knowledge projection covers
+workspace/project structure, packages and dependencies, source files, modules,
+symbols, HTTP endpoints, OpenAPI/GraphQL/Protocol Buffers/AsyncAPI contracts,
+Compose/Kubernetes/Dockerfile/Terraform/Helm infrastructure, CI workflows,
+documentation, ADRs, tests, owners, environments, databases, and queues.
+Every entity and relation has stable identity and portable proof paths; proof
+taxonomy separates authored, extracted, and inferred facts and records trust,
+confidence, and freshness. Environment and secret values are never emitted.
+
 `workspace intelligence run` writes
 `.workspai/reports/workspace-intelligence-run-last-run.json`. Its `preflight`
 contains exactly `sync` and `baseline`, while `stages` contains exactly the 11
@@ -114,9 +125,45 @@ records are appended to
 `.workspai/reports/workspace-intelligence-history.json`; no separate feedback
 artifact is created.
 
-`workspace graph dot` and `workspace graph mermaid` intentionally emit raw DOT
-and Mermaid text for direct piping to renderers. Use `workspace graph emit
---json` or `workspace graph explain <project> --json` for structured JSON.
+`workspace graph emit --json` returns both the compatibility project graph and
+the knowledge graph. Use `workspace graph entities [kind]`, `workspace graph
+evidence <id-or-unique-label>`, and `workspace graph path <from> <to>` for
+indexed queries. `workspace graph overlay --from <prior-graph.json>` produces a
+portable change/PR overlay with additions, removals, changed fields, proof
+artifacts, proof additions/removals/content changes, bounded one-hop impact,
+and a risk summary. Observation timestamps and freshness alone do not create
+false change noise. Query indexes are cached
+per immutable graph object and invalidated automatically when a new graph is
+built. `dot` and `mermaid` intentionally remain project-topology renderers and
+emit raw text for direct piping.
+
+`workspace graph search <query> --limit <n> --json` returns bounded entities,
+one-hop relations, related entity summaries, and portable proofs instead of the
+complete graph. `workspace graph benchmark <query> --limit <n> --json` compares
+that retrieval payload with the readable proof-indexed corpus using a labelled
+`characters / 4` estimate. It measures payload reduction only; it does not
+assert equivalent answer quality or model-specific billing savings.
+
+`workspace model --write` also materializes the derived, contract-validated
+knowledge graph at `.workspai/reports/workspace-knowledge-graph.json`. The
+unified intelligence runner treats that artifact as a required output of the
+Model step, so CI, IDE adapters, agent grounding, and MCP all observe the same
+revision. Agent contexts carry its reference, quality counts, and bounded query
+commands instead of copying the entire graph into every prompt. MCP exposes
+`getWorkspaceKnowledgeGraph`, `searchWorkspaceGraph`, `queryWorkspaceEntities`,
+`getWorkspaceGraphEvidence`, and `findWorkspaceGraphPath`.
+
+Source extraction is bounded and language-neutral by contract. It recognizes
+the primary source formats for TypeScript/JavaScript, Python, Go, Java/Kotlin,
+.NET/F#, Rust, Ruby, PHP, Swift, Dart, Elixir, Scala, Clojure, Lua, R, C/C++,
+Vue, and Svelte. Package baselines also recognize npm/Deno, Python, Go, Cargo,
+Maven/Gradle, NuGet, Composer, Ruby, Elixir, Dart, SwiftPM, CMake, Bazel, and SBT.
+Regex-backed
+source facts are marked `observed` with medium confidence; authored manifests
+and interface/infrastructure specifications remain authoritative. This avoids
+presenting heuristic symbol discovery as compiler-grade truth while keeping the
+current CLI useful until deeper language providers move into the standalone
+graph package.
 
 See [workspace-run.md](./workspace-run.md) for fleet orchestration semantics.
 

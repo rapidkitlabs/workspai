@@ -171,6 +171,81 @@ if (
 ) {
   errors.push('Artifact Catalog is missing the canonical intelligence run report');
 }
+
+const docsIndex = fs.readFileSync(path.join(root, 'docs', 'README.md'), 'utf8');
+const contractDocs = fs.readFileSync(path.join(root, 'docs', 'contracts', 'README.md'), 'utf8');
+const graphGuide = fs.readFileSync(path.join(root, 'docs', 'workspace-knowledge-graph.md'), 'utf8');
+const graphBenchmarkGuide = fs.readFileSync(
+  path.join(root, 'docs', 'graph-benchmark-methodology.md'),
+  'utf8'
+);
+const glossary = fs.readFileSync(path.join(root, 'docs', 'GLOSSARY.md'), 'utf8');
+const aiQuickstart = fs.readFileSync(path.join(root, 'docs', 'AI_QUICKSTART.md'), 'utf8');
+
+const requiredDocumentationLinks = [
+  'workspace-intelligence-runner.md',
+  'workspace-knowledge-graph.md',
+  'graph-benchmark-methodology.md',
+  'GLOSSARY.md',
+  'contracts/ARTIFACT_CATALOG.md',
+];
+for (const documentationLink of requiredDocumentationLinks) {
+  if (!docsIndex.includes(documentationLink)) {
+    errors.push(`Documentation index is missing the user entry point: ${documentationLink}`);
+  }
+}
+
+const graphSchemaNames = [
+  'workspace-knowledge-graph.v1.json',
+  'workspace-knowledge-graph-change-overlay.v1.json',
+  'workspace-knowledge-search.v1.json',
+  'workspace-graph-token-efficiency.v1.json',
+];
+if (!contractDocs.includes('published-contract-catalog.v1.json')) {
+  errors.push('Contract documentation is missing complete machine-readable catalog discovery');
+}
+for (const schemaName of graphSchemaNames) {
+  if (!contractDocs.includes(schemaName)) {
+    errors.push(`Contract documentation is missing the graph schema: ${schemaName}`);
+  }
+}
+
+const requiredGraphConsumerSemantics = [
+  'workspace graph search <query> --limit <n> --json',
+  'searchWorkspaceGraph',
+  'Read the full context, model, or graph only when the bounded result is insufficient',
+];
+for (const semantic of requiredGraphConsumerSemantics) {
+  if (!artifactCatalog.includes(semantic)) {
+    errors.push(`Artifact Catalog is missing bounded agent retrieval semantics: ${semantic}`);
+  }
+}
+
+for (const semantic of [
+  'derived representation bound to an exact model revision',
+  'not a prompt',
+  'token estimate',
+]) {
+  if (!graphGuide.includes(semantic) && !graphBenchmarkGuide.includes(semantic)) {
+    errors.push(`Graph documentation is missing required claim boundary: ${semantic}`);
+  }
+}
+
+for (const term of ['Workspace Model', 'Knowledge Graph', 'Proof path', 'Unified runner']) {
+  if (!glossary.includes(term)) {
+    errors.push(`Glossary is missing the canonical term: ${term}`);
+  }
+}
+
+for (const semantic of [
+  'does not require an API key',
+  'deterministic mock mode',
+  'not confidence',
+]) {
+  if (!aiQuickstart.includes(semantic)) {
+    errors.push(`AI quickstart is missing the module-recommender boundary: ${semantic}`);
+  }
+}
 const groundingWorkflow = canonicalSurfaces.find(
   ([file]) => file === 'docs/examples/ci-agent-grounding.yml'
 )?.[1];

@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-07-21
+
+### Added
+
+- Added the versioned, evidence-backed Workspace Knowledge Graph as an atomic
+  derivative of the canonical Workspace Model.
+- Added bounded `workspace graph search`, typed entity/evidence/path queries,
+  portable graph emission, change/PR overlays, and reproducible retrieval
+  payload benchmarks.
+- Added versioned contracts for Knowledge Graph, change overlay, bounded search,
+  and token-efficiency results.
+- Added MCP graph search/evidence/path tools and graph discovery through agent
+  context, report indexes, customization packs, runtime command discovery, and
+  workspace contract graph output.
+- Added a user-focused graph guide, benchmark methodology, AI/IDE/MCP scenario,
+  plain-language glossary, and contract catalog discovery guidance.
+
+### Changed
+
+- Made `workspace-knowledge-graph.json` a required Model-stage artifact in the
+  unified Workspace Intelligence runner and bound it to the exact model hash.
+- Expanded graph facts and proofs across source, packages, APIs, events,
+  containers, Kubernetes, Terraform, CI, documentation, ADRs, tests, ownership,
+  and service contracts.
+- Changed agent guidance to prefer `AGENTS.md` and `INDEX.json`, then bounded
+  graph retrieval and proof traversal, before loading complete model/graph
+  artifacts.
+- Expanded published contract, runtime surface, architecture, artifact producer,
+  and documentation drift checks for the new graph surfaces.
+- Rewrote optional AI module-recommender documentation to distinguish it from
+  deterministic Workspace Intelligence and remove unqualified score, cost, and
+  production-readiness claims.
+- Bumped the monorepo root, `workspai`, and `wspai` packages to `0.47.0`, and
+  aligned the `wspai` dependency on `workspai@0.47.0`.
+
+### Fixed
+
+- Canonicalized Python/Core bridge project metadata from legacy `.rapidkit`
+  locations into `.workspai` without overwriting existing canonical files.
+- Fixed artifact, contract, command, and documentation gaps for graph consumers
+  across CLI, CI, IDE, MCP, and agent surfaces.
+- Updated `brace-expansion` to the patched release required by the high-severity
+  npm audit advisory.
+- Updated `fast-uri` to `3.1.4` to resolve its high-severity host-confusion
+  advisory; the final online npm audit reports zero vulnerabilities.
+- Removed misleading documentation that treated future package extraction as
+  missing product capability; Graph, MCP, shared contracts, and SDK-facing
+  surfaces remain available through the current CLI.
+
+### Verification
+
+- Full CLI suite: 2,062 tests passed with 8 explicit skips.
+- Workspace Intelligence runtime conformance passed all 11 ordered stages and
+  required artifacts.
+- Documentation links, examples, drift guard, README command smoke, and live
+  CLI command-surface parity passed.
+
 ## [0.46.0] - 2026-07-18
 
 ### Added

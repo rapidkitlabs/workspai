@@ -370,6 +370,35 @@ function genericActionForReport(input: {
   order: number;
   ciMode: boolean;
 }): ArtifactRemediationAction {
+  if (
+    input.report.artifactKind === 'readiness' &&
+    /dependenc(?:y|ies).*vulnerabil|vulnerabil.*dependenc(?:y|ies)|security audit/i.test(
+      input.blocker
+    )
+  ) {
+    return actionBase({
+      id: `${input.report.cardId}.doctor-owner.${input.order}`,
+      artifactKind: input.report.artifactKind,
+      cardId: input.report.cardId,
+      title: 'Resolve dependency vulnerability through Doctor',
+      order: input.order,
+      phase: 'dependency-remediation',
+      blocker: input.blocker,
+      summary:
+        'Release Readiness is the aggregate gate; use the project-scoped Doctor remediation capability that owns this dependency failure.',
+      mode: 'verify-before-fix',
+      risk: 'guarded',
+      status: 'review-required',
+      command: 'npx workspai doctor workspace --plan --json',
+      verifyCommand: input.ciMode
+        ? 'npx workspai readiness --strict --json'
+        : 'npx workspai readiness --json',
+      notes: [
+        'Read doctor-remediation-plan-last-run.json and execute the matching surface-security-hygiene capability before rerunning Readiness.',
+        'Do not treat a Readiness refresh as remediation for a source dependency vulnerability.',
+      ],
+    });
+  }
   const byKind: Record<string, { title: string; phase: string; command: string; verify: string }> =
     {
       analyze: {

@@ -72,22 +72,29 @@ the same evidence without losing the workspace source of truth.
 
 ## Workspace intelligence
 
-| Command                                        | Artifact                                                                                                                                                                                                                                                     | Schema                                 | Contract file                                                             |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- | ------------------------------------------------------------------------- |
-| `workspace model --write`                      | `workspace-model.json`                                                                                                                                                                                                                                       | `workspace-model.v1`                   | `contracts/workspace-intelligence/workspace-model.v1.json`                |
-| `workspace snapshot`                           | `workspace-model-snapshot.json`                                                                                                                                                                                                                              | `workspace-model-snapshot.v1`          | `contracts/workspace-intelligence/workspace-model-snapshot.v1.json`       |
-| `workspace diff`                               | `workspace-model-diff-last-run.json`                                                                                                                                                                                                                         | `workspace-model-diff.v1`              | `contracts/workspace-intelligence/workspace-model-diff.v1.json`           |
-| `workspace impact --from <diff>`               | `workspace-impact-last-run.json`                                                                                                                                                                                                                             | `workspace-impact.v1`                  | `contracts/workspace-intelligence/workspace-impact.v1.json`               |
-| `analyze --json`                               | `analyze-last-run.json`                                                                                                                                                                                                                                      | `rapidkit-analyze-v1`                  | `contracts/analyze-last-run.v1.json`                                      |
-| `workspace verify`                             | `workspace-verify-last-run.json`                                                                                                                                                                                                                             | `workspace-verify.v1`                  | `contracts/workspace-intelligence/workspace-verify.v1.json`               |
-| `workspace context --write`                    | `workspace-context-agent.json`                                                                                                                                                                                                                               | `workspace-context.v1`                 | `contracts/workspace-intelligence/workspace-context.v1.json`              |
-| `workspace agent-sync --write`                 | `reports/agent-customization-pack.json`                                                                                                                                                                                                                       | `rapidkit-agent-customization-pack.v1` | `contracts/workspace-intelligence/agent-customization-pack-report.v1.json` |
-| `workspace agent-sync --write`                 | `reports/INDEX.json`                                                                                                                                                                                                                                          | `rapidkit-agent-reports-index.v1`      | `contracts/workspace-intelligence/agent-reports-index.v1.json`            |
-| `workspace agent-sync --write`                 | `reports/workspace-skills-index.json`                                                                                                                                                                                                                          | `workspace-skills-index.v1`            | `contracts/workspace-intelligence/workspace-skills-index.v1.json`         |
-| `workspace agent-sync --write`                 | `reports/workspai-mcp-design.json`, `.workspai/skills/*.md`, `.workspai/AGENT-GROUNDING.md`, `AGENTS.md`, IDE agent surfaces                                                                                                                                 | Mixed generated surfaces               | See customization pack output inventory                                  |
-| `workspace explain --write`                    | `workspace-explain-last-run.json`                                                                                                                                                                                                                            | `workspace-explain.v1`                 | `contracts/workspace-intelligence/workspace-explain.v1.json`              |
-| `workspace intelligence run`                   | `workspace-intelligence-run-last-run.json`                                                                                                                                                                                                                   | `workspace-intelligence-run.v1`        | `contracts/workspace-intelligence/workspace-intelligence-run.v1.json`     |
-| `workspace feedback record` / `doctor * --fix` | `workspace-intelligence-history.json` (`kind: agent-action`, `doctor-fix`)                                                                                                                                                                                   | `workspace-intelligence-history.v1`    | `contracts/workspace-intelligence/workspace-intelligence-history.v1.json` |
+Bare artifact names in this table are relative to `.workspai/reports/`.
+Entries beginning with `reports/` are relative to `.workspai/`; paths such as
+`AGENTS.md` are relative to the workspace root.
+
+| Command                                        | Artifact                                                                                                                     | Schema                                 | Contract file                                                              |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | -------------------------------------------------------------------------- |
+| `workspace model --write`                      | `workspace-model.json`                                                                                                       | `workspace-model.v1`                   | `contracts/workspace-intelligence/workspace-model.v1.json`                 |
+| `workspace model --write`                      | `workspace-knowledge-graph.json`                                                                                             | `workspace-knowledge-graph.v1`         | `contracts/workspace-intelligence/workspace-knowledge-graph.v1.json`       |
+| `workspace snapshot`                           | `workspace-model-snapshot.json`                                                                                              | `workspace-model-snapshot.v1`          | `contracts/workspace-intelligence/workspace-model-snapshot.v1.json`        |
+| `workspace diff`                               | `workspace-model-diff-last-run.json`                                                                                         | `workspace-model-diff.v1`              | `contracts/workspace-intelligence/workspace-model-diff.v1.json`            |
+| `workspace impact --from <diff>`               | `workspace-impact-last-run.json`                                                                                             | `workspace-impact.v1`                  | `contracts/workspace-intelligence/workspace-impact.v1.json`                |
+| `analyze --json`                               | `analyze-last-run.json`                                                                                                      | `rapidkit-analyze-v1`                  | `contracts/analyze-last-run.v1.json`                                       |
+| `workspace verify`                             | `workspace-verify-last-run.json`                                                                                             | `workspace-verify.v1`                  | `contracts/workspace-intelligence/workspace-verify.v1.json`                |
+| `workspace context --write`                    | `workspace-context-agent.json`                                                                                               | `workspace-context.v1`                 | `contracts/workspace-intelligence/workspace-context.v1.json`               |
+| `workspace agent-sync --write`                 | `reports/agent-customization-pack.json`                                                                                      | `rapidkit-agent-customization-pack.v1` | `contracts/workspace-intelligence/agent-customization-pack-report.v1.json` |
+| `workspace agent-sync --write`                 | `reports/INDEX.json`                                                                                                         | `rapidkit-agent-reports-index.v1`      | `contracts/workspace-intelligence/agent-reports-index.v1.json`             |
+| `workspace agent-sync --write`                 | `reports/workspace-skills-index.json`                                                                                        | `workspace-skills-index.v1`            | `contracts/workspace-intelligence/workspace-skills-index.v1.json`          |
+| `workspace agent-sync --write`                 | `reports/workspai-mcp-design.json`, `.workspai/skills/*.md`, `.workspai/AGENT-GROUNDING.md`, `AGENTS.md`, IDE agent surfaces | Mixed generated surfaces               | See customization pack output inventory                                    |
+| `workspace explain --write`                    | `workspace-explain-last-run.json`                                                                                            | `workspace-explain.v1`                 | `contracts/workspace-intelligence/workspace-explain.v1.json`               |
+| `workspace why --write`                        | `workspace-why-last-run.json`                                                                                                | `workspace-explain.v1`                 | `contracts/workspace-intelligence/workspace-explain.v1.json`               |
+| `workspace trace --write`                      | `workspace-trace-last-run.json`                                                                                              | `workspace-explain.v1`                 | `contracts/workspace-intelligence/workspace-explain.v1.json`               |
+| `workspace intelligence run`                   | `workspace-intelligence-run-last-run.json`                                                                                   | `workspace-intelligence-run.v1`        | `contracts/workspace-intelligence/workspace-intelligence-run.v1.json`      |
+| `workspace feedback record` / `doctor * --fix` | `workspace-intelligence-history.json` (`kind: agent-action`, `doctor-fix`)                                                   | `workspace-intelligence-history.v1`    | `contracts/workspace-intelligence/workspace-intelligence-history.v1.json`  |
 
 The unified runner report separates its execution envelope from the canonical
 intelligence chain. `preflight` always contains exactly `sync` and `baseline`;
@@ -98,6 +105,11 @@ the runtime semantic validator additionally enforces artifact parity,
 status/exit coherence, hard-failure skip propagation, and the aggregate verdict.
 See [Unified Workspace Intelligence Runner](../workspace-intelligence-runner.md)
 for the normative user and integration semantics.
+
+`workspace-model.json` and `workspace-knowledge-graph.json` are published as one
+recoverable artifact transaction. The graph carries a SHA-256 `source` binding
+to the canonical model, so consumers must reject a graph whose source hash does
+not equal the current structural model hash.
 
 **CLI semantics:** `workspace diff --from` expects a **model or snapshot** baseline. `workspace impact --from` expects a **diff report**.
 Persisted artifacts retain their artifact schema. JSON command projections that add operation metadata
@@ -188,11 +200,18 @@ block, in `warn` mode they escalate to needs-attention.
 a dependency change makes every dependent stale deterministically. The verdict compares against
 the previously written verify report. Canonical source: `src/workspace-graph-freshness.ts`.
 
-**Graph command surface.** `workspace graph` emits the graph plus integrity + hotspots;
-`workspace graph explain <project>` returns centrality and direct/transitive relationships;
-`workspace graph dot|mermaid` render deterministic visualizations. Canonical source:
-`src/workspace-graph.ts`. The `graph` subcommand is part of `WORKSPACE_SUBCOMMANDS` and is
-published via `runtime-command-surface.v1` for IDE/CI capability detection.
+**Graph command surface.** `workspace graph` emits the dependency graph plus
+integrity and hotspots. `explain <project>` returns centrality and
+direct/transitive relationships. `search`, `entities`, `evidence`, and `path`
+return bounded Knowledge Graph projections with proof references; `benchmark`
+measures corpus-versus-retrieval payload; `overlay --from` compares a proposed
+or earlier graph with the current graph; `emit` returns the complete
+interchange graph; and `dot|mermaid` render deterministic dependency views.
+Canonical sources are `src/workspace-graph.ts`,
+`src/workspace-knowledge-graph-query.ts`,
+`src/workspace-knowledge-graph-change-overlay.ts`, and
+`src/workspace-graph-token-efficiency.ts`. These command surfaces are published
+through `runtime-command-surface.v1` for IDE/CI capability detection.
 
 ### Model cache (`workspace-model-cache.v1`)
 
@@ -262,19 +281,19 @@ Canonical source: `src/observability/run-correlation.ts` (`attachRunCorrelation`
 
 ## Operational / platform
 
-| Command                          | Artifact                                                               | Notes                                                                                        | Contract                                                             |
-| -------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `workspace run`                  | `workspace-run-last.json`                                              | `workspace-run-v1` (multi-stage: `stages.test`, `stages.build`, …)                           | `contracts/workspace-run-last.v1.json`                               |
-| `autopilot release` (run stages) | same `workspace-run-last.json`                                         | Autopilot publishes test/build into aggregate (no separate `autopilot-workspace-run-*.json`) | —                                                                    |
-| `bootstrap`                      | `bootstrap-compliance-{ts}.json`, `bootstrap-compliance.latest.json`   |                                                                                              | —                                                                    |
-| `mirror status`                  | `mirror-ops-{ts}.json`, `mirror-ops.latest.json`                       |                                                                                              | —                                                                    |
-| `mirror` (transparency)          | `transparency-evidence-{ts}.json`, `transparency-evidence.latest.json` |                                                                                              | —                                                                    |
-| `infra plan`                     | `infra-plan.json`                                                      | `rapidkit.infra-plan.v1`                                                                     | —                                                                    |
-| `workspace archive`              | `.workspai/archive-manifest.json` inside ZIP/ZIP64                     | Streaming handoff; workspace payload is unlimited by default and safety budgets are opt-in   | `contracts/workspace-archive-manifest.v1.json`                       |
-| `workspace share`                | `reports/share-bundle.json` (default)                                  | Aggregation bundle                                                                           | —                                                                    |
-| `import`                         | `{project}/.workspai/import.json`, `{project}/.workspai/import-readiness.json` | Copied/cloned project metadata and readiness                                           | —                                                                    |
-| `adopt`                          | `{project}/.workspai/adopt.json`, `{project}/.workspai/adopt-readiness.json`   | In-place project metadata and readiness                                                | —                                                                    |
-| `workspace contract verify`      | `workspace-contract-verify-last-run.json`                              | CLI verify cache                                                                             | `contracts/workspace-intelligence/workspace-contract-verify.v1.json` |
+| Command                          | Artifact                                                                       | Notes                                                                                        | Contract                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `workspace run`                  | `workspace-run-last.json`                                                      | `workspace-run-v1` (multi-stage: `stages.test`, `stages.build`, …)                           | `contracts/workspace-run-last.v1.json`                               |
+| `autopilot release` (run stages) | same `workspace-run-last.json`                                                 | Autopilot publishes test/build into aggregate (no separate `autopilot-workspace-run-*.json`) | —                                                                    |
+| `bootstrap`                      | `bootstrap-compliance-{ts}.json`, `bootstrap-compliance.latest.json`           | `bootstrap-compliance.v1`                                                                    | `contracts/bootstrap-compliance.v1.json`                             |
+| `mirror status`                  | `mirror-ops-{ts}.json`, `mirror-ops.latest.json`                               | `mirror-ops.v1`                                                                              | `contracts/mirror-ops.v1.json`                                       |
+| `mirror` (transparency)          | `transparency-evidence-{ts}.json`, `transparency-evidence.latest.json`         | `transparency-evidence.v1`                                                                   | `contracts/transparency-evidence.v1.json`                            |
+| `infra plan`                     | `infra-plan.json`                                                              | `rapidkit.infra-plan.v1`                                                                     | —                                                                    |
+| `workspace archive`              | `.workspai/archive-manifest.json` inside ZIP/ZIP64                             | Streaming handoff; workspace payload is unlimited by default and safety budgets are opt-in   | `contracts/workspace-archive-manifest.v1.json`                       |
+| `workspace share`                | `reports/share-bundle.json` (default)                                          | Aggregation bundle (`1.1`)                                                                   | `contracts/workspace-share-bundle.v1.json`                           |
+| `import`                         | `{project}/.workspai/import.json`, `{project}/.workspai/import-readiness.json` | Copied/cloned project metadata and readiness                                                 | —                                                                    |
+| `adopt`                          | `{project}/.workspai/adopt.json`, `{project}/.workspai/adopt-readiness.json`   | In-place project metadata and readiness                                                      | —                                                                    |
+| `workspace contract verify`      | `workspace-contract-verify-last-run.json`                                      | CLI verify cache                                                                             | `contracts/workspace-intelligence/workspace-contract-verify.v1.json` |
 
 ## Static capability contracts
 
@@ -320,17 +339,28 @@ them as portable repository contracts. The portable source is
 
 Under `{project}/.workspai/reports/` when commands run at project scope (e.g. project doctor). Workspace-level reports stay under `{workspace}/.workspai/reports/`.
 
+After a Python Core bridge creates a project, Workspai validates and mirrors
+legacy `.rapidkit/project.json`, `context.json`, and `file-hashes.json` into the
+canonical project `.workspai/` directory without overwriting an existing
+canonical file. Legacy files remain readable during the compatibility window.
+
 ## Consumer rules
 
 1. **Project count:** read `workspace-registry.v1.json` (or run `workspace registry status --json`).
 2. **Workspace Intelligence chain:** run `workspace intelligence run --for-agent codex --strict --json` to preserve Model → Diff → Impact → Doctor + Contract Verify + Analyze → Readiness → Verify → Context → Agent Sync → Explain. `pipeline` is the broader governance/release orchestrator and `autopilot` is a separate release surface; neither redefines the canonical chain. Use `pipeline-last-run.json` only for the pipeline orchestration summary.
 3. **Do not** use `workspace.json.projects` (removed in schema 1.0).
 4. Prefer `schemaVersion` constants in each artifact; legacy `v1` on readiness is accepted when reading old reports.
-5. **Agent customization:** read `.workspai/reports/agent-customization-pack.json` first for generated surfaces, then `.workspai/reports/INDEX.json` and `workspace-context-agent.json`; regenerate with `workspace agent-sync --write --refresh-context --preset enterprise`.
+5. **Agent retrieval:** start with `AGENTS.md` and `.workspai/reports/INDEX.json`, then use `workspace graph search <query> --limit <n> --json` or MCP `searchWorkspaceGraph` for question-sized facts. Follow returned proof paths to source evidence. Read the full context, model, or graph only when the bounded result is insufficient.
+6. **Agent customization state:** use `.workspai/reports/agent-customization-pack.json` to inspect generated surfaces and drift; regenerate with `workspace agent-sync --write --refresh-context --preset enterprise`.
 
 ## Agent customization files (repo hooks)
 
 Written by `workspace agent-sync --write --refresh-context --preset enterprise` (and by default after `workspace context --for-agent --write`):
+
+The generated output inventory is committed as one journaled transaction. On
+failure, all touched files are restored; an interrupted transaction is recovered
+before the next agent-sync. `agent-customization-pack.json` is written last and
+serves as the completed-generation marker.
 
 | Path                                                                    | Consumer                                                       |
 | ----------------------------------------------------------------------- | -------------------------------------------------------------- |
@@ -345,7 +375,7 @@ Written by `workspace agent-sync --write --refresh-context --preset enterprise` 
 | `.github/prompts/workspai-adopt-project.prompt.md`                      | Copilot adopt/import workflow prompt                           |
 | `.github/skills/workspai-grounding/SKILL.md`                            | Copilot skills                                                 |
 | `.github/skills/workspai-workspace-intelligence/SKILL.md`               | Enterprise Workspace Intelligence skill                        |
-| `.github/skills/workspai-workspace-intelligence/resources/mcp-tools.md` | Future MCP tool design reference                               |
+| `.github/skills/workspai-workspace-intelligence/resources/mcp-tools.md` | MCP tool and evidence-retrieval reference                      |
 | `.github/agents/workspai-advisor.agent.md`                              | Read-only workspace advisor agent                              |
 | `.github/agents/workspai-repair.agent.md`                               | Blocker repair agent                                           |
 | `.github/agents/workspai-release.agent.md`                              | Release safety agent                                           |
@@ -353,7 +383,7 @@ Written by `workspace agent-sync --write --refresh-context --preset enterprise` 
 | `.cursor/rules/workspai-grounding.mdc`                                  | Cursor always-on rule                                          |
 | `CLAUDE.md`                                                             | Claude Code (imports `@AGENTS.md`)                             |
 | `.claude/rules/workspai-evidence.md`                                    | Claude Code scoped evidence rule                               |
-| `.claude/rules/rapidkit-evidence.md`                                    | Legacy Claude Code scoped evidence mirror                      |
+| `.claude/rules/rapidkit-evidence.md`                                    | Legacy compatibility alias pointing to the canonical rule      |
 | `.workspai/AGENT-GROUNDING.md`                                          | Tool-agnostic operator doc                                     |
 | `.workspai/reports/agent-customization-pack.json`                       | Versioned output inventory, target matrix, drift state         |
 | `.workspai/reports/workspai-mcp-design.json`                            | Read-mostly MCP-ready design manifest                          |

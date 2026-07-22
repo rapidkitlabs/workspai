@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getrapidkit.com/schemas/workspace-graph-token-efficiency.v1.json",
+  "title": "Workspai Graph Retrieval Token-Efficiency Report",
+  "description": "A reproducible character-based estimate comparing readable proof-source text with one bounded graph retrieval payload. It is not an answer-quality or billing claim.",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "workspacePath", "query", "graph", "methodology", "corpus", "retrieval", "savings"],
+  "properties": {
+    "schemaVersion": { "const": "workspace-graph-token-efficiency.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "workspacePath": { "type": "string", "minLength": 1 },
+    "query": { "type": "string", "minLength": 1 },
+    "graph": {
+      "type": "object",
+      "required": ["schemaVersion", "sourceArtifact", "sourceHash", "entityCount", "relationCount", "proofCount"],
+      "properties": {
+        "schemaVersion": { "const": "workspace-knowledge-graph.v1" },
+        "sourceArtifact": { "type": "string", "minLength": 1 },
+        "sourceHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "entityCount": { "type": "integer", "minimum": 0 },
+        "relationCount": { "type": "integer", "minimum": 0 },
+        "proofCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "methodology": {
+      "type": "object",
+      "required": ["id", "estimated", "charsPerToken", "claimBoundary"],
+      "properties": {
+        "id": { "const": "indexed-corpus-vs-bounded-retrieval.v1" },
+        "estimated": { "const": true },
+        "charsPerToken": { "const": 4 },
+        "claimBoundary": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "corpus": {
+      "type": "object",
+      "required": ["artifactCount", "characterCount", "estimatedTokens", "unreadableArtifacts"],
+      "properties": {
+        "artifactCount": { "type": "integer", "minimum": 0 },
+        "characterCount": { "type": "integer", "minimum": 0 },
+        "estimatedTokens": { "type": "integer", "minimum": 0 },
+        "unreadableArtifacts": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      },
+      "additionalProperties": false
+    },
+    "retrieval": {
+      "type": "object",
+      "required": ["matchCount", "characterCount", "estimatedTokens", "truncated", "payload"],
+      "properties": {
+        "matchCount": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "characterCount": { "type": "integer", "minimum": 0 },
+        "estimatedTokens": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "boolean" },
+        "payload": { "$ref": "workspace-knowledge-search.v1.json" }
+      },
+      "additionalProperties": false
+    },
+    "savings": {
+      "type": "object",
+      "required": ["estimatedTokensAvoided", "reductionRatio", "reductionPercent"],
+      "properties": {
+        "estimatedTokensAvoided": { "type": "integer", "minimum": 0 },
+        "reductionRatio": { "type": "number", "minimum": 0 },
+        "reductionPercent": { "type": "number", "minimum": 0, "maximum": 100 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

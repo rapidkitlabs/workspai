@@ -13,6 +13,8 @@ import { WORKSPACE_OPERATIONAL_SKILL_SCHEMA_VERSION } from './workspace-operatio
 import { WORKSPACE_SKILLS_INDEX_SCHEMA_VERSION } from './workspace-skills-index-contract.js';
 import { AGENT_CUSTOMIZATION_PACK_SCHEMA_VERSION } from './agent-customization-pack-contract.js';
 import { WORKSPACE_DEPENDENCY_GRAPH_SCHEMA_VERSION } from './workspace-dependency-graph-contract.js';
+import { WORKSPACE_KNOWLEDGE_GRAPH_SCHEMA_VERSION } from './workspace-knowledge-graph-contract.js';
+import { WORKSPACE_KNOWLEDGE_GRAPH_CHANGE_OVERLAY_SCHEMA_VERSION } from './workspace-knowledge-graph-change-overlay-contract.js';
 import { WORKSPACE_INTELLIGENCE_ARCHITECTURE_SCHEMA_VERSION } from './workspace-intelligence-architecture-contract.js';
 import { WORKSPACE_INTELLIGENCE_CHAIN_SCHEMA_VERSION } from './workspace-intelligence-chain-contract.js';
 import { WORKSPACE_HISTORY_SCHEMA_VERSION } from '../workspace-history.js';
@@ -33,6 +35,8 @@ import {
 import { CLI_OPERATION_RESULT_SCHEMA_VERSION } from './cli-operation-result-contract.js';
 import { OPERATIONAL_JSON_SCHEMA_VERSIONS } from './operational-json-schemas.js';
 import { CLI_RUNTIME_COMMAND_INVENTORY_SCHEMA_VERSION } from '../utils/cli-command-surface.js';
+import { WORKSPACE_KNOWLEDGE_SEARCH_SCHEMA_VERSION } from '../workspace-knowledge-graph-query.js';
+import { WORKSPACE_GRAPH_TOKEN_EFFICIENCY_SCHEMA_VERSION } from '../workspace-graph-token-efficiency.js';
 
 export const PUBLISHED_CONTRACT_CATALOG_SCHEMA_VERSION =
   'workspai-published-contract-catalog-v1' as const;
@@ -40,6 +44,7 @@ export const PUBLISHED_CONTRACT_CATALOG_SCHEMA_VERSION =
 /** Single source of truth for schema versions advertised to IDE/CI consumers. */
 export function getPublishedContractVersions() {
   return {
+    workspaceContract: 1,
     runtimeCommandSurface: RUNTIME_COMMAND_SURFACE_SCHEMA_VERSION,
     cliRuntimeCommandInventory: CLI_RUNTIME_COMMAND_INVENTORY_SCHEMA_VERSION,
     cliOperationResult: CLI_OPERATION_RESULT_SCHEMA_VERSION,
@@ -60,6 +65,10 @@ export function getPublishedContractVersions() {
     workspaceVerify: WORKSPACE_VERIFY_SCHEMA_VERSION,
     workspaceContext: WORKSPACE_CONTEXT_SCHEMA_VERSION,
     workspaceDependencyGraph: WORKSPACE_DEPENDENCY_GRAPH_SCHEMA_VERSION,
+    workspaceKnowledgeGraph: WORKSPACE_KNOWLEDGE_GRAPH_SCHEMA_VERSION,
+    workspaceKnowledgeGraphChangeOverlay: WORKSPACE_KNOWLEDGE_GRAPH_CHANGE_OVERLAY_SCHEMA_VERSION,
+    workspaceKnowledgeSearch: WORKSPACE_KNOWLEDGE_SEARCH_SCHEMA_VERSION,
+    workspaceGraphTokenEfficiency: WORKSPACE_GRAPH_TOKEN_EFFICIENCY_SCHEMA_VERSION,
     workspaceIntelligenceHistory: WORKSPACE_HISTORY_SCHEMA_VERSION,
     agentCustomizationPackCapabilities: AGENT_CUSTOMIZATION_PACK_SCHEMA_VERSION,
     agentCustomizationPackReport: WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS.agentCustomizationPack,
@@ -76,7 +85,7 @@ export function getPublishedContractVersions() {
 }
 
 export type PublishedContractDescriptor = {
-  schemaVersion: string | Record<string, string | null>;
+  schemaVersion: string | number | Record<string, string | null>;
   contractPath: string | null;
   publication: 'json-schema' | 'capability-contract' | 'embedded-type';
   artifacts?: Record<
@@ -89,6 +98,7 @@ export type PublishedContractDescriptor = {
 export function getPublishedContractCatalog() {
   const versions = getPublishedContractVersions();
   const paths: Record<keyof typeof versions, string | null> = {
+    workspaceContract: 'contracts/workspace-contract.v1.json',
     runtimeCommandSurface: 'contracts/runtime-command-surface.v1.json',
     cliRuntimeCommandInventory: 'contracts/cli-runtime-command-inventory.v1.snapshot.json',
     cliOperationResult: 'contracts/cli-operation-result.v1.json',
@@ -109,6 +119,12 @@ export function getPublishedContractCatalog() {
     workspaceVerify: 'contracts/workspace-intelligence/workspace-verify.v1.json',
     workspaceContext: 'contracts/workspace-intelligence/workspace-context.v1.json',
     workspaceDependencyGraph: 'contracts/workspace-intelligence/workspace-dependency-graph.v1.json',
+    workspaceKnowledgeGraph: 'contracts/workspace-intelligence/workspace-knowledge-graph.v1.json',
+    workspaceKnowledgeGraphChangeOverlay:
+      'contracts/workspace-intelligence/workspace-knowledge-graph-change-overlay.v1.json',
+    workspaceKnowledgeSearch: 'contracts/workspace-intelligence/workspace-knowledge-search.v1.json',
+    workspaceGraphTokenEfficiency:
+      'contracts/workspace-intelligence/workspace-graph-token-efficiency.v1.json',
     workspaceIntelligenceHistory:
       'contracts/workspace-intelligence/workspace-intelligence-history.v1.json',
     agentCustomizationPackCapabilities: 'contracts/agent-customization-pack.v1.json',

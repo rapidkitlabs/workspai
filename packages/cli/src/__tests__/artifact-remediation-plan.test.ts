@@ -92,8 +92,9 @@ describe('artifact remediation plan', () => {
         }),
         expect.objectContaining({
           cardId: 'readiness',
-          mode: 'run-command',
-          command: 'npx workspai readiness --json',
+          mode: 'verify-before-fix',
+          command: 'npx workspai doctor workspace --plan --json',
+          verifyCommand: 'npx workspai readiness --json',
         }),
       ])
     );
@@ -127,7 +128,7 @@ describe('artifact remediation plan', () => {
       expect.arrayContaining([
         expect.objectContaining({
           cardId: 'readiness',
-          command: 'npx workspai readiness --strict --json',
+          command: 'npx workspai doctor workspace --plan --json',
           verifyCommand: 'npx workspai readiness --strict --json',
         }),
         expect.objectContaining({

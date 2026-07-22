@@ -155,23 +155,26 @@ export async function withWorkspaceArtifactLock<T>(
         }
         throw error;
       }
-      const stat = await fsExtra.stat(lockPath).catch(() => null);
-      if (stat && Date.now() - stat.mtimeMs > staleAfterMs) {
-        const lock = await fsExtra.readJson(lockPath).catch(() => null);
-        const ownerPid = Number(lock?.pid);
-        let ownerAlive = false;
-        if (Number.isInteger(ownerPid) && ownerPid > 0) {
-          try {
-            process.kill(ownerPid, 0);
-            ownerAlive = true;
-          } catch (ownerError) {
-            ownerAlive = (ownerError as NodeJS.ErrnoException).code === 'EPERM';
-          }
+      const [stat, lock] = await Promise.all([
+        fsExtra.stat(lockPath).catch(() => null),
+        fsExtra.readJson(lockPath).catch(() => null),
+      ]);
+      const ownerPid = Number(lock?.pid);
+      const hasOwnerPid = Number.isInteger(ownerPid) && ownerPid > 0;
+      let ownerAlive = false;
+      if (hasOwnerPid) {
+        try {
+          process.kill(ownerPid, 0);
+          ownerAlive = true;
+        } catch (ownerError) {
+          ownerAlive = (ownerError as NodeJS.ErrnoException).code === 'EPERM';
         }
-        if (!ownerAlive) {
-          await fsExtra.remove(lockPath).catch(() => undefined);
-          continue;
-        }
+      }
+      const expiredUnknownOwner =
+        !hasOwnerPid && Boolean(stat && Date.now() - stat.mtimeMs > staleAfterMs);
+      if ((hasOwnerPid && !ownerAlive) || expiredUnknownOwner) {
+        await fsExtra.remove(lockPath).catch(() => undefined);
+        continue;
       }
       if (Date.now() - startedAt >= timeoutMs) {
         throw new Error(`Timed out waiting for workspace artifact lock: ${relativePath}`);
@@ -220,6 +223,72 @@ export async function writeWorkspaceArtifactJson(
   );
 
   return primaryPath;
+}
+
+export async function writeWorkspaceArtifactJsonSet(
+  workspacePath: string,
+  lockRelativePath: string,
+  artifacts: readonly { relativePath: string; payload: unknown }[]
+): Promise<string[]> {
+  if (artifacts.length === 0) return [];
+  const normalized = artifacts.map((artifact) => ({
+    ...artifact,
+    path: resolveWorkspaceArtifactPath(workspacePath, artifact.relativePath),
+  }));
+  const duplicate = normalized.find(
+    (artifact, index) =>
+      normalized.findIndex((candidate) => candidate.path === artifact.path) !== index
+  );
+  if (duplicate)
+    throw new Error(`Duplicate workspace artifact transaction target: ${duplicate.relativePath}`);
+  for (const artifact of normalized) {
+    assertWorkspaceArtifactContract(artifact.relativePath, artifact.payload);
+  }
+
+  return withWorkspaceArtifactLock(workspacePath, lockRelativePath, async () => {
+    const preimages = await Promise.all(
+      normalized.map(async (artifact) => ({
+        path: artifact.path,
+        exists: await fsExtra.pathExists(artifact.path),
+        contents: await fsExtra.readFile(artifact.path).catch(() => null),
+      }))
+    );
+    try {
+      for (let index = 0; index < normalized.length; index += 1) {
+        const artifact = normalized[index];
+        await replaceArtifactAtomically(workspacePath, artifact.path, (temporaryPath) =>
+          fsExtra.writeJson(temporaryPath, artifact.payload, { spaces: 2 })
+        );
+        const failAfter = Number(process.env.WORKSPAI_TEST_FAIL_ARTIFACT_SET_AFTER ?? 0);
+        if (Number.isInteger(failAfter) && failAfter === index + 1) {
+          throw new Error(`Injected artifact-set failure after ${failAfter} write(s).`);
+        }
+      }
+      return normalized.map((artifact) => artifact.path);
+    } catch (error) {
+      const restorations = await Promise.allSettled(
+        preimages.map(async (preimage) => {
+          if (!preimage.exists || preimage.contents === null) {
+            await fsExtra.remove(preimage.path);
+            return;
+          }
+          await replaceArtifactAtomically(workspacePath, preimage.path, (temporaryPath) =>
+            fsExtra.writeFile(temporaryPath, preimage.contents as Buffer)
+          );
+        })
+      );
+      const failures = restorations.filter(
+        (result): result is PromiseRejectedResult => result.status === 'rejected'
+      );
+      if (failures.length > 0) {
+        throw new AggregateError(
+          [error, ...failures.map((failure) => failure.reason)],
+          'Workspace artifact transaction failed and rollback was incomplete.'
+        );
+      }
+      throw error;
+    }
+  });
 }
 
 export async function writeWorkspaceArtifactText(

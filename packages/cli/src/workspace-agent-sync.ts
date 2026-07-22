@@ -49,6 +49,10 @@ import {
   assertWorkspaceArtifactContract,
   workspaceArtifactContractFor,
 } from './contracts/artifact-contract-registry.js';
+import {
+  createLifecycleTransaction,
+  recoverActiveLifecycleTransactions,
+} from './utils/lifecycle-transaction.js';
 import { readWorkspaceContract } from './utils/workspace-contract.js';
 import { firstExistingWorkspaceArtifactPath } from './utils/artifact-path-compat.js';
 import {
@@ -168,7 +172,12 @@ export const AGENT_REPORT_CATALOG: AgentReportCatalogEntry[] = [
   },
   {
     relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.model,
-    label: 'Workspace model graph',
+    label: 'Workspace model',
+    required: false,
+  },
+  {
+    relativePath: WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph,
+    label: 'Workspace knowledge graph',
     required: false,
   },
   {
@@ -367,6 +376,21 @@ function isStale(generatedAt: string | undefined, staleAfterHours: number, now: 
     return true;
   }
   return now.getTime() - parsed > staleAfterHours * 60 * 60 * 1000;
+}
+
+function isAgentReportStale(
+  report: Pick<AgentReportIndexEntry, 'path' | 'generatedAt'>,
+  staleAfterHours: number,
+  now: Date
+): boolean {
+  // The model snapshot is an accepted structural baseline, not renewable
+  // current-state evidence. Its age preserves the Diff boundary by contract;
+  // treating it as TTL-stale would force baseline replacement and erase the
+  // very changes Workspace Intelligence is expected to detect.
+  if (report.path === WORKSPACE_INTELLIGENCE_ARTIFACTS.snapshot) {
+    return false;
+  }
+  return isStale(report.generatedAt, staleAfterHours, now);
 }
 
 function normalizeTargets(targets: AgentGroundingTarget[] | undefined): Set<AgentGroundingTarget> {
@@ -644,10 +668,11 @@ function buildAgentsMarkdown(input: {
     '## Read order (mandatory before workspace diagnosis)',
     '',
     `1. \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` — latest blockers, timestamps, and report paths`,
-    `2. \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\` — canonical agent context pack`,
-    '3. Evidence artifacts listed in the index (doctor, analyze, pipeline, readiness, impact, verify)',
+    `2. \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\` — read only task-relevant context`,
+    '3. Read only the task-relevant evidence artifacts listed in the index.',
+    '4. Use `workspace graph search <query> --limit 12 --json` or MCP `searchWorkspaceGraph` before loading the full graph.',
     '',
-    'Do **not** full-repo scan until these reports are read or regenerated.',
+    'Do **not** full-repo scan or inject the complete graph when a bounded query can answer the task.',
     '',
     '## Regenerate intelligence',
     '',
@@ -721,8 +746,8 @@ function buildCopilotInstructions(): string {
     'Before answering workspace, release, or architecture questions:',
     '',
     '1. Read `AGENTS.md` (managed Workspai section).',
-    `2. Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` and \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\`.`,
-    '3. Use evidence reports before scanning the full repository.',
+    `2. Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` and only task-relevant context from \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\`.`,
+    '3. Use bounded `workspace graph search` or MCP `searchWorkspaceGraph` before scanning the full repository.',
     '',
     'Regenerate stale intelligence:',
     '',
@@ -756,8 +781,8 @@ function buildCursorRule(): string {
     'Before proposing fixes in this workspace:',
     '',
     `1. Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agents}\` and \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\`.`,
-    `2. Read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\`.`,
-    '3. Prefer evidence in `.workspai/reports/*` over full-repo exploration.',
+    `2. Read only task-relevant context from \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\`.`,
+    '3. Prefer bounded graph search and evidence reports over full-repo exploration.',
     '',
     'Refresh when stale:',
     '',
@@ -797,7 +822,8 @@ function buildCopilotWorkspaceInstructions(): string {
     '',
     '## Scope rules',
     '',
-    `- Start from \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\` and \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentContext}\`.`,
+    `- Start from \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\`; read only task-relevant context and evidence.`,
+    '- Prefer bounded `workspace graph search` or MCP `searchWorkspaceGraph` over loading the complete graph.',
     '- Distinguish workspace-level blockers from project-level blockers.',
     '- When a project is active, cite its name, path, framework, and evidence source.',
     '- Do not translate unsupported stack requests into unrelated native kits.',
@@ -818,6 +844,40 @@ function buildClaudeEvidenceRule(): string {
     '- Start from `INDEX.json`, then `workspace-context-agent.json`.',
     '- Use report blockers as the primary fix target.',
     '- Regenerate with `npx workspai workspace agent-sync --write`.',
+    '',
+  ].join('\n');
+}
+
+function buildLegacyClaudeEvidenceRule(): string {
+  return [
+    '# Legacy RapidKit evidence alias',
+    '',
+    'Compatibility path only. Use `.claude/rules/workspai-evidence.md` as the canonical rule.',
+    '',
+  ].join('\n');
+}
+
+function buildLegacyCursorRule(): string {
+  return [
+    '---',
+    'description: Legacy RapidKit metadata compatibility alias',
+    'globs: [".rapidkit/**", "**/.rapidkit/**"]',
+    'alwaysApply: false',
+    '---',
+    '',
+    'Use `.cursor/rules/workspai-grounding.mdc` for canonical Workspai grounding.',
+    '',
+  ].join('\n');
+}
+
+function buildLegacyCopilotInstructions(kind: 'workspace' | 'evidence'): string {
+  return [
+    '---',
+    'applyTo: ".rapidkit/**,**/.rapidkit/**"',
+    'description: Legacy RapidKit metadata compatibility alias',
+    '---',
+    '',
+    `Use \`.github/instructions/workspai-${kind}.instructions.md\` as the canonical Workspai instruction.`,
     '',
   ].join('\n');
 }
@@ -880,10 +940,15 @@ function buildMcpToolsResource(): string {
   return buildSkillResource({
     title: 'MCP Tool Design',
     lines: [
-      'Workspai MCP is a future read-mostly bridge. Use the CLI reports today; do not assume a running MCP server exists.',
+      'Workspai MCP is a read-mostly bridge over contract-validated workspace artifacts.',
       '',
       'Candidate read tools:',
       `- \`getWorkspaceModel\` — read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.model}\`.`,
+      `- \`getWorkspaceKnowledgeGraph\` — read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph}\`.`,
+      '- `queryWorkspaceEntities` — filter proof-backed graph entities by kind.',
+      '- `searchWorkspaceGraph` — retrieve bounded proof-backed context by text query.',
+      '- `getWorkspaceGraphEvidence` — resolve evidence for an entity or relation.',
+      '- `findWorkspaceGraphPath` — find a shortest proof-carrying relationship path.',
       `- \`getEvidenceIndex\` — read \`${WORKSPACE_INTELLIGENCE_ARTIFACTS.agentIndex}\`.`,
       '- `getBlockers` — derive current blockers from INDEX and gate reports.',
       '- `getSafeCommands` — read safe commands from `workspace-context-agent.json`.',
@@ -915,6 +980,31 @@ function buildMcpDesignManifest(input: { workspacePath: string; generatedAt: str
         {
           name: 'getWorkspaceModel',
           reads: [WORKSPACE_INTELLIGENCE_ARTIFACTS.model],
+          mutates: false,
+        },
+        {
+          name: 'getWorkspaceKnowledgeGraph',
+          reads: [WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph],
+          mutates: false,
+        },
+        {
+          name: 'queryWorkspaceEntities',
+          reads: [WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph],
+          mutates: false,
+        },
+        {
+          name: 'searchWorkspaceGraph',
+          reads: [WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph],
+          mutates: false,
+        },
+        {
+          name: 'getWorkspaceGraphEvidence',
+          reads: [WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph],
+          mutates: false,
+        },
+        {
+          name: 'findWorkspaceGraphPath',
+          reads: [WORKSPACE_INTELLIGENCE_ARTIFACTS.knowledgeGraph],
           mutates: false,
         },
         {
@@ -1222,7 +1312,7 @@ function buildAgentCustomizationPackReport(input: {
   };
 }
 
-export async function syncWorkspaceAgentGrounding(
+async function syncWorkspaceAgentGroundingUnsafe(
   options: SyncWorkspaceAgentGroundingOptions
 ): Promise<AgentGroundingSyncResult> {
   const workspacePath = path.resolve(options.workspacePath);
@@ -1370,7 +1460,7 @@ export async function syncWorkspaceAgentGrounding(
     record(
       await writeTextFile(
         path.join(workspacePath, LEGACY_CLAUDE_EVIDENCE_RULE_PATH),
-        `${buildClaudeEvidenceRule()}\n`,
+        `${buildLegacyClaudeEvidenceRule()}\n`,
         write
       ),
       LEGACY_CLAUDE_EVIDENCE_RULE_PATH
@@ -1389,7 +1479,7 @@ export async function syncWorkspaceAgentGrounding(
     record(
       await writeTextFile(
         path.join(workspacePath, LEGACY_CURSOR_GROUNDING_RULE_PATH),
-        buildCursorRule(),
+        buildLegacyCursorRule(),
         write
       ),
       LEGACY_CURSOR_GROUNDING_RULE_PATH
@@ -1416,7 +1506,7 @@ export async function syncWorkspaceAgentGrounding(
     record(
       await writeTextFile(
         path.join(workspacePath, LEGACY_COPILOT_WORKSPACE_INSTRUCTIONS_PATH),
-        buildCopilotWorkspaceInstructions(),
+        buildLegacyCopilotInstructions('workspace'),
         write
       ),
       LEGACY_COPILOT_WORKSPACE_INSTRUCTIONS_PATH
@@ -1432,7 +1522,7 @@ export async function syncWorkspaceAgentGrounding(
     record(
       await writeTextFile(
         path.join(workspacePath, LEGACY_COPILOT_EVIDENCE_INSTRUCTIONS_PATH),
-        buildCopilotEvidenceInstructions(),
+        buildLegacyCopilotInstructions('evidence'),
         write
       ),
       LEGACY_COPILOT_EVIDENCE_INSTRUCTIONS_PATH
@@ -1766,7 +1856,7 @@ export async function syncWorkspaceAgentGrounding(
     .filter((report) => report.required && !report.exists)
     .map((r) => r.path);
   const staleReports = finalIndex.reports
-    .filter((report) => report.exists && isStale(report.generatedAt, staleAfterHours, now))
+    .filter((report) => report.exists && isAgentReportStale(report, staleAfterHours, now))
     .map((report) => report.path);
 
   if (strict) {
@@ -1806,6 +1896,10 @@ export async function syncWorkspaceAgentGrounding(
     experimentalHooks: options.experimentalHooks === true,
   });
 
+  if (write && process.env.WORKSPAI_TEST_FAIL_AGENT_SYNC_BEFORE_PACK === '1') {
+    throw new Error('Injected agent-sync failure before generation commit.');
+  }
+
   record(
     await writeTextFile(
       path.join(workspacePath, AGENT_CUSTOMIZATION_PACK_REPORT_PATH),
@@ -1828,4 +1922,49 @@ export async function syncWorkspaceAgentGrounding(
     staleReports,
     strictViolations,
   };
+}
+
+export async function syncWorkspaceAgentGrounding(
+  options: SyncWorkspaceAgentGroundingOptions
+): Promise<AgentGroundingSyncResult> {
+  if (options.write !== true) return syncWorkspaceAgentGroundingUnsafe(options);
+
+  const workspacePath = path.resolve(options.workspacePath);
+  const journalDirectory = path.join(workspacePath, '.workspai', 'transactions', 'agent-sync');
+  await recoverActiveLifecycleTransactions(journalDirectory);
+  const preview = await syncWorkspaceAgentGroundingUnsafe({
+    ...options,
+    write: false,
+    dryRun: true,
+  });
+  if (!preview.pack) throw new Error('Agent-sync dry run did not produce an output inventory.');
+  const outputPaths = [
+    ...preview.pack.outputInventory.map((output) => output.path),
+    AGENT_REPORTS_INDEX_PATH,
+    AGENT_CUSTOMIZATION_PACK_REPORT_PATH,
+  ];
+  const transaction = await createLifecycleTransaction({ journalDirectory });
+  try {
+    for (const relativePath of [...new Set(outputPaths)].sort()) {
+      const absolutePath = path.resolve(workspacePath, relativePath);
+      const relative = path.relative(workspacePath, absolutePath);
+      if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+        throw new Error(`Agent-sync output escapes workspace root: ${relativePath}`);
+      }
+      await transaction.captureFile(absolutePath);
+    }
+    const result = await syncWorkspaceAgentGroundingUnsafe(options);
+    await transaction.commit();
+    return result;
+  } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        'Agent-sync generation failed and rollback was incomplete.'
+      );
+    }
+    throw error;
+  }
 }

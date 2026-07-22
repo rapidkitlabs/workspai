@@ -5,7 +5,74 @@
 > `rapidkit` commands and `.rapidkit` paths. Use the [CLI README](./README.md) and
 > [Command Reference](./docs/commands-reference.md) for current usage.
 
-## Latest Release: v0.46.0 (July 18, 2026)
+## Latest Release: v0.47.0 (July 21, 2026)
+
+### Evidence-Backed Workspace Knowledge Graph
+
+This minor release makes the current Workspace Model directly useful for
+proof-backed retrieval across projects, code, packages, APIs, infrastructure,
+delivery, documentation, decisions, tests, and ownership. The graph is derived
+deterministically from the canonical model and bound to its exact SHA-256
+revision.
+
+**What's New:**
+
+- **Queryable workspace knowledge**
+  - Added bounded graph search, typed entity/evidence/path queries, complete
+    portable emission, change/PR overlays, and retrieval payload benchmarks.
+  - Added stable identities, proof paths, derivation/trust metadata, quality
+    diagnostics, secret filtering, and deterministic query indexes.
+
+- **One graph revision for every consumer**
+  - The Model stage now publishes `workspace-model.json` and
+    `workspace-knowledge-graph.json` atomically.
+  - CLI, unified runner, context, Agent Sync, MCP, IDE capability discovery, CI,
+    and workspace contract graph output consume the same model-bound revision.
+  - Agents now start with bounded search and proof traversal instead of loading
+    the complete graph into every prompt.
+
+- **Versioned public contracts**
+  - Added Knowledge Graph, change overlay, bounded search, and token-efficiency
+    schemas.
+  - Expanded the published catalog, artifact registry, runtime command surface,
+    architecture contract, and semantic conformance gates.
+
+- **Clearer user documentation**
+  - Added a two-minute graph guide, reproducible benchmark methodology,
+    Agent/IDE/MCP workflow, and plain-language glossary.
+  - Separated deterministic Workspace Intelligence from the optional embedding
+    module recommender and removed unqualified AI score/cost claims.
+
+- **Security and canonical paths**
+  - Updated vulnerable `brace-expansion` and `fast-uri` dependencies to their
+    patched releases; the final online npm audit reports zero vulnerabilities.
+  - Canonicalized bridged project metadata into `.workspai` while retaining
+    legacy read compatibility.
+
+**Breaking changes:** None.
+
+**Verification:**
+
+- 2,062 CLI tests passed with 8 explicit skips.
+- All 11 runtime-conformance stages and required artifacts passed.
+- Documentation links, examples, drift guard, README smoke, and live command
+  surface parity passed.
+- The measured 16-project fixture produced 1,738 entities, 2,244 relations, and
+  2,106 portable proofs; fixture statistics are not universal product claims.
+
+**Upgrade:**
+
+```bash
+npm install -g workspai@0.47.0
+workspai workspace intelligence run --for-agent codex --strict --json
+workspai workspace graph search "authentication endpoint" --limit 12 --json
+```
+
+[Full Release Notes](./releases/RELEASE_NOTES_v0.47.0.md)
+
+---
+
+## Previous Release: v0.46.0 (July 18, 2026)
 
 ### Contract-Backed Unified Workspace Intelligence Runner
 

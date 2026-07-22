@@ -54,6 +54,8 @@ import {
 import { DOCTOR_WORKSPACE_EVIDENCE_SCHEMA } from '../../utils/doctor-evidence-contract';
 import { WORKSPACE_SKILLS_INDEX_SCHEMA_VERSION } from '../../contracts/workspace-skills-index-contract';
 import { WORKSPACE_EXPLAIN_SCHEMA_VERSION } from '../../contracts/workspace-explain-contract';
+import { WORKSPACE_KNOWLEDGE_GRAPH_SCHEMA_VERSION } from '../../contracts/workspace-knowledge-graph-contract';
+import { WORKSPACE_KNOWLEDGE_GRAPH_REPORT_PATH } from '../../workspace-knowledge-graph';
 
 describe('workspace intelligence chain contract', () => {
   it('forbids canonical report path literals outside the runtime registry', () => {
@@ -235,6 +237,7 @@ describe('workspace intelligence chain contract', () => {
   it('binds every canonical producer export to the artifact registry', () => {
     expect({
       model: WORKSPACE_MODEL_REPORT_PATH,
+      knowledgeGraph: WORKSPACE_KNOWLEDGE_GRAPH_REPORT_PATH,
       snapshot: WORKSPACE_MODEL_SNAPSHOT_REPORT_PATH,
       diff: WORKSPACE_MODEL_DIFF_REPORT_PATH,
       impact: WORKSPACE_IMPACT_REPORT_PATH,
@@ -257,6 +260,7 @@ describe('workspace intelligence chain contract', () => {
   it('binds every canonical producer schema to the artifact registry', () => {
     expect({
       model: WORKSPACE_MODEL_SCHEMA_VERSION,
+      knowledgeGraph: WORKSPACE_KNOWLEDGE_GRAPH_SCHEMA_VERSION,
       snapshot: WORKSPACE_MODEL_SNAPSHOT_SCHEMA_VERSION,
       diff: WORKSPACE_MODEL_DIFF_SCHEMA_VERSION,
       impact: WORKSPACE_IMPACT_SCHEMA_VERSION,

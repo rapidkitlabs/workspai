@@ -14,7 +14,10 @@ import {
   withWorkspaceArtifactLock,
 } from '../utils/artifact-path-compat';
 import { WORKSPACE_INTELLIGENCE_ARTIFACTS } from '../contracts/workspace-intelligence-runtime-registry';
-import { workspaceArtifactContractFor } from '../contracts/artifact-contract-registry';
+import {
+  WORKSPACE_ARTIFACT_CONTRACTS,
+  workspaceArtifactContractFor,
+} from '../contracts/artifact-contract-registry';
 
 const temporaryRoots: string[] = [];
 
@@ -158,8 +161,14 @@ describe('workspace artifact path compatibility', () => {
 
   it('registers supplemental producer artifacts at the write boundary', () => {
     for (const artifactPath of [
+      '.workspai/workspace.contract.json',
       '.workspai/cache/workspace-model.v1.json',
       '.workspai/workspace-registry.v1.json',
+      '.workspai/compatibility-matrix.json',
+      '.workspai/reports/bootstrap-compliance.latest.json',
+      '.workspai/reports/mirror-ops.latest.json',
+      '.workspai/reports/transparency-evidence.latest.json',
+      '.workspai/reports/share-bundle.json',
       '.workspai/reports/doctor-project-last-run.json',
       '.workspai/reports/autopilot-release-last-run.json',
       '.workspai/reports/autopilot-release.json',
@@ -167,6 +176,28 @@ describe('workspace artifact path compatibility', () => {
       '.workspai/reports/workspace-trace-last-run.json',
     ]) {
       expect(workspaceArtifactContractFor(artifactPath), artifactPath).not.toBeNull();
+    }
+  });
+
+  it('maps timestamped operational reports to their canonical public contracts', () => {
+    expect(
+      workspaceArtifactContractFor(
+        '.workspai/reports/bootstrap-compliance-2026-07-21T00-00-00-000Z.json'
+      )?.contractPath
+    ).toBe('contracts/bootstrap-compliance.v1.json');
+    expect(
+      workspaceArtifactContractFor('.workspai/reports/mirror-ops-1721510000000.json')?.contractPath
+    ).toBe('contracts/mirror-ops.v1.json');
+    expect(
+      workspaceArtifactContractFor(
+        '.workspai/reports/transparency-evidence-2026-07-21T00-00-00-000Z.json'
+      )?.contractPath
+    ).toBe('contracts/transparency-evidence.v1.json');
+  });
+
+  it('requires at least one declared producer for every registered artifact contract', () => {
+    for (const [artifactPath, descriptor] of Object.entries(WORKSPACE_ARTIFACT_CONTRACTS)) {
+      expect(descriptor.producerCommands, artifactPath).not.toHaveLength(0);
     }
   });
 
@@ -231,6 +262,21 @@ describe('workspace artifact path compatibility', () => {
       })
     ).rejects.toThrow(/timed out/i);
     expect(await fsExtra.pathExists(lockPath)).toBe(true);
+  });
+
+  it('recovers a lock immediately when its recorded owner process is gone', async () => {
+    const root = await temporaryWorkspace();
+    const relativePath = '.workspai/reports/example.json';
+    const lockPath = `${resolveWorkspaceArtifactPath(root, relativePath)}.lock`;
+    await fsExtra.outputJson(lockPath, { pid: 2_147_483_647, createdAt: new Date().toISOString() });
+
+    await expect(
+      withWorkspaceArtifactLock(root, relativePath, async () => 'recovered', {
+        timeoutMs: 100,
+        staleAfterMs: 60_000,
+      })
+    ).resolves.toBe('recovered');
+    expect(await fsExtra.pathExists(lockPath)).toBe(false);
   });
 
   it('recovers a stale lock owned by a dead process and cleans it after success', async () => {

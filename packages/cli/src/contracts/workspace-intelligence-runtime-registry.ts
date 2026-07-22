@@ -8,6 +8,7 @@
 
 export const WORKSPACE_INTELLIGENCE_ARTIFACTS = {
   model: '.workspai/reports/workspace-model.json',
+  knowledgeGraph: '.workspai/reports/workspace-knowledge-graph.json',
   snapshot: '.workspai/reports/workspace-model-snapshot.json',
   diff: '.workspai/reports/workspace-model-diff-last-run.json',
   impact: '.workspai/reports/workspace-impact-last-run.json',
@@ -32,6 +33,7 @@ export type WorkspaceIntelligenceArtifactPath =
 
 export const WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS = {
   model: 'workspace-model.v1',
+  knowledgeGraph: 'workspace-knowledge-graph.v1',
   snapshot: 'workspace-model-snapshot.v1',
   diff: 'workspace-model-diff.v1',
   impact: 'workspace-impact.v1',
@@ -52,6 +54,7 @@ export const WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMAS = {
 
 export const WORKSPACE_INTELLIGENCE_ARTIFACT_SCHEMA_CONTRACTS = {
   model: 'contracts/workspace-intelligence/workspace-model.v1.json',
+  knowledgeGraph: 'contracts/workspace-intelligence/workspace-knowledge-graph.v1.json',
   snapshot: 'contracts/workspace-intelligence/workspace-model-snapshot.v1.json',
   diff: 'contracts/workspace-intelligence/workspace-model-diff.v1.json',
   impact: 'contracts/workspace-intelligence/workspace-impact.v1.json',
@@ -121,7 +124,7 @@ const A = WORKSPACE_INTELLIGENCE_ARTIFACTS;
 export const WORKSPACE_INTELLIGENCE_RUNTIME_STEPS = {
   model: {
     command: ['workspace', 'model', '--json', '--write'],
-    produces: [A.model],
+    produces: [A.model, A.knowledgeGraph],
   },
   diff: {
     command: ['workspace', 'diff', '--from', A.snapshot, '--json'],

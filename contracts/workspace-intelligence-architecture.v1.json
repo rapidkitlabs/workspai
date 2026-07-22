@@ -159,6 +159,7 @@
       "label": "System understanding",
       "artifacts": [
         ".workspai/reports/workspace-model.json",
+        ".workspai/reports/workspace-knowledge-graph.json",
         ".workspai/reports/workspace-model-diff-last-run.json",
         ".workspai/reports/workspace-impact-last-run.json"
       ],
@@ -302,9 +303,10 @@
         "workspace graph mermaid"
       ],
       "reads": [
-        ".workspai/reports/workspace-model.json#graph"
+        ".workspai/reports/workspace-model.json",
+        ".workspai/reports/workspace-knowledge-graph.json"
       ],
-      "role": "Inspect or render the graph already embedded in the workspace model.",
+      "role": "Query the proof-backed graph derived from the canonical workspace model.",
       "chainStep": false
     },
     {
@@ -345,7 +347,8 @@
           "workspace model --json --write"
         ],
         "artifacts": [
-          ".workspai/reports/workspace-model.json"
+          ".workspai/reports/workspace-model.json",
+          ".workspai/reports/workspace-knowledge-graph.json"
         ]
       },
       {

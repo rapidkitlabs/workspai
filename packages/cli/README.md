@@ -19,6 +19,40 @@ It gives developers, CI, IDEs, and AI agents the same evidence-backed source of
 truth: workspace model, agent context, impact analysis, verification evidence,
 contracts, and release gates.
 
+### What changes for the user?
+
+Without Workspai, an agent repeatedly searches files and reconstructs a partial
+picture. With Workspai, it can ask a bounded question and receive the matching
+entities, nearby relations, and source proofs:
+
+```bash
+npx workspai workspace graph search "who implements the login API?" --limit 8 --json
+```
+
+Workspai is broader than a repository code graph. It connects projects, source,
+packages, APIs, infrastructure, pipelines, documentation, decisions, tests, and
+ownership inside one workspace model—then uses that same truth for impact,
+verification, CI, IDEs, MCP, and agent grounding.
+
+### Current measured fixture
+
+| Measure                              | Observed value |
+| ------------------------------------ | -------------: |
+| Registered projects                  |             16 |
+| Knowledge Graph entities             |          1,738 |
+| Knowledge Graph relations            |          2,244 |
+| Portable proofs                      |          2,106 |
+| Readable proof-source artifacts      |            392 |
+| Corpus size (`characters / 4`)       | 134,105 tokens |
+| `api endpoint --limit 8` retrieval   |   2,812 tokens |
+| Observed retrieval payload reduction |          97.9% |
+| Observed corpus/retrieval ratio      |         47.69× |
+
+This is a reproducible observation from one 16-project development workspace on
+2026-07-21, not a universal token-cost or answer-quality claim. See
+[Graph Benchmark Methodology](docs/graph-benchmark-methodology.md) for the source
+hash, formulas, limitations, and publication gate.
+
 ## Start here
 
 ### Install
@@ -153,6 +187,12 @@ the broader governance/release orchestrator (`sync → doctor → analyze → re
 | Verify affected projects and evidence      | `npx workspai workspace verify --from-impact <impact-report> --json --strict`            |
 | Explain a blocker                          | `npx workspai workspace explain release-blocked --json --write`                          |
 | Inspect a project in the dependency graph  | `npx workspai workspace graph explain <project> --json`                                  |
+| Query proof-backed workspace entities      | `npx workspai workspace graph entities endpoint --json`                                  |
+| Retrieve bounded context for an agent      | `npx workspai workspace graph search "authentication endpoint" --limit 12 --json`        |
+| Measure retrieval payload reduction        | `npx workspai workspace graph benchmark "authentication endpoint" --limit 12 --json`     |
+| Trace a relationship and its evidence      | `npx workspai workspace graph path <from> <to> --json`                                   |
+| Compare two knowledge-graph revisions      | `npx workspai workspace graph overlay --from <graph.json> --json`                        |
+| Persist model + agent/MCP graph artifact   | `npx workspai workspace model --write --json`                                            |
 | Run affected project tests                 | `npx workspai workspace run test --affected --blast-radius --json`                       |
 | Run the release/governance gate            | `npx workspai pipeline --json --strict`                                                  |
 | Run the canonical intelligence chain       | `npx workspai workspace intelligence run --for-agent codex --strict --json`              |
@@ -211,6 +251,11 @@ including `AGENTS.md`, report indexes, skills, and supported Copilot, Cursor,
 Claude, and Codex surfaces. AI tools begin with the same scope, commands,
 contracts, blockers, and verification evidence used by humans and CI.
 
+For a user-focused graph quickstart, AI output paths, performance boundaries,
+and reproducible token-efficiency methodology, see the
+[Workspace Knowledge Graph guide](docs/workspace-knowledge-graph.md) and
+[Graph Benchmark Methodology](docs/graph-benchmark-methodology.md).
+
 ## Outputs and Consumers
 
 Workspai separates human output, machine output, and durable cross-tool state:
@@ -230,6 +275,7 @@ Important durable outputs:
 | Artifact                                                | Producer                       | Used for                              |
 | ------------------------------------------------------- | ------------------------------ | ------------------------------------- |
 | `.workspai/reports/workspace-model.json`                | `workspace model --write`      | Canonical system structure            |
+| `.workspai/reports/workspace-knowledge-graph.json`      | `workspace model --write`      | Proof-backed retrieval and MCP        |
 | `.workspai/reports/workspace-model-diff-last-run.json`  | `workspace diff`               | Structural change evidence            |
 | `.workspai/reports/workspace-impact-last-run.json`      | `workspace impact`             | Blast radius and affected scope       |
 | `.workspai/reports/workspace-verify-last-run.json`      | `workspace verify`             | Structured verification gate          |
@@ -293,18 +339,21 @@ generators, frontend generators, or workspaces created with
 
 ## Documentation
 
-| Documentation                                                                | Purpose                                                  |
-| ---------------------------------------------------------------------------- | -------------------------------------------------------- |
-| [Documentation index](docs/README.md)                                        | All user, operator, contract, and contributor docs       |
-| [Command reference](docs/commands-reference.md)                              | Complete command syntax and flags                        |
-| [Creating workspaces and projects](docs/creating-workspaces-and-projects.md) | Interactive, automated, location, and linking behavior   |
-| [Workspace operations](docs/workspace-operations.md)                         | Adopt, import, snapshots, archives, contracts, and infra |
-| [Workspace run](docs/workspace-run.md)                                       | Polyglot and affected-project execution                  |
-| [Doctor command](docs/doctor-command.md)                                     | Health checks, evidence, fixes, and exit codes           |
-| [CI workflows](docs/ci-workflows.md)                                         | CI examples and repository validation                    |
-| [Configuration](docs/config-file-guide.md)                                   | User configuration and precedence                        |
-| [Open-source scenarios](docs/OPEN_SOURCE_USER_SCENARIOS.md)                  | Role-oriented examples                                   |
-| [Artifact Catalog](docs/contracts/ARTIFACT_CATALOG.md)                       | Canonical files, writers, schemas, and readers           |
+| Documentation                                                                | Purpose                                                       |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| [Documentation index](docs/README.md)                                        | All user, operator, contract, and contributor docs            |
+| [Command reference](docs/commands-reference.md)                              | Complete command syntax and flags                             |
+| [Creating workspaces and projects](docs/creating-workspaces-and-projects.md) | Interactive, automated, location, and linking behavior        |
+| [Workspace operations](docs/workspace-operations.md)                         | Adopt, import, snapshots, archives, contracts, and infra      |
+| [Workspace run](docs/workspace-run.md)                                       | Polyglot and affected-project execution                       |
+| [Workspace Knowledge Graph](docs/workspace-knowledge-graph.md)               | Proof-backed queries, AI/MCP retrieval, and graph outputs     |
+| [Graph benchmark methodology](docs/graph-benchmark-methodology.md)           | Reproducible payload-reduction measurements and claim limits  |
+| [Glossary](docs/GLOSSARY.md)                                                 | Plain-language meanings for model, graph, evidence, and gates |
+| [Doctor command](docs/doctor-command.md)                                     | Health checks, evidence, fixes, and exit codes                |
+| [CI workflows](docs/ci-workflows.md)                                         | CI examples and repository validation                         |
+| [Configuration](docs/config-file-guide.md)                                   | User configuration and precedence                             |
+| [Open-source scenarios](docs/OPEN_SOURCE_USER_SCENARIOS.md)                  | Role-oriented examples                                        |
+| [Artifact Catalog](docs/contracts/ARTIFACT_CATALOG.md)                       | Canonical files, writers, schemas, and readers                |
 
 Repository workflows include
 [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml),

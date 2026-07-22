@@ -9,6 +9,7 @@
     "agent",
     "workspaceSummary",
     "modelRef",
+    "knowledgeGraph",
     "intelligenceChain",
     "workspace",
     "scope",
@@ -29,6 +30,25 @@
     },
     "workspaceSummary": { "type": "string" },
     "modelRef": { "type": "string" },
+    "knowledgeGraph": {
+      "type": "object",
+      "required": ["artifact", "schemaVersion", "available", "queryCommands"],
+      "properties": {
+        "artifact": { "const": ".workspai/reports/workspace-knowledge-graph.json" },
+        "schemaVersion": { "const": "workspace-knowledge-graph.v1" },
+        "available": { "type": "boolean" },
+        "entityCount": { "type": "integer", "minimum": 0 },
+        "relationCount": { "type": "integer", "minimum": 0 },
+        "proofCount": { "type": "integer", "minimum": 0 },
+        "queryCommands": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 3,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
     "intelligenceChain": {
       "type": "object",
       "required": ["schemaVersion", "contractPath", "currentStep", "canonicalReadOrder"],

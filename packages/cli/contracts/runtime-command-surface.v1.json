@@ -496,6 +496,22 @@
       ]
     },
     {
+      "invocation": "mirror status",
+      "summary": "Inspect mirror configuration, lock state, and cached artifact inventory.",
+      "canonicalArgv": [
+        "mirror",
+        "status"
+      ]
+    },
+    {
+      "invocation": "mirror sync",
+      "summary": "Synchronize governed mirror artifacts and publish integrity evidence.",
+      "canonicalArgv": [
+        "mirror",
+        "sync"
+      ]
+    },
+    {
       "invocation": "modules",
       "summary": "List supported project modules and their runtime-specific capability state.",
       "canonicalArgv": [
@@ -745,6 +761,15 @@
       ]
     },
     {
+      "invocation": "workspace agent-sync --write",
+      "summary": "Publish the governed agent surface generation as a recoverable workspace transaction.",
+      "canonicalArgv": [
+        "workspace",
+        "agent-sync",
+        "--write"
+      ]
+    },
+    {
       "invocation": "workspace agent-sync --write --json --preset enterprise",
       "summary": "Generate the enterprise agent-grounding pack, persist every governed artifact, and emit a structured result.",
       "canonicalArgv": [
@@ -790,6 +815,15 @@
       "canonicalArgv": [
         "workspace",
         "contract"
+      ]
+    },
+    {
+      "invocation": "workspace contract sync",
+      "summary": "Reconcile discovered projects into the canonical workspace contract and registry summary.",
+      "canonicalArgv": [
+        "workspace",
+        "contract",
+        "sync"
       ]
     },
     {
@@ -906,6 +940,16 @@
       "output": {
         "defaultFormat": "human-or-json",
         "modes": [
+          {
+            "selector": "search <query> --limit <count> --json",
+            "format": "json",
+            "mediaType": "application/json"
+          },
+          {
+            "selector": "benchmark <query> --limit <count> --json",
+            "format": "json",
+            "mediaType": "application/json"
+          },
           {
             "selector": "emit --json",
             "format": "json",
@@ -1138,6 +1182,19 @@
       ]
     },
     {
+      "artifactPath": ".workspai/reports/workspace-knowledge-graph.json",
+      "schemaVersion": "workspace-knowledge-graph.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-knowledge-graph.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "model",
+          "--json",
+          "--write"
+        ]
+      ]
+    },
+    {
       "artifactPath": ".workspai/reports/workspace-model-snapshot.json",
       "schemaVersion": "workspace-model-snapshot.v1",
       "contractPath": "contracts/workspace-intelligence/workspace-model-snapshot.v1.json",
@@ -1346,6 +1403,22 @@
       ]
     },
     {
+      "artifactPath": ".workspai/workspace.contract.json",
+      "schemaVersion": 1,
+      "contractPath": "contracts/workspace-contract.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "sync"
+        ],
+        [
+          "workspace",
+          "contract",
+          "sync"
+        ]
+      ]
+    },
+    {
       "artifactPath": ".workspai/cache/workspace-model.v1.json",
       "schemaVersion": "workspace-model-cache.v1",
       "contractPath": "contracts/workspace-model-cache.v1.json",
@@ -1364,6 +1437,70 @@
         [
           "workspace",
           "sync"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/compatibility-matrix.json",
+      "schemaVersion": "rapidkit.compatibility-matrix.v1",
+      "contractPath": "contracts/compatibility-matrix.v1.json",
+      "producerCommands": [
+        [
+          "bootstrap"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/doctor-workspace-cache.json",
+      "schemaVersion": "doctor-workspace-cache-v2",
+      "contractPath": "contracts/doctor-workspace-cache.v2.json",
+      "producerCommands": [
+        [
+          "doctor",
+          "workspace"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/bootstrap-compliance.latest.json",
+      "schemaVersion": "bootstrap-compliance.v1",
+      "contractPath": "contracts/bootstrap-compliance.v1.json",
+      "producerCommands": [
+        [
+          "bootstrap"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/mirror-ops.latest.json",
+      "schemaVersion": "mirror-ops.v1",
+      "contractPath": "contracts/mirror-ops.v1.json",
+      "producerCommands": [
+        [
+          "mirror",
+          "status"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/transparency-evidence.latest.json",
+      "schemaVersion": "transparency-evidence.v1",
+      "contractPath": "contracts/transparency-evidence.v1.json",
+      "producerCommands": [
+        [
+          "mirror",
+          "sync"
+        ]
+      ]
+    },
+    {
+      "artifactPath": ".workspai/reports/share-bundle.json",
+      "schemaVersion": "1.1",
+      "contractPath": "contracts/workspace-share-bundle.v1.json",
+      "producerCommands": [
+        [
+          "workspace",
+          "share"
         ]
       ]
     },
@@ -1458,7 +1595,13 @@
       "artifactPath": ".workspai/reports/workspai-mcp-design.json",
       "schemaVersion": "workspai-mcp-design.v1",
       "contractPath": "contracts/workspace-intelligence/mcp-design.v1.json",
-      "producerCommands": []
+      "producerCommands": [
+        [
+          "workspace",
+          "agent-sync",
+          "--write"
+        ]
+      ]
     },
     {
       "artifactPath": ".workspai/reports/workspace-why-last-run.json",
@@ -1575,6 +1718,11 @@
           "path": ".workspai/reports/workspace-model.json",
           "schemaVersion": "workspace-model.v1",
           "contractPath": "contracts/workspace-intelligence/workspace-model.v1.json"
+        },
+        {
+          "path": ".workspai/reports/workspace-knowledge-graph.json",
+          "schemaVersion": "workspace-knowledge-graph.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-knowledge-graph.v1.json"
         }
       ]
     },

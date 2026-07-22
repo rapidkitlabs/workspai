@@ -1,6 +1,6 @@
 {
   "name": "workspai",
-  "version": "0.46.0",
+  "version": "0.47.0",
   "type": "module",
   "description": "Open-source workspace intelligence CLI for software systems: create, adopt, govern, verify, and align polyglot workspaces for humans, CI, IDEs, and AI agents.",
   "keywords": [
@@ -158,6 +158,7 @@
     "openai": "^6.22.0",
     "ora": "^8.0.1",
     "validate-npm-package-name": "^5.0.1",
+    "yaml": "^2.9.0",
     "yauzl": "^3.4.0",
     "yazl": "^3.3.1"
   },

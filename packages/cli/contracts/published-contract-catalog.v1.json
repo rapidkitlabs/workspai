@@ -1,6 +1,11 @@
 {
   "schemaVersion": "workspai-published-contract-catalog-v1",
   "contracts": {
+    "workspaceContract": {
+      "schemaVersion": 1,
+      "contractPath": "contracts/workspace-contract.v1.json",
+      "publication": "json-schema"
+    },
     "runtimeCommandSurface": {
       "schemaVersion": "rapidkit-runtime-command-surface-v1",
       "contractPath": "contracts/runtime-command-surface.v1.json",
@@ -54,6 +59,7 @@
     "workspaceIntelligenceArtifacts": {
       "schemaVersion": {
         "model": "workspace-model.v1",
+        "knowledgeGraph": "workspace-knowledge-graph.v1",
         "snapshot": "workspace-model-snapshot.v1",
         "diff": "workspace-model-diff.v1",
         "impact": "workspace-impact.v1",
@@ -78,6 +84,11 @@
           "path": ".workspai/reports/workspace-model.json",
           "schemaVersion": "workspace-model.v1",
           "contractPath": "contracts/workspace-intelligence/workspace-model.v1.json"
+        },
+        "knowledgeGraph": {
+          "path": ".workspai/reports/workspace-knowledge-graph.json",
+          "schemaVersion": "workspace-knowledge-graph.v1",
+          "contractPath": "contracts/workspace-intelligence/workspace-knowledge-graph.v1.json"
         },
         "snapshot": {
           "path": ".workspai/reports/workspace-model-snapshot.json",
@@ -204,6 +215,26 @@
     "workspaceDependencyGraph": {
       "schemaVersion": "workspace-dependency-graph.v1",
       "contractPath": "contracts/workspace-intelligence/workspace-dependency-graph.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceKnowledgeGraph": {
+      "schemaVersion": "workspace-knowledge-graph.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-knowledge-graph.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceKnowledgeGraphChangeOverlay": {
+      "schemaVersion": "workspace-knowledge-graph-change-overlay.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-knowledge-graph-change-overlay.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceKnowledgeSearch": {
+      "schemaVersion": "workspace-knowledge-search.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-knowledge-search.v1.json",
+      "publication": "json-schema"
+    },
+    "workspaceGraphTokenEfficiency": {
+      "schemaVersion": "workspace-graph-token-efficiency.v1",
+      "contractPath": "contracts/workspace-intelligence/workspace-graph-token-efficiency.v1.json",
       "publication": "json-schema"
     },
     "workspaceIntelligenceHistory": {
