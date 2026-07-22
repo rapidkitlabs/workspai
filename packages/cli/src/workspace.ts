@@ -217,10 +217,12 @@ async function readWorkspaceRegistryCandidates(): Promise<WorkspaceRegistry> {
   return merged;
 }
 
-async function readWorkspaceRegistryCandidatesStrict(): Promise<WorkspaceRegistry> {
+async function readWorkspaceRegistryCandidatesStrict(
+  registryFiles: readonly string[] = getWorkspaceRegistryFileCandidates()
+): Promise<WorkspaceRegistry> {
   const merged: WorkspaceRegistry = { workspaces: [] };
   const seen = new Set<string>();
-  for (const registryFile of getWorkspaceRegistryFileCandidates()) {
+  for (const registryFile of registryFiles) {
     const registry = await readWorkspaceRegistryFileStrict(registryFile);
     for (const entry of registry.workspaces) {
       if (seen.has(entry.path)) continue;
@@ -344,9 +346,12 @@ async function restoreWorkspaceRegistryPreimage(
   await writeWorkspaceRegistryBytesAtomically(registryFile, preimage.content as Buffer);
 }
 
-async function withWorkspaceRegistryLock<T>(operation: () => Promise<T>): Promise<T> {
-  const registryDir = getWorkspaceRegistryDirectory();
+async function withWorkspaceRegistryLock<T>(
+  registryDir: string,
+  operation: () => Promise<T>
+): Promise<T> {
   const lockPath = path.join(registryDir, 'workspaces.json.lock');
+  const lockId = randomUUID();
   await fs.mkdir(registryDir, { recursive: true });
   const startedAt = Date.now();
   let lockHandle: Awaited<ReturnType<typeof fs.open>> | undefined;
@@ -355,7 +360,7 @@ async function withWorkspaceRegistryLock<T>(operation: () => Promise<T>): Promis
     try {
       lockHandle = await fs.open(lockPath, 'wx');
       await lockHandle.writeFile(
-        `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`
+        `${JSON.stringify({ pid: process.pid, lockId, createdAt: new Date().toISOString() })}\n`
       );
       await syncWorkspaceRegistryHandle(lockHandle);
     } catch (error) {
@@ -392,21 +397,36 @@ async function withWorkspaceRegistryLock<T>(operation: () => Promise<T>): Promis
     return await operation();
   } finally {
     await lockHandle.close().catch(() => undefined);
-    await fs.rm(lockPath, { force: true }).catch(() => undefined);
+    const ownsCurrentLock = await fs
+      .readFile(lockPath, 'utf8')
+      .then((content) => {
+        const payload = JSON.parse(content) as { lockId?: unknown };
+        return payload.lockId === lockId;
+      })
+      .catch(() => false);
+    if (ownsCurrentLock) {
+      await fs.rm(lockPath, { force: true }).catch(() => undefined);
+    }
   }
 }
 
 async function mutateWorkspaceRegistry(
   mutation: (registry: WorkspaceRegistry) => void | Promise<void>
 ): Promise<WorkspaceRegistry> {
-  return withWorkspaceRegistryLock(async () => {
-    const canonicalFile = path.join(getWorkspaceRegistryDirectory(), 'workspaces.json');
-    const legacyFile = path.join(getLegacyWorkspaceRegistryDirectory(), 'workspaces.json');
+  // Resolve every path before the first await. Vitest workers and embedding
+  // hosts can mutate process.env while this transaction waits for the lock;
+  // recomputing HOME/APPDATA later would lock one registry and write another.
+  const canonicalDirectory = getWorkspaceRegistryDirectory();
+  const canonicalFile = path.join(canonicalDirectory, 'workspaces.json');
+  const legacyFile = path.join(getLegacyWorkspaceRegistryDirectory(), 'workspaces.json');
+  const registryCandidates = [...new Set(getWorkspaceRegistryFileCandidates())];
+
+  return withWorkspaceRegistryLock(canonicalDirectory, async () => {
     const [canonicalPreimage, legacyPreimage] = await Promise.all([
       captureWorkspaceRegistryPreimage(canonicalFile),
       captureWorkspaceRegistryPreimage(legacyFile),
     ]);
-    const registry = await readWorkspaceRegistryCandidatesStrict();
+    const registry = await readWorkspaceRegistryCandidatesStrict(registryCandidates);
     await mutation(registry);
     const normalized = normalizeRegistry(registry);
 

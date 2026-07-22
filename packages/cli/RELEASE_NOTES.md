@@ -42,6 +42,8 @@ runs, and export the model-bound Knowledge Graph to standard ecosystem formats.
     `graph overlay --from` options.
   - Made `--skip-install` avoid Maven, Go, and .NET host-tool probes so offline
     scaffolds remain deterministic across Linux, macOS, and Windows.
+  - Pinned registry paths for the lifetime of each locked transaction so
+    concurrent Windows workers cannot redirect or lose a registration.
   - Completed the machine-readable Graph command and Evaluation artifact
     inventories.
 
@@ -49,7 +51,7 @@ runs, and export the model-bound Knowledge Graph to standard ecosystem formats.
 
 **Verification:**
 
-- 2,075 CLI tests passed across 191 test files; 8 tests remain explicitly
+- 2,076 CLI tests passed across 191 test files; 8 tests remain explicitly
   skipped.
 - TypeScript, ESLint, documentation validation, README command smoke, generated
   contract checks, shared-contract parity, and diff hygiene passed.

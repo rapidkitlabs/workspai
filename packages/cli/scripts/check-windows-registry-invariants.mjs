@@ -229,17 +229,42 @@ assertIncludes(
 
 assertIncludes(
   mutateWorkspaceRegistry,
-  "path.join(getWorkspaceRegistryDirectory(), 'workspaces.json')",
-  'Registry mutations must write the canonical ~/.workspai/workspaces.json file.'
+  'const canonicalDirectory = getWorkspaceRegistryDirectory()',
+  'Registry mutations must snapshot the canonical ~/.workspai registry directory before waiting.'
+);
+assertIncludes(
+  mutateWorkspaceRegistry,
+  "path.join(canonicalDirectory, 'workspaces.json')",
+  'Registry mutations must derive the canonical ~/.workspai/workspaces.json file from the pinned directory.'
 );
 assertIncludes(
   mutateWorkspaceRegistry,
   "path.join(getLegacyWorkspaceRegistryDirectory(), 'workspaces.json')",
   'Registry mutations must mirror to the legacy ~/.rapidkit/workspaces.json file.'
 );
+assertIncludes(
+  mutateWorkspaceRegistry,
+  'const registryCandidates = [...new Set(getWorkspaceRegistryFileCandidates())]',
+  'Registry mutations must snapshot and deduplicate every compatibility candidate before waiting.'
+);
+assertIncludes(
+  mutateWorkspaceRegistry,
+  'return withWorkspaceRegistryLock(canonicalDirectory',
+  'Registry mutations must lock the same pinned canonical directory they later write.'
+);
+assertIncludes(
+  mutateWorkspaceRegistry,
+  'readWorkspaceRegistryCandidatesStrict(registryCandidates)',
+  'Registry mutations must read the pinned candidate inventory instead of recomputing HOME/APPDATA under the lock.'
+);
 assertOrdered(
   mutateWorkspaceRegistry,
   [
+    'const canonicalDirectory = getWorkspaceRegistryDirectory()',
+    "const canonicalFile = path.join(canonicalDirectory, 'workspaces.json')",
+    "const legacyFile = path.join(getLegacyWorkspaceRegistryDirectory(), 'workspaces.json')",
+    'const registryCandidates = [...new Set(getWorkspaceRegistryFileCandidates())]',
+    'return withWorkspaceRegistryLock(canonicalDirectory',
     'const normalized = normalizeRegistry(registry)',
     'await writeWorkspaceRegistryFileAtomically(canonicalFile, normalized)',
     'await writeWorkspaceRegistryFileAtomically(legacyFile, normalized)',

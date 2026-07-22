@@ -51,10 +51,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made `--skip-install` a host-toolchain-free scaffold boundary for Java, Go,
   and .NET generators, preventing Maven/Java process trees from stalling
   Windows coverage jobs after installation was explicitly skipped.
+- Made workspace-registry transactions retain one immutable canonical, legacy,
+  and candidate path snapshot while waiting for the lock, preventing concurrent
+  Windows workers from losing registrations when HOME or APPDATA changes.
 
 ### Verification
 
-- Full CLI suite: 2,075 tests passed across 191 test files, with 8 explicit
+- Full CLI suite: 2,076 tests passed across 191 test files, with 8 explicit
   skips and no failures.
 - TypeScript, ESLint, documentation links/examples/drift guards, README command
   smoke, generated contracts, shared-contract parity, and `git diff --check`

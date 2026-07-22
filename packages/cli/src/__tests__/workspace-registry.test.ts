@@ -179,6 +179,36 @@ describe('workspace registry', () => {
     );
   });
 
+  it('pins registry paths before waiting even if process environment changes', async () => {
+    const homePath = await makeTempDir('rapidkit-registry-pinned-home-');
+    const driftHomePath = await makeTempDir('rapidkit-registry-drift-home-');
+    process.env.HOME = homePath;
+    process.env.USERPROFILE = homePath;
+    if (process.platform === 'win32') process.env.APPDATA = homePath;
+
+    const canonicalFile = path.join(getWorkspaceRegistryDirectory(), 'workspaces.json');
+    const legacyFile = path.join(getLegacyWorkspaceRegistryDirectory(), 'workspaces.json');
+    const workspacePaths = Array.from({ length: 12 }, (_, index) =>
+      path.join(homePath, 'workspaces', `pinned-${index}`)
+    );
+    const registrations = workspacePaths.map((workspacePath, index) =>
+      registerWorkspaceStrict(workspacePath, `pinned-${index}`)
+    );
+
+    process.env.HOME = driftHomePath;
+    process.env.USERPROFILE = driftHomePath;
+    if (process.platform === 'win32') process.env.APPDATA = driftHomePath;
+    await Promise.all(registrations);
+
+    const canonical = await fsExtra.readJson(canonicalFile);
+    const legacy = await fsExtra.readJson(legacyFile);
+    expect(canonical).toEqual(legacy);
+    expect(canonical.workspaces).toHaveLength(workspacePaths.length);
+    expect(canonical.workspaces.map((workspace: { path: string }) => workspace.path)).toEqual(
+      expect.arrayContaining(workspacePaths.map(normalizeRegistryPath))
+    );
+  });
+
   it('fails closed without changing either registry when an imported registry is corrupt', async () => {
     const homePath = await makeTempDir('rapidkit-registry-corrupt-home-');
     process.env.HOME = homePath;
