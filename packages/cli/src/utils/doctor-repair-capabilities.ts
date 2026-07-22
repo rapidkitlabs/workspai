@@ -84,7 +84,7 @@ export interface DoctorRepairCapability {
 }
 
 function quoteForShell(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  return `"${value.replace(/"/g, '\\"')}"`;
 }
 
 export function buildPackageScriptRepairCommand(input: {

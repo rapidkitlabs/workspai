@@ -25,7 +25,7 @@ describe('project metadata canonicalization', () => {
 
     const written = await canonicalizeProjectMetadata(root);
 
-    expect(written.map((value) => path.relative(root, value))).toEqual([
+    expect(written.map((value) => path.relative(root, value).split(path.sep).join('/'))).toEqual([
       '.workspai/project.json',
       '.workspai/file-hashes.json',
     ]);
