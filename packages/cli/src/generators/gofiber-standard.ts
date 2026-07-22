@@ -1646,16 +1646,18 @@ export async function generateGoFiberKit(
 
   const rapidkitVersion = getVersion();
 
-  // Go pre-flight check — warn if not installed, but don't block scaffold
-  try {
-    await execa('go', ['version'], { timeout: 3000 });
-  } catch {
-    console.log(
-      chalk.yellow(
-        '\n⚠  Go not found in PATH — project will be scaffolded, but `go mod tidy` requires Go 1.21+'
-      )
-    );
-    console.log(chalk.gray('   Install: https://go.dev/dl/\n'));
+  // Keep --skip-install deterministic and independent from host toolchains.
+  if (!v.skipInstall) {
+    try {
+      await execa('go', ['version'], { timeout: 3000 });
+    } catch {
+      console.log(
+        chalk.yellow(
+          '\n⚠  Go not found in PATH — project will be scaffolded, but `go mod tidy` requires Go 1.21+'
+        )
+      );
+      console.log(chalk.gray('   Install: https://go.dev/dl/\n'));
+    }
   }
 
   const spinner = ora(`Generating Go/Fiber project: ${v.project_name}…`).start();

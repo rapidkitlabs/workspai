@@ -3,6 +3,7 @@ import { generateSpringBootKit } from '../../generators/springboot-standard.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
+import { execa } from 'execa';
 
 vi.mock('execa', async (importOriginal) => {
   const actual = await importOriginal<typeof import('execa')>();
@@ -245,5 +246,20 @@ describe('generateSpringBootKit', () => {
 
     const compose = await fs.readFile(path.join(projectPath, 'docker-compose.yml'), 'utf8');
     expect(compose).toContain('- "9090:9090"');
+  });
+
+  it('does not invoke Maven or another external process when install and git are skipped', async () => {
+    const projectPath = path.join(testDir, 'offline-spring-service');
+
+    await generateSpringBootKit(projectPath, {
+      project_name: 'offline-spring-service',
+      skipGit: true,
+      skipInstall: true,
+    });
+
+    expect(execa).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(projectPath, 'pom.xml'), 'utf8')).toContain(
+      '<artifactId>offline-spring-service</artifactId>'
+    );
   });
 });

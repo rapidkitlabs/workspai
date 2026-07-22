@@ -413,6 +413,22 @@ describe('generateGoFiberKit', () => {
   });
 
   describe('error resilience', () => {
+    it('should not invoke host tools when install and git are skipped', async () => {
+      const { execa } = await import('execa');
+      const projectPath = path.join(testDir, 'fiber-offline');
+
+      await generateGoFiberKit(projectPath, {
+        project_name: 'fiber-offline',
+        skipGit: true,
+        skipInstall: true,
+      });
+
+      expect(execa).not.toHaveBeenCalled();
+      expect(await fs.readFile(path.join(projectPath, 'go.mod'), 'utf8')).toContain(
+        'module fiber-offline'
+      );
+    });
+
     it('should succeed scaffold even if go is not installed', async () => {
       const { execa } = await import('execa');
       const mockedExeca = vi.mocked(execa);

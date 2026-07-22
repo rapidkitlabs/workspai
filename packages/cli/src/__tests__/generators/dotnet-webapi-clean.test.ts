@@ -167,4 +167,20 @@ describe('generateDotnetWebApiCleanKit', () => {
     expect(csproj).toContain('<TargetFramework>net8.0</TargetFramework>');
     expect(projectJson.target_framework).toBe('net8.0');
   });
+
+  it('does not invoke host tools when install and git are skipped', async () => {
+    const { execa } = await import('execa');
+    const projectPath = path.join(testDir, 'offline-api');
+
+    await generateDotnetWebApiCleanKit(projectPath, {
+      project_name: 'offline-api',
+      skipGit: true,
+      skipInstall: true,
+    });
+
+    expect(execa).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(projectPath, 'offline-api.sln'), 'utf8')).toContain(
+      'offline-api'
+    );
+  });
 });

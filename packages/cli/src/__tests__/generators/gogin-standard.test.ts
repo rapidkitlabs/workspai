@@ -395,6 +395,22 @@ describe('generateGoGinKit', () => {
   });
 
   describe('error resilience', () => {
+    it('should not invoke host tools when install and git are skipped', async () => {
+      const { execa } = await import('execa');
+      const projectPath = path.join(testDir, 'gin-offline');
+
+      await generateGoGinKit(projectPath, {
+        project_name: 'gin-offline',
+        skipGit: true,
+        skipInstall: true,
+      });
+
+      expect(execa).not.toHaveBeenCalled();
+      expect(await fs.readFile(path.join(projectPath, 'go.mod'), 'utf8')).toContain(
+        'module gin-offline'
+      );
+    });
+
     it('should succeed scaffold even if Go is not installed', async () => {
       const { execa } = await import('execa');
       const mockedExeca = vi.mocked(execa);

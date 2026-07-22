@@ -723,7 +723,10 @@ export async function generateDotnetWebApiCleanKit(
 
   await maybeInitGit(projectPath, v.skipGit);
   spinner.succeed('ASP.NET Core Web API project ready');
-  await warnIfDotnetMissing(projectPath);
+  // --skip-install guarantees a host-toolchain-free scaffold operation.
+  if (!v.skipInstall) {
+    await warnIfDotnetMissing(projectPath);
+  }
 
   console.log(chalk.green('\n✅ ASP.NET Core project ready!\n'));
   console.log(chalk.gray('Next steps:'));

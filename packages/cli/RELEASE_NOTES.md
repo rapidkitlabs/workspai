@@ -40,6 +40,8 @@ runs, and export the model-bound Knowledge Graph to standard ecosystem formats.
 - **Runtime correctness**
   - Fixed validation of the documented `graph search --limit` and
     `graph overlay --from` options.
+  - Made `--skip-install` avoid Maven, Go, and .NET host-tool probes so offline
+    scaffolds remain deterministic across Linux, macOS, and Windows.
   - Completed the machine-readable Graph command and Evaluation artifact
     inventories.
 
@@ -47,7 +49,7 @@ runs, and export the model-bound Knowledge Graph to standard ecosystem formats.
 
 **Verification:**
 
-- 2,071 CLI tests passed across 191 test files; 8 tests remain explicitly
+- 2,075 CLI tests passed across 191 test files; 8 tests remain explicitly
   skipped.
 - TypeScript, ESLint, documentation validation, README command smoke, generated
   contract checks, shared-contract parity, and diff hygiene passed.

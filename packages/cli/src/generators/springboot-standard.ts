@@ -1009,15 +1009,19 @@ export async function generateSpringBootKit(
   const className = `${toPascalCase(v.project_name)}Application`;
   const packagePath = javaPackagePath(v.package_name);
 
-  try {
-    await execa('mvn', ['-version'], { timeout: 3000 });
-  } catch {
-    console.log(
-      chalk.yellow(
-        '\n⚠  Maven not found in PATH - project will be scaffolded, but init/build commands require Maven 3.9+'
-      )
-    );
-    console.log(chalk.gray('   Install: https://maven.apache.org/install.html\n'));
+  // --skip-install is also the deterministic/offline scaffold boundary: do not
+  // start runtime probes whose process trees can outlive their parent on Windows.
+  if (!v.skipInstall) {
+    try {
+      await execa('mvn', ['-version'], { timeout: 3000 });
+    } catch {
+      console.log(
+        chalk.yellow(
+          '\n⚠  Maven not found in PATH - project will be scaffolded, but init/build commands require Maven 3.9+'
+        )
+      );
+      console.log(chalk.gray('   Install: https://maven.apache.org/install.html\n'));
+    }
   }
 
   const spinner = ora(`Generating Spring Boot project: ${v.project_name}...`).start();

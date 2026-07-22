@@ -75,6 +75,8 @@ catalog, MCP tools, IDE capability discovery, CI evidence, and agent grounding.
 - Allowed the documented `--limit` option for Graph search and benchmark
   commands.
 - Allowed the documented `--from` option for Graph change overlays.
+- Made `--skip-install` a host-toolchain-free boundary for Java, Go, and .NET
+  scaffolds, avoiding Windows Maven/Java process-tree stalls in coverage runs.
 - Completed the machine-readable architecture inventory for all current Graph
   and Evaluation surfaces.
 - Replaced stale dependency-only and JavaScript/TypeScript-only graph wording
@@ -82,7 +84,7 @@ catalog, MCP tools, IDE capability discovery, CI evidence, and agent grounding.
 
 ## Verification
 
-- Full CLI suite: 2,071 passing tests across 191 test files, with 8 explicit
+- Full CLI suite: 2,075 passing tests across 191 test files, with 8 explicit
   skips and no failures.
 - TypeScript typecheck and ESLint passed.
 - Documentation links, examples, drift guard, README command smoke, generated
